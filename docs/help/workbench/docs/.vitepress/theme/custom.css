@@ -1,0 +1,381 @@
+/* ============================================================
+   Supervertaler for Trados – VitePress custom theme
+   Target: match GitBook's refined, minimal documentation look
+   ============================================================ */
+
+/* ---------- Fonts ---------- */
+:root {
+  --vp-font-family-base: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --vp-font-family-mono: 'Geist Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ---------- Brand / colour tokens ---------- */
+:root {
+  --vp-c-brand-1:       #5b5bd6;
+  --vp-c-brand-2:       #6e6ede;
+  --vp-c-brand-3:       #7d7de8;
+  --vp-c-brand-soft:    rgba(91, 91, 214, 0.10);
+
+  --sv-sidebar-bg:      #f7f7f8;
+  --sv-border:          #e4e4e7;
+  --sv-text-muted:      #71717a;
+  --sv-card-bg:         #ffffff;
+  --sv-card-hover:      rgba(91, 91, 214, 0.06);
+}
+
+.dark {
+  --vp-c-brand-1:       #8b8bf5;
+  --vp-c-brand-2:       #9d9df7;
+  --vp-c-brand-3:       #afaff9;
+  --vp-c-brand-soft:    rgba(139, 139, 245, 0.12);
+
+  --sv-sidebar-bg:      #111113;
+  --sv-border:          #27272a;
+  --sv-text-muted:      #71717a;
+  --sv-card-bg:         #18181b;
+  --sv-card-hover:      rgba(139, 139, 245, 0.08);
+}
+
+/* ---------- Overall layout ---------- */
+.VPDoc .container {
+  max-width: 1280px !important;
+}
+
+/* ---------- Header / nav ---------- */
+.VPNav {
+  border-bottom: 1px solid var(--sv-border) !important;
+  box-shadow: none !important;
+}
+
+.VPNavBar {
+  background-color: var(--vp-c-bg) !important;
+  border-bottom: 1px solid var(--sv-border) !important;
+  box-shadow: none !important;
+}
+
+.VPNavBarTitle .title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vp-c-text-1);
+}
+
+.VPNavBarMenu .VPNavBarMenuLink {
+  font-size: 0.8rem;
+  color: var(--sv-text-muted);
+  transition: color 0.15s;
+}
+
+.VPNavBarMenu .VPNavBarMenuLink:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* ---------- Sidebar ---------- */
+.VPSidebar {
+  background-color: var(--sv-sidebar-bg) !important;
+  border-right: 1px solid var(--sv-border) !important;
+  box-shadow: none !important;
+}
+
+.VPSidebarItem.level-0 > .item > .text {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--sv-text-muted);
+  padding: 1.1rem 0 0.2rem;
+}
+
+/* First top-level section – no top padding */
+.VPSidebarItem.level-0:first-child > .item > .text {
+  padding-top: 0.3rem;
+}
+
+.VPSidebarItem .link {
+  font-size: 0.825rem;
+  color: var(--vp-c-text-2);
+  border-radius: 6px;
+  padding: 0.28rem 0.7rem;
+  margin: 1px 0;
+  transition: background 0.12s, color 0.12s;
+}
+
+.VPSidebarItem .link:hover {
+  background: var(--sv-card-hover);
+  color: var(--vp-c-brand-1);
+}
+
+.VPSidebarItem .link.active {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+/* ---------- Content typography ---------- */
+.VPDoc {
+  padding: 2rem 2.5rem 4rem !important;
+}
+
+.vp-doc h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin-bottom: 0.5rem;
+  color: var(--vp-c-text-1);
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.vp-doc h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--sv-border);
+  color: var(--vp-c-text-1);
+}
+
+.vp-doc h3 {
+  font-size: 0.975rem;
+  font-weight: 600;
+  margin-top: 1.75rem;
+  color: var(--vp-c-text-1);
+}
+
+.vp-doc p {
+  font-size: 0.9rem;
+  line-height: 1.75;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc li {
+  font-size: 0.9rem;
+  line-height: 1.75;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc a {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.vp-doc a:hover {
+  text-decoration: underline;
+}
+
+.vp-doc hr {
+  border: none;
+  border-top: 1px solid var(--sv-border);
+  margin: 2rem 0;
+}
+
+/* ---------- Tables ---------- */
+.vp-doc table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  margin: 1.5rem 0;
+}
+
+.vp-doc thead tr {
+  background: var(--sv-sidebar-bg);
+}
+
+.vp-doc th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sv-text-muted);
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--sv-border);
+  text-align: left;
+}
+
+.vp-doc td {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--sv-border);
+  color: var(--vp-c-text-2);
+  vertical-align: top;
+}
+
+.vp-doc tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---------- Custom callout containers ---------- */
+/* Override VitePress default container colours to match GitBook's style */
+.vp-doc .custom-block.info {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.dark .vp-doc .custom-block.info {
+  background-color: rgba(59, 130, 246, 0.08);
+  border-color: #3b82f6;
+}
+
+.vp-doc .custom-block.info .custom-block-title {
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dark .vp-doc .custom-block.info .custom-block-title {
+  color: #60a5fa;
+}
+
+.vp-doc .custom-block.tip {
+  background-color: #f0fdf4;
+  border-color: #22c55e;
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.dark .vp-doc .custom-block.tip {
+  background-color: rgba(34, 197, 94, 0.08);
+  border-color: #22c55e;
+}
+
+.vp-doc .custom-block.tip .custom-block-title {
+  color: #15803d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dark .vp-doc .custom-block.tip .custom-block-title {
+  color: #4ade80;
+}
+
+.vp-doc .custom-block.warning {
+  background-color: #fffbeb;
+  border-color: #f59e0b;
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.dark .vp-doc .custom-block.warning {
+  background-color: rgba(245, 158, 11, 0.08);
+  border-color: #f59e0b;
+}
+
+/* ---------- Inline code ---------- */
+.vp-doc code:not(pre code) {
+  background: var(--sv-sidebar-bg);
+  border: 1px solid var(--sv-border);
+  border-radius: 4px;
+  padding: 0.1em 0.38em;
+  font-size: 0.82em;
+  color: var(--vp-c-text-1);
+}
+
+/* ---------- Code blocks ---------- */
+.vp-doc div[class*="language-"] {
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+}
+
+/* ---------- Next Steps card grid ---------- */
+.sv-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0.85rem;
+  margin: 1.75rem 0;
+}
+
+.sv-card {
+  display: block;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--sv-border);
+  border-radius: 10px;
+  text-decoration: none !important;
+  background: var(--sv-card-bg);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.sv-card:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 2px 16px rgba(91, 91, 214, 0.1);
+  background: var(--sv-card-hover);
+  text-decoration: none !important;
+}
+
+.sv-card-title {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  margin-bottom: 0.2rem;
+  transition: color 0.15s;
+}
+
+.sv-card:hover .sv-card-title {
+  color: var(--vp-c-brand-1);
+}
+
+.sv-card-desc {
+  display: block;
+  font-size: 0.775rem;
+  color: var(--sv-text-muted);
+}
+
+/* ---------- Right sidebar (TOC) ---------- */
+.VPDocAsideOutline .outline-link {
+  font-size: 0.78rem;
+  color: var(--sv-text-muted);
+  transition: color 0.12s;
+}
+
+.VPDocAsideOutline .outline-link:hover,
+.VPDocAsideOutline .outline-link.active {
+  color: var(--vp-c-brand-1);
+}
+
+/* ---------- Prev/Next footer ---------- */
+.VPDocFooter {
+  border-top: 1px solid var(--sv-border) !important;
+  padding-top: 1.5rem;
+  margin-top: 3rem;
+}
+
+.VPDocFooter .pager-link .title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+}
+
+/* ---------- Local search ---------- */
+.VPLocalSearchBox {
+  border-radius: 12px !important;
+}
+
+/* ---------- Keyboard keys ---------- */
+.vp-doc kbd {
+  background: var(--sv-sidebar-bg);
+  border: 1px solid var(--sv-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.1em 0.45em;
+  font-size: 0.78em;
+  font-family: var(--vp-font-family-mono);
+  color: var(--vp-c-text-1);
+}
+
+/* ---------- Page last updated ---------- */
+.VPLastUpdated {
+  font-size: 0.78rem;
+  color: var(--sv-text-muted);
+}
