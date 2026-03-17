@@ -170,11 +170,15 @@ class UnifiedPromptLibrary:
                         prompt_data.setdefault('quick_run', False)
                         if 'quickmenu_quickmenu' in prompt_data:
                             prompt_data['sv_quickmenu'] = prompt_data['quickmenu_quickmenu']
+                        if str(prompt_data.get('category', '')).lower() == 'quicklauncher':
+                            prompt_data['sv_quickmenu'] = True
                         prompt_data['sv_quickmenu'] = bool(
                             prompt_data.get('sv_quickmenu', prompt_data.get('quick_run', False))
                         )
                         prompt_data['quick_run'] = bool(prompt_data['sv_quickmenu'])
                         prompt_data.setdefault('quickmenu_grid', False)
+                        if 'quicklauncher_label' in prompt_data and 'quickmenu_label' not in prompt_data:
+                            prompt_data['quickmenu_label'] = prompt_data['quicklauncher_label']
                         prompt_data.setdefault('quickmenu_label', prompt_data.get('name', filepath.stem))
                         prompt_data.setdefault('tags', [])
                         return prompt_data
@@ -214,11 +218,18 @@ class UnifiedPromptLibrary:
             # Support legacy quickmenu_quickmenu field (rename to sv_quickmenu)
             if 'quickmenu_quickmenu' in prompt_data:
                 prompt_data['sv_quickmenu'] = prompt_data['quickmenu_quickmenu']
+            # category: QuickLauncher sets the sv_quickmenu flag (matches Trados behaviour)
+            if str(prompt_data.get('category', '')).lower() == 'quicklauncher':
+                prompt_data['sv_quickmenu'] = True
             prompt_data['sv_quickmenu'] = bool(
                 prompt_data.get('sv_quickmenu', prompt_data.get('quick_run', False))
             )
             # Keep legacy field in sync so older code/versions still behave.
             prompt_data['quick_run'] = bool(prompt_data['sv_quickmenu'])
+
+            # QuickLauncher label — prefer new name, fall back to legacy name
+            if 'quicklauncher_label' in prompt_data and 'quickmenu_label' not in prompt_data:
+                prompt_data['quickmenu_label'] = prompt_data['quicklauncher_label']
 
             # New QuickLauncher fields
             prompt_data.setdefault('quickmenu_grid', False)
@@ -570,10 +581,20 @@ class UnifiedPromptLibrary:
         """Update cached QuickLauncher (future app menu) list (legacy name: quick_run)."""
         self._quick_run = []
         for path, data in self.prompts.items():
+            # Detect by flag or by folder name (any path component named 'quicklauncher')
             is_enabled = bool(data.get('sv_quickmenu', data.get('quick_run', False)))
             if not is_enabled:
+                folder = data.get('_folder', '') or data.get('_relative_path', '')
+                parts = Path(folder).parts
+                is_enabled = any(p.lower() == 'quicklauncher' for p in parts)
+            if not is_enabled:
                 continue
-            label = (data.get('quickmenu_label') or data.get('name') or Path(path).stem).strip()
+            label = (
+                data.get('quicklauncher_label') or
+                data.get('quickmenu_label') or
+                data.get('name') or
+                Path(path).stem
+            ).strip()
             self._quick_run.append((path, label))
 
     def _update_quickmenu_grid_list(self):
