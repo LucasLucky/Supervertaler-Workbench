@@ -63,5 +63,5 @@ The Term Picker shows the same matches as TermLens, but in a flat list format th
 ## See Also
 
 - [Adding & Editing Terms](adding-terms.md)
-- [TermLens](../../glossaries/termlens.md)
+- [TermLens](../termlens.md)
 - [Termbase Management](../termbase-management.md)

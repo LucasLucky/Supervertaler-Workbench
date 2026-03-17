@@ -1,7 +1,7 @@
 # Keyboard Shortcuts
 
 {% hint style="info" %}
-This page is about **Supervertaler for Trados** — the Trados Studio plugin. For keyboard shortcuts in Supervertaler Workbench, see [Keyboard Shortcuts (Workbench)](../editor/keyboard-shortcuts.md).
+This page is about **Supervertaler for Trados** — the Trados Studio plugin.
 {% endhint %}
 
 All keyboard shortcuts available in Supervertaler for Trados.

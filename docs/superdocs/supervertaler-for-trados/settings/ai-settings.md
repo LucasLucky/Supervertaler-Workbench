@@ -23,7 +23,7 @@ Choose one of the supported AI providers:
 | **Custom OpenAI-compatible** | Any provider with an OpenAI-compatible API |
 
 {% hint style="info" %}
-You only need one provider to get started. See [Setting Up API Keys](../../get-started/api-keys.md) for instructions on obtaining a key.
+You only need one provider to get started. See your provider's website for instructions on obtaining a key.
 {% endhint %}
 
 ## API key
@@ -73,7 +73,7 @@ When enabled, translation memory matches for the current segment are included in
 
 ## Batch settings
 
-Configure the **batch size** for the [Batch Translate](../../ai-translation/batch-translation.md) feature. This determines how many segments are sent to the AI provider in a single request.
+Configure the **batch size** for the [Batch Translate](../batch-translate.md) feature. This determines how many segments are sent to the AI provider in a single request.
 
 - A larger batch size is faster but uses more tokens per request
 - A smaller batch size is more granular and easier to review
@@ -84,4 +84,3 @@ Configure the **batch size** for the [Batch Translate](../../ai-translation/batc
 
 - [Prompts](prompts.md)
 - [TermLens Settings](termlens.md)
-- [Supported LLM Providers (standalone)](../../ai-translation/providers.md)

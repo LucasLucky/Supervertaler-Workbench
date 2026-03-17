@@ -1,7 +1,7 @@
 # Troubleshooting
 
 {% hint style="info" %}
-This page is about **Supervertaler for Trados** — the Trados Studio plugin. For Supervertaler Workbench, see [Common Issues (Workbench)](../troubleshooting/common-issues.md).
+This page is about **Supervertaler for Trados** — the Trados Studio plugin.
 {% endhint %}
 
 Solutions to common issues with the Supervertaler for Trados plugin.
@@ -132,4 +132,3 @@ See [MultiTerm Support](multiterm-support.md) for full details.
 - [TermLens Settings](settings/termlens.md)
 - [AI Settings](settings/ai-settings.md)
 - [Termbase Management](termbase-management.md)
-- [Common Issues (standalone)](../troubleshooting/common-issues.md)

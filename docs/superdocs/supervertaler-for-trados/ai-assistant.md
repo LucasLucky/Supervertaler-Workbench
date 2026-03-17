@@ -1,7 +1,7 @@
 # Supervertaler Assistant
 
 {% hint style="info" %}
-This page is about **Supervertaler for Trados** — the Trados Studio plugin. Supervertaler Workbench has its own AI translation features — see [AI Translation Overview](../ai-translation/overview.md).
+This page is about **Supervertaler for Trados** — the Trados Studio plugin.
 {% endhint %}
 
 The Supervertaler Assistant is a conversational chat panel that runs inside Trados Studio as a separate dockable panel. It is context-aware: it automatically includes your current source and target text, matched terminology, and TM matches in every request, so the AI can give you informed answers about the segment you are working on.
@@ -88,7 +88,7 @@ The current provider and model are shown in the status area of the chat panel. T
 | **Custom** | Any OpenAI-compatible API endpoint |
 
 {% hint style="info" %}
-You only need one provider to get started. If you want privacy or offline use, try [Ollama](../ai-translation/ollama.md) with a local model.
+You only need one provider to get started. If you want privacy or offline use, try Ollama with a local model.
 {% endhint %}
 
 ---

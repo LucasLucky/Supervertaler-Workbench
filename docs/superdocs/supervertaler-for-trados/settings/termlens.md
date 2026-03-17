@@ -53,4 +53,4 @@ Increase the font size if TermLens text is hard to read; decrease it to fit more
 - [Termbase Management](../termbase-management.md)
 - [MultiTerm Support](../multiterm-support.md)
 - [AI Settings](ai-settings.md)
-- [TermLens (standalone)](../../glossaries/termlens.md)
+- [TermLens](../termlens.md)

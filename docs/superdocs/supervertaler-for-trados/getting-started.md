@@ -1,7 +1,7 @@
 # Getting Started
 
 {% hint style="info" %}
-This page is about **Supervertaler for Trados** — the Trados Studio plugin. Looking for Supervertaler Workbench? See [Workbench Quick Start](../get-started/quick-start.md).
+This page is about **Supervertaler for Trados** — the Trados Studio plugin.
 {% endhint %}
 
 This page walks you through the first-time setup so you can start using TermLens terminology and AI translation inside Trados Studio.

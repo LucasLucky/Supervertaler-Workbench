@@ -1,7 +1,7 @@
 # Termbase Management
 
 {% hint style="info" %}
-This page is about **Supervertaler for Trados** — the Trados Studio plugin. For glossary management in Supervertaler Workbench, see [Glossary Basics (Workbench)](../glossaries/basics.md).
+This page is about **Supervertaler for Trados** — the Trados Studio plugin.
 {% endhint %}
 
 Supervertaler for Trados uses the same SQLite termbase format as the standalone Supervertaler application. You manage your termbases through the Settings dialog.
@@ -104,4 +104,3 @@ For full editing capabilities, double-click a termbase in the list to open the *
 - [MultiTerm Support](multiterm-support.md)
 - [TermLens Settings](settings/termlens.md)
 - [Adding & Editing Terms](termlens/adding-terms.md)
-- [Glossary Basics (standalone)](../glossaries/basics.md)
