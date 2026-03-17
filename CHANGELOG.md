@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.355 (March 14, 2026)
+**Current Version:** v1.9.356 (March 17, 2026)
 
+
+## v1.9.356 - March 17, 2026
+
+### Improvements
+
+- **QuickLauncher folder detection** — prompts placed in a folder named `QuickLauncher` inside the prompt library are now automatically treated as QuickLauncher items without needing `sv_quickmenu: true` in their YAML frontmatter, matching the behaviour of Supervertaler for Trados
+- **`category: QuickLauncher` support** — setting `category: QuickLauncher` in a `.svprompt` file's YAML frontmatter now marks it as a QuickLauncher prompt, consistent with the Trados plugin
+- **`quicklauncher_label` YAML field** — the optional short label for the QuickLauncher menu can now be set with `quicklauncher_label:` (preferred) or the legacy `quickmenu_label:` (still supported)
+
+---
 
 ## v1.9.355 - March 14, 2026
 
