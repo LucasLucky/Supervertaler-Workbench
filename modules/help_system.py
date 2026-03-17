@@ -1,7 +1,7 @@
 """
 Context-sensitive help system for Supervertaler.
 
-Opens the relevant GitBook documentation page when the user presses F1
+Opens the relevant documentation page when the user presses F1
 or uses the Help > Context Help menu action.
 
 Usage:
@@ -22,14 +22,14 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QApplication
 
 
-DOCS_BASE_URL = "https://supervertaler.gitbook.io/help"
+DOCS_BASE_URL = "https://help.supervertaler.com"
 
 # Property key stored on widgets to identify their help topic
 _HELP_TOPIC_PROPERTY = "_help_topic"
 
 
 class Topics:
-    """Help topic identifiers mapping to GitBook page paths."""
+    """Help topic identifiers mapping to help.supervertaler.com page paths."""
 
     # Home
     HOME                = ""
@@ -40,18 +40,18 @@ class Topics:
     API_KEYS            = "get-started/api-keys"
     FIRST_PROJECT       = "get-started/first-project"
 
-    # Supervertaler for Trados (cross-reference)
-    TRADOS_PLUGIN       = "supervertaler-for-trados"
+    # Supervertaler for Trados (cross-reference — opens Trados help site)
+    TRADOS_PLUGIN       = "https://supervertaler.gitbook.io/trados"
 
     # Editor & Translation
-    TRANSLATION_GRID    = "editor-and-translation/translation-grid"
-    NAVIGATION          = "editor-and-translation/navigation"
-    EDITING             = "editor-and-translation/editing-confirming"
-    SEGMENT_STATUSES    = "editor-and-translation/segment-statuses"
-    KEYBOARD_SHORTCUTS  = "editor-and-translation/keyboard-shortcuts"
-    FIND_REPLACE        = "editor-and-translation/find-replace"
-    FILTERING           = "editor-and-translation/filtering"
-    PAGINATION          = "editor-and-translation/pagination"
+    TRANSLATION_GRID    = "editor/translation-grid"
+    NAVIGATION          = "editor/navigation"
+    EDITING             = "editor/editing-confirming"
+    SEGMENT_STATUSES    = "editor/segment-statuses"
+    KEYBOARD_SHORTCUTS  = "editor/keyboard-shortcuts"
+    FIND_REPLACE        = "editor/find-replace"
+    FILTERING           = "editor/filtering"
+    PAGINATION          = "editor/pagination"
 
     # AI Translation
     AI_OVERVIEW         = "ai-translation/overview"
@@ -64,11 +64,11 @@ class Topics:
     AI_OLLAMA           = "ai-translation/ollama"
 
     # CAT Tool Integration
-    CAT_OVERVIEW        = "cat-tool-integration/overview"
-    CAT_TRADOS          = "cat-tool-integration/trados"
-    CAT_MEMOQ           = "cat-tool-integration/memoq"
-    CAT_PHRASE          = "cat-tool-integration/phrase"
-    CAT_CAFETRAN        = "cat-tool-integration/cafetran"
+    CAT_OVERVIEW        = "cat-tools/overview"
+    CAT_TRADOS          = "cat-tools/trados"
+    CAT_MEMOQ           = "cat-tools/memoq"
+    CAT_PHRASE          = "cat-tools/phrase"
+    CAT_CAFETRAN        = "cat-tools/cafetran"
 
     # Translation Memory
     TM_BASICS           = "translation-memory/basics"
@@ -78,20 +78,20 @@ class Topics:
     TM_SUPERMEMORY      = "translation-memory/supermemory"
 
     # Glossaries
-    GLOSSARY_BASICS     = "glossaries-termbases/basics"
-    GLOSSARY_CREATING   = "glossaries-termbases/creating"
-    GLOSSARY_IMPORTING  = "glossaries-termbases/importing"
-    GLOSSARY_HIGHLIGHT  = "glossaries-termbases/highlighting"
-    GLOSSARY_TERMLENS   = "glossaries-termbases/termlens"
-    GLOSSARY_EXTRACTION = "glossaries-termbases/extraction"
+    GLOSSARY_BASICS     = "glossaries/basics"
+    GLOSSARY_CREATING   = "glossaries/creating"
+    GLOSSARY_IMPORTING  = "glossaries/importing"
+    GLOSSARY_HIGHLIGHT  = "glossaries/highlighting"
+    GLOSSARY_TERMLENS   = "glossaries/termlens"
+    GLOSSARY_EXTRACTION = "glossaries/extraction"
 
     # Import & Export
-    IMPORT_FORMATS      = "import-and-export/formats"
-    IMPORT_DOCX         = "import-and-export/docx-import"
-    IMPORT_TXT          = "import-and-export/txt-import"
-    IMPORT_MULTI        = "import-and-export/multi-file"
-    EXPORT              = "import-and-export/exporting"
-    BILINGUAL_TABLES    = "import-and-export/bilingual-tables"
+    IMPORT_FORMATS      = "import-export/formats"
+    IMPORT_DOCX         = "import-export/docx-import"
+    IMPORT_TXT          = "import-export/txt-import"
+    IMPORT_MULTI        = "import-export/multi-file"
+    EXPORT              = "import-export/exporting"
+    BILINGUAL_TABLES    = "import-export/bilingual-tables"
 
     # Superlookup
     SUPERLOOKUP         = "superlookup/overview"
@@ -101,9 +101,9 @@ class Topics:
     SUPERLOOKUP_WEB     = "superlookup/web-resources"
 
     # Quality Assurance
-    QA_SPELLCHECK       = "quality-assurance/spellcheck"
-    QA_TAGS             = "quality-assurance/tag-validation"
-    QA_NT               = "quality-assurance/non-translatables"
+    QA_SPELLCHECK       = "qa/spellcheck"
+    QA_TAGS             = "qa/tag-validation"
+    QA_NT               = "qa/non-translatables"
 
     # Tools
     TOOL_PDF_RESCUE     = "tools/pdf-rescue"
@@ -113,11 +113,11 @@ class Topics:
     TOOL_IMAGE_EXTRACT  = "tools/image-extractor"
 
     # Settings
-    SETTINGS_GENERAL    = "settings-and-customization/general"
-    SETTINGS_VIEW       = "settings-and-customization/view"
-    SETTINGS_SHORTCUTS  = "settings-and-customization/shortcuts"
-    SETTINGS_THEME      = "settings-and-customization/theme"
-    SETTINGS_FONTS      = "settings-and-customization/fonts"
+    SETTINGS_GENERAL    = "settings/general"
+    SETTINGS_VIEW       = "settings/view"
+    SETTINGS_SHORTCUTS  = "settings/shortcuts"
+    SETTINGS_THEME      = "settings/theme"
+    SETTINGS_FONTS      = "settings/fonts"
 
     # Troubleshooting
     TROUBLESHOOTING     = "troubleshooting/common-issues"
@@ -126,7 +126,7 @@ class Topics:
 class _HelpEventFilter(QObject):
     """
     Application-level event filter that intercepts F1 key presses
-    and opens the relevant GitBook documentation page.
+    and opens the relevant documentation page.
 
     Walks up the widget tree from the focused widget, looking for
     a widget tagged with a help topic via set_topic(). If found,
@@ -170,9 +170,13 @@ def set_topic(widget, topic: str):
 
 
 def open_help(topic: str = None):
-    """Open the GitBook documentation page for the given topic."""
+    """Open the documentation page for the given topic."""
     if topic:
-        url = f"{DOCS_BASE_URL}/{topic.strip('/')}"
+        # TRADOS_PLUGIN is a full URL to the separate Trados help site
+        if topic.startswith("http"):
+            url = topic
+        else:
+            url = f"{DOCS_BASE_URL}/{topic.strip('/')}"
     else:
         url = DOCS_BASE_URL
     QDesktopServices.openUrl(QUrl(url))
