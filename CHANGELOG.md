@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.356 (March 17, 2026)
+**Current Version:** v1.9.357 (March 18, 2026)
 
+
+## v1.9.357 - March 18, 2026
+
+### Changed
+- **Style Guides folder removed from default prompt library** — the Style Guides folder is no longer created on first run; existing installs are unaffected
+
+---
 
 ## v1.9.356 - March 17, 2026
 
