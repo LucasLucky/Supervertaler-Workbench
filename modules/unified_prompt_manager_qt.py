@@ -933,7 +933,6 @@ class UnifiedPromptManagerQt:
             "Project Prompts",
             "Supervertaler Assistant Prompts",
             "Proofreading",
-            "Style Guides",
             "Translation Help",
         ]
         try:

@@ -80,12 +80,14 @@ When a prompt runs from the QuickLauncher, it has access to the following contex
 
 | Variable | Description |
 |----------|-------------|
-| `{source_text}` | The selected / captured text |
-| `{target_text}` | The current segment's target text (in-grid only) |
-| `{source_lang}` | Project source language |
-| `{target_lang}` | Project target language |
+| `{{SELECTION}}` | The selected / captured text |
+| `{{SOURCE_TEXT}}` | Full source text of the active segment (in-grid only) |
+| `{{TARGET_TEXT}}` | The current segment's target text (in-grid only) |
+| `{{SOURCE_LANGUAGE}}` | Project source language |
+| `{{TARGET_LANGUAGE}}` | Project target language |
+| `{{SOURCE_CONTEXT}}` | Recent project segments (source only) — amount controlled by Settings → AI Settings |
 
-This means your prompts can be language-aware and context-sensitive. For example, a prompt like *"Explain {source_text} in simple {target_lang}"* will automatically use the correct languages.
+This means your prompts can be language-aware and context-sensitive. For example, a prompt like *"Explain {{SELECTION}} in simple {{TARGET_LANGUAGE}}"* will automatically use the correct languages.
 
 See [Creating Prompts](prompts.md) and [Prompt Manager](prompt-library.md) for more on writing and managing prompts.
 
