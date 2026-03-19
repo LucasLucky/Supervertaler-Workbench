@@ -1478,6 +1478,19 @@ body {
     line-height: 1.7;
 }
 
+.product-screenshot {
+    width: 100%;
+    max-width: 380px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+    margin-bottom: var(--spacing-md);
+    transition: transform 0.3s ease;
+}
+
+.product-card:hover .product-screenshot {
+    transform: scale(1.03);
+}
+
 .product-badge {
     display: inline-block;
     padding: 6px 16px;
