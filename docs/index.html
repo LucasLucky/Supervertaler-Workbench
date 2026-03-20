@@ -27,6 +27,43 @@
         .github-dropdown-menu.open { display: block; }
         .github-dropdown-menu li a { display: block; padding: 9px 16px; color: var(--text-primary, #111); text-decoration: none; font-size: 0.9rem; white-space: nowrap; }
         .github-dropdown-menu li a:hover { background: var(--surface, #f9fafb); }
+        /* Make Trados Great Again campaign button */
+        .mtga-button {
+            position: absolute;
+            top: -25px;
+            right: -25px;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #e60000, #aa0000);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 800;
+            line-height: 1.2;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(170,0,0,0.35), inset 0 -2px 4px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.15);
+            border: 3px solid #fff;
+            transform: rotate(8deg);
+            pointer-events: none;
+        }
+        .mtga-inner { padding: 10px; }
+        @media (max-width: 768px) {
+            .mtga-button {
+                width: 100px;
+                height: 100px;
+                font-size: 0.7rem;
+                top: -18px;
+                right: -10px;
+            }
+            .mtga-inner { padding: 6px; }
+        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -104,7 +141,8 @@
                 </a>
 
                 <!-- Trados Card -->
-                <a href="trados/" class="product-card" style="text-decoration: none; color: inherit;">
+                <a href="trados/" class="product-card" style="text-decoration: none; color: inherit; position: relative; overflow: visible;">
+                    <div class="mtga-button"><div class="mtga-inner">Make<br>Trados<br>Great<br>Again!</div></div>
                     <div class="product-icon">&#128268;</div>
                     <h3>Supervertaler for Trados</h3>
                     <span class="product-badge plugin">Trados Studio 2024 Plugin</span>
