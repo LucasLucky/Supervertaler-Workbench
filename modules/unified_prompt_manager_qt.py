@@ -2838,7 +2838,12 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
             
             action_new_folder = menu.addAction("📁 New Subfolder")
             action_new_folder.triggered.connect(lambda: self._new_subfolder(data['path']))
-        
+
+            menu.addSeparator()
+
+            action_del_folder = menu.addAction("🗑️ Delete Folder")
+            action_del_folder.triggered.connect(lambda: self._delete_folder(data['path']))
+
         menu.exec(self.tree_widget.viewport().mapToGlobal(position))
     
     def _load_prompt_in_editor(self, relative_path: str):
@@ -3352,11 +3357,27 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
             "Are you sure you want to delete this prompt?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        
+
         if reply == QMessageBox.StandardButton.Yes:
             if self.library.delete_prompt(relative_path):
                 self._refresh_tree()
                 self.log_message("✓ Prompt deleted")
+
+    def _delete_folder(self, relative_path: str):
+        """Delete a folder and all its contents"""
+        folder_name = os.path.basename(relative_path)
+        reply = QMessageBox.warning(
+            self.main_widget,
+            "Delete Folder",
+            f"Are you sure you want to delete the folder '{folder_name}' and all prompts inside it?\n\nThis cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.library.delete_folder(relative_path):
+                self._refresh_tree()
+                self._update_attached_list()
+                self.log_message(f"✓ Folder deleted: {folder_name}")
     
     def _refresh_library(self):
         """Reload library and refresh UI"""

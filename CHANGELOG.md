@@ -2,8 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.357 (March 18, 2026)
+**Current Version:** v1.9.359 (March 23, 2026)
 
+
+## v1.9.359 - March 23, 2026
+
+### New Features
+- **Delete prompt folders** — right-click any folder in the prompt library and select "Delete Folder" to remove it and all prompts inside (with confirmation dialog)
+
+### Changed
+- **Dev mode uses standard user data path** — developer mode now uses `~/Supervertaler/` (same as regular users) instead of a separate `user_data_private/` folder, enabling testing of the shared data folder experience with Supervertaler for Trados
+
+---
+
+## v1.9.358 - March 19, 2026
+
+### New Features
+- **Opt-in anonymous usage statistics** — on first launch, a dialog asks if you'd like to share anonymous usage data (app version, OS, Python version, locale) to help improve Supervertaler. A single lightweight ping is sent once per session. No personal data, translation content, or termbase info is ever collected. You can change your preference at any time in Settings > General > Privacy. See [Usage Statistics](https://help.supervertaler.com/settings/usage-statistics) for full details.
+
+---
 
 ## v1.9.357 - March 18, 2026
 

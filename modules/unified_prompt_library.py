@@ -726,6 +726,34 @@ class UnifiedPromptLibrary:
             self.log(f"✗ Failed to move folder: {e}")
             return False
     
+    def delete_folder(self, relative_path: str) -> bool:
+        """Delete a folder and all its contents from the library"""
+        try:
+            folder_path = self.library_dir / relative_path
+            if not folder_path.exists() or not folder_path.is_dir():
+                self.log(f"✗ Folder not found: {relative_path}")
+                return False
+
+            shutil.rmtree(folder_path)
+
+            # Remove any prompts that were inside this folder from memory
+            prefix = relative_path.rstrip('/\\') + '/'
+            to_remove = [p for p in self.prompts if p.startswith(prefix) or p == relative_path]
+            for p in to_remove:
+                if self.active_primary_prompt_path == p:
+                    self.active_primary_prompt = None
+                    self.active_primary_prompt_path = None
+                if p in self.attached_prompt_paths:
+                    self.detach_prompt(p)
+                del self.prompts[p]
+
+            self.log(f"✓ Deleted folder: {relative_path}")
+            return True
+
+        except Exception as e:
+            self.log(f"✗ Failed to delete folder: {e}")
+            return False
+
     def delete_prompt(self, relative_path: str) -> bool:
         """Delete a prompt"""
         try:
