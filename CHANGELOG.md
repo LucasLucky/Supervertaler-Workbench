@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.359 (March 23, 2026)
+**Current Version:** v1.9.360 (March 23, 2026)
 
+
+## v1.9.360 - March 23, 2026
+
+### New Features
+- **Superlookup in QuickLauncher** — the system-wide QuickLauncher menu (Ctrl+Alt+K) now includes a Superlookup link that searches your TMs and termbases for the selected text
+
+### Fixed
+- **QuickLauncher window activation** — launching Superlookup or other actions from the QuickLauncher now correctly brings the Supervertaler Workbench window to the foreground instead of the terminal; uses cross-platform approach (Win32 API on Windows, Qt raise/activate on macOS and Linux)
+
+---
 
 ## v1.9.359 - March 23, 2026
 

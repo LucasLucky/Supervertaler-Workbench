@@ -8748,6 +8748,13 @@ class SupervertalerQt(QMainWindow):
             )
             menu.addAction(assistant_action)
 
+            # Superlookup
+            superlookup_action = QAction("🔍 Superlookup", self)
+            superlookup_action.triggered.connect(
+                lambda: QTimer.singleShot(0, lambda: self._launch_superlookup_external(selected_text))
+            )
+            menu.addAction(superlookup_action)
+
             if quickmenu_items:
                 menu.addSeparator()
 
@@ -55874,6 +55881,41 @@ class SuperlookupTab(QWidget):
         if text:
             self.show_quickmenu_external(text)
 
+    def _launch_superlookup_external(self, text):
+        """Launch Superlookup with given text, bringing the window to foreground first."""
+        try:
+            import sys
+            main_window = self.window()
+            if main_window:
+                if main_window.isMinimized():
+                    main_window.showNormal()
+                elif main_window.isHidden():
+                    main_window.show()
+                main_window.raise_()
+                main_window.activateWindow()
+
+                # Platform-specific foreground activation using the Qt window handle
+                # (avoids activate_window_by_title which can match the terminal)
+                if sys.platform == 'win32':
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    kernel32 = ctypes.windll.kernel32
+                    hwnd = int(main_window.winId())
+                    fg = user32.GetForegroundWindow()
+                    fg_thread = user32.GetWindowThreadProcessId(fg, None)
+                    our_thread = kernel32.GetCurrentThreadId()
+                    attached = False
+                    if fg_thread != our_thread:
+                        attached = user32.AttachThreadInput(fg_thread, our_thread, True)
+                    user32.SetForegroundWindow(hwnd)
+                    if attached:
+                        user32.AttachThreadInput(fg_thread, our_thread, False)
+                # macOS/Linux: raise_() + activateWindow() above is sufficient
+
+            self.show_superlookup(text)
+        except Exception as e:
+            print(f"[Superlookup] Error launching: {e}")
+
     def on_ahk_capture(self, text):
         """Handle text captured by AHK"""
         try:
@@ -56095,6 +56137,13 @@ class SuperlookupTab(QWidget):
                 ))
             )
             menu.addAction(assistant_action)
+
+            # Superlookup — defer with QTimer so menu fully closes first
+            superlookup_action = QAction("🔍 Superlookup", menu)
+            superlookup_action.triggered.connect(
+                lambda: QTimer.singleShot(0, lambda: self._launch_superlookup_external(text))
+            )
+            menu.addAction(superlookup_action)
 
             # Prompt-based items
             quickmenu_items = []
