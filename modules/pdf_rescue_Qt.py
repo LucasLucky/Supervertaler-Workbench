@@ -1763,7 +1763,7 @@ if __name__ == "__main__":
             # Load API keys from unified settings, with legacy fallback
             self.api_keys = {}
             data_dir = "user_data_private" if os.path.exists(".supervertaler.local") else "user_data"
-            settings_file = Path(data_dir) / "settings" / "settings.json"
+            settings_file = Path(data_dir) / "workbench" / "settings" / "settings.json"
             if settings_file.exists():
                 try:
                     import json as _json

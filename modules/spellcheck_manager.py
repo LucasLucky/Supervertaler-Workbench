@@ -143,7 +143,7 @@ class SpellcheckManager:
             user_data_path: Path to user data directory for custom dictionaries
         """
         self.user_data_path = Path(user_data_path) if user_data_path else Path("user_data")
-        self.dictionaries_path = self.user_data_path / "dictionaries"
+        self.dictionaries_path = self.user_data_path / "workbench" / "dictionaries"
         self.custom_words_file = self.dictionaries_path / "custom_words.txt"
         
         # Ensure directories exist

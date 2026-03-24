@@ -163,7 +163,7 @@ class FeatureManager:
     
     def __init__(self, user_data_path: str = "user_data"):
         self.user_data_path = Path(user_data_path)
-        self.settings_file = self.user_data_path / "settings" / "settings.json"
+        self.settings_file = self.user_data_path / "workbench" / "settings" / "settings.json"
         self._preferences: Dict[str, bool] = {}
         self._load_preferences()
     
@@ -184,7 +184,7 @@ class FeatureManager:
 
     def _save_preferences(self):
         """Save user feature preferences to unified settings/settings.json -> 'features' section."""
-        settings_dir = self.user_data_path / "settings"
+        settings_dir = self.user_data_path / "workbench" / "settings"
         settings_dir.mkdir(parents=True, exist_ok=True)
 
         # Read entire settings file to preserve other sections

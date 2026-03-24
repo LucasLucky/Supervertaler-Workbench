@@ -146,8 +146,8 @@ class VoiceCommandManager(QObject):
         self.user_data_path = user_data_path
         self.main_window = main_window
         self.commands: List[VoiceCommand] = []
-        self.commands_file = user_data_path / "settings" / "voice_commands.json"
-        self.ahk_script_dir = user_data_path / "voice_scripts"
+        self.commands_file = user_data_path / "workbench" / "settings" / "voice_commands.json"
+        self.ahk_script_dir = user_data_path / "workbench" / "voice_scripts"
         self.match_threshold = 0.85  # Minimum similarity for fuzzy matching
         
         # Internal action handlers (mapped to main_window methods)

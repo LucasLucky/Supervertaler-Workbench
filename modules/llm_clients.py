@@ -67,11 +67,16 @@ def load_api_keys() -> Dict[str, str]:
     # Try unified settings first
     unified_paths = []
     if configured_user_data_path:
+        # New layout first, then old layout as fallback
+        unified_paths.append(os.path.join(configured_user_data_path, "workbench", "settings", "settings.json"))
         unified_paths.append(os.path.join(configured_user_data_path, "settings", "settings.json"))
     unified_paths.extend([
-        os.path.join(os.path.expanduser('~'), "Supervertaler", "settings", "settings.json"),
-        os.path.join(script_dir, "user_data_private", "settings", "settings.json"),
-        os.path.join(script_dir, "user_data", "settings", "settings.json"),
+        os.path.join(os.path.expanduser('~'), "Supervertaler", "workbench", "settings", "settings.json"),
+        os.path.join(os.path.expanduser('~'), "Supervertaler", "settings", "settings.json"),  # old layout fallback
+        os.path.join(script_dir, "user_data_private", "workbench", "settings", "settings.json"),
+        os.path.join(script_dir, "user_data_private", "settings", "settings.json"),  # old layout fallback
+        os.path.join(script_dir, "user_data", "workbench", "settings", "settings.json"),
+        os.path.join(script_dir, "user_data", "settings", "settings.json"),  # old layout fallback
     ])
 
     for settings_path in dict.fromkeys(unified_paths):

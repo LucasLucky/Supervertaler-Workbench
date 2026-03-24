@@ -41,8 +41,11 @@ class ConfigManager:
         "resources/tms",
         "resources/non_translatables",
         "resources/segmentation_rules",
-        "projects",
-        "settings",
+        "workbench/settings",
+        "workbench/projects",
+        "workbench/dictionaries",
+        "workbench/voice_scripts",
+        "workbench/ai_assistant",
     ]
     
     def __init__(self):
@@ -355,7 +358,7 @@ class ConfigManager:
     def get_preferences_path(self) -> str:
         """Get the path to the unified settings file (ui section)."""
         user_data_path = self.get_user_data_path()
-        return os.path.join(user_data_path, 'settings', 'settings.json')
+        return os.path.join(user_data_path, 'workbench', 'settings', 'settings.json')
 
     def load_preferences(self) -> dict:
         """Load UI preferences from unified settings file."""

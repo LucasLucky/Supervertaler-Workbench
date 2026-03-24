@@ -7645,6 +7645,7 @@ class SupervertalerQt(QMainWindow):
         # Migrate old settings files to unified settings/settings.json (one-time)
         if not self._needs_data_location_dialog:
             self._migrate_settings_to_unified()
+            self._migrate_to_workbench_layout()
 
         # Database Manager for Termbases
         self.db_manager = DatabaseManager(
@@ -7686,7 +7687,7 @@ class SupervertalerQt(QMainWindow):
         self.fr_history = FindReplaceHistory(str(self.user_data_path))
         
         # Shortcut Manager for keyboard shortcuts (including enable/disable)
-        self.shortcut_manager = ShortcutManager(Path(self.user_data_path) / "settings" / "shortcuts.json")
+        self.shortcut_manager = ShortcutManager(Path(self.user_data_path) / "workbench" / "settings" / "shortcuts.json")
         
         # Voice Command Manager for Talon-style voice commands
         self.voice_command_manager = VoiceCommandManager(self.user_data_path, main_window=self)
@@ -7706,7 +7707,7 @@ class SupervertalerQt(QMainWindow):
         # If .supervertaler.local exists: uses "user_data_private" (git-ignored)
         # Otherwise: uses "user_data" (safe to commit)
         base_folder = "user_data_private" if ENABLE_PRIVATE_FEATURES else "user_data"
-        self.recent_projects_file = self.user_data_path / "settings" / "recent_projects.json"
+        self.recent_projects_file = self.user_data_path / "workbench" / "settings" / "recent_projects.json"
         
         # Initialize UI
         self.init_ui()
@@ -7924,6 +7925,7 @@ class SupervertalerQt(QMainWindow):
         try:
             # Migrate settings if needed for the new data path
             self._migrate_settings_to_unified()
+            self._migrate_to_workbench_layout()
 
             # Close existing database connection
             if hasattr(self, 'db_manager') and self.db_manager:
@@ -7953,7 +7955,7 @@ class SupervertalerQt(QMainWindow):
             # Update other managers
             self.spellcheck_manager = get_spellcheck_manager(str(self.user_data_path))
             self.fr_history = FindReplaceHistory(str(self.user_data_path))
-            self.shortcut_manager = ShortcutManager(Path(self.user_data_path) / "settings" / "shortcuts.json")
+            self.shortcut_manager = ShortcutManager(Path(self.user_data_path) / "workbench" / "settings" / "shortcuts.json")
             self.voice_command_manager = VoiceCommandManager(self.user_data_path, main_window=self)
             
             # Update theme manager
@@ -7965,7 +7967,7 @@ class SupervertalerQt(QMainWindow):
             self.theme_manager.apply_theme(QApplication.instance())
             
             # Update recent projects file path
-            self.recent_projects_file = self.user_data_path / "settings" / "recent_projects.json"
+            self.recent_projects_file = self.user_data_path / "workbench" / "settings" / "recent_projects.json"
             
             self.log(f"✅ Re-initialized all managers with new data path")
             
@@ -8316,7 +8318,7 @@ class SupervertalerQt(QMainWindow):
             api_keys = load_api_keys()
 
             # Initialize checker with cache in user_data
-            cache_path = self.user_data_path / "settings" / "model_version_cache.json"
+            cache_path = self.user_data_path / "workbench" / "settings" / "model_version_cache.json"
             checker = ModelVersionChecker(cache_path=str(cache_path))
 
             # Check if we should run (unless forced)
@@ -21173,7 +21175,7 @@ class SupervertalerQt(QMainWindow):
     def _open_voice_scripts_folder(self):
         """Open the voice scripts folder"""
         import subprocess
-        scripts_folder = self.user_data_path / "voice_scripts"
+        scripts_folder = self.user_data_path / "workbench" / "voice_scripts"
         scripts_folder.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(['explorer', str(scripts_folder)])
 
@@ -36899,7 +36901,7 @@ class SupervertalerQt(QMainWindow):
 
     def _get_settings_dir(self) -> Path:
         """Get the settings subdirectory path"""
-        return self.user_data_path / "settings"
+        return self.user_data_path / "workbench" / "settings"
 
     def _get_unified_settings_path(self) -> Path:
         """Get the unified settings.json file path"""
@@ -37033,6 +37035,73 @@ class SupervertalerQt(QMainWindow):
             print(f"[Settings] Migration complete: {unified_file}")
         except Exception as e:
             print(f"[Settings] Error writing unified settings: {e}")
+
+    def _migrate_to_workbench_layout(self):
+        """One-time migration: move Workbench files into a workbench/ subfolder.
+
+        Old layout:
+            ~/Supervertaler/settings/         → workbench/settings/
+            ~/Supervertaler/dictionaries/     → workbench/dictionaries/
+            ~/Supervertaler/voice_scripts/    → workbench/voice_scripts/
+            ~/Supervertaler/ai_assistant/     → workbench/ai_assistant/
+            ~/Supervertaler/superbrowser_profiles/ → workbench/superbrowser_profiles/
+            ~/Supervertaler/web_cache/        → workbench/web_cache/
+            ~/Supervertaler/projects/         → workbench/projects/
+
+        Shared resources (prompt_library/, resources/) stay at the root.
+        """
+        import shutil
+
+        flag_file = self.user_data_path / "workbench" / ".migrated"
+        if flag_file.exists():
+            return
+
+        old_settings = self.user_data_path / "settings" / "settings.json"
+        if not old_settings.exists():
+            # Nothing to migrate — fresh install or already migrated.
+            # Just ensure the workbench dir exists and write the flag.
+            try:
+                (self.user_data_path / "workbench" / "settings").mkdir(parents=True, exist_ok=True)
+                flag_file.write_text(datetime.utcnow().isoformat(), encoding='utf-8')
+            except Exception:
+                pass
+            return
+
+        print("[Layout] Migrating to workbench/ subfolder layout ...")
+        wb = self.user_data_path / "workbench"
+
+        try:
+            # Move settings/ → workbench/settings/
+            old_settings_dir = self.user_data_path / "settings"
+            new_settings_dir = wb / "settings"
+            if old_settings_dir.exists() and not new_settings_dir.exists():
+                new_settings_dir.mkdir(parents=True, exist_ok=True)
+                for f in old_settings_dir.iterdir():
+                    if f.is_file():
+                        dest = new_settings_dir / f.name
+                        if not dest.exists():
+                            shutil.move(str(f), str(dest))
+                # Remove old dir if empty
+                try:
+                    old_settings_dir.rmdir()
+                except OSError:
+                    pass
+
+            # Move top-level directories → workbench/
+            for dirname in ['dictionaries', 'voice_scripts', 'ai_assistant',
+                            'superbrowser_profiles', 'web_cache', 'projects']:
+                old_dir = self.user_data_path / dirname
+                new_dir = wb / dirname
+                if old_dir.exists() and not new_dir.exists():
+                    try:
+                        shutil.move(str(old_dir), str(new_dir))
+                    except Exception as e:
+                        print(f"[Layout] Warning: could not move {dirname}: {e}")
+
+            flag_file.write_text(datetime.utcnow().isoformat(), encoding='utf-8')
+            print("[Layout] Migration to workbench/ layout complete.")
+        except Exception as e:
+            print(f"[Layout] Warning: migration incomplete: {e}")
 
     def _load_general_settings_from_file(self) -> Dict[str, Any]:
         """Load general settings from unified settings.json (general section)"""
@@ -52727,10 +52796,10 @@ class SuperlookupTab(QWidget):
             
             # Create persistent profile for login/cookie storage
             if self.user_data_path:
-                storage_path = os.path.join(str(self.user_data_path), 'web_cache')
+                storage_path = os.path.join(str(self.user_data_path), 'workbench', 'web_cache')
             else:
                 # Fallback to script directory if user_data_path not provided
-                storage_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_data', 'web_cache')
+                storage_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_data', 'workbench', 'web_cache')
             os.makedirs(storage_path, exist_ok=True)
             self.web_profile = QWebEngineProfile("SuperlookupProfile", self)
             self.web_profile.setPersistentStoragePath(storage_path)

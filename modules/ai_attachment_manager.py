@@ -37,7 +37,7 @@ class AttachmentManager:
         # Set base directory
         if base_dir is None:
             # Default to user_data_private/ai_assistant
-            base_dir = Path("user_data_private") / "ai_assistant"
+            base_dir = Path("user_data_private") / "workbench" / "ai_assistant"
 
         self.base_dir = Path(base_dir)
         self.attachments_dir = self.base_dir / "attachments"

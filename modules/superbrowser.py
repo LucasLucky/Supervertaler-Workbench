@@ -105,7 +105,7 @@ class ChatColumn(QWidget):
         
         # Set persistent storage path using user_data_path from parent
         if self.user_data_path:
-            storage_path = os.path.join(str(self.user_data_path), "superbrowser_profiles", profile_name)
+            storage_path = os.path.join(str(self.user_data_path), "workbench", "superbrowser_profiles", profile_name)
         else:
             # Fallback to script directory if user_data_path not provided
             dev_mode_marker = os.path.join(os.path.dirname(__file__), "..", ".supervertaler.local")

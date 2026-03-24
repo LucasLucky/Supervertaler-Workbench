@@ -640,7 +640,7 @@ class ShortcutManager:
         Args:
             settings_file: Path to JSON file for storing custom shortcuts
         """
-        self.settings_file = settings_file or Path("user_data/settings/shortcuts.json")
+        self.settings_file = settings_file or Path("user_data/workbench/settings/shortcuts.json")
         self.custom_shortcuts = {}
         self.disabled_shortcuts = set()  # Set of disabled shortcut IDs
         self.load_shortcuts()

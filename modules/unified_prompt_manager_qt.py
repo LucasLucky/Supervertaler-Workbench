@@ -877,11 +877,11 @@ class UnifiedPromptManagerQt:
         self.llm_client: Optional[LLMClient] = None
         self.attached_files: List[Dict] = []  # List of {path, name, content, type} - DEPRECATED, use attachment_manager
         self.chat_history: List[Dict] = []  # List of {role, content, timestamp}
-        self.ai_conversation_file = self.user_data_path / "ai_assistant" / "conversation.json"
+        self.ai_conversation_file = self.user_data_path / "workbench" / "ai_assistant" / "conversation.json"
         self._cached_document_markdown: Optional[str] = None  # Cached markdown conversion of current document
 
         # Initialize Attachment Manager
-        ai_assistant_dir = self.user_data_path / "ai_assistant"
+        ai_assistant_dir = self.user_data_path / "workbench" / "ai_assistant"
         self.attachment_manager = AttachmentManager(
             base_dir=str(ai_assistant_dir),
             log_callback=self.log_message
@@ -1108,7 +1108,7 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
         if hasattr(self.parent_app, 'current_document_path') and self.parent_app.current_document_path:
             doc_path = Path(self.parent_app.current_document_path)
             # Try to load existing markdown
-            markdown_dir = self.user_data_path / "ai_assistant" / "current_document"
+            markdown_dir = self.user_data_path / "workbench" / "ai_assistant" / "current_document"
             markdown_file = markdown_dir / f"{doc_path.stem}.md"
             if markdown_file.exists():
                 try:
@@ -4732,7 +4732,7 @@ Output ONLY the delimiters and prompt content. No text before ===PROMPT_START===
         """
         try:
             # Create directory for current document markdown
-            doc_dir = self.user_data_path / "ai_assistant" / "current_document"
+            doc_dir = self.user_data_path / "workbench" / "ai_assistant" / "current_document"
             doc_dir.mkdir(parents=True, exist_ok=True)
 
             # Create filename based on original
