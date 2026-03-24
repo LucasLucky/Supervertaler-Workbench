@@ -2,8 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.361 (March 24, 2026)
+**Current Version:** v1.9.362 (March 24, 2026)
 
+
+## v1.9.362 - March 24, 2026
+
+### Added
+- **Unified prompt library schema** — prompts now use a consistent YAML frontmatter format (`category`, `app`) shared between Supervertaler Workbench and Supervertaler for Trados
+- **App-specific prompt filtering** — prompts tagged `app: "trados"` are hidden in Workbench; prompts tagged `app: "workbench"` are hidden in Trados; `app: "both"` (default) shows everywhere
+- **App dropdown in prompt editor** — new "App" field lets you choose whether a prompt is for Both, Workbench only, or Trados only
+
+### Changed
+- **User data folder restructured** — Workbench files now live under `workbench/` subfolder; shared resources (prompt_library, resources) remain at root; auto-migrated on first startup
+- **Prompt YAML keys standardised** — `domain` → `category`, `sv_quickmenu`/`quick_run` → `quickmenu`; legacy keys are still accepted for backward compatibility
+- **Prompt library cleaned up** — removed empty placeholder folders, fixed YAML frontmatter, standardised variable names
+- **Default folder seeding updated** — startup now only creates `Translate/`, `Proofread/`, `QuickLauncher/` (removed legacy empty folders)
+
+---
 
 ## v1.9.361 - March 24, 2026
 

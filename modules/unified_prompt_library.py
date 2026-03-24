@@ -110,12 +110,17 @@ class UnifiedPromptLibrary:
                 prompt_data = self._parse_markdown(item)
                 
                 if prompt_data:
+                    # Unified schema: skip prompts not intended for Workbench
+                    app_value = str(prompt_data.get('app', 'both')).lower().strip()
+                    if app_value == 'trados':
+                        continue  # Not for Workbench
+
                     # Store with relative path as key
                     rel_path = str(Path(relative_path) / item.name) if relative_path else item.name
                     prompt_data['_filepath'] = str(item)
                     prompt_data['_relative_path'] = rel_path
                     prompt_data['_folder'] = relative_path
-                    
+
                     self.prompts[rel_path] = prompt_data
                     count += 1
         
@@ -181,6 +186,12 @@ class UnifiedPromptLibrary:
                             prompt_data['quickmenu_label'] = prompt_data['quicklauncher_label']
                         prompt_data.setdefault('quickmenu_label', prompt_data.get('name', filepath.stem))
                         prompt_data.setdefault('tags', [])
+                        # Unified schema: legacy key mapping for JSON format
+                        if 'domain' in prompt_data and 'category' not in prompt_data:
+                            prompt_data['category'] = prompt_data['domain']
+                        for _dep in ('task_type', 'version', 'folder'):
+                            prompt_data.pop(_dep, None)
+                        prompt_data.setdefault('app', 'both')
                         return prompt_data
                 except (json.JSONDecodeError, ValueError):
                     pass  # Not valid JSON, fall through to YAML frontmatter parsing
@@ -235,7 +246,9 @@ class UnifiedPromptLibrary:
             prompt_data.setdefault('quickmenu_grid', False)
             prompt_data.setdefault('quickmenu_label', prompt_data.get('name', filepath.stem))
             prompt_data.setdefault('tags', [])
-            
+            # Unified schema: ensure app field has a default
+            prompt_data.setdefault('app', 'both')
+
             return prompt_data
             
         except Exception as e:
@@ -253,19 +266,19 @@ class UnifiedPromptLibrary:
         - Arrays: tags: ["item1", "item2"] or tags: [item1, item2]
         """
         data = {}
-        
+
         for line in yaml_str.strip().split('\n'):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            
+
             if ':' not in line:
                 continue
-            
+
             key, value = line.split(':', 1)
             key = key.strip()
             value = value.strip()
-            
+
             # Handle arrays
             if value.startswith('[') and value.endswith(']'):
                 # Remove brackets and split by comma
@@ -273,27 +286,47 @@ class UnifiedPromptLibrary:
                 items = [item.strip().strip('"').strip("'") for item in array_str.split(',')]
                 data[key] = [item for item in items if item]  # Filter empty
                 continue
-            
+
             # Handle booleans
             if value.lower() in ['true', 'false']:
                 data[key] = value.lower() == 'true'
                 continue
-            
+
             # Remove quotes
             if value.startswith('"') and value.endswith('"'):
                 value = value[1:-1]
             elif value.startswith("'") and value.endswith("'"):
                 value = value[1:-1]
-            
+
             # Handle numbers
             if value.replace('.', '', 1).replace('-', '', 1).isdigit():
                 try:
                     value = float(value) if '.' in value else int(value)
                 except:
                     pass
-            
+
             data[key] = value
-        
+
+        # ── Unified schema: map legacy keys ──────────────────────────
+        # domain → category
+        if 'domain' in data and 'category' not in data:
+            data['category'] = data['domain']
+        # sv_quickmenu / quick_run → quickmenu
+        if 'sv_quickmenu' in data and 'quickmenu' not in data:
+            data['quickmenu'] = data['sv_quickmenu']
+        if 'quick_run' in data and 'quickmenu' not in data:
+            data['quickmenu'] = data['quick_run']
+        # quicklauncher_label → quickmenu_label
+        if 'quicklauncher_label' in data and 'quickmenu_label' not in data:
+            data['quickmenu_label'] = data['quicklauncher_label']
+
+        # Remove/ignore deprecated keys
+        for _dep in ('task_type', 'version', 'folder'):
+            data.pop(_dep, None)
+
+        # app field: default to "both"
+        data.setdefault('app', 'both')
+
         return data
     
     def save_prompt(self, relative_path: str, prompt_data: Dict) -> bool:
@@ -321,20 +354,26 @@ class UnifiedPromptLibrary:
             
             # Fields to include in frontmatter (in order)
             frontmatter_fields = [
-                'name', 'description', 'domain', 'version', 'task_type',
+                'name', 'description', 'category',
                 'favorite', 'read_only',
+                # Unified schema
+                'app',
                 # QuickLauncher
                 'quickmenu_label', 'quickmenu_grid', 'sv_quickmenu',
                 # Legacy (kept for backward compatibility)
                 'quick_run',
-                'folder', 'tags',
+                'tags',
                 'created', 'modified'
             ]
             
             for field in frontmatter_fields:
                 if field in prompt_data:
                     value = prompt_data[field]
-                    
+
+                    # Omit app field when "both" (default) to keep files clean
+                    if field == 'app' and str(value).lower().strip() == 'both':
+                        continue
+
                     # Format based on type
                     if isinstance(value, bool):
                         frontmatter.append(f'{field}: {str(value).lower()}')

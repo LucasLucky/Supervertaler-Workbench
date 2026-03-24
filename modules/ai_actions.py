@@ -298,9 +298,8 @@ class AIActionSystem:
             'favorite': prompt_data.get('favorite', False),
             'quick_run': prompt_data.get('quick_run', False),
             'tags': prompt_data.get('tags', []),
-            'domain': prompt_data.get('domain', ''),
-            'task_type': prompt_data.get('task_type', ''),
-            'version': prompt_data.get('version', '1.0'),
+            'category': prompt_data.get('category', prompt_data.get('domain', '')),
+            'app': prompt_data.get('app', 'both'),
             'created': prompt_data.get('created', ''),
             'modified': prompt_data.get('modified', '')
         }
@@ -355,12 +354,9 @@ class AIActionSystem:
             'name': name,
             'content': content,
             'description': params.get('description', ''),
-            'domain': params.get('domain', ''),
-            'task_type': params.get('task_type', 'Translation'),
-            'version': '1.0',
+            'category': params.get('domain', params.get('category', '')),
             'favorite': False,
             'quick_run': False,
-            'folder': folder,
             'tags': params.get('tags', []),
             'created': datetime.now().strftime('%Y-%m-%d'),
             'modified': datetime.now().strftime('%Y-%m-%d')

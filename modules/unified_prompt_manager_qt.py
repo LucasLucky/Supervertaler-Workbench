@@ -926,14 +926,11 @@ class UnifiedPromptManagerQt:
         self._ensure_default_folders()
 
     def _ensure_default_folders(self):
-        """Create default prompt library folders if they don't exist, and seed default prompts"""
+        """Create default prompt library folders if they don't exist"""
         default_folders = [
-            "Bulk Operations/Proofreading",
-            "Domain Expertise",
-            "Project Prompts",
-            "Supervertaler Assistant Prompts",
-            "Proofreading",
-            "Translation Help",
+            "Translate",
+            "Proofread",
+            "QuickLauncher",
         ]
         try:
             for folder in default_folders:
@@ -943,64 +940,6 @@ class UnifiedPromptManagerQt:
         except Exception as e:
             self.log_message(f"⚠ Failed to create default folders: {e}")
 
-        # Seed default prompts (only if they don't exist yet)
-        self._seed_default_prompts()
-
-    def _seed_default_prompts(self):
-        """Create built-in default prompts if they don't exist"""
-        default_proofread_path = self.prompt_library_dir / "Bulk Operations" / "Proofreading" / "Default Proofreading Prompt.svprompt"
-        if not default_proofread_path.exists():
-            try:
-                content = '''\
----
-name: "Default Proofreading Prompt"
-description: "Built-in proofreading prompt used by Edit > Bulk Operations > Proofread Translation"
-version: "1.0"
-task_type: "Proofreading"
-read_only: true
-favorite: false
-tags: ["proofreading", "bulk operation", "built-in"]
----
-
-You are a translation proofreader. Your task is to analyze translations for errors.
-
-DO NOT translate anything. DO NOT provide corrected translations unless specifically requested.
-ONLY identify errors using the exact format specified below.
-
-Task: Proofread this translation from {{source_lang}} to {{target_lang}}.
-
-For each segment, verify:
-1. Accuracy – Does the translation correctly convey the source meaning?
-2. Completeness – Is anything missing or added?
-3. Terminology – Are technical terms translated correctly and consistently?
-4. Grammar & Style – Is the text natural and error-free?
-
-LANGUAGE-SPECIFIC CHECKS (applied automatically based on target language):
-
-For Dutch:
-5. Dutch Compound Words – Verify correct spelling of compound words (e.g., "persoonsgegevens" NOT "persoongegevens", "bedrijfsnaam" NOT "bedrijfnaam"). Pay special attention to connecting letters like 's', 'e', 'en'.
-6. Dutch Spelling – Check for common Dutch spelling errors including de/het articles, dt-errors, and capitalization.
-
-For German:
-5. German Compound Words – Verify correct compound noun formation and capitalization of all nouns.
-6. German Cases – Check correct use of cases (Nominativ, Akkusativ, Dativ, Genitiv).
-
-For French:
-5. French Accents – Verify correct use of accents (é, è, ê, à, ù, ô, etc.).
-6. French Agreement – Check gender/number agreement between nouns, adjectives, and articles.
-
-CRITICAL OUTPUT FORMAT (FOLLOW EXACTLY):
-- If segment is OK: [SEGMENT XXXX] ✓
-- If segment has issues: [SEGMENT XXXX] ⚠
-  Issue: <brief description>
-  Suggestion: <recommended fix>
-
-OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
-                default_proofread_path.write_text(content, encoding='utf-8')
-                self.log_message("✓ Created default proofreading prompt in Bulk Operations/Proofreading/")
-            except Exception as e:
-                self.log_message(f"⚠ Failed to create default proofreading prompt: {e}")
-    
     def log_message(self, message):
         """Log a message through parent app or print"""
         self.log(message)
@@ -2278,12 +2217,27 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
 
         layout.addLayout(quickmenu_layout)
 
-        # Read-only indicator
+        # App selector + Read-only indicator row
+        app_readonly_layout = QHBoxLayout()
+
+        app_readonly_layout.addWidget(QLabel("App:"))
+        from PyQt6.QtWidgets import QComboBox
+        self.editor_app_combo = QComboBox()
+        self.editor_app_combo.addItems(["Both", "Workbench only", "Trados only"])
+        self.editor_app_combo.setToolTip("Which app(s) should show this prompt")
+        self.editor_app_combo.setMaximumWidth(160)
+        app_readonly_layout.addWidget(self.editor_app_combo)
+
+        app_readonly_layout.addSpacing(16)
+
         self.editor_read_only_cb = CheckmarkCheckBox("Read-only")
         self.editor_read_only_cb.setToolTip("Read-only prompts cannot be edited. Uncheck to allow editing.")
         self.editor_read_only_cb.stateChanged.connect(self._on_read_only_toggled)
         self.editor_read_only_cb.setVisible(False)  # Only shown for prompts that have read_only=true
-        layout.addWidget(self.editor_read_only_cb)
+        app_readonly_layout.addWidget(self.editor_read_only_cb)
+
+        app_readonly_layout.addStretch()
+        layout.addLayout(app_readonly_layout)
 
         # Content editor
         self.editor_content = QPlainTextEdit()
@@ -2864,6 +2818,11 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
             self.editor_quickmenu_in_grid_cb.setChecked(bool(prompt_data.get('quickmenu_grid', False)))
         if hasattr(self, 'editor_quickmenu_in_quickmenu_cb'):
             self.editor_quickmenu_in_quickmenu_cb.setChecked(bool(prompt_data.get('sv_quickmenu', prompt_data.get('quick_run', False))))
+        # App selector
+        if hasattr(self, 'editor_app_combo'):
+            app_val = str(prompt_data.get('app', 'both')).lower().strip()
+            idx_map = {'both': 0, 'workbench': 1, 'trados': 2}
+            self.editor_app_combo.setCurrentIndex(idx_map.get(app_val, 0))
         self.editor_content.setPlainText(prompt_data.get('content', ''))
 
         # Handle read-only state
@@ -2896,12 +2855,16 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
             quickmenu_label = ''
             quickmenu_grid = False
             sv_quickmenu = False
+            app_value = 'both'
             if hasattr(self, 'editor_quickmenu_label_input'):
                 quickmenu_label = self.editor_quickmenu_label_input.text().strip()
             if hasattr(self, 'editor_quickmenu_in_grid_cb'):
                 quickmenu_grid = bool(self.editor_quickmenu_in_grid_cb.isChecked())
             if hasattr(self, 'editor_quickmenu_in_quickmenu_cb'):
                 sv_quickmenu = bool(self.editor_quickmenu_in_quickmenu_cb.isChecked())
+            if hasattr(self, 'editor_app_combo'):
+                app_map = {0: 'both', 1: 'workbench', 2: 'trados'}
+                app_value = app_map.get(self.editor_app_combo.currentIndex(), 'both')
 
             if not name or not content:
                 QMessageBox.warning(self.main_widget, "Error", "Name and content are required")
@@ -2939,6 +2902,7 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
                 prompt_data['quickmenu_label'] = quickmenu_label or name_without_ext
                 prompt_data['quickmenu_grid'] = quickmenu_grid
                 prompt_data['sv_quickmenu'] = sv_quickmenu
+                prompt_data['app'] = app_value
                 # Keep legacy field in sync
                 prompt_data['quick_run'] = sv_quickmenu
                 
@@ -2990,9 +2954,7 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
                     'name': name,
                     'description': description,
                     'content': content,
-                    'domain': '',
-                    'version': '1.0',
-                    'task_type': 'Translation',
+                    'category': '',
                     'favorite': False,
                     # QuickLauncher
                     'quickmenu_label': quickmenu_label or name,
@@ -3000,7 +2962,6 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
                     'sv_quickmenu': sv_quickmenu,
                     # Legacy
                     'quick_run': sv_quickmenu,
-                    'folder': folder,
                     'tags': [],
                     'created': datetime.now().strftime('%Y-%m-%d'),
                     'modified': datetime.now().strftime('%Y-%m-%d')
@@ -3280,15 +3241,12 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER.'''
             'name': name_without_ext,
             'description': '',
             'content': '# Your prompt content here\n\nProvide translation instructions...',
-            'domain': '',
-            'version': '1.0',
-            'task_type': 'Translation',
+            'category': '',
             'favorite': False,
             'quickmenu_label': name_without_ext,
             'quickmenu_grid': False,
             'sv_quickmenu': False,
             'quick_run': False,
-            'folder': folder_path,
             'tags': [],
             'created': datetime.now().strftime('%Y-%m-%d'),
             'modified': datetime.now().strftime('%Y-%m-%d')
