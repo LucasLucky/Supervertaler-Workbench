@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.360 (March 23, 2026)
+**Current Version:** v1.9.361 (March 24, 2026)
 
+
+## v1.9.361 - March 24, 2026
+
+### Changed
+- **User data folder restructured** — all Workbench-specific files now live under `~/Supervertaler/workbench/` (with `settings/`, `dictionaries/`, `voice_scripts/`, `ai_assistant/`, `superbrowser_profiles/`, `web_cache/`, `projects/` subfolders); shared resources (`prompt_library/`, `resources/`) remain at the root; auto-migrated on first run
+- **Website updates** — trial period updated to 14 days, live Lemon Squeezy checkout links, reduced pricing note added to Trados pricing section
+
+---
 
 ## v1.9.360 - March 23, 2026
 
