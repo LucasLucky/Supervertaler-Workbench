@@ -12,7 +12,7 @@ The AI Assistant is an integrated conversational AI tool within Supervertaler's 
 ## Features
 
 ### 🔍 Project Analysis
-Click "Analyze Project & Generate Prompts" to get AI-powered analysis of your current project, including:
+Click "AutoPrompt" to get AI-powered analysis of your current project, including:
 - Domain identification
 - Recommended existing prompts from your library
 - Suggestions for new custom prompts
@@ -45,7 +45,7 @@ The AI Assistant has access to:
 ### Quick Start
 1. Open **Prompt Manager** tab
 2. Switch to **✨ AI Assistant** sub-tab
-3. Click "🔍 Analyze Project & Generate Prompts" for automated analysis
+3. Click "🔍 AutoPrompt" for automated analysis
 4. Or start chatting: "Help me create a prompt for legal translations"
 
 ### Attaching Files

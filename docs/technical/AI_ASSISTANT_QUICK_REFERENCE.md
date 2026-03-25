@@ -6,7 +6,7 @@
 **Prompt Manager** tab → **✨ AI Assistant** sub-tab
 
 ### Quick Actions
-- **🔍 Analyze Project & Generate Prompts**: Auto-analyze current project and suggest/generate prompts
+- **🔍 AutoPrompt**: Auto-analyze current project and suggest/generate prompts
 
 ## Chat Interface
 
@@ -52,7 +52,7 @@
 
 ### 1. Generate Domain Prompt
 ```
-1. Click "🔍 Analyze Project & Generate Prompts"
+1. Click "🔍 AutoPrompt"
 2. Review AI analysis and suggestions
 3. Ask: "Create a complete prompt for [domain]"
 4. Copy generated prompt
@@ -80,7 +80,7 @@
 ### 4. Project-Specific Prompt
 ```
 1. Attach project documents
-2. Click "🔍 Analyze Project"
+2. Click "🔍 AutoPrompt"
 3. Review analysis
 4. Ask: "Generate a project prompt with these requirements: [list]"
 5. Save to library under Project Prompts folder

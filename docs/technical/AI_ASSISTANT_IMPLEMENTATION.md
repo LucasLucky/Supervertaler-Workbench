@@ -33,7 +33,7 @@ Successfully integrated a full-featured AI Assistant into the Prompt Manager, pr
    - Recent conversation history (last 5 messages)
 
 5. **Project Analysis**
-   - "Analyze Project & Generate Prompts" quick action button
+   - "AutoPrompt" quick action button
    - Analyzes current project context
    - Suggests relevant existing prompts
    - Generates new custom prompts with complete text
@@ -54,7 +54,7 @@ Successfully integrated a full-featured AI Assistant into the Prompt Manager, pr
 - **Auto-scroll**: Keeps latest messages visible
 
 #### Quick Actions (Top)
-- **🔍 Analyze Project & Generate Prompts**: One-click project analysis
+- **🔍 AutoPrompt**: One-click project analysis
 
 ### 💾 Data Persistence
 
@@ -159,7 +159,7 @@ User clicks Attached Files → Select file
 
 ### Project Analysis Flow
 ```
-User clicks "Analyze Project & Generate Prompts"
+User clicks "AutoPrompt"
   → _analyze_and_generate()
     → _build_project_context()
       → Gather current document info
@@ -193,7 +193,7 @@ AI Assistant: [Analyzes PDF content and summarizes requirements]
 
 ### Example 3: Generate Prompt
 ```
-User: [Clicks "Analyze Project & Generate Prompts"]
+User: [Clicks "AutoPrompt"]
 System: 🔍 Analyzing project and generating prompts...
         Gathering context from:
         • Current document

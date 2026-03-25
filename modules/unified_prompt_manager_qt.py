@@ -1186,7 +1186,7 @@ class UnifiedPromptManagerQt:
         
         # Quick Action Button at top
         # Note: && is needed to display a single & (Qt uses & for keyboard shortcuts)
-        action_btn = QPushButton("🔍 Analyze Project && Generate Prompts")
+        action_btn = QPushButton("🔍 AutoPrompt")
         action_btn.setStyleSheet("""
             QPushButton {
                 background-color: #1976D2;
