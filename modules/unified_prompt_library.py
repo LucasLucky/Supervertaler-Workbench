@@ -60,14 +60,31 @@ class UnifiedPromptLibrary:
         self.library_dir = Path(library_dir)
         self.library_dir.mkdir(parents=True, exist_ok=True)
     
+    def _migrate_svprompt_to_md(self):
+        """One-time migration: rename all .svprompt files to .md in the prompt library."""
+        if not self.library_dir or not self.library_dir.exists():
+            return
+        for svprompt_file in self.library_dir.rglob('*.svprompt'):
+            try:
+                md_file = svprompt_file.with_suffix('.md')
+                if not md_file.exists():
+                    svprompt_file.rename(md_file)
+                else:
+                    svprompt_file.unlink()  # .md version already exists
+            except Exception:
+                pass
+
     def load_all_prompts(self):
         """Load all prompts from library directory (recursive)"""
         self.prompts = {}
-        
+
         if not self.library_dir or not self.library_dir.exists():
             self.log("⚠ Library directory not found")
             return 0
-        
+
+        # One-time migration: rename .svprompt → .md
+        self._migrate_svprompt_to_md()
+
         count = self._load_from_directory_recursive(self.library_dir, "")
         self.log(f"✓ Loaded {count} prompts from unified library")
         
