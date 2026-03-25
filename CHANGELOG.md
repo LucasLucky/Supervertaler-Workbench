@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.362 (March 24, 2026)
+**Current Version:** v1.9.363 (March 25, 2026)
 
+
+## v1.9.363 - March 25, 2026
+
+### Changed
+- **Feature renamed: AutoPrompt** — "Analyze Project & Generate Prompts" button and all references renamed to **AutoPrompt**
+
+---
 
 ## v1.9.362 - March 24, 2026
 
