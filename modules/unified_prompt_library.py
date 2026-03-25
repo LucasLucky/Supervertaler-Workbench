@@ -53,7 +53,7 @@ class UnifiedPromptLibrary:
         self._favorites = []
         # Backward-compatible name; now represents QuickLauncher (future app-level menu)
         self._quick_run = []
-        self._quickmenu_grid = []
+        self._quicklauncher_grid = []
     
     def set_directory(self, library_dir):
         """Set the library directory after initialization"""
@@ -91,7 +91,7 @@ class UnifiedPromptLibrary:
         # Update cached lists
         self._update_favorites_list()
         self._update_quick_run_list()
-        self._update_quickmenu_grid_list()
+        self._update_quicklauncher_grid_list()
         
         return count
     
@@ -190,18 +190,27 @@ class UnifiedPromptLibrary:
                         # Ensure boolean fields exist
                         prompt_data.setdefault('favorite', False)
                         prompt_data.setdefault('quick_run', False)
+                        # Backward compat: accept legacy field names
                         if 'quickmenu_quickmenu' in prompt_data:
-                            prompt_data['sv_quickmenu'] = prompt_data['quickmenu_quickmenu']
+                            prompt_data['quicklauncher'] = prompt_data['quickmenu_quickmenu']
+                        if 'sv_quickmenu' in prompt_data and 'quicklauncher' not in prompt_data:
+                            prompt_data['quicklauncher'] = prompt_data['sv_quickmenu']
+                        if 'quickmenu' in prompt_data and 'quicklauncher' not in prompt_data:
+                            prompt_data['quicklauncher'] = prompt_data['quickmenu']
                         if str(prompt_data.get('category', '')).lower() == 'quicklauncher':
-                            prompt_data['sv_quickmenu'] = True
-                        prompt_data['sv_quickmenu'] = bool(
-                            prompt_data.get('sv_quickmenu', prompt_data.get('quick_run', False))
+                            prompt_data['quicklauncher'] = True
+                        prompt_data['quicklauncher'] = bool(
+                            prompt_data.get('quicklauncher', prompt_data.get('quick_run', False))
                         )
-                        prompt_data['quick_run'] = bool(prompt_data['sv_quickmenu'])
-                        prompt_data.setdefault('quickmenu_grid', False)
-                        if 'quicklauncher_label' in prompt_data and 'quickmenu_label' not in prompt_data:
-                            prompt_data['quickmenu_label'] = prompt_data['quicklauncher_label']
-                        prompt_data.setdefault('quickmenu_label', prompt_data.get('name', filepath.stem))
+                        prompt_data['quick_run'] = bool(prompt_data['quicklauncher'])
+                        # Backward compat: accept quickmenu_grid as quicklauncher_grid
+                        if 'quickmenu_grid' in prompt_data and 'quicklauncher_grid' not in prompt_data:
+                            prompt_data['quicklauncher_grid'] = prompt_data['quickmenu_grid']
+                        prompt_data.setdefault('quicklauncher_grid', False)
+                        # Backward compat: accept quickmenu_label as quicklauncher_label
+                        if 'quickmenu_label' in prompt_data and 'quicklauncher_label' not in prompt_data:
+                            prompt_data['quicklauncher_label'] = prompt_data['quickmenu_label']
+                        prompt_data.setdefault('quicklauncher_label', prompt_data.get('name', filepath.stem))
                         prompt_data.setdefault('tags', [])
                         # Unified schema: legacy key mapping for JSON format
                         if 'domain' in prompt_data and 'category' not in prompt_data:
@@ -241,27 +250,35 @@ class UnifiedPromptLibrary:
             # Ensure boolean fields exist
             prompt_data.setdefault('favorite', False)
             # Backward compatibility: quick_run is the legacy field; internally we
-            # treat it as the "QuickLauncher (future app menu)" flag.
+            # treat it as the "QuickLauncher" flag.
             prompt_data.setdefault('quick_run', False)
-            # Support legacy quickmenu_quickmenu field (rename to sv_quickmenu)
+            # Backward compat: accept legacy field names and map to quicklauncher
             if 'quickmenu_quickmenu' in prompt_data:
-                prompt_data['sv_quickmenu'] = prompt_data['quickmenu_quickmenu']
-            # category: QuickLauncher sets the sv_quickmenu flag (matches Trados behaviour)
+                prompt_data['quicklauncher'] = prompt_data['quickmenu_quickmenu']
+            if 'sv_quickmenu' in prompt_data and 'quicklauncher' not in prompt_data:
+                prompt_data['quicklauncher'] = prompt_data['sv_quickmenu']
+            if 'quickmenu' in prompt_data and 'quicklauncher' not in prompt_data:
+                prompt_data['quicklauncher'] = prompt_data['quickmenu']
+            # category: QuickLauncher sets the quicklauncher flag (matches Trados behaviour)
             if str(prompt_data.get('category', '')).lower() == 'quicklauncher':
-                prompt_data['sv_quickmenu'] = True
-            prompt_data['sv_quickmenu'] = bool(
-                prompt_data.get('sv_quickmenu', prompt_data.get('quick_run', False))
+                prompt_data['quicklauncher'] = True
+            prompt_data['quicklauncher'] = bool(
+                prompt_data.get('quicklauncher', prompt_data.get('quick_run', False))
             )
             # Keep legacy field in sync so older code/versions still behave.
-            prompt_data['quick_run'] = bool(prompt_data['sv_quickmenu'])
+            prompt_data['quick_run'] = bool(prompt_data['quicklauncher'])
 
-            # QuickLauncher label — prefer new name, fall back to legacy name
-            if 'quicklauncher_label' in prompt_data and 'quickmenu_label' not in prompt_data:
-                prompt_data['quickmenu_label'] = prompt_data['quicklauncher_label']
+            # QuickLauncher label -- backward compat: accept quickmenu_label
+            if 'quickmenu_label' in prompt_data and 'quicklauncher_label' not in prompt_data:
+                prompt_data['quicklauncher_label'] = prompt_data['quickmenu_label']
 
-            # New QuickLauncher fields
-            prompt_data.setdefault('quickmenu_grid', False)
-            prompt_data.setdefault('quickmenu_label', prompt_data.get('name', filepath.stem))
+            # QuickLauncher grid -- backward compat: accept quickmenu_grid
+            if 'quickmenu_grid' in prompt_data and 'quicklauncher_grid' not in prompt_data:
+                prompt_data['quicklauncher_grid'] = prompt_data['quickmenu_grid']
+
+            # QuickLauncher fields
+            prompt_data.setdefault('quicklauncher_grid', False)
+            prompt_data.setdefault('quicklauncher_label', prompt_data.get('name', filepath.stem))
             prompt_data.setdefault('tags', [])
             # Unified schema: ensure app field has a default
             prompt_data.setdefault('app', 'both')
@@ -328,14 +345,20 @@ class UnifiedPromptLibrary:
         # domain → category
         if 'domain' in data and 'category' not in data:
             data['category'] = data['domain']
-        # sv_quickmenu / quick_run → quickmenu
-        if 'sv_quickmenu' in data and 'quickmenu' not in data:
-            data['quickmenu'] = data['sv_quickmenu']
-        if 'quick_run' in data and 'quickmenu' not in data:
-            data['quickmenu'] = data['quick_run']
-        # quicklauncher_label → quickmenu_label
-        if 'quicklauncher_label' in data and 'quickmenu_label' not in data:
-            data['quickmenu_label'] = data['quicklauncher_label']
+        # Backward compat: map legacy YAML field names to new names
+        # sv_quickmenu / quick_run / quickmenu → quicklauncher
+        if 'sv_quickmenu' in data and 'quicklauncher' not in data:
+            data['quicklauncher'] = data['sv_quickmenu']
+        if 'quickmenu' in data and 'quicklauncher' not in data:
+            data['quicklauncher'] = data['quickmenu']
+        if 'quick_run' in data and 'quicklauncher' not in data:
+            data['quicklauncher'] = data['quick_run']
+        # quickmenu_label → quicklauncher_label
+        if 'quickmenu_label' in data and 'quicklauncher_label' not in data:
+            data['quicklauncher_label'] = data['quickmenu_label']
+        # quickmenu_grid → quicklauncher_grid
+        if 'quickmenu_grid' in data and 'quicklauncher_grid' not in data:
+            data['quicklauncher_grid'] = data['quickmenu_grid']
 
         # Remove/ignore deprecated keys
         for _dep in ('task_type', 'version', 'folder'):
@@ -377,7 +400,7 @@ class UnifiedPromptLibrary:
                 # Unified schema
                 'app',
                 # QuickLauncher
-                'quickmenu_label', 'quickmenu_grid', 'sv_quickmenu',
+                'quicklauncher_label', 'quicklauncher_grid', 'quicklauncher',
                 # Legacy (kept for backward compatibility)
                 'quick_run',
                 'tags',
@@ -420,13 +443,13 @@ class UnifiedPromptLibrary:
             prompt_data['_relative_path'] = relative_path
 
             # Keep legacy field in sync
-            if 'sv_quickmenu' in prompt_data:
-                prompt_data['quick_run'] = bool(prompt_data.get('sv_quickmenu', False))
+            if 'quicklauncher' in prompt_data:
+                prompt_data['quick_run'] = bool(prompt_data.get('quicklauncher', False))
             self.prompts[relative_path] = prompt_data
 
             # Refresh QuickLauncher caches so changes take effect immediately
             self._update_quick_run_list()
-            self._update_quickmenu_grid_list()
+            self._update_quicklauncher_grid_list()
 
             self.log(f"✓ Saved prompt: {prompt_data.get('name', relative_path)}")
             return True
@@ -464,9 +487,9 @@ class UnifiedPromptLibrary:
                 'name': prompt_data.get('name', Path(rel_path).stem),
                 'favorite': prompt_data.get('favorite', False),
                 'quick_run': prompt_data.get('quick_run', False),
-                'quickmenu_grid': prompt_data.get('quickmenu_grid', False),
-                'quickmenu_quickmenu': prompt_data.get('quickmenu_quickmenu', prompt_data.get('quick_run', False)),
-                'quickmenu_label': prompt_data.get('quickmenu_label', prompt_data.get('name', Path(rel_path).stem)),
+                'quicklauncher_grid': prompt_data.get('quicklauncher_grid', False),
+                'quicklauncher': prompt_data.get('quicklauncher', prompt_data.get('quick_run', False)),
+                'quicklauncher_label': prompt_data.get('quicklauncher_label', prompt_data.get('name', Path(rel_path).stem)),
             })
         
         return structure
@@ -601,31 +624,34 @@ class UnifiedPromptLibrary:
             return False
         
         prompt_data = self.prompts[relative_path]
-        new_value = not bool(prompt_data.get('sv_quickmenu', prompt_data.get('quick_run', False)))
-        prompt_data['sv_quickmenu'] = new_value
+        new_value = not bool(prompt_data.get('quicklauncher', prompt_data.get('quick_run', False)))
+        prompt_data['quicklauncher'] = new_value
         prompt_data['quick_run'] = new_value  # keep legacy in sync
         prompt_data['modified'] = datetime.now().strftime("%Y-%m-%d")
         
         # Save updated prompt
         self.save_prompt(relative_path, prompt_data)
         self._update_quick_run_list()
-        self._update_quickmenu_grid_list()
+        self._update_quicklauncher_grid_list()
         
         return True
 
-    def toggle_quickmenu_grid(self, relative_path: str) -> bool:
+    def toggle_quicklauncher_grid(self, relative_path: str) -> bool:
         """Toggle whether this prompt appears in the Grid right-click QuickLauncher."""
         if relative_path not in self.prompts:
             return False
 
         prompt_data = self.prompts[relative_path]
-        prompt_data['quickmenu_grid'] = not bool(prompt_data.get('quickmenu_grid', False))
+        prompt_data['quicklauncher_grid'] = not bool(prompt_data.get('quicklauncher_grid', False))
         prompt_data['modified'] = datetime.now().strftime("%Y-%m-%d")
 
         self.save_prompt(relative_path, prompt_data)
-        self._update_quickmenu_grid_list()
+        self._update_quicklauncher_grid_list()
         return True
-    
+
+    # Backward compat alias
+    toggle_quickmenu_grid = toggle_quicklauncher_grid
+
     def _update_favorites_list(self):
         """Update cached favorites list"""
         self._favorites = [
@@ -639,7 +665,7 @@ class UnifiedPromptLibrary:
         self._quick_run = []
         for path, data in self.prompts.items():
             # Detect by flag or by folder name (any path component named 'quicklauncher')
-            is_enabled = bool(data.get('sv_quickmenu', data.get('quick_run', False)))
+            is_enabled = bool(data.get('quicklauncher', data.get('quick_run', False)))
             if not is_enabled:
                 folder = data.get('_folder', '') or data.get('_relative_path', '')
                 parts = Path(folder).parts
@@ -648,20 +674,19 @@ class UnifiedPromptLibrary:
                 continue
             label = (
                 data.get('quicklauncher_label') or
-                data.get('quickmenu_label') or
                 data.get('name') or
                 Path(path).stem
             ).strip()
             self._quick_run.append((path, label))
 
-    def _update_quickmenu_grid_list(self):
+    def _update_quicklauncher_grid_list(self):
         """Update cached Grid QuickLauncher list."""
-        self._quickmenu_grid = []
+        self._quicklauncher_grid = []
         for path, data in self.prompts.items():
-            if not bool(data.get('quickmenu_grid', False)):
+            if not bool(data.get('quicklauncher_grid', False)):
                 continue
-            label = (data.get('quickmenu_label') or data.get('name') or Path(path).stem).strip()
-            self._quickmenu_grid.append((path, label))
+            label = (data.get('quicklauncher_label') or data.get('name') or Path(path).stem).strip()
+            self._quicklauncher_grid.append((path, label))
     
     def get_favorites(self) -> List[Tuple[str, str]]:
         """Get list of favorite prompts (path, name)"""
@@ -671,13 +696,19 @@ class UnifiedPromptLibrary:
         """Get list of QuickLauncher (future app menu) prompts (path, label)."""
         return self._quick_run
 
-    def get_quickmenu_prompts(self) -> List[Tuple[str, str]]:
+    def get_quicklauncher_prompts(self) -> List[Tuple[str, str]]:
         """Alias for get_quick_run_prompts(), using the QuickLauncher naming."""
         return self.get_quick_run_prompts()
 
-    def get_quickmenu_grid_prompts(self) -> List[Tuple[str, str]]:
+    # Backward compat alias
+    get_quickmenu_prompts = get_quicklauncher_prompts
+
+    def get_quicklauncher_grid_prompts(self) -> List[Tuple[str, str]]:
         """Get list of prompts shown in the Grid right-click QuickLauncher (path, label)."""
-        return self._quickmenu_grid
+        return self._quicklauncher_grid
+
+    # Backward compat alias
+    get_quickmenu_grid_prompts = get_quicklauncher_grid_prompts
     
     def create_folder(self, folder_path: str) -> bool:
         """Create a new folder in the library"""

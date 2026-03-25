@@ -570,11 +570,11 @@ class ShortcutManager:
             "action": "add_word_to_dictionary",
             "context": "grid_editor"
         },
-        "editor_open_quickmenu": {
+        "editor_open_quicklauncher": {
             "category": "Editor",
             "description": "Open QuickLauncher for AI prompt actions",
             "default": "Alt+K",
-            "action": "open_quickmenu",
+            "action": "open_quicklauncher",
             "context": "grid_editor"
         },
         "editor_show_context_menu_double_shift": {
@@ -624,11 +624,11 @@ class ShortcutManager:
             "action": "global_quicktrans",
             "context": "global"
         },
-        "global_quickmenu": {
+        "global_quicklauncher": {
             "category": "Global",
             "description": "QuickLauncher (global — works from any app)",
             "default": "Ctrl+Alt+K",
-            "action": "global_quickmenu",
+            "action": "global_quicklauncher",
             "context": "global"
         },
     }
@@ -689,6 +689,26 @@ class ShortcutManager:
             self.disabled_shortcuts = old_disabled
             self.save_shortcuts()
 
+        # Migrate quickmenu → quicklauncher shortcut IDs
+        _QM_RENAMES = {
+            'editor_open_quickmenu': 'editor_open_quicklauncher',
+            'global_quickmenu': 'global_quicklauncher',
+        }
+        qm_migrated = {}
+        qm_needs_save = False
+        for key, val in self.custom_shortcuts.items():
+            new_key = _QM_RENAMES.get(key, key)
+            if new_key != key:
+                qm_needs_save = True
+            qm_migrated[new_key] = val
+        if qm_needs_save:
+            self.custom_shortcuts = qm_migrated
+            new_disabled = set()
+            for d in self.disabled_shortcuts:
+                new_disabled.add(_QM_RENAMES.get(d, d))
+            self.disabled_shortcuts = new_disabled
+            self.save_shortcuts()
+
     def save_shortcuts(self):
         """Save custom shortcuts to file"""
         try:
@@ -713,12 +733,19 @@ class ShortcutManager:
         Returns:
             The key sequence string (e.g., "Ctrl+T")
         """
+        # Backward compat: accept old shortcut IDs
+        _LEGACY_IDS = {
+            'editor_open_quickmenu': 'editor_open_quicklauncher',
+            'global_quickmenu': 'global_quicklauncher',
+        }
+        shortcut_id = _LEGACY_IDS.get(shortcut_id, shortcut_id)
+
         if shortcut_id in self.custom_shortcuts:
             return self.custom_shortcuts[shortcut_id]
-        
+
         if shortcut_id in self.DEFAULT_SHORTCUTS:
             return self.DEFAULT_SHORTCUTS[shortcut_id]["default"]
-        
+
         return ""
     
     def is_enabled(self, shortcut_id: str) -> bool:
