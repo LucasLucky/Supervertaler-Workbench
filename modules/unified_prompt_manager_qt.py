@@ -2682,7 +2682,7 @@ class UnifiedPromptManagerQt:
                 if rel_path in self.library.prompts:
                     prompt_data = self.library.prompts[rel_path]
                     # Show full filename with extension in tree
-                    name = item.name  # e.g., "prompt.svprompt"
+                    name = item.name  # e.g., "prompt.md"
                     
                     prompt_item = QTreeWidgetItem([name])
                     prompt_item.setData(0, Qt.ItemDataRole.UserRole, {'type': 'prompt', 'path': rel_path})
@@ -2807,7 +2807,7 @@ class UnifiedPromptManagerQt:
         
         prompt_data = self.library.prompts[relative_path]
         
-        # Show full filename with extension (e.g., "prompt.svprompt")
+        # Show full filename with extension (e.g., "prompt.md")
         filename = Path(relative_path).name
         self.editor_name_label.setText(f"Editing: {filename}")
         self.editor_name_input.setText(filename)
@@ -3252,7 +3252,7 @@ class UnifiedPromptManagerQt:
             'modified': datetime.now().strftime('%Y-%m-%d')
         }
         
-        # Create .svprompt file (name already includes .svprompt extension)
+        # Create prompt file (name already includes extension)
         relative_path = f"{folder_path}/{name}" if folder_path else name
         
         if self.library.save_prompt(relative_path, prompt_data):
@@ -3303,7 +3303,7 @@ class UnifiedPromptManagerQt:
             self._refresh_tree()
             self._select_and_reveal_prompt(new_path)
             self._load_prompt_in_editor(new_path)
-            self.log_message(f"✓ Duplicated: {src_name} → {new_name} (saved as .svprompt)")
+            self.log_message(f"✓ Duplicated: {src_name} → {new_name}")
         else:
             QMessageBox.warning(self.main_widget, "Duplicate failed", "Failed to duplicate the prompt.")
     

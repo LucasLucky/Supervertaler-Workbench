@@ -107,7 +107,7 @@ class PromptLibrary:
         return total
     
     def _load_from_directory(self, directory, prompt_type="system_prompt"):
-        """Load prompts from a specific directory (.svprompt, .md and .json files)
+        """Load prompts from a specific directory (.md, .svprompt and .json files)
         
         Args:
             directory: Path to directory
@@ -420,14 +420,14 @@ class PromptLibrary:
     
     def create_new_prompt(self, name, description, domain, translate_prompt, proofread_prompt="", 
                          version="1.0", task_type="Translation", prompt_type="system_prompt"):
-        """Create a new prompt and save as .svprompt
-        
+        """Create a new prompt and save as .md
+
         Args:
             prompt_type: Either 'system_prompt' or 'custom_instruction'
             task_type: Type of translation task
         """
-        # Create filename from name with .svprompt extension
-        filename = name.replace(' ', '_').replace('/', '_') + '.svprompt'
+        # Create filename from name with .md extension
+        filename = name.replace(' ', '_').replace('/', '_') + '.md'
         
         # Choose directory based on type
         if prompt_type == "custom_instruction":
