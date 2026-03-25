@@ -346,7 +346,7 @@ class AIActionSystem:
         # Also clean up multiple dashes and trim
         import re
         filename = re.sub(r'-+', '-', filename).strip('-')
-        filename = filename + '.svprompt'
+        filename = filename + '.md'
         relative_path = f"{folder}/{filename}" if folder else filename
 
         # Build prompt data

@@ -41,8 +41,8 @@ class PromptLibrary:
     """
     
     # File extensions
-    FILE_EXTENSION = ".svprompt"  # New Supervertaler prompt format
-    LEGACY_EXTENSIONS = [".md", ".json"]  # Backward compatibility
+    FILE_EXTENSION = ".md"  # Markdown with YAML frontmatter
+    LEGACY_EXTENSIONS = [".svprompt", ".json"]  # Backward compatibility
     
     def __init__(self, system_prompts_dir=None, custom_instructions_dir=None, log_callback=None, domain_prompts_dir=None, project_prompts_dir=None):
         """

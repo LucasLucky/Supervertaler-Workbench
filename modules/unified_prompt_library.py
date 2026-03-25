@@ -105,8 +105,8 @@ class UnifiedPromptLibrary:
                 count += self._load_from_directory_recursive(item, sub_relative)
                 continue
             
-            # Load prompt files (.svprompt is the new format, .md and .txt for legacy)
-            if item.suffix.lower() in ['.svprompt', '.md', '.txt']:
+            # Load prompt files (.md is the preferred format, .svprompt and .txt for legacy)
+            if item.suffix.lower() in ['.md', '.svprompt', '.txt']:
                 prompt_data = self._parse_markdown(item)
                 
                 if prompt_data:
@@ -351,7 +351,8 @@ class UnifiedPromptLibrary:
             
             # Build frontmatter
             frontmatter = ['---']
-            
+            frontmatter.append('type: prompt')
+
             # Fields to include in frontmatter (in order)
             frontmatter_fields = [
                 'name', 'description', 'category',

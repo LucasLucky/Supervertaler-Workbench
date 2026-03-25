@@ -2667,8 +2667,8 @@ class UnifiedPromptManagerQt:
                 # Recurse
                 self._build_tree_recursive(folder_item, item, rel_path)
             
-            elif item.suffix.lower() in ['.svprompt', '.md', '.txt']:
-                # Prompt file (.svprompt is new format, .md/.txt legacy)
+            elif item.suffix.lower() in ['.md', '.svprompt', '.txt']:
+                # Prompt file (.md is preferred format, .svprompt/.txt legacy)
                 rel_path = str(Path(relative_path) / item.name) if relative_path else item.name
                 
                 self.log_message(f"🔍 DEBUG: Checking prompt file: {rel_path}")
@@ -2968,7 +2968,7 @@ class UnifiedPromptManagerQt:
                 }
 
                 # Create the prompt file (save_prompt creates new file if it doesn't exist)
-                relative_path = f"{folder}/{name}.svprompt"
+                relative_path = f"{folder}/{name}.md"
                 if self.library.save_prompt(relative_path, prompt_data):
                     QMessageBox.information(self.main_widget, "Created", f"Prompt '{name}' created successfully!")
                     self.library.load_all_prompts()  # Reload to get new prompt in memory
@@ -3066,7 +3066,7 @@ class UnifiedPromptManagerQt:
             self.main_widget,
             "Select External Prompt File",
             "",
-            "Prompt Files (*.svprompt *.txt *.md);;Supervertaler Prompts (*.svprompt);;Text Files (*.txt);;Markdown Files (*.md);;All Files (*.*)"
+            "Prompt Files (*.md *.svprompt *.txt);;Markdown Prompts (*.md);;Supervertaler Prompts (*.svprompt);;Text Files (*.txt);;All Files (*.*)"
         )
         
         if not file_path:
@@ -3224,13 +3224,13 @@ class UnifiedPromptManagerQt:
     
     def _new_prompt_in_folder(self, folder_path: str):
         """Create new prompt in specific folder"""
-        name, ok = QInputDialog.getText(self.main_widget, "New Prompt", "Enter prompt filename with extension (e.g., prompt.svprompt):")
+        name, ok = QInputDialog.getText(self.main_widget, "New Prompt", "Enter prompt filename with extension (e.g., prompt.md):")
         if not ok or not name:
             return
-        
-        # Ensure .svprompt extension
-        if not name.endswith('.svprompt'):
-            name = f"{name}.svprompt"
+
+        # Ensure .md extension
+        if not name.endswith(('.md', '.svprompt', '.txt')):
+            name = f"{name}.md"
         
         # Extract name without extension for metadata
         name_without_ext = Path(name).stem
