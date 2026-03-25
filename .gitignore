@@ -229,3 +229,25 @@ michaelbeijer.co.uk-site/
 # Note: user_data_private/ is already fully ignored above
 user_data/web_cache/
 user_data/Projects/
+user_data/ai_assistant/
+user_data/dictionaries/
+user_data/model_version_cache.json
+user_data/prompt_library/
+user_data/recent_projects.json
+user_data/resources/
+user_data/shortcuts.json
+user_data/superbrowser_profiles/
+user_data/supermemory/
+user_data/themes.json
+user_data/translation_memory.db
+user_data/ui_preferences.json
+user_data/voice_commands.json
+
+# Temp dev scripts and notes
+temp_*.py
+.dev/scripts/analyze_memoq_*.py
+issue_*_reply.md
+plan.md
+
+# Claude worktrees
+.claude/worktrees/
