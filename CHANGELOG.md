@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.363 (March 25, 2026)
+**Current Version:** v1.9.364 (March 26, 2026)
 
+
+## v1.9.364 - March 26, 2026
+
+### Changed
+- **Prompts now saved as `.md`** – prompt files use standard Markdown (`.md`) extension instead of `.svprompt`; existing `.svprompt` files are auto-migrated to `.md` on startup; a new `type: prompt` YAML field identifies prompt files
+- **QuickMenu renamed to QuickLauncher** – all YAML fields (`quickmenu` → `quicklauncher`, `quickmenu_grid` → `quicklauncher_grid`, `quickmenu_label` → `quicklauncher_label`), Python methods, variables, shortcut IDs, and UI strings updated; backward compat preserved for old field names
+- **Website badge updated** – "Make Trados fun again!" with yellow circle badge
+- **Getting Started screencast** added to Trados website page
+- **RWS App Store link** added to Trados website page
+
+---
 
 ## v1.9.363 - March 25, 2026
 
