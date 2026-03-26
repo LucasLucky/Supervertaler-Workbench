@@ -429,9 +429,16 @@ class UnifiedPromptLibrary:
             
             frontmatter.append('---')
             
-            # Get content
-            content = prompt_data.get('content', '')
-            
+            # Get content and strip any accidental YAML frontmatter that may have
+            # leaked in (e.g. if the editor displayed raw frontmatter as content)
+            content = prompt_data.get('content', '').strip()
+            if content.startswith('---'):
+                # Content starts with what looks like YAML frontmatter — strip it
+                after_open = content[3:].lstrip('\n')
+                close_idx = after_open.find('---')
+                if close_idx >= 0:
+                    content = after_open[close_idx + 3:].lstrip('\n')
+
             # Build final file content
             file_content = '\n'.join(frontmatter) + '\n\n' + content.strip()
             
