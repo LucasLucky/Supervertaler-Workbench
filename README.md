@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.364 – prompts switched to .md, QuickMenu renamed to QuickLauncher.
+**Latest release:** v1.9.365 – fix duplicate YAML frontmatter on prompt save.
 
 ---
 

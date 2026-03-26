@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.364 (March 26, 2026)
+**Current Version:** v1.9.365 (March 26, 2026)
 
+
+## v1.9.365 - March 26, 2026
+
+### Fixed
+- **Duplicate YAML frontmatter on save** – saving a prompt in the Prompt Manager no longer duplicates the YAML frontmatter block; the save path now strips any accidental frontmatter from the content before writing
+
+---
 
 ## v1.9.364 - March 26, 2026
 
