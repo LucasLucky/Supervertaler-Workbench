@@ -9,6 +9,7 @@ Supported Providers:
 - OpenAI (GPT-4, GPT-4o, GPT-5, o1, o3)
 - Anthropic (Claude Sonnet 4.5, Haiku 4.5, Opus 4.1)
 - Google (Gemini 2.5 Flash, 2.5 Pro, 3 Pro Preview)
+- Mistral AI (Mistral Large, Mistral Small, Mistral Nemo)
 
 Claude 4 Models (Released 2025):
 - Sonnet 4.5: Best balance - flagship model for general translation ($3/$15 per MTok)
@@ -138,7 +139,7 @@ def _sanitize_ollama_endpoint(endpoint: str) -> str:
 @dataclass
 class LLMConfig:
     """Configuration for LLM client"""
-    provider: Literal["openai", "claude", "gemini"]
+    provider: Literal["openai", "claude", "gemini", "mistral"]
     model: str
     api_key: str
     temperature: Optional[float] = None  # Auto-detected if None
@@ -153,8 +154,31 @@ class LLMClient:
         "openai": "gpt-4o",
         "claude": "claude-sonnet-4-6",  # Claude Sonnet 4.6 (Feb 2026)
         "gemini": "gemini-2.5-flash",  # Gemini 2.5 Flash (2025)
+        "mistral": "mistral-large-latest",  # Mistral Large (flagship)
         "ollama": "translategemma:12b",  # Local LLM via Ollama - purpose-built translation model
         "custom_openai": "custom-model"  # Custom OpenAI-compatible endpoint
+    }
+
+    # Available Mistral models with descriptions
+    MISTRAL_MODELS = {
+        "mistral-large-latest": {
+            "name": "Mistral Large",
+            "description": "Flagship model — top-tier reasoning and multilingual quality",
+            "strengths": ["Multilingual", "Complex reasoning", "High accuracy"],
+            "use_case": "Recommended for most translation tasks"
+        },
+        "mistral-small-latest": {
+            "name": "Mistral Small",
+            "description": "Fast and cost-effective — great for high-volume translation",
+            "strengths": ["Fast", "Cost-effective", "Multilingual"],
+            "use_case": "Best for large projects where speed and cost matter"
+        },
+        "open-mistral-nemo": {
+            "name": "Mistral Nemo",
+            "description": "Open, multilingual model — strong across European languages",
+            "strengths": ["Open model", "Multilingual", "European languages"],
+            "use_case": "Good for multilingual translation projects"
+        }
     }
     
     # Available Ollama models with descriptions (for UI display)
@@ -451,6 +475,10 @@ class LLMClient:
         if self.provider not in ("ollama", "custom_openai") and not self.api_key:
             raise ValueError(f"API key required for provider: {provider}")
 
+        # For Mistral, set the base URL if not already specified
+        if self.provider == "mistral" and not self.base_url:
+            self.base_url = "https://api.mistral.ai/v1"
+
         # Auto-detect temperature based on model
         self.temperature = self._get_temperature()
     
@@ -697,6 +725,8 @@ class LLMClient:
             result = self._call_claude(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
         elif self.provider == "gemini":
             result = self._call_gemini(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
+        elif self.provider == "mistral":
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
         elif self.provider == "ollama":
             result = self._call_ollama(prompt, max_tokens=max_tokens, system_prompt=system_prompt)
         else:

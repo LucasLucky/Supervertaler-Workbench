@@ -55,6 +55,11 @@ class ModelVersionChecker:
                 "gpt-4-turbo",
                 "gpt-4"
             ],
+            "mistral": [
+                "mistral-large-latest",
+                "mistral-small-latest",
+                "open-mistral-nemo"
+            ],
             "claude": [
                 "claude-sonnet-4-6",
                 "claude-opus-4-6",
@@ -95,6 +100,7 @@ class ModelVersionChecker:
             "last_check": None,
             "discovered_models": {
                 "openai": [],
+                "mistral": [],
                 "claude": [],
                 "gemini": []
             }
@@ -158,6 +164,41 @@ class ModelVersionChecker:
             return [], "OpenAI library not installed (pip install openai)"
         except Exception as e:
             return [], f"Error checking OpenAI models: {str(e)}"
+
+    def check_mistral_models(self, api_key: str) -> Tuple[List[str], Optional[str]]:
+        """
+        Check for new Mistral models via the OpenAI-compatible models endpoint.
+
+        Args:
+            api_key: Mistral API key
+
+        Returns:
+            (list of new model IDs, error message if any)
+        """
+        if not api_key:
+            return [], "No API key provided"
+
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url="https://api.mistral.ai/v1")
+
+            models = client.models.list()
+
+            available_models = []
+            for model in models.data:
+                model_id = model.id
+                # Only include text generation models (exclude embedding models)
+                if not any(skip in model_id.lower() for skip in ['embed', 'moderation']):
+                    available_models.append(model_id)
+
+            new_models = [m for m in available_models if m not in self.known_models["mistral"]]
+
+            return new_models, None
+
+        except ImportError:
+            return [], "OpenAI library not installed (pip install openai)"
+        except Exception as e:
+            return [], f"Error checking Mistral models: {str(e)}"
 
     def check_claude_models(self, api_key: str) -> Tuple[List[str], Optional[str]]:
         """
@@ -292,6 +333,7 @@ class ModelVersionChecker:
         openai_key: str = None,
         anthropic_key: str = None,
         google_key: str = None,
+        mistral_key: str = None,
         force: bool = False
     ) -> Dict[str, Dict]:
         """
@@ -301,12 +343,14 @@ class ModelVersionChecker:
             openai_key: OpenAI API key
             anthropic_key: Anthropic API key
             google_key: Google AI API key
+            mistral_key: Mistral AI API key
             force: Force check even if checked recently
 
         Returns:
             Dictionary with results per provider:
             {
                 "openai": {"new_models": [...], "error": None},
+                "mistral": {"new_models": [...], "error": None},
                 "claude": {"new_models": [...], "error": None},
                 "gemini": {"new_models": [...], "error": None},
                 "checked": True
@@ -316,6 +360,7 @@ class ModelVersionChecker:
         if not force and not self.should_check():
             return {
                 "openai": {"new_models": [], "error": None},
+                "mistral": {"new_models": [], "error": None},
                 "claude": {"new_models": [], "error": None},
                 "gemini": {"new_models": [], "error": None},
                 "checked": False,
@@ -330,6 +375,13 @@ class ModelVersionChecker:
             results["openai"] = {"new_models": new_models, "error": error}
         else:
             results["openai"] = {"new_models": [], "error": "No API key"}
+
+        # Check Mistral
+        if mistral_key:
+            new_models, error = self.check_mistral_models(mistral_key)
+            results["mistral"] = {"new_models": new_models, "error": error}
+        else:
+            results["mistral"] = {"new_models": [], "error": "No API key"}
 
         # Check Claude
         if anthropic_key:
@@ -372,7 +424,7 @@ class ModelVersionChecker:
         if not results.get("checked"):
             return False
 
-        for provider in ["openai", "claude", "gemini"]:
+        for provider in ["openai", "mistral", "claude", "gemini"]:
             if results.get(provider, {}).get("new_models"):
                 return True
 

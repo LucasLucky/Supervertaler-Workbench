@@ -7215,6 +7215,8 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER."""
                 api_key = self.api_keys.get('claude', '')
             elif self.provider == 'gemini':
                 api_key = self.api_keys.get('gemini', '')
+            elif self.provider == 'mistral':
+                api_key = self.api_keys.get('mistral', '')
             elif self.provider == 'ollama':
                 api_key = self.api_keys.get('ollama', '') or 'not-needed'
             elif self.provider == 'custom_openai':
@@ -8333,12 +8335,14 @@ class SupervertalerQt(QMainWindow):
                 openai_key=api_keys.get("openai"),
                 anthropic_key=api_keys.get("claude"),
                 google_key=api_keys.get("google") or api_keys.get("gemini"),
+                mistral_key=api_keys.get("mistral"),
                 force=force
             )
 
             # If this was a forced manual check, log the results
             if force:
                 self.log(f"  OpenAI: {len(results.get('openai', {}).get('new_models', []))} new models")
+                self.log(f"  Mistral: {len(results.get('mistral', {}).get('new_models', []))} new models")
                 self.log(f"  Claude: {len(results.get('claude', {}).get('new_models', []))} new models")
                 self.log(f"  Gemini: {len(results.get('gemini', {}).get('new_models', []))} new models")
 
@@ -9111,6 +9115,9 @@ class SupervertalerQt(QMainWindow):
                 display = f"{icon} {model}"
             elif provider == 'gemini':
                 icon = "💎"
+                display = f"{icon} {model}"
+            elif provider == 'mistral':
+                icon = "🌀"
                 display = f"{icon} {model}"
             elif provider == 'custom_openai':
                 icon = "🔌"
@@ -11601,6 +11608,7 @@ class SupervertalerQt(QMainWindow):
                 "openai": "openai",
                 "claude": "claude",
                 "gemini": "gemini",
+                "mistral": "mistral",
                 "custom_openai": "custom_openai"
             }
 
@@ -17862,7 +17870,12 @@ class SupervertalerQt(QMainWindow):
         gemini_radio.setChecked(settings.get('provider', 'openai') == 'gemini')
         provider_button_group.addButton(gemini_radio)
         provider_layout.addWidget(gemini_radio)
-        
+
+        mistral_radio = CustomRadioButton("Mistral AI")
+        mistral_radio.setChecked(settings.get('provider', 'openai') == 'mistral')
+        provider_button_group.addButton(mistral_radio)
+        provider_layout.addWidget(mistral_radio)
+
         # Local LLM option (Ollama)
         ollama_radio = CustomRadioButton("🖥️ Local LLM (Ollama - runs on your computer)")
         ollama_radio.setChecked(settings.get('provider', 'openai') == 'ollama')
@@ -17969,9 +17982,34 @@ class SupervertalerQt(QMainWindow):
                 break
         gemini_combo.setEnabled(gemini_radio.isChecked())
         model_layout.addWidget(gemini_combo)
-        
+
         model_layout.addSpacing(10)
-        
+
+        # Mistral models
+        mistral_model_label = QLabel("<b>Mistral AI Models:</b>")
+        model_layout.addWidget(mistral_model_label)
+
+        mistral_combo = QComboBox()
+        mistral_combo.addItems([
+            "mistral-large-latest (Recommended - Flagship)",
+            "mistral-small-latest (Fast & Cost-Effective)",
+            "open-mistral-nemo (Open - Multilingual)"
+        ])
+        mistral_combo.setToolTip(
+            "Mistral Large: Flagship model, top-tier reasoning and multilingual quality.\n"
+            "Mistral Small: Fast and cost-effective, great for high-volume translation.\n"
+            "Mistral Nemo: Open model, strong across European languages."
+        )
+        current_mistral_model = settings.get('mistral_model', 'mistral-large-latest')
+        for i in range(mistral_combo.count()):
+            if current_mistral_model in mistral_combo.itemText(i):
+                mistral_combo.setCurrentIndex(i)
+                break
+        mistral_combo.setEnabled(mistral_radio.isChecked())
+        model_layout.addWidget(mistral_combo)
+
+        model_layout.addSpacing(10)
+
         # Local LLM (Ollama) models
         ollama_model_label = QLabel("<b>🖥️ Local LLM Models (Ollama):</b>")
         model_layout.addWidget(ollama_model_label)
@@ -18178,6 +18216,8 @@ class SupervertalerQt(QMainWindow):
                 "gemini-2.5-flash": "Gemini 2.5 Flash", "gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
                 "gemini-2.5-pro": "Gemini 2.5 Pro", "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
                 "gemini-3-pro-preview": "Gemini 3 Pro", "gemini-2.0-flash-exp": "Gemini 2.0 Flash",
+                "mistral-large-latest": "Mistral Large", "mistral-small-latest": "Mistral Small",
+                "open-mistral-nemo": "Mistral Nemo",
             }
             return friendly.get(model_id, model_id)
 
@@ -18193,17 +18233,21 @@ class SupervertalerQt(QMainWindow):
             lambda: _update_provider_label(claude_radio, "Anthropic Claude", claude_combo))
         gemini_combo.currentIndexChanged.connect(
             lambda: _update_provider_label(gemini_radio, "Google Gemini", gemini_combo))
+        mistral_combo.currentIndexChanged.connect(
+            lambda: _update_provider_label(mistral_radio, "Mistral AI", mistral_combo))
 
         # Set initial labels based on current combo selections
         _update_provider_label(openai_radio, "OpenAI", openai_combo)
         _update_provider_label(claude_radio, "Anthropic Claude", claude_combo)
         _update_provider_label(gemini_radio, "Google Gemini", gemini_combo)
+        _update_provider_label(mistral_radio, "Mistral AI", mistral_combo)
 
         # Connect radio buttons to enable/disable combos
         def update_combo_states():
             openai_combo.setEnabled(openai_radio.isChecked())
             claude_combo.setEnabled(claude_radio.isChecked())
             gemini_combo.setEnabled(gemini_radio.isChecked())
+            mistral_combo.setEnabled(mistral_radio.isChecked())
             if ollama_status_widget:
                 ollama_status_widget.setEnabled(ollama_radio.isChecked())
             _custom_enabled = custom_radio.isChecked()
@@ -18247,6 +18291,7 @@ class SupervertalerQt(QMainWindow):
         openai_radio.toggled.connect(update_combo_states)
         claude_radio.toggled.connect(update_combo_states)
         gemini_radio.toggled.connect(update_combo_states)
+        mistral_radio.toggled.connect(update_combo_states)
         ollama_radio.toggled.connect(update_combo_states)
         ollama_radio.toggled.connect(on_ollama_selected)
         custom_radio.toggled.connect(update_combo_states)
@@ -18299,6 +18344,7 @@ class SupervertalerQt(QMainWindow):
             ("OpenAI:", "openai", "sk-proj-..."),
             ("Claude (Anthropic):", "claude", "sk-ant-api03-..."),
             ("Gemini (Google AI):", "gemini", "AIza..."),
+            ("Mistral AI:", "mistral", "..."),
             ("Ollama Endpoint:", "ollama_endpoint", "http://localhost:11434"),
         ]
 
@@ -18352,7 +18398,11 @@ class SupervertalerQt(QMainWindow):
         gemini_enable_cb = CheckmarkCheckBox("Enable Gemini")
         gemini_enable_cb.setChecked(enabled_providers.get('llm_gemini', True))
         provider_enable_layout.addWidget(gemini_enable_cb)
-        
+
+        mistral_enable_cb = CheckmarkCheckBox("Enable Mistral AI")
+        mistral_enable_cb.setChecked(enabled_providers.get('llm_mistral', True))
+        provider_enable_layout.addWidget(mistral_enable_cb)
+
         ollama_enable_cb = CheckmarkCheckBox("Enable Local LLM (Ollama)")
         ollama_enable_cb.setChecked(enabled_providers.get('llm_ollama', True))
         provider_enable_layout.addWidget(ollama_enable_cb)
@@ -18422,7 +18472,7 @@ class SupervertalerQt(QMainWindow):
         proxy_layout.addLayout(proxy_cred_row)
 
         proxy_note = QLabel(
-            "ⓘ  Applies to: OpenAI, Claude, Gemini, Ollama, Google Translate, DeepL,\n"
+            "ⓘ  Applies to: OpenAI, Claude, Gemini, Mistral, Ollama, Google Translate, DeepL,\n"
             "    Microsoft Translator, ModernMT, and MyMemory."
         )
         proxy_note.setStyleSheet("font-size: 9pt; color: #888; padding-left: 4px;")
@@ -18710,7 +18760,9 @@ class SupervertalerQt(QMainWindow):
             quicklauncher_context_slider,
             custom_radio=custom_radio, custom_endpoint_input=custom_endpoint_input,
             custom_model_input=custom_model_input, custom_enable_cb=custom_enable_cb,
-            custom_profile_combo=custom_profile_combo, custom_key_input=custom_key_input
+            custom_profile_combo=custom_profile_combo, custom_key_input=custom_key_input,
+            mistral_radio=mistral_radio, mistral_combo=mistral_combo,
+            mistral_enable_cb=mistral_enable_cb
         ))
         layout.addWidget(save_btn)
         
@@ -18943,6 +18995,11 @@ class SupervertalerQt(QMainWindow):
                 ("gemini-3.1-pro-preview", "Gemini 3.1 Pro (Latest)"),
                 ("gemini-3-pro-preview", "Gemini 3 Pro"),
                 ("gemini-2.0-flash", "Gemini 2.0 Flash"),
+            ]),
+            ("mistral", "Mistral AI", "mistral", [
+                ("mistral-large-latest", "Mistral Large (Recommended)"),
+                ("mistral-small-latest", "Mistral Small (Fast)"),
+                ("open-mistral-nemo", "Mistral Nemo (Open)"),
             ]),
         ]
 
@@ -22500,7 +22557,9 @@ class SupervertalerQt(QMainWindow):
                                    quicklauncher_context_slider,
                                    custom_radio=None, custom_endpoint_input=None,
                                    custom_model_input=None, custom_enable_cb=None,
-                                   custom_profile_combo=None, custom_key_input=None):
+                                   custom_profile_combo=None, custom_key_input=None,
+                                   mistral_radio=None, mistral_combo=None,
+                                   mistral_enable_cb=None):
         """Save all AI settings from the unified AI Settings tab"""
         # Determine selected provider
         if openai_radio.isChecked():
@@ -22509,6 +22568,8 @@ class SupervertalerQt(QMainWindow):
             provider = 'claude'
         elif gemini_radio.isChecked():
             provider = 'gemini'
+        elif mistral_radio and mistral_radio.isChecked():
+            provider = 'mistral'
         elif ollama_radio.isChecked():
             provider = 'ollama'
         elif custom_radio and custom_radio.isChecked():
@@ -22546,6 +22607,7 @@ class SupervertalerQt(QMainWindow):
             'openai_model': openai_combo.currentText().split()[0],
             'claude_model': claude_combo.currentText().split()[0],
             'gemini_model': gemini_combo.currentText().split()[0],
+            'mistral_model': mistral_combo.currentText().split()[0] if mistral_combo else 'mistral-large-latest',
             'ollama_model': ollama_model,
             'custom_openai_model': active_model,
             'custom_openai_endpoint': active_endpoint,
@@ -22564,6 +22626,7 @@ class SupervertalerQt(QMainWindow):
             'llm_openai': openai_enable_cb.isChecked(),
             'llm_claude': claude_enable_cb.isChecked(),
             'llm_gemini': gemini_enable_cb.isChecked(),
+            'llm_mistral': mistral_enable_cb.isChecked() if mistral_enable_cb else True,
             'llm_ollama': ollama_enable_cb.isChecked(),
             'llm_custom_openai': custom_enable_cb.isChecked() if custom_enable_cb else True
         }
@@ -47005,6 +47068,7 @@ class SupervertalerQt(QMainWindow):
             'llm_openai': True,
             'llm_claude': True,
             'llm_gemini': True,
+            'llm_mistral': True,
             'llm_ollama': True,
             'llm_custom_openai': True,
             'mt_google_translate': True,
