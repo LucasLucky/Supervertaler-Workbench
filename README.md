@@ -4,9 +4,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
+**Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.365 – fix duplicate YAML frontmatter on prompt save.
+**Latest release:** v1.9.366 – add Mistral AI as a first-class provider (Mistral Large, Small, and Nemo).
 
 ---
 
@@ -39,7 +39,7 @@ macOS will block the app on first launch because it is not signed with an Apple 
 
 ## Key Features
 
-- **Multi-LLM AI Translation** - OpenAI GPT-4/5, Anthropic Claude, Google Gemini, Local Ollama
+- **Multi-LLM AI Translation** - OpenAI GPT-4/5, Anthropic Claude, Google Gemini, Mistral AI, Local Ollama
 - **Translation Memory** - Fuzzy matching TM with TMX import/export
 - **Glossary System** - Project/Background glossary highlighting with forbidden term marking
 - **Superlookup** - Unified concordance search across TM, glossaries, MT, and web resources

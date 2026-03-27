@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.365 (March 26, 2026)
+**Current Version:** v1.9.366 (March 27, 2026)
 
+
+## v1.9.366 - March 27, 2026
+
+### Added
+- **Mistral AI support** – Mistral Large, Mistral Small, and Mistral Nemo are now available as a first-class provider alongside OpenAI, Claude, Gemini, and Ollama
+
+---
 
 ## v1.9.365 - March 26, 2026
 
