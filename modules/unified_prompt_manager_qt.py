@@ -2677,6 +2677,10 @@ class UnifiedPromptManagerQt:
                         indicators.append("🖱️")
                     if indicators:
                         prompt_item.setText(0, f"{' '.join(indicators)} {name}")
+
+                    # Grey out default prompts
+                    if prompt_data.get('default', False):
+                        prompt_item.setForeground(0, QBrush(QColor(130, 130, 130)))
                     
                     if parent_item:
                         parent_item.addChild(prompt_item)
@@ -2753,9 +2757,12 @@ class UnifiedPromptManagerQt:
             
             action_dup = menu.addAction("📋 Duplicate")
             action_dup.triggered.connect(lambda: self._duplicate_prompt(path))
-            
+
             action_del = menu.addAction("🗑️ Delete")
             action_del.triggered.connect(lambda: self._delete_prompt(path))
+            # Disable delete for default prompts (they get recreated anyway)
+            if prompt_data.get('default', False):
+                action_del.setEnabled(False)
         
         elif data['type'] == 'folder':
             # Folder operations
@@ -2797,14 +2804,18 @@ class UnifiedPromptManagerQt:
             self.editor_app_combo.setCurrentIndex(idx_map.get(app_val, 0))
         self.editor_content.setPlainText(prompt_data.get('content', ''))
 
-        # Handle read-only state
-        is_read_only = bool(prompt_data.get('read_only', False))
+        # Handle read-only / default state
+        is_default = bool(prompt_data.get('default', False))
+        is_read_only = bool(prompt_data.get('read_only', False)) or is_default
         if hasattr(self, 'editor_read_only_cb'):
             self.editor_read_only_cb.blockSignals(True)
             self.editor_read_only_cb.setChecked(is_read_only)
-            self.editor_read_only_cb.setVisible(True)
+            self.editor_read_only_cb.setVisible(not is_default)  # hide checkbox for defaults
             self.editor_read_only_cb.blockSignals(False)
         self._apply_read_only_state(is_read_only)
+
+        if is_default:
+            self.editor_name_label.setText(f"Editing: {filename}  (default prompt \u2013 use Duplicate to modify)")
 
         # Store current path for saving
         self.editor_current_path = relative_path

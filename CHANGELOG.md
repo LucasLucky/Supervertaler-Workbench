@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.368 (March 31, 2026)
+**Current Version:** v1.9.369 (March 31, 2026)
 
+
+## v1.9.369 - March 31, 2026
+
+### Added
+- **Default prompt system** – six default prompts (Default Translation, Default Proofreading, UK to US English Localisation, Assess Translation, Define, Explain Selection) are now auto-created on startup if missing; default prompts are greyed out in the tree, read-only in the editor, and cannot be deleted; a new `restore_default_prompts()` method resets all defaults to their original content; the `default: true` YAML field is shared with Supervertaler for Trados (also accepts legacy `built_in: true`)
+
+---
 
 ## v1.9.368 - March 31, 2026
 

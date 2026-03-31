@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.368 – remove unused Tags and Favourites features from Prompt Library (simplification).
+**Latest release:** v1.9.369 – default prompt system with six auto-created prompts shared with Supervertaler for Trados.
 
 ---
 

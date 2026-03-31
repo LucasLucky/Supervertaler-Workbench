@@ -84,6 +84,9 @@ class UnifiedPromptLibrary:
         # One-time migration: rename .svprompt → .md
         self._migrate_svprompt_to_md()
 
+        # Seed default prompts on first run / after deletion
+        self.ensure_default_prompts()
+
         count = self._load_from_directory_recursive(self.library_dir, "")
         self.log(f"✓ Loaded {count} prompts from unified library")
         
@@ -184,6 +187,10 @@ class UnifiedPromptLibrary:
                         if 'name' not in prompt_data:
                             prompt_data['name'] = filepath.stem
                         prompt_data['content'] = prompt_content.strip()
+                        # Default prompt flag
+                        if 'built_in' in prompt_data and 'default' not in prompt_data:
+                            prompt_data['default'] = prompt_data.pop('built_in')
+                        prompt_data.setdefault('default', False)
                         # Ensure boolean fields exist
                         prompt_data.setdefault('quick_run', False)
                         # Backward compat: accept legacy field names
@@ -242,6 +249,12 @@ class UnifiedPromptLibrary:
             # Store content
             prompt_data['content'] = prompt_content.strip()
             
+            # Default prompt flag (shared with Trados)
+            # Accept both 'default' and legacy 'built_in'
+            if 'built_in' in prompt_data and 'default' not in prompt_data:
+                prompt_data['default'] = prompt_data.pop('built_in')
+            prompt_data.setdefault('default', False)
+
             # Ensure boolean fields exist
             # Backward compatibility: quick_run is the legacy field; internally we
             # treat it as the "QuickLauncher" flag.
@@ -389,7 +402,7 @@ class UnifiedPromptLibrary:
             # Fields to include in frontmatter (in order)
             frontmatter_fields = [
                 'name', 'description', 'category',
-                'read_only',
+                'read_only', 'default',
                 # Unified schema
                 'app',
                 # QuickLauncher
@@ -839,3 +852,239 @@ class UnifiedPromptLibrary:
         except Exception as e:
             self.log(f"✗ Failed to delete prompt: {e}")
             return False
+
+    # ─── Default Prompt System ───────────────────────────────────
+
+    @staticmethod
+    def _get_default_prompt_definitions() -> List[Dict]:
+        """Return the list of default prompts shipped with Supervertaler Workbench."""
+        return [
+            # ─── Default Translation Prompt ──────────────────────
+            {
+                'name': 'Default Translation Prompt',
+                'description': 'General-purpose translation prompt \u2013 use as-is or as a starting point for your own prompts',
+                'category': 'Translate/Default',
+                'default': True,
+                'content': (
+                    'You are a professional translator working from {{SOURCE_LANGUAGE}} to {{TARGET_LANGUAGE}}. '
+                    'Translate the source text accurately and naturally, following these guidelines:\n'
+                    '\n'
+                    '## Core principles\n'
+                    '- Produce a fluent, idiomatic translation that reads as if originally written in {{TARGET_LANGUAGE}}\n'
+                    '- Preserve the meaning, tone, and register of the source text\n'
+                    '- Maintain consistency in terminology throughout the document\n'
+                    '- Keep numbers, dates, measurements, and proper nouns accurate\n'
+                    '- Preserve all formatting, tags, and placeholders exactly as they appear\n'
+                    '\n'
+                    '## Terminology\n'
+                    '- Use the glossary terms provided (if any) \u2013 they take priority over alternative translations\n'
+                    '- When a term has no established equivalent, keep the source term and add a brief explanation in parentheses if needed\n'
+                    '\n'
+                    '## Style\n'
+                    '- Match the formality level of the source (formal documents stay formal, casual content stays casual)\n'
+                    '- Use natural sentence structures in the target language rather than mirroring source syntax\n'
+                    '- Avoid unnecessary additions, omissions, or explanatory notes unless explicitly requested'
+                ),
+            },
+            # ─── Default Proofreading Prompt ─────────────────────
+            {
+                'name': 'Default Proofreading Prompt',
+                'description': 'Reviews translations for accuracy, completeness, terminology, grammar, and style issues',
+                'category': 'Proofread/Default',
+                'default': True,
+                'content': (
+                    'You are a professional translation proofreader. Your task is to review {{SOURCE_LANGUAGE}} to '
+                    '{{TARGET_LANGUAGE}} translation pairs and identify issues. You must check EVERY segment provided '
+                    '\u2013 do not skip any.\n'
+                    '\n'
+                    'For each segment, check the following:\n'
+                    '\n'
+                    '## 1. Accuracy\n'
+                    '- Does the translation faithfully convey the meaning of the source?\n'
+                    '- Are there any mistranslations, shifts in meaning, or misinterpretations?\n'
+                    '- Are ambiguous source phrases resolved appropriately for the target language?\n'
+                    '\n'
+                    '## 2. Completeness\n'
+                    '- Is any source content omitted in the translation?\n'
+                    '- Is any content added that is not present in the source?\n'
+                    '- Are all numbers, dates, and references carried over correctly?\n'
+                    '\n'
+                    '## 3. Terminology Consistency\n'
+                    '- Are key terms translated consistently across segments?\n'
+                    '- Are domain-specific terms translated correctly?\n'
+                    '- Are proper nouns, brand names, and product names handled appropriately?\n'
+                    '\n'
+                    '## 4. Grammar & Style\n'
+                    '- Is the translation grammatically correct in {{TARGET_LANGUAGE}}?\n'
+                    '- Is the style appropriate for the text type and register?\n'
+                    '- Is the sentence structure natural and fluent in the target language?\n'
+                    '\n'
+                    '## 5. Number & Unit Formatting\n'
+                    '- Are numbers formatted according to {{TARGET_LANGUAGE}} conventions (decimal separators, thousand separators)?\n'
+                    '- Are units of measurement correct and properly formatted?\n'
+                    '- Are currency symbols and codes appropriate for the target locale?\n'
+                    '\n'
+                    '## Output Format\n'
+                    '\n'
+                    'You MUST use this exact format for every segment. Check ALL segments \u2013 do not skip any.\n'
+                    '\n'
+                    'For segments with no issues:\n'
+                    '[SEGMENT XXXX] OK\n'
+                    '\n'
+                    'For segments with issues:\n'
+                    '[SEGMENT XXXX] ISSUE\n'
+                    'Issue: <brief description of the problem>\n'
+                    'Suggestion: <describe what should be changed \u2013 do NOT provide a full corrected translation>\n'
+                    '\n'
+                    'IMPORTANT RULES:\n'
+                    '- NEVER provide corrected full translations. Only describe the issue and suggest what specifically should be fixed.\n'
+                    '- Use the segment number as it appears in the input (e.g., [SEGMENT 0042]).\n'
+                    '- Report each distinct issue on its own ISSUE block if a segment has multiple problems.\n'
+                    '- You MUST review ALL segments. Do not stop early or summarise remaining segments as \'OK\'.'
+                ),
+            },
+            # ─── UK to US English Localisation ───────────────────
+            {
+                'name': 'UK to US English Localization',
+                'description': 'Flags British English spelling, vocabulary, and conventions that need changing to American English',
+                'category': 'Proofread/Default',
+                'default': True,
+                'content': (
+                    'You are a professional English localiser specialising in adapting British English (BrE) text to American English (AmE). '
+                    'Your task is to review each segment and flag any British English forms that should be changed to their American English equivalents.\n'
+                    '\n'
+                    'IMPORTANT: This is a linguistic localisation check only. Do NOT flag style, tone, sentence structure, readability, or rewriting suggestions. '
+                    'Only flag words, spellings, and conventions that differ between British and American English.\n'
+                    '\n'
+                    '## 1. Spelling Differences\n'
+                    '\n'
+                    'Flag any British English spellings: -ise/-ize, -our/-or, -re/-er, -ence/-ense, -lled/-led, -ogue/-og, -ae-/-e-, -t/-ed past tense, '
+                    'and other common differences (grey/gray, tyre/tire, kerb/curb, etc.).\n'
+                    '\n'
+                    '## 2. Vocabulary Differences\n'
+                    '\n'
+                    'Flag any British vocabulary that has a standard American equivalent (e.g. lorry/truck, lift/elevator, boot/trunk, pavement/sidewalk).\n'
+                    '\n'
+                    '## 3. Punctuation and Formatting Conventions\n'
+                    '\n'
+                    '- Single quotes vs double quotes as primary quotation marks\n'
+                    '- Date format (dd/mm/yyyy vs mm/dd/yyyy)\n'
+                    '- Titles without periods (Mr, Mrs, Dr) vs with periods (Mr., Mrs., Dr.)\n'
+                    '\n'
+                    '## 4. What NOT to Flag\n'
+                    '\n'
+                    '- Do NOT flag style, sentence structure, or phrasing preferences\n'
+                    '- Do NOT flag proper nouns, brand names, place names, or quoted text\n'
+                    '- Do NOT provide corrected full translations \u2013 only describe what should be changed\n'
+                    '\n'
+                    '## Output Format\n'
+                    '\n'
+                    'You MUST use this exact format for every segment. Check ALL segments \u2013 do not skip any.\n'
+                    '\n'
+                    'For segments with no British English forms:\n'
+                    '[SEGMENT XXXX] OK\n'
+                    '\n'
+                    'For segments with British English forms to localise:\n'
+                    '[SEGMENT XXXX] ISSUE\n'
+                    'Issue: <identify the British English word/spelling>\n'
+                    'Suggestion: <state the American English equivalent>\n'
+                    '\n'
+                    'IMPORTANT RULES:\n'
+                    '- NEVER provide corrected full translations. Only identify the specific British English word(s) and their American English replacement(s).\n'
+                    '- Use the segment number as it appears in the input (e.g., [SEGMENT 0042]).\n'
+                    '- Report each distinct issue on its own ISSUE block if a segment has multiple British English forms.\n'
+                    '- You MUST review ALL segments. Do not stop early or summarise remaining segments as "OK".'
+                ),
+            },
+            # ─── QuickLauncher: Assess translation ───────────────
+            {
+                'name': 'Assess how I translated the current segment',
+                'description': 'Reviews your translation of the active segment and suggests improvements',
+                'category': 'QuickLauncher/Default',
+                'default': True,
+                'content': (
+                    'Source ({{SOURCE_LANGUAGE}}):\n'
+                    '{{SOURCE_TEXT}}\n'
+                    '\n'
+                    'My translation ({{TARGET_LANGUAGE}}):\n'
+                    '{{TARGET_TEXT}}\n'
+                    '\n'
+                    'Assess how I translated the current segment. Point out any inaccuracies, '
+                    'awkward phrasing, or terminology issues, and suggest improvements.'
+                ),
+            },
+            # ─── QuickLauncher: Define ────────────────────────────
+            {
+                'name': 'Define',
+                'description': 'Defines the selected term and provides usage examples',
+                'category': 'QuickLauncher/Default',
+                'default': True,
+                'content': 'Define "{{SELECTION}}" and give practical examples showing how it\'s used.',
+            },
+            # ─── QuickLauncher: Explain selection ─────────────────
+            {
+                'name': 'Explain selection (in general)',
+                'description': 'Explains the selected text in simple, clear language',
+                'category': 'QuickLauncher/Default/Explain',
+                'default': True,
+                'content': 'Explain "{{SELECTION}}" in simple, clear language. Include a practical example if helpful.',
+            },
+        ]
+
+    def ensure_default_prompts(self):
+        """
+        Write any missing default prompts to disk.
+        Called on startup so deleted defaults are recreated.
+        """
+        if not self.library_dir:
+            return
+
+        for defn in self._get_default_prompt_definitions():
+            category = defn.get('category', '')
+            folder = self.library_dir / category.replace('/', os.sep) if category else self.library_dir
+            folder.mkdir(parents=True, exist_ok=True)
+
+            filename = defn['name'] + '.md'
+            filepath = folder / filename
+
+            if not filepath.exists():
+                self._write_default_prompt_file(filepath, defn)
+                self.log(f"  \u2713 Created default prompt: {defn['name']}")
+
+    def restore_default_prompts(self):
+        """
+        Overwrite all default prompts with their original content.
+        Recreates deleted defaults and resets edited ones.
+        """
+        if not self.library_dir:
+            return
+
+        for defn in self._get_default_prompt_definitions():
+            category = defn.get('category', '')
+            folder = self.library_dir / category.replace('/', os.sep) if category else self.library_dir
+            folder.mkdir(parents=True, exist_ok=True)
+
+            filename = defn['name'] + '.md'
+            filepath = folder / filename
+
+            self._write_default_prompt_file(filepath, defn)
+            self.log(f"  \u2713 Restored default prompt: {defn['name']}")
+
+        # Reload everything
+        self.load_all_prompts()
+
+    def _write_default_prompt_file(self, filepath: Path, defn: Dict):
+        """Write a single default prompt definition to a .md file."""
+        lines = ['---']
+        lines.append('type: prompt')
+        lines.append(f'name: "{defn["name"]}"')
+        if defn.get('description'):
+            lines.append(f'description: "{defn["description"]}"')
+        if defn.get('category'):
+            lines.append(f'category: "{defn["category"]}"')
+        lines.append('default: true')
+        lines.append('---')
+        lines.append('')
+        lines.append(defn.get('content', ''))
+
+        filepath.write_text('\n'.join(lines), encoding='utf-8')
