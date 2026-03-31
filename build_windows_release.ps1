@@ -7,8 +7,8 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
 function Get-Version {
-  $content = Get-Content -Raw -Encoding UTF8 .\Supervertaler.py
-  $m = [regex]::Match($content, '__version__\s*=\s*["\'']([^"\'']+)["\'']')
+  $content = Get-Content -Raw -Encoding UTF8 .\pyproject.toml
+  $m = [regex]::Match($content, 'version\s*=\s*"([^"]+)"')
   if ($m.Success) { return $m.Groups[1].Value }
   return 'unknown'
 }
