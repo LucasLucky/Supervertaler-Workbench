@@ -383,7 +383,7 @@ class KeyboardShortcutsWidget(QWidget):
         else:
             sl_key = format_shortcut_for_display('Ctrl+Alt+L')
             qt_key = format_shortcut_for_display('Ctrl+Alt+M')
-            qm_key = format_shortcut_for_display('Ctrl+Alt+K')
+            qm_key = format_shortcut_for_display('Ctrl+Alt+Q')
         hotkey_info = QLabel(
             f"Global hotkeys allow {sl_key} (Superlookup), "
             f"{qt_key} (QuickTrans), and "

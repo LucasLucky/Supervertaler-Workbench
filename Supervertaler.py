@@ -8673,8 +8673,8 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+N - Focus Segment Note tab
         create_shortcut("editor_focus_notes", "Ctrl+N", self.focus_segment_notes)
         
-        # Alt+K - Open QuickLauncher directly
-        create_shortcut("editor_open_quicklauncher", "Alt+K", self.open_quicklauncher)
+        # Ctrl+Q - Open QuickLauncher directly
+        create_shortcut("editor_open_quicklauncher", "Ctrl+Q", self.open_quicklauncher)
 
         # Lone Ctrl tap — Term Insert Popup (memoQ-style glossary + NT insert list).
         # Implemented as an app-level event filter rather than a QShortcut because
@@ -55651,7 +55651,7 @@ class SuperlookupTab(QWidget):
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+m'
-            qm_shortcut = 'ctrl+alt+k'
+            qm_shortcut = 'ctrl+alt+q'
 
         # On macOS, replace 'alt' with 'cmd' in the shortcuts
         if IS_MACOS:
@@ -55730,7 +55730,7 @@ class SuperlookupTab(QWidget):
             print(f"[QuickTrans] Error signaling main thread: {e}")
 
     def _on_pynput_quicklauncher(self):
-        """Called from pynput background thread when Ctrl+Alt+K is pressed.
+        """Called from pynput background thread when Ctrl+Alt+Q is pressed.
 
         IMPORTANT: Do NO work here -- see _on_pynput_superlookup docstring.
         """

@@ -573,7 +573,7 @@ class ShortcutManager:
         "editor_open_quicklauncher": {
             "category": "Editor",
             "description": "Open QuickLauncher for AI prompt actions",
-            "default": "Alt+K",
+            "default": "Ctrl+Q",
             "action": "open_quicklauncher",
             "context": "grid_editor"
         },
@@ -627,7 +627,7 @@ class ShortcutManager:
         "global_quicklauncher": {
             "category": "Global",
             "description": "QuickLauncher (global — works from any app)",
-            "default": "Ctrl+Alt+K",
+            "default": "Ctrl+Alt+Q",
             "action": "global_quicklauncher",
             "context": "global"
         },

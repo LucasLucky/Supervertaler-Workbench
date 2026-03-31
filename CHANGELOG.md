@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.369 (March 31, 2026)
+**Current Version:** v1.9.370 (March 31, 2026)
 
+
+## v1.9.370 - March 31, 2026
+
+### Fixed
+- **Default prompt QuickLauncher flags** – QuickLauncher default prompts now correctly have `quicklauncher: true` and `quicklauncher_grid: true` written to their YAML frontmatter, so "Show in QuickLauncher (in-app)" and "Show in QuickLauncher (global)" are pre-selected
+- **Default prompt read-only flag** – all default prompts now include `read_only: true` in their YAML frontmatter
+- **Category-based QuickLauncher detection** – prompts with subcategories like `QuickLauncher/Default` are now correctly detected as QuickLauncher prompts (was previously checking for exact match only)
+- **Existing default prompts updated on startup** – default prompts created by v1.9.369 are automatically rewritten on next launch to include the new flags
+
+---
 
 ## v1.9.369 - March 31, 2026
 

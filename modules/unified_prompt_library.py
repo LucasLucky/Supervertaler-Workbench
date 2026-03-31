@@ -200,7 +200,7 @@ class UnifiedPromptLibrary:
                             prompt_data['quicklauncher'] = prompt_data['sv_quickmenu']
                         if 'quickmenu' in prompt_data and 'quicklauncher' not in prompt_data:
                             prompt_data['quicklauncher'] = prompt_data['quickmenu']
-                        if str(prompt_data.get('category', '')).lower() == 'quicklauncher':
+                        if str(prompt_data.get('category', '')).lower().startswith('quicklauncher'):
                             prompt_data['quicklauncher'] = True
                         prompt_data['quicklauncher'] = bool(
                             prompt_data.get('quicklauncher', prompt_data.get('quick_run', False))
@@ -267,7 +267,7 @@ class UnifiedPromptLibrary:
             if 'quickmenu' in prompt_data and 'quicklauncher' not in prompt_data:
                 prompt_data['quicklauncher'] = prompt_data['quickmenu']
             # category: QuickLauncher sets the quicklauncher flag (matches Trados behaviour)
-            if str(prompt_data.get('category', '')).lower() == 'quicklauncher':
+            if str(prompt_data.get('category', '')).lower().startswith('quicklauncher'):
                 prompt_data['quicklauncher'] = True
             prompt_data['quicklauncher'] = bool(
                 prompt_data.get('quicklauncher', prompt_data.get('quick_run', False))
@@ -1050,6 +1050,12 @@ class UnifiedPromptLibrary:
             if not filepath.exists():
                 self._write_default_prompt_file(filepath, defn)
                 self.log(f"  \u2713 Created default prompt: {defn['name']}")
+            else:
+                # Rewrite if file is missing new flags (e.g. quicklauncher, read_only)
+                existing = filepath.read_text(encoding='utf-8')
+                if 'read_only: true' not in existing:
+                    self._write_default_prompt_file(filepath, defn)
+                    self.log(f"  \u2713 Updated default prompt: {defn['name']}")
 
     def restore_default_prompts(self):
         """
@@ -1083,6 +1089,12 @@ class UnifiedPromptLibrary:
         if defn.get('category'):
             lines.append(f'category: "{defn["category"]}"')
         lines.append('default: true')
+        lines.append('read_only: true')
+        # QuickLauncher prompts get both in-app and global grid flags
+        is_ql = str(defn.get('category', '')).lower().startswith('quicklauncher')
+        if is_ql:
+            lines.append('quicklauncher: true')
+            lines.append('quicklauncher_grid: true')
         lines.append('---')
         lines.append('')
         lines.append(defn.get('content', ''))
