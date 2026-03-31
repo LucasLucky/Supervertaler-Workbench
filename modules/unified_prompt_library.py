@@ -3,7 +3,7 @@ Unified Prompt Library Module
 
 Simplified 2-layer architecture:
 1. System Prompts (in Settings) - mode-specific, auto-selected
-2. Prompt Library (main UI) - unified workspace with folders, favorites, multi-attach
+2. Prompt Library (main UI) - unified workspace with folders, multi-attach
 
 Replaces the old 4-layer system (System/Domain/Project/Style Guides).
 """
@@ -20,7 +20,7 @@ class UnifiedPromptLibrary:
     """
     Manages prompts in a unified library structure with:
     - Nested folder support (unlimited depth)
-    - Favorites and Quick Run menu
+    - Quick Run menu
     - Multi-attach capability
     - Markdown files with YAML frontmatter
     """
@@ -50,7 +50,6 @@ class UnifiedPromptLibrary:
         self.attached_prompt_paths = []  # List of paths
         
         # Cached lists for quick access
-        self._favorites = []
         # Backward-compatible name; now represents QuickLauncher (future app-level menu)
         self._quick_run = []
         self._quicklauncher_grid = []
@@ -89,7 +88,6 @@ class UnifiedPromptLibrary:
         self.log(f"✓ Loaded {count} prompts from unified library")
         
         # Update cached lists
-        self._update_favorites_list()
         self._update_quick_run_list()
         self._update_quicklauncher_grid_list()
         
@@ -188,7 +186,6 @@ class UnifiedPromptLibrary:
                             prompt_data['name'] = filepath.stem
                         prompt_data['content'] = prompt_content.strip()
                         # Ensure boolean fields exist
-                        prompt_data.setdefault('favorite', False)
                         prompt_data.setdefault('quick_run', False)
                         # Backward compat: accept legacy field names
                         if 'quickmenu_quickmenu' in prompt_data:
@@ -248,7 +245,6 @@ class UnifiedPromptLibrary:
             prompt_data['content'] = prompt_content.strip()
             
             # Ensure boolean fields exist
-            prompt_data.setdefault('favorite', False)
             # Backward compatibility: quick_run is the legacy field; internally we
             # treat it as the "QuickLauncher" flag.
             prompt_data.setdefault('quick_run', False)
@@ -396,7 +392,7 @@ class UnifiedPromptLibrary:
             # Fields to include in frontmatter (in order)
             frontmatter_fields = [
                 'name', 'description', 'category',
-                'favorite', 'read_only',
+                'read_only',
                 # Unified schema
                 'app',
                 # QuickLauncher
@@ -492,7 +488,6 @@ class UnifiedPromptLibrary:
             current[folder_name]['_prompts'].append({
                 'path': rel_path,
                 'name': prompt_data.get('name', Path(rel_path).stem),
-                'favorite': prompt_data.get('favorite', False),
                 'quick_run': prompt_data.get('quick_run', False),
                 'quicklauncher_grid': prompt_data.get('quicklauncher_grid', False),
                 'quicklauncher': prompt_data.get('quicklauncher', prompt_data.get('quick_run', False)),
@@ -610,21 +605,6 @@ class UnifiedPromptLibrary:
         self.attached_prompt_paths = []
         self.log("✓ Cleared all attachments")
     
-    def toggle_favorite(self, relative_path: str) -> bool:
-        """Toggle favorite status for a prompt"""
-        if relative_path not in self.prompts:
-            return False
-        
-        prompt_data = self.prompts[relative_path]
-        prompt_data['favorite'] = not prompt_data.get('favorite', False)
-        prompt_data['modified'] = datetime.now().strftime("%Y-%m-%d")
-        
-        # Save updated prompt
-        self.save_prompt(relative_path, prompt_data)
-        self._update_favorites_list()
-        
-        return True
-    
     def toggle_quick_run(self, relative_path: str) -> bool:
         """Toggle QuickLauncher (future app menu) status for a prompt (legacy name: quick_run)."""
         if relative_path not in self.prompts:
@@ -659,14 +639,6 @@ class UnifiedPromptLibrary:
     # Backward compat alias
     toggle_quickmenu_grid = toggle_quicklauncher_grid
 
-    def _update_favorites_list(self):
-        """Update cached favorites list"""
-        self._favorites = [
-            (path, data.get('name', Path(path).stem))
-            for path, data in self.prompts.items()
-            if data.get('favorite', False)
-        ]
-    
     def _update_quick_run_list(self):
         """Update cached QuickLauncher (future app menu) list (legacy name: quick_run)."""
         self._quick_run = []
@@ -694,10 +666,6 @@ class UnifiedPromptLibrary:
                 continue
             label = (data.get('quicklauncher_label') or data.get('name') or Path(path).stem).strip()
             self._quicklauncher_grid.append((path, label))
-    
-    def get_favorites(self) -> List[Tuple[str, str]]:
-        """Get list of favorite prompts (path, name)"""
-        return self._favorites
     
     def get_quick_run_prompts(self) -> List[Tuple[str, str]]:
         """Get list of QuickLauncher (future app menu) prompts (path, label)."""

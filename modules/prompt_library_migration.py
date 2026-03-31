@@ -238,7 +238,6 @@ class PromptLibraryMigration:
             if 'name' not in metadata:
                 metadata['name'] = source.stem
             
-            metadata.setdefault('favorite', False)
             metadata.setdefault('quick_run', False)
             metadata.setdefault('tags', [])
             
@@ -280,7 +279,6 @@ class PromptLibraryMigration:
                 'domain': data.get('domain', ''),
                 'version': data.get('version', '1.0'),
                 'task_type': data.get('task_type', 'Translation'),
-                'favorite': False,
                 'quick_run': False,
                 'tags': [],
                 'created': data.get('created', datetime.now().strftime("%Y-%m-%d"))
@@ -311,7 +309,7 @@ class PromptLibraryMigration:
         # Ordered fields
         field_order = [
             'name', 'description', 'domain', 'version', 'task_type',
-            'favorite', 'quick_run', 'folder', 'tags', 'created', 'modified'
+            'quick_run', 'folder', 'tags', 'created', 'modified'
         ]
         
         for field in field_order:
