@@ -254,7 +254,6 @@ class AIActionSystem:
                 'folder': prompt_data.get('_folder', ''),
                 'description': prompt_data.get('description', ''),
                 'quick_run': prompt_data.get('quick_run', False),
-                'tags': prompt_data.get('tags', [])
             }
 
             if include_content:
@@ -293,7 +292,6 @@ class AIActionSystem:
             'description': prompt_data.get('description', ''),
             'content': prompt_data.get('content', ''),
             'quick_run': prompt_data.get('quick_run', False),
-            'tags': prompt_data.get('tags', []),
             'category': prompt_data.get('category', prompt_data.get('domain', '')),
             'app': prompt_data.get('app', 'both'),
             'created': prompt_data.get('created', ''),
@@ -309,7 +307,6 @@ class AIActionSystem:
             content (required): Prompt content
             folder (optional): Folder to create in (default: root)
             description (optional): Prompt description
-            tags (optional): List of tags
             domain (optional): Domain category
             task_type (optional): Task type
             activate (optional): If True, activate as primary after creating
@@ -352,7 +349,6 @@ class AIActionSystem:
             'description': params.get('description', ''),
             'category': params.get('domain', params.get('category', '')),
             'quick_run': False,
-            'tags': params.get('tags', []),
             'created': datetime.now().strftime('%Y-%m-%d'),
             'modified': datetime.now().strftime('%Y-%m-%d')
         }
@@ -385,7 +381,6 @@ class AIActionSystem:
             content (optional): New content
             name (optional): New name
             description (optional): New description
-            tags (optional): New tags
 
         Returns:
             {success: bool, path: str, message: str}
@@ -407,8 +402,6 @@ class AIActionSystem:
             prompt_data['content'] = params['content']
         if 'description' in params:
             prompt_data['description'] = params['description']
-        if 'tags' in params:
-            prompt_data['tags'] = params['tags']
 
         prompt_data['modified'] = datetime.now().strftime('%Y-%m-%d')
 
@@ -455,11 +448,11 @@ class AIActionSystem:
 
     def _action_search_prompts(self, params: Dict) -> Dict:
         """
-        Search prompts by name, content, or tags.
+        Search prompts by name or content.
 
         Params:
             query (required): Search query
-            search_in (optional): 'name', 'content', 'tags', or 'all' (default: all)
+            search_in (optional): 'name', 'content', or 'all' (default: all)
 
         Returns:
             {count: int, results: [{name, path, folder, match_type, ...}]}
@@ -486,20 +479,13 @@ class AIActionSystem:
                 if query in content:
                     match_type = 'content'
 
-            # Search in tags
-            if not match_type and search_in in ['tags', 'all']:
-                tags = prompt_data.get('tags', [])
-                if any(query in tag.lower() for tag in tags):
-                    match_type = 'tags'
-
             if match_type:
                 results.append({
                     'name': prompt_data.get('name', path),
                     'path': path,
                     'folder': prompt_data.get('_folder', ''),
                     'description': prompt_data.get('description', ''),
-                    'match_type': match_type,
-                    'tags': prompt_data.get('tags', [])
+                    'match_type': match_type
                 })
 
         return {
@@ -771,7 +757,6 @@ PARAMS: {
   "content": "You are an expert medical translator...",
   "folder": "Domain Expertise" (optional),
   "description": "Expert medical translation" (optional),
-  "tags": ["medical", "technical"] (optional)
 }
 
 ### 4. update_prompt
@@ -791,7 +776,7 @@ PARAMS: {"path": "Domain Expertise/Medical.md"}
 Search prompts by query.
 PARAMS: {
   "query": "medical",
-  "search_in": "all" (options: name, content, tags, all)
+  "search_in": "all" (options: name, content, all)
 }
 
 ### 7. create_folder

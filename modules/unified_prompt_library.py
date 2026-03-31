@@ -154,7 +154,6 @@ class UnifiedPromptLibrary:
         favorite: false
         quick_run: false
         folder: "Domain Expertise"
-        tags: ["medical", "technical"]
         ---
 
         # Content
@@ -208,7 +207,6 @@ class UnifiedPromptLibrary:
                         if 'quickmenu_label' in prompt_data and 'quicklauncher_label' not in prompt_data:
                             prompt_data['quicklauncher_label'] = prompt_data['quickmenu_label']
                         prompt_data.setdefault('quicklauncher_label', prompt_data.get('name', filepath.stem))
-                        prompt_data.setdefault('tags', [])
                         # Unified schema: legacy key mapping for JSON format
                         if 'domain' in prompt_data and 'category' not in prompt_data:
                             prompt_data['category'] = prompt_data['domain']
@@ -275,7 +273,6 @@ class UnifiedPromptLibrary:
             # QuickLauncher fields
             prompt_data.setdefault('quicklauncher_grid', False)
             prompt_data.setdefault('quicklauncher_label', prompt_data.get('name', filepath.stem))
-            prompt_data.setdefault('tags', [])
             # Unified schema: ensure app field has a default
             prompt_data.setdefault('app', 'both')
 
@@ -293,7 +290,7 @@ class UnifiedPromptLibrary:
         - Simple strings: key: "value" or key: value
         - Booleans: key: true/false
         - Numbers: key: 1.0
-        - Arrays: tags: ["item1", "item2"] or tags: [item1, item2]
+        - Arrays: key: ["item1", "item2"] or key: [item1, item2]
         """
         data = {}
 
@@ -399,7 +396,6 @@ class UnifiedPromptLibrary:
                 'quicklauncher_label', 'quicklauncher_grid', 'quicklauncher',
                 # Legacy (kept for backward compatibility)
                 'quick_run',
-                'tags',
                 'created', 'modified'
             ]
             

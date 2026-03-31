@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.367 (March 31, 2026)
+**Current Version:** v1.9.368 (March 31, 2026)
 
+
+## v1.9.368 - March 31, 2026
+
+### Removed
+- **Tags feature removed** – the `tags` YAML field and all related search/create/update logic have been removed from the Prompt Library; existing `tags` frontmatter will be silently ignored
+
+---
 
 ## v1.9.367 - March 31, 2026
 

@@ -2933,7 +2933,6 @@ class UnifiedPromptManagerQt:
                     'quicklauncher': quicklauncher_flag,
                     # Legacy
                     'quick_run': quicklauncher_flag,
-                    'tags': [],
                     'created': datetime.now().strftime('%Y-%m-%d'),
                     'modified': datetime.now().strftime('%Y-%m-%d')
                 }
@@ -3212,11 +3211,10 @@ class UnifiedPromptManagerQt:
             'quicklauncher_grid': False,
             'quicklauncher': False,
             'quick_run': False,
-            'tags': [],
             'created': datetime.now().strftime('%Y-%m-%d'),
             'modified': datetime.now().strftime('%Y-%m-%d')
         }
-        
+
         # Create prompt file (name already includes extension)
         relative_path = f"{folder_path}/{name}" if folder_path else name
         
