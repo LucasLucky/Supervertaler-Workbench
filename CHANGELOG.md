@@ -7,6 +7,9 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ## v1.9.370 - March 31, 2026
 
+### Changed
+- **QuickLauncher shortcut** – in-app QuickLauncher changed from Alt+K to **Ctrl+Q**; global QuickLauncher changed from Ctrl+Alt+K to **Ctrl+Alt+Q**
+
 ### Fixed
 - **Default prompt QuickLauncher flags** – QuickLauncher default prompts now correctly have `quicklauncher: true` and `quicklauncher_grid: true` written to their YAML frontmatter, so "Show in QuickLauncher (in-app)" and "Show in QuickLauncher (global)" are pre-selected
 - **Default prompt read-only flag** – all default prompts now include `read_only: true` in their YAML frontmatter
