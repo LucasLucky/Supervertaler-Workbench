@@ -1563,7 +1563,7 @@ body {
 }
 
 .pricing-group-wide .pricing-group-cards {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .pricing-card .pricing-annual {
