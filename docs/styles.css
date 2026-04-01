@@ -1526,8 +1526,8 @@ body {
 /* Grouped pricing layout (Workbench | Trados two-card group) */
 .pricing-groups {
     display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: var(--spacing-md);
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg);
     max-width: 1060px;
     margin: 0 auto;
     align-items: start;
@@ -1560,10 +1560,13 @@ body {
 .pricing-group-cards {
     display: grid;
     gap: var(--spacing-md);
+    max-width: 340px;
+    margin: 0 auto;
 }
 
 .pricing-group-wide .pricing-group-cards {
     grid-template-columns: repeat(3, 1fr);
+    max-width: none;
 }
 
 .pricing-card .pricing-annual {
