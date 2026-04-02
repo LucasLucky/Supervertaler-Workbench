@@ -1515,58 +1515,37 @@ body {
 
 /* ===== Trados Page: Pricing Cards ===== */
 
-.pricing-grid {
+.pricing-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: var(--spacing-md);
-    max-width: 1000px;
-    margin: 0 auto;
-}
-
-/* Grouped pricing layout (Workbench | Trados two-card group) */
-.pricing-groups {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--spacing-lg);
-    max-width: 1060px;
+    max-width: 1120px;
     margin: 0 auto;
     align-items: start;
 }
 
-.pricing-group-heading {
-    font-size: 0.8rem;
+/* Product badge on each card */
+.pricing-badge {
+    display: inline-block;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    text-align: center;
-    padding: 10px 20px;
-    margin-bottom: var(--spacing-sm);
+    letter-spacing: 1.2px;
+    padding: 4px 12px;
     border-radius: 999px;
-    border: none;
+    margin-bottom: 12px;
 }
 
-.pricing-heading-workbench {
+.pricing-badge-workbench {
     color: #7c3aed;
     background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
     border: 1px solid #ddd6fe;
 }
 
-.pricing-heading-trados {
+.pricing-badge-trados {
     color: #0d7377;
     background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
     border: 1px solid #99f6e4;
-}
-
-.pricing-group-cards {
-    display: grid;
-    gap: var(--spacing-md);
-    max-width: 340px;
-    margin: 0 auto;
-}
-
-.pricing-group-wide .pricing-group-cards {
-    grid-template-columns: repeat(3, 1fr);
-    max-width: none;
 }
 
 .pricing-card .pricing-annual {
@@ -1714,18 +1693,20 @@ body {
     line-height: 1.6;
 }
 
+@media (max-width: 1024px) {
+    .pricing-row {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 600px;
+    }
+}
+
 @media (max-width: 768px) {
     .product-cards {
         grid-template-columns: 1fr;
     }
-    .pricing-grid {
+    .pricing-row {
         grid-template-columns: 1fr;
-    }
-    .pricing-groups {
-        grid-template-columns: 1fr;
-    }
-    .pricing-group-wide .pricing-group-cards {
-        grid-template-columns: 1fr;
+        max-width: 400px;
     }
     .install-steps {
         grid-template-columns: 1fr;
