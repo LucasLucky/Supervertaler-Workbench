@@ -139,7 +139,7 @@ def _sanitize_ollama_endpoint(endpoint: str) -> str:
 @dataclass
 class LLMConfig:
     """Configuration for LLM client"""
-    provider: Literal["openai", "claude", "gemini", "mistral"]
+    provider: Literal["openai", "claude", "gemini", "mistral", "openrouter"]
     model: str
     api_key: str
     temperature: Optional[float] = None  # Auto-detected if None
@@ -156,7 +156,8 @@ class LLMClient:
         "gemini": "gemini-2.5-flash",  # Gemini 2.5 Flash (2025)
         "mistral": "mistral-large-latest",  # Mistral Large (flagship)
         "ollama": "translategemma:12b",  # Local LLM via Ollama - purpose-built translation model
-        "custom_openai": "custom-model"  # Custom OpenAI-compatible endpoint
+        "custom_openai": "custom-model",  # Custom OpenAI-compatible endpoint
+        "openrouter": "anthropic/claude-sonnet-4.6"  # OpenRouter gateway (200+ models)
     }
 
     # Available Mistral models with descriptions
@@ -181,6 +182,59 @@ class LLMClient:
         }
     }
     
+    # Available OpenRouter models (curated selection)
+    # OpenRouter is an API gateway — users can also type any model ID from openrouter.ai/models
+    OPENROUTER_MODELS = {
+        "anthropic/claude-sonnet-4.6": {
+            "name": "Claude Sonnet 4.6",
+            "description": "Anthropic flagship — fast, high quality",
+            "strengths": ["General translation", "Multilingual", "Fast"],
+            "use_case": "Recommended for most translation tasks"
+        },
+        "anthropic/claude-opus-4.6": {
+            "name": "Claude Opus 4.6",
+            "description": "Anthropic premium — best reasoning",
+            "strengths": ["Legal translation", "Technical documents", "Complex reasoning"],
+            "use_case": "Specialized legal/technical translation"
+        },
+        "openai/gpt-5.4": {
+            "name": "GPT 5.4",
+            "description": "OpenAI flagship — advanced reasoning",
+            "strengths": ["Complex reasoning", "Multilingual", "High accuracy"],
+            "use_case": "Complex translation tasks"
+        },
+        "openai/gpt-5.4-mini": {
+            "name": "GPT 5.4 Mini",
+            "description": "OpenAI fast & economical",
+            "strengths": ["Fast", "Cost-effective", "Multilingual"],
+            "use_case": "High-volume translation"
+        },
+        "google/gemini-3.1-pro-preview": {
+            "name": "Gemini 3.1 Pro",
+            "description": "Google latest — strong multilingual",
+            "strengths": ["Multilingual", "Large context", "High quality"],
+            "use_case": "General translation"
+        },
+        "google/gemini-3-flash-preview": {
+            "name": "Gemini 3 Flash",
+            "description": "Google fast — great for high volume",
+            "strengths": ["Fast", "Cost-effective", "Multilingual"],
+            "use_case": "High-volume translation"
+        },
+        "mistralai/mistral-small-2603": {
+            "name": "Mistral Small",
+            "description": "Mistral cost-effective — strong European languages",
+            "strengths": ["European languages", "Fast", "Cost-effective"],
+            "use_case": "European language translation"
+        },
+        "qwen/qwen3.6-plus:free": {
+            "name": "Qwen 3.6 Plus (Free)",
+            "description": "Free tier — no cost, good quality",
+            "strengths": ["Free", "Multilingual", "100+ languages"],
+            "use_case": "Testing or budget-constrained projects"
+        }
+    }
+
     # Available Ollama models with descriptions (for UI display)
     # Last audited: February 2026
     OLLAMA_MODELS = {
@@ -479,6 +533,10 @@ class LLMClient:
         if self.provider == "mistral" and not self.base_url:
             self.base_url = "https://api.mistral.ai/v1"
 
+        # For OpenRouter, set the base URL and extra headers
+        if self.provider == "openrouter" and not self.base_url:
+            self.base_url = "https://openrouter.ai/api/v1"
+
         # Auto-detect temperature based on model
         self.temperature = self._get_temperature()
     
@@ -727,6 +785,8 @@ class LLMClient:
             result = self._call_gemini(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
         elif self.provider == "mistral":
             result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
+        elif self.provider == "openrouter":
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
         elif self.provider == "ollama":
             result = self._call_ollama(prompt, max_tokens=max_tokens, system_prompt=system_prompt)
         else:
@@ -760,6 +820,11 @@ class LLMClient:
         client_kwargs = {"api_key": self.api_key, "timeout": timeout_seconds}
         if self.base_url:
             client_kwargs["base_url"] = self.base_url
+        if self.provider == "openrouter":
+            client_kwargs["default_headers"] = {
+                "HTTP-Referer": "https://supervertaler.com",
+                "X-Title": "Supervertaler"
+            }
         if self.http_proxy:
             import httpx
             client_kwargs["http_client"] = httpx.Client(proxy=self.http_proxy, timeout=timeout_seconds)

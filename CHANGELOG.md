@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.370 (March 31, 2026)
+**Current Version:** v1.9.371 (April 2, 2026)
 
+
+## v1.9.371 - April 2, 2026
+
+### Added
+- **OpenRouter provider** – access 200+ models from OpenAI, Anthropic, Google, Mistral, and others with a single API key via openrouter.ai. Includes a curated dropdown of 8 recommended models (Claude Sonnet/Opus, GPT-5.4/Mini, Gemini 3.1 Pro/Flash, Mistral Small, Qwen 3.6 Plus Free) plus an editable model field for typing any OpenRouter model ID
+
+---
 
 ## v1.9.370 - March 31, 2026
 

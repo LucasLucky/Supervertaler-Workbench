@@ -9119,6 +9119,9 @@ class SupervertalerQt(QMainWindow):
             elif provider == 'mistral':
                 icon = "🌀"
                 display = f"{icon} {model}"
+            elif provider == 'openrouter':
+                icon = "🌐"
+                display = f"{icon} {model}"
             elif provider == 'custom_openai':
                 icon = "🔌"
                 profile = self._get_active_custom_profile(settings)
@@ -17876,6 +17879,11 @@ class SupervertalerQt(QMainWindow):
         provider_button_group.addButton(mistral_radio)
         provider_layout.addWidget(mistral_radio)
 
+        openrouter_radio = CustomRadioButton("🌐 OpenRouter (200+ models)")
+        openrouter_radio.setChecked(settings.get('provider', 'openai') == 'openrouter')
+        provider_button_group.addButton(openrouter_radio)
+        provider_layout.addWidget(openrouter_radio)
+
         # Local LLM option (Ollama)
         ollama_radio = CustomRadioButton("🖥️ Local LLM (Ollama - runs on your computer)")
         ollama_radio.setChecked(settings.get('provider', 'openai') == 'ollama')
@@ -18007,6 +18015,42 @@ class SupervertalerQt(QMainWindow):
                 break
         mistral_combo.setEnabled(mistral_radio.isChecked())
         model_layout.addWidget(mistral_combo)
+
+        model_layout.addSpacing(10)
+
+        # OpenRouter models
+        openrouter_model_label = QLabel("<b>🌐 OpenRouter Models:</b>")
+        model_layout.addWidget(openrouter_model_label)
+
+        openrouter_combo = QComboBox()
+        openrouter_combo.setEditable(True)
+        openrouter_combo.addItems([
+            "anthropic/claude-sonnet-4.6 (Recommended)",
+            "anthropic/claude-opus-4.6 (Premium Reasoning)",
+            "openai/gpt-5.4 (Advanced Reasoning)",
+            "openai/gpt-5.4-mini (Fast & Economical)",
+            "google/gemini-3.1-pro-preview (Latest Gemini)",
+            "google/gemini-3-flash-preview (Fast Gemini)",
+            "mistralai/mistral-small-2603 (European Languages)",
+            "qwen/qwen3.6-plus:free (Free)"
+        ])
+        openrouter_combo.setToolTip(
+            "OpenRouter gives you access to 200+ models with a single API key.\n"
+            "Select a model from the dropdown or type any model ID from openrouter.ai/models.\n\n"
+            "Pricing varies per model — see openrouter.ai for details."
+        )
+        current_openrouter_model = settings.get('openrouter_model', 'anthropic/claude-sonnet-4.6')
+        # Try to select from dropdown, or set as typed text
+        found = False
+        for i in range(openrouter_combo.count()):
+            if current_openrouter_model in openrouter_combo.itemText(i):
+                openrouter_combo.setCurrentIndex(i)
+                found = True
+                break
+        if not found:
+            openrouter_combo.setEditText(current_openrouter_model)
+        openrouter_combo.setEnabled(openrouter_radio.isChecked())
+        model_layout.addWidget(openrouter_combo)
 
         model_layout.addSpacing(10)
 
@@ -18235,12 +18279,15 @@ class SupervertalerQt(QMainWindow):
             lambda: _update_provider_label(gemini_radio, "Google Gemini", gemini_combo))
         mistral_combo.currentIndexChanged.connect(
             lambda: _update_provider_label(mistral_radio, "Mistral AI", mistral_combo))
+        openrouter_combo.currentIndexChanged.connect(
+            lambda: _update_provider_label(openrouter_radio, "🌐 OpenRouter (200+ models)", openrouter_combo))
 
         # Set initial labels based on current combo selections
         _update_provider_label(openai_radio, "OpenAI", openai_combo)
         _update_provider_label(claude_radio, "Anthropic Claude", claude_combo)
         _update_provider_label(gemini_radio, "Google Gemini", gemini_combo)
         _update_provider_label(mistral_radio, "Mistral AI", mistral_combo)
+        _update_provider_label(openrouter_radio, "🌐 OpenRouter (200+ models)", openrouter_combo)
 
         # Connect radio buttons to enable/disable combos
         def update_combo_states():
@@ -18248,6 +18295,7 @@ class SupervertalerQt(QMainWindow):
             claude_combo.setEnabled(claude_radio.isChecked())
             gemini_combo.setEnabled(gemini_radio.isChecked())
             mistral_combo.setEnabled(mistral_radio.isChecked())
+            openrouter_combo.setEnabled(openrouter_radio.isChecked())
             if ollama_status_widget:
                 ollama_status_widget.setEnabled(ollama_radio.isChecked())
             _custom_enabled = custom_radio.isChecked()
@@ -18292,6 +18340,7 @@ class SupervertalerQt(QMainWindow):
         claude_radio.toggled.connect(update_combo_states)
         gemini_radio.toggled.connect(update_combo_states)
         mistral_radio.toggled.connect(update_combo_states)
+        openrouter_radio.toggled.connect(update_combo_states)
         ollama_radio.toggled.connect(update_combo_states)
         ollama_radio.toggled.connect(on_ollama_selected)
         custom_radio.toggled.connect(update_combo_states)
@@ -18345,6 +18394,7 @@ class SupervertalerQt(QMainWindow):
             ("Claude (Anthropic):", "claude", "sk-ant-api03-..."),
             ("Gemini (Google AI):", "gemini", "AIza..."),
             ("Mistral AI:", "mistral", "..."),
+            ("OpenRouter:", "openrouter", "sk-or-..."),
             ("Ollama Endpoint:", "ollama_endpoint", "http://localhost:11434"),
         ]
 
@@ -18402,6 +18452,10 @@ class SupervertalerQt(QMainWindow):
         mistral_enable_cb = CheckmarkCheckBox("Enable Mistral AI")
         mistral_enable_cb.setChecked(enabled_providers.get('llm_mistral', True))
         provider_enable_layout.addWidget(mistral_enable_cb)
+
+        openrouter_enable_cb = CheckmarkCheckBox("Enable OpenRouter")
+        openrouter_enable_cb.setChecked(enabled_providers.get('llm_openrouter', True))
+        provider_enable_layout.addWidget(openrouter_enable_cb)
 
         ollama_enable_cb = CheckmarkCheckBox("Enable Local LLM (Ollama)")
         ollama_enable_cb.setChecked(enabled_providers.get('llm_ollama', True))
@@ -18762,7 +18816,9 @@ class SupervertalerQt(QMainWindow):
             custom_model_input=custom_model_input, custom_enable_cb=custom_enable_cb,
             custom_profile_combo=custom_profile_combo, custom_key_input=custom_key_input,
             mistral_radio=mistral_radio, mistral_combo=mistral_combo,
-            mistral_enable_cb=mistral_enable_cb
+            mistral_enable_cb=mistral_enable_cb,
+            openrouter_radio=openrouter_radio, openrouter_combo=openrouter_combo,
+            openrouter_enable_cb=openrouter_enable_cb
         ))
         layout.addWidget(save_btn)
         
@@ -22559,7 +22615,9 @@ class SupervertalerQt(QMainWindow):
                                    custom_model_input=None, custom_enable_cb=None,
                                    custom_profile_combo=None, custom_key_input=None,
                                    mistral_radio=None, mistral_combo=None,
-                                   mistral_enable_cb=None):
+                                   mistral_enable_cb=None,
+                                   openrouter_radio=None, openrouter_combo=None,
+                                   openrouter_enable_cb=None):
         """Save all AI settings from the unified AI Settings tab"""
         # Determine selected provider
         if openai_radio.isChecked():
@@ -22570,6 +22628,8 @@ class SupervertalerQt(QMainWindow):
             provider = 'gemini'
         elif mistral_radio and mistral_radio.isChecked():
             provider = 'mistral'
+        elif openrouter_radio and openrouter_radio.isChecked():
+            provider = 'openrouter'
         elif ollama_radio.isChecked():
             provider = 'ollama'
         elif custom_radio and custom_radio.isChecked():
@@ -22608,6 +22668,7 @@ class SupervertalerQt(QMainWindow):
             'claude_model': claude_combo.currentText().split()[0],
             'gemini_model': gemini_combo.currentText().split()[0],
             'mistral_model': mistral_combo.currentText().split()[0] if mistral_combo else 'mistral-large-latest',
+            'openrouter_model': openrouter_combo.currentText().split()[0] if openrouter_combo else 'anthropic/claude-sonnet-4.6',
             'ollama_model': ollama_model,
             'custom_openai_model': active_model,
             'custom_openai_endpoint': active_endpoint,
@@ -22627,6 +22688,7 @@ class SupervertalerQt(QMainWindow):
             'llm_claude': claude_enable_cb.isChecked(),
             'llm_gemini': gemini_enable_cb.isChecked(),
             'llm_mistral': mistral_enable_cb.isChecked() if mistral_enable_cb else True,
+            'llm_openrouter': openrouter_enable_cb.isChecked() if openrouter_enable_cb else True,
             'llm_ollama': ollama_enable_cb.isChecked(),
             'llm_custom_openai': custom_enable_cb.isChecked() if custom_enable_cb else True
         }
@@ -47045,7 +47107,9 @@ class SupervertalerQt(QMainWindow):
         from modules.llm_clients import LLMClient
         api_key = api_keys.get(provider) or (api_keys.get('google') if provider == 'gemini' else None)
         base_url = None
-        if provider == 'custom_openai':
+        if provider == 'openrouter':
+            base_url = 'https://openrouter.ai/api/v1'
+        elif provider == 'custom_openai':
             if settings is None:
                 settings = self.load_llm_settings()
             profile = self._get_active_custom_profile(settings)
@@ -47069,6 +47133,7 @@ class SupervertalerQt(QMainWindow):
             'llm_claude': True,
             'llm_gemini': True,
             'llm_mistral': True,
+            'llm_openrouter': True,
             'llm_ollama': True,
             'llm_custom_openai': True,
             'mt_google_translate': True,
