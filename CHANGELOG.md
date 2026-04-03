@@ -2,8 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.371 (April 2, 2026)
+**Current Version:** v1.9.372 (April 3, 2026)
 
+
+## v1.9.372 - April 3, 2026
+
+### Added
+- **Compact tag view mode** – new "Compact" button in the WYSIWYG/Tags toolbar shortens verbose XML/mxliff tags (e.g. `<bmk id="0" name="_Toc219208699" transform="open">`) to numbered placeholders like `{1}`, `{/1}` in both source and target columns. Cycle with Ctrl+T: Tags → Compact → WYSIWYG
+- **Compact tag insertion** – Ctrl+, now inserts compact placeholders (not full tags) when in Compact view mode; full tags are transparently restored on save
+- **Collapsible Available Context** – the "Available Context" section in the AI Assistant tab can now be collapsed/expanded to give more space to the chat area
+
+### Changed
+- **AI Assistant chat layout** – significantly reduced vertical spacing, font sizes, padding, and bubble dimensions for a more compact chat experience
+- **Auto-resize rows on mode switch** – row heights automatically adjust when switching between Tags, Compact, and WYSIWYG view modes
+
+---
 
 ## v1.9.371 - April 2, 2026
 

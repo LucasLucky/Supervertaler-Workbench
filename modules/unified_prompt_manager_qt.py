@@ -216,11 +216,11 @@ class ChatMessageDelegate(QStyledItemDelegate):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.padding = 16
-        self.bubble_padding = 12
-        self.avatar_size = 28
-        self.avatar_margin = 8
-        self.max_bubble_width_ratio = 0.7  # 70% of available width
+        self.padding = 4
+        self.bubble_padding = 6
+        self.avatar_size = 18
+        self.avatar_margin = 4
+        self.max_bubble_width_ratio = 0.85  # 85% of available width
 
     def _markdown_to_html(self, text: str, color: str = "#1a1a1a") -> str:
         """Convert simple markdown to HTML for rich text rendering"""
@@ -250,7 +250,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
             stripped = line.strip()
             if stripped.startswith('•') or stripped.startswith('- ') or (stripped.startswith('* ') and len(stripped) > 2):
                 if not in_list:
-                    html_lines.append('<ul style="margin: 4px 0; padding-left: 20px;">')
+                    html_lines.append('<ul style="margin: 2px 0; padding-left: 16px;">')
                     in_list = True
                 content = stripped[2:].strip() if stripped.startswith('- ') or stripped.startswith('* ') else stripped[1:].strip()
                 html_lines.append(f'<li>{content}</li>')
@@ -261,7 +261,8 @@ class ChatMessageDelegate(QStyledItemDelegate):
                 if stripped:
                     html_lines.append(line + '<br/>')
                 else:
-                    html_lines.append('<br/>')
+                    # Empty line = paragraph break — use small spacer instead of full line break
+                    html_lines.append('<div style="height: 4px;"></div>')
 
         if in_list:
             html_lines.append('</ul>')
@@ -269,7 +270,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
         html_text = ''.join(html_lines)
 
         # Wrap in styled div
-        return f'<div style="color: {color}; line-height: 1.4;">{html_text}</div>'
+        return f'<div style="color: {color}; line-height: 1.2; font-size: 9pt;">{html_text}</div>'
 
     def sizeHint(self, option: QStyleOptionViewItem, index):
         """Calculate size needed for this message"""
@@ -286,7 +287,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
         width = option.rect.width() if option.rect.width() > 0 else 800
         max_bubble_width = int(width * self.max_bubble_width_ratio)
 
-        font = QFont("Segoe UI", 10 if role != "system" else 9)
+        font = QFont("Segoe UI", 9 if role != "system" else 8)
 
         if role == "system":
             # System messages are centered and smaller (with markdown formatting)
@@ -349,7 +350,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
         max_bubble_width = int(rect.width() * self.max_bubble_width_ratio)
 
         # Calculate text size using QTextDocument for accurate height
-        font = QFont("Segoe UI", 10)
+        font = QFont("Segoe UI", 9)
         painter.setFont(font)
 
         text_width = max_bubble_width - (self.bubble_padding * 2) - self.avatar_size - self.avatar_margin - self.padding
@@ -372,7 +373,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
         # Draw bubble with gradient
         bubble_rect = QRectF(bubble_x, bubble_y, bubble_width, bubble_height)
         path = QPainterPath()
-        path.addRoundedRect(bubble_rect, 18, 18)
+        path.addRoundedRect(bubble_rect, 10, 10)
 
         # Supervertaler blue gradient
         gradient = QLinearGradient(bubble_rect.topLeft(), bubble_rect.bottomRight())
@@ -415,7 +416,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
 
         # Draw avatar emoji
         painter.setPen(QPen(QColor("white")))
-        painter.setFont(QFont("Segoe UI Emoji", 13))
+        painter.setFont(QFont("Segoe UI Emoji", 9))
         painter.drawText(avatar_rect, Qt.AlignmentFlag.AlignCenter, "👤")
 
     def _paint_assistant_message(self, painter: QPainter, rect: QRect, message: str):
@@ -426,7 +427,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
         max_bubble_width = int(rect.width() * self.max_bubble_width_ratio)
 
         # Calculate text size using QTextDocument for accurate height
-        font = QFont("Segoe UI", 10)
+        font = QFont("Segoe UI", 9)
         painter.setFont(font)
 
         text_width = max_bubble_width - (self.bubble_padding * 2) - self.avatar_size - self.avatar_margin - self.padding
@@ -449,13 +450,13 @@ class ChatMessageDelegate(QStyledItemDelegate):
         # Draw bubble
         bubble_rect = QRectF(bubble_x, bubble_y, bubble_width, bubble_height)
         path = QPainterPath()
-        path.addRoundedRect(bubble_rect, 18, 18)
+        path.addRoundedRect(bubble_rect, 10, 10)
 
         painter.fillPath(path, QBrush(QColor("#F5F5F7")))
 
         # Draw border
         painter.setPen(QPen(QColor("#E8E8EA"), 1))
-        painter.drawRoundedRect(bubble_rect, 18, 18)
+        painter.drawRoundedRect(bubble_rect, 10, 10)
 
         # Draw shadow
         painter.setPen(QPen(QColor(0, 0, 0, 20), 0))
@@ -1209,26 +1210,14 @@ class UnifiedPromptManagerQt:
         action_btn.clicked.connect(self._analyze_and_generate)
         layout.addWidget(action_btn, 0)
         
-        # Main content: Horizontal splitter (context sidebar | chat area)
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.setHandleWidth(3)
-        
-        # Left: Context Sidebar
+        # Context sidebar (collapsible) above chat area
         context_panel = self._create_context_sidebar()
-        context_panel.setMinimumWidth(200)
-        context_panel.setMaximumWidth(350)
-        main_splitter.addWidget(context_panel)
-        
-        # Right: Chat Interface
+        self._context_panel = context_panel
+        layout.addWidget(context_panel, 0)
+
+        # Chat Interface (gets all remaining space)
         chat_panel = self._create_chat_interface()
-        main_splitter.addWidget(chat_panel)
-        
-        # Set splitter proportions (25% context, 75% chat)
-        main_splitter.setSizes([250, 750])
-        main_splitter.setStretchFactor(0, 0)  # Context sidebar fixed-ish
-        main_splitter.setStretchFactor(1, 1)  # Chat area expands
-        
-        layout.addWidget(main_splitter, 1)
+        layout.addWidget(chat_panel, 1)
         
         return tab
     
@@ -1385,38 +1374,45 @@ class UnifiedPromptManagerQt:
         return tab
     
     def _create_context_sidebar(self) -> QWidget:
-        """Create context sidebar showing available resources"""
+        """Create collapsible context sidebar showing available resources"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
-        
-        # Title
-        title = QLabel("📋 Available Context")
-        title.setStyleSheet("font-weight: bold; font-size: 10pt; color: #1976D2;")
-        layout.addWidget(title)
-        
-        # Scroll area for context items
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; }")
-        
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(10)
-        
+        layout.setContentsMargins(5, 2, 5, 0)
+        layout.setSpacing(0)
+
+        # Clickable header to toggle collapse
+        header = QPushButton("▼ Available Context")
+        header.setStyleSheet("""
+            QPushButton {
+                font-weight: bold; font-size: 9pt; color: #1976D2;
+                text-align: left; border: none; padding: 4px 2px;
+                background: transparent;
+            }
+            QPushButton:hover { background-color: rgba(25, 118, 210, 0.08); border-radius: 3px; }
+            QPushButton:focus { outline: none; }
+        """)
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
+        header.setToolTip("Click to collapse/expand context panel")
+        layout.addWidget(header)
+        self._context_header_btn = header
+
+        # Collapsible content area
+        context_body = QWidget()
+        body_layout = QVBoxLayout(context_body)
+        body_layout.setContentsMargins(0, 5, 0, 5)
+        body_layout.setSpacing(8)
+
         # Current Project Document
         self.context_current_doc = self._create_context_section(
             "📄 Current Document",
             "No document loaded"
         )
-        content_layout.addWidget(self.context_current_doc)
-        
+        body_layout.addWidget(self.context_current_doc)
+
         # Attached Files (expandable section)
         self.context_attached_files_frame = self._create_attached_files_section()
-        content_layout.addWidget(self.context_attached_files_frame)
-        
+        body_layout.addWidget(self.context_attached_files_frame)
+
         # Prompts from Library
         prompt_count = len(self.library.prompts)
         self.context_prompts = self._create_context_section(
@@ -1424,8 +1420,8 @@ class UnifiedPromptManagerQt:
             f"{prompt_count} prompts available\nClick to select specific prompts"
         )
         self.context_prompts.setCursor(Qt.CursorShape.PointingHandCursor)
-        content_layout.addWidget(self.context_prompts)
-        
+        body_layout.addWidget(self.context_prompts)
+
         # Translation Memories
         self.context_tms = self._create_context_section(
             "💾 Translation Memories",
@@ -1433,7 +1429,7 @@ class UnifiedPromptManagerQt:
         )
         self.context_tms.setCursor(Qt.CursorShape.PointingHandCursor)
         self.context_tms.mousePressEvent = lambda e: self._toggle_tm_inclusion()
-        content_layout.addWidget(self.context_tms)
+        body_layout.addWidget(self.context_tms)
 
         # Termbases
         self.context_termbases = self._create_context_section(
@@ -1442,14 +1438,34 @@ class UnifiedPromptManagerQt:
         )
         self.context_termbases.setCursor(Qt.CursorShape.PointingHandCursor)
         self.context_termbases.mousePressEvent = lambda e: self._toggle_termbase_inclusion()
-        content_layout.addWidget(self.context_termbases)
-        
-        content_layout.addStretch()
-        
-        scroll.setWidget(content)
-        layout.addWidget(scroll, 1)
-        
+        body_layout.addWidget(self.context_termbases)
+
+        # Wrap in a scroll area with a max height so it doesn't steal all chat space
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(context_body)
+        scroll.setMaximumHeight(320)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        self._context_body = scroll
+        layout.addWidget(scroll)
+
+        # Start collapsed to give chat maximum space
+        self._context_collapsed = True
+        scroll.setVisible(False)
+        header.setText("▶ Available Context")
+
+        header.clicked.connect(self._toggle_context_sidebar)
+
         return panel
+
+    def _toggle_context_sidebar(self):
+        """Toggle the Available Context section open/closed"""
+        self._context_collapsed = not self._context_collapsed
+        self._context_body.setVisible(not self._context_collapsed)
+        self._context_header_btn.setText(
+            "▶ Available Context" if self._context_collapsed else "▼ Available Context"
+        )
     
     def _create_context_section(self, title: str, description: str) -> QFrame:
         """Create a context section widget"""
@@ -1837,8 +1853,8 @@ class UnifiedPromptManagerQt:
         """Create chat interface with messages and input"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(2)
 
         # Chat messages area (using QListWidget with custom delegate)
         self.chat_display = QListWidget()
@@ -1847,8 +1863,8 @@ class UnifiedPromptManagerQt:
             QListWidget {
                 background-color: #FFFFFF;
                 border: 1px solid #E8E8EA;
-                border-radius: 8px;
-                font-size: 10pt;
+                border-radius: 4px;
+                font-size: 9pt;
                 font-family: 'Segoe UI', system-ui, sans-serif;
             }
             QListWidget::item {
@@ -1875,15 +1891,15 @@ class UnifiedPromptManagerQt:
         # Top toolbar with Clear button
         toolbar_frame = QFrame()
         toolbar_layout = QHBoxLayout(toolbar_frame)
-        toolbar_layout.setContentsMargins(0, 0, 0, 5)
-        toolbar_layout.setSpacing(5)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(2)
         
         clear_btn = QPushButton("🗑️ Clear Chat")
         clear_btn.setStyleSheet("""
             QPushButton {
                 background-color: #757575;
                 color: white;
-                padding: 6px 12px;
+                padding: 3px 8px;
                 border-radius: 4px;
                 border: none;
                 font-size: 9pt;

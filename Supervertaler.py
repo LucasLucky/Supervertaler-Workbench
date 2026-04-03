@@ -1002,6 +1002,113 @@ def extract_html_tags(text: str) -> list:
     return re.findall(pattern, text)
 
 
+def compact_tags(text: str, tag_map: dict = None) -> str:
+    """
+    Replace verbose XML/HTML tags with short numbered placeholders for display.
+
+    Simple formatting tags (<b>, <i>, <u>, <sub>, <sup> and their closing tags)
+    are left untouched. Only verbose tags (those with attributes or long names
+    like <bmk id="0" name="_Toc219208699" transform="open">) are shortened.
+
+    Opening tags get {1}, closing tags get {/1}, self-closing tags get {1/}.
+    Each unique tag name gets a stable number (first seen = 1, etc.).
+
+    Args:
+        text: Text containing verbose tags.
+        tag_map: Optional dict to populate with placeholder→full-tag mappings
+                 (for reversing later). If None, no map is built.
+
+    Returns:
+        Text with verbose tags replaced by compact numbered placeholders.
+    """
+    import re
+
+    # Tags to leave untouched (simple formatting — already short)
+    _PASSTHROUGH = {'b', 'i', 'u', 'sub', 'sup', 'em', 'strong', 's'}
+
+    tag_pattern = re.compile(
+        r'<(/?)([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?(/?)\s*>'  # named tags with optional attrs
+        r'|'
+        r'</(\d+)>'          # Trados numeric closing: </92>
+        r'|'
+        r'<(\d+)>'           # Trados numeric opening: <92>
+    )
+
+    tag_name_to_num = {}
+    counter = [0]
+
+    def _get_num(name: str) -> int:
+        if name not in tag_name_to_num:
+            counter[0] += 1
+            tag_name_to_num[name] = counter[0]
+        return tag_name_to_num[name]
+
+    def _replace(m):
+        full_tag = m.group(0)
+
+        # Trados numeric closing </N>
+        if m.group(5) is not None:
+            n = _get_num(f"trados_{m.group(5)}")
+            placeholder = f"{{/{n}}}"
+            if tag_map is not None:
+                tag_map[placeholder] = full_tag
+            return placeholder
+        # Trados numeric opening <N>
+        if m.group(6) is not None:
+            n = _get_num(f"trados_{m.group(6)}")
+            placeholder = f"{{{n}}}"
+            if tag_map is not None:
+                tag_map[placeholder] = full_tag
+            return placeholder
+
+        # Named tag
+        slash = m.group(1)      # '/' for closing, '' for opening
+        name = m.group(2)       # tag name
+        attrs = m.group(3)      # attributes (may be None)
+        self_close = m.group(4) # '/' for self-closing
+
+        # Pass through simple formatting tags without attributes
+        if name.lower() in _PASSTHROUGH and not attrs:
+            return full_tag
+
+        # Only shorten if the tag is verbose (has attributes or name > 3 chars)
+        if not attrs and len(name) <= 3:
+            return full_tag
+
+        n = _get_num(name.lower())
+        if slash:
+            placeholder = f"{{/{n}}}"
+        elif self_close:
+            placeholder = f"{{{n}/}}"
+        else:
+            placeholder = f"{{{n}}}"
+
+        if tag_map is not None:
+            tag_map[placeholder] = full_tag
+        return placeholder
+
+    return tag_pattern.sub(_replace, text)
+
+
+def expand_compact_tags(text: str, tag_map: dict) -> str:
+    """
+    Reverse compact_tags() — replace numbered placeholders back to full tags.
+
+    Args:
+        text: Text with compact placeholders like {1}, {/1}.
+        tag_map: Dict mapping placeholder → full tag string.
+
+    Returns:
+        Text with full tags restored.
+    """
+    if not tag_map:
+        return text
+    # Sort by longest placeholder first to avoid partial replacements
+    for placeholder, full_tag in sorted(tag_map.items(), key=lambda x: -len(x[0])):
+        text = text.replace(placeholder, full_tag)
+    return text
+
+
 def extract_all_tags(text: str) -> list:
     """
     Extract all tags (memoQ, HTML, and Trados numeric) from text in order of appearance.
@@ -2007,11 +2114,21 @@ class GridTextEditor(QTextEdit):
 
             # Try memoQ tags and HTML tags (find_next_unused_tag handles both)
             if has_any_tags:
-                next_tag = find_next_unused_tag(source_text, current_target)
+                # In compact mode, expand target placeholders before comparison
+                compact_map = getattr(self, '_compact_tag_map', None)
+                compare_target = expand_compact_tags(current_target, compact_map) if compact_map else current_target
+                next_tag = find_next_unused_tag(source_text, compare_target)
                 if next_tag:
-                    cursor.insertText(next_tag)
+                    # In compact mode, insert the compact placeholder instead of full tag
+                    insert_text = next_tag
+                    if compact_map:
+                        for placeholder, full_tag in compact_map.items():
+                            if full_tag == next_tag:
+                                insert_text = placeholder
+                                break
+                    cursor.insertText(insert_text)
                     if hasattr(main_window, 'log'):
-                        main_window.log(f"🏷️ Inserted tag: {next_tag}")
+                        main_window.log(f"🏷️ Inserted tag: {insert_text}")
                     return
 
             # Try CafeTran pipe symbols
@@ -3386,6 +3503,7 @@ class TagHighlighter(QSyntaxHighlighter):
         tag_patterns = [
             r'</?[a-zA-Z][a-zA-Z0-9-]*/?(?:\s[^>]*)?>',  # HTML/XML tags
             r'</?\d+>',                                   # Trados numeric: <1>, </1>
+            r'\{/?\d+/?\}',                               # Compact tag placeholders: {1}, {/1}, {1/}
             r'\[\d+[}\]]',                                # memoQ numeric: [1}, [1]
             r'\{\d+[}\]]',                                # memoQ numeric: {1}, {1]
             r'\[[^}\]]+\}',                               # memoQ mixed: [anything} (exclude } and ])
@@ -4608,11 +4726,21 @@ class EditableGridTextEditor(QTextEdit):
 
             # Try memoQ tags and HTML tags (find_next_unused_tag handles both)
             if has_any_tags:
-                next_tag = find_next_unused_tag(source_text, current_target)
+                # In compact mode, expand target placeholders before comparison
+                compact_map = getattr(self, '_compact_tag_map', None)
+                compare_target = expand_compact_tags(current_target, compact_map) if compact_map else current_target
+                next_tag = find_next_unused_tag(source_text, compare_target)
                 if next_tag:
-                    cursor.insertText(next_tag)
+                    # In compact mode, insert the compact placeholder instead of full tag
+                    insert_text = next_tag
+                    if compact_map:
+                        for placeholder, full_tag in compact_map.items():
+                            if full_tag == next_tag:
+                                insert_text = placeholder
+                                break
+                    cursor.insertText(insert_text)
                     if hasattr(main_window, 'log'):
-                        main_window.log(f"🏷️ Inserted tag: {next_tag}")
+                        main_window.log(f"🏷️ Inserted tag: {insert_text}")
                     return
 
             # Try CafeTran pipe symbols
@@ -23833,7 +23961,7 @@ class SupervertalerQt(QMainWindow):
         tab_seg_info.setStyleSheet("font-weight: bold;")
         toolbar_layout.addWidget(tab_seg_info)
         
-        # View mode segmented control (WYSIWYG / Tags)
+        # View mode segmented control (WYSIWYG / Compact / Tags)
         from PyQt6.QtWidgets import QButtonGroup
 
         view_mode_container = QWidget()
@@ -23845,6 +23973,27 @@ class SupervertalerQt(QMainWindow):
         view_mode_group = QButtonGroup(self)
         view_mode_group.setExclusive(True)
 
+        _seg_btn_base = """
+            QPushButton {{
+                background-color: #757575;
+                color: white;
+                font-weight: bold;
+                padding: 4px 6px;
+                font-size: 8pt;
+                border: none;
+                {radius}
+            }}
+            QPushButton:checked {{
+                background-color: #9C27B0;
+            }}
+            QPushButton:hover:!checked {{
+                background-color: #858585;
+            }}
+            QPushButton:focus {{
+                outline: none;
+            }}
+        """
+
         # WYSIWYG button (left)
         wysiwyg_btn = QPushButton("WYSIWYG")
         wysiwyg_btn.setCheckable(True)
@@ -23852,29 +24001,24 @@ class SupervertalerQt(QMainWindow):
         wysiwyg_btn.setToolTip(
             f"WYSIWYG View ({format_shortcut_for_display('Ctrl+Alt+T')})\nShows formatted text without raw tags"
         )
-        wysiwyg_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #757575;
-                color: white;
-                font-weight: bold;
-                padding: 4px 12px;
-                border: none;
-                border-top-left-radius: 3px;
-                border-bottom-left-radius: 3px;
-            }
-            QPushButton:checked {
-                background-color: #9C27B0;
-            }
-            QPushButton:hover:!checked {
-                background-color: #858585;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        wysiwyg_btn.clicked.connect(lambda: self.toggle_tag_view(False, None))
+        wysiwyg_btn.setStyleSheet(_seg_btn_base.format(
+            radius="border-top-left-radius: 3px; border-bottom-left-radius: 3px;"
+        ))
+        wysiwyg_btn.clicked.connect(lambda: self._set_tag_view_mode('wysiwyg'))
         view_mode_group.addButton(wysiwyg_btn, 0)
         view_mode_layout.addWidget(wysiwyg_btn)
+
+        # Compact button (middle) — shortens verbose tags to {1}, {/1}
+        compact_btn = QPushButton("Compact")
+        compact_btn.setCheckable(True)
+        compact_btn.setChecked(False)
+        compact_btn.setToolTip(
+            "Compact Tag View\nShortens verbose tags like <bmk id=\"0\" ...> to {1}"
+        )
+        compact_btn.setStyleSheet(_seg_btn_base.format(radius=""))
+        compact_btn.clicked.connect(lambda: self._set_tag_view_mode('compact'))
+        view_mode_group.addButton(compact_btn, 2)
+        view_mode_layout.addWidget(compact_btn)
 
         # Tags button (right)
         tags_btn = QPushButton("Tags")
@@ -23883,27 +24027,10 @@ class SupervertalerQt(QMainWindow):
         tags_btn.setToolTip(
             f"Tag View ({format_shortcut_for_display('Ctrl+Alt+T')})\nShows raw tags like <b>bold</b>"
         )
-        tags_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #757575;
-                color: white;
-                font-weight: bold;
-                padding: 4px 12px;
-                border: none;
-                border-top-right-radius: 3px;
-                border-bottom-right-radius: 3px;
-            }
-            QPushButton:checked {
-                background-color: #9C27B0;
-            }
-            QPushButton:hover:!checked {
-                background-color: #858585;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        tags_btn.clicked.connect(lambda: self.toggle_tag_view(True, None))
+        tags_btn.setStyleSheet(_seg_btn_base.format(
+            radius="border-top-right-radius: 3px; border-bottom-right-radius: 3px;"
+        ))
+        tags_btn.clicked.connect(lambda: self._set_tag_view_mode('tags'))
         view_mode_group.addButton(tags_btn, 1)
         view_mode_layout.addWidget(tags_btn)
 
@@ -23911,10 +24038,13 @@ class SupervertalerQt(QMainWindow):
 
         # Store references for keyboard shortcut and programmatic access
         self.wysiwyg_btn = wysiwyg_btn
+        self.compact_btn = compact_btn
         self.tags_btn = tags_btn
         self.view_mode_group = view_mode_group
-        
-        # Initialize tag view state
+
+        # Initialize tag view state: 'tags' (default), 'compact', or 'wysiwyg'
+        if not hasattr(self, 'tag_view_mode'):
+            self.tag_view_mode = 'tags'
         if not hasattr(self, 'show_tags'):
             self.show_tags = True  # Default: show tags
         
@@ -34346,6 +34476,12 @@ class SupervertalerQt(QMainWindow):
                 if self.hide_outer_wrapping_tags:
                     stripped, stripped_source_tag = strip_outer_wrapping_tags(segment.source)
                     source_for_display = stripped
+                # Apply compact tag shortening if in compact mode
+                # Build tag_map from source so target uses same numbering
+                _compact_tag_map = None
+                if getattr(self, 'tag_view_mode', 'tags') == 'compact':
+                    _compact_tag_map = {}
+                    source_for_display = compact_tags(source_for_display, _compact_tag_map)
                 # Apply invisible character replacements for display only
                 source_display_text = self.apply_invisible_replacements(source_for_display)
                 source_editor = ReadOnlyGridTextEditor(source_display_text, self.table, row)
@@ -34376,12 +34512,17 @@ class SupervertalerQt(QMainWindow):
                     # Use source tag as reference (target should match source structure)
                     segment._stripped_outer_tag = stripped_source_tag or stripped_target_tag
 
+                # Apply compact tag shortening to target (display only — reversed before saving)
+                if _compact_tag_map is not None:
+                    target_for_display = compact_tags(target_for_display, _compact_tag_map)
                 # Apply invisible character replacements for display (will be reversed when saving)
                 target_display_text = self.apply_invisible_replacements(target_for_display)
                 target_editor = EditableGridTextEditor(target_display_text, self.table, row, self.table)
                 target_editor.setFont(font)
                 # Store stripped tag on editor for auto-restore
                 target_editor._stripped_outer_tag = stripped_source_tag or stripped_target_tag
+                # Store compact tag map for reverse-expanding on save
+                target_editor._compact_tag_map = _compact_tag_map
 
                 # Make locked segments read-only (included for context only)
                 if getattr(segment, 'locked', False):
@@ -34396,6 +34537,11 @@ class SupervertalerQt(QMainWindow):
                     def on_target_text_changed():
                         nonlocal debounce_timer
                         new_text = editor_widget.toPlainText()
+
+                        # Reverse compact tag placeholders before saving
+                        compact_map = getattr(editor_widget, '_compact_tag_map', None)
+                        if compact_map:
+                            new_text = expand_compact_tags(new_text, compact_map)
 
                         # Reverse invisible character replacements before saving
                         new_text = self.reverse_invisible_replacements(new_text)
@@ -34442,8 +34588,13 @@ class SupervertalerQt(QMainWindow):
 
                         # If invisible markers are active, re-apply them so the widget display
                         # stays in sync (e.g. ↵ after Shift+Enter when Show Invisibles is on).
+                        # In compact mode, use compact text for display (not the expanded save text)
                         if hasattr(self, 'invisible_display_settings') and any(self.invisible_display_settings.values()):
-                            display_text = self.apply_invisible_replacements(new_text)
+                            display_source = new_text
+                            compact_map = getattr(editor_widget, '_compact_tag_map', None)
+                            if compact_map:
+                                display_source = compact_tags(display_source, compact_map)
+                            display_text = self.apply_invisible_replacements(display_source)
                             if display_text != editor_widget.toPlainText():
                                 # Cursor position in the clean (marker-free) new_text.
                                 # The widget currently shows the old display text; we need to
@@ -34458,7 +34609,7 @@ class SupervertalerQt(QMainWindow):
                                 # Now map clean_pos → new display_text position.
                                 # apply_invisible_replacements inserts markers before each
                                 # invisible char; count them in the display text up to clean_pos.
-                                new_display_before = self.apply_invisible_replacements(new_text[:clean_pos])
+                                new_display_before = self.apply_invisible_replacements(display_source[:clean_pos])
                                 new_pos = min(len(new_display_before), len(display_text))
                                 editor_widget.blockSignals(True)
                                 editor_widget.setPlainText(display_text)
@@ -43640,6 +43791,8 @@ class SupervertalerQt(QMainWindow):
                     if self.hide_outer_wrapping_tags:
                         stripped, _ = strip_outer_wrapping_tags(source_for_display)
                         source_for_display = stripped
+                    if getattr(self, 'tag_view_mode', 'tags') == 'compact':
+                        source_for_display = compact_tags(source_for_display)
                     new_source_text = self.apply_invisible_replacements(source_for_display)
                     source_widget.blockSignals(True)
                     source_widget.setPlainText(new_source_text)
@@ -43654,6 +43807,18 @@ class SupervertalerQt(QMainWindow):
                     if self.hide_outer_wrapping_tags:
                         stripped, _ = strip_outer_wrapping_tags(target_for_display)
                         target_for_display = stripped
+                    # Apply compact tag shortening (display only — reversed before saving)
+                    if getattr(self, 'tag_view_mode', 'tags') == 'compact':
+                        # Re-use the tag_map built from source so numbering stays consistent
+                        tag_map = {}
+                        src_display = segment.source
+                        if self.hide_outer_wrapping_tags:
+                            src_display, _ = strip_outer_wrapping_tags(src_display)
+                        compact_tags(src_display, tag_map)
+                        target_for_display = compact_tags(target_for_display, tag_map)
+                        target_widget._compact_tag_map = tag_map
+                    else:
+                        target_widget._compact_tag_map = None
                     new_target_text = self.apply_invisible_replacements(target_for_display)
                     target_widget.blockSignals(True)
                     target_widget.setPlainText(new_target_text)
@@ -46682,39 +46847,48 @@ class SupervertalerQt(QMainWindow):
             self.log("⚠️ TM/Glossary lookups DISABLED from segment editor (faster editing)")
 
     def _toggle_tag_view_via_shortcut(self):
-        """Toggle tag view using keyboard shortcut (Ctrl+Alt+T)"""
-        if hasattr(self, 'wysiwyg_btn') and hasattr(self, 'tags_btn'):
-            # Toggle between the two modes
-            new_state = not self.show_tags
-            self.toggle_tag_view(new_state, None)
+        """Toggle tag view using keyboard shortcut (Ctrl+Alt+T) — cycles: tags → compact → wysiwyg"""
+        mode = getattr(self, 'tag_view_mode', 'tags')
+        cycle = {'tags': 'compact', 'compact': 'wysiwyg', 'wysiwyg': 'tags'}
+        self._set_tag_view_mode(cycle.get(mode, 'tags'))
 
     def _enable_tag_view_after_import(self):
         """Auto-enable Tag View after importing a document with formatting tags"""
         if hasattr(self, 'tags_btn'):
-            self.toggle_tag_view(True, None)
+            self._set_tag_view_mode('tags')
             self.log("🏷️ Tag View auto-enabled (formatting tags detected in import)")
 
-    def toggle_tag_view(self, checked: bool, button: QPushButton = None):
-        """Toggle between Tag View (showing raw tags) and WYSIWYG View (formatted display)"""
-        self.show_tags = checked
+    def _set_tag_view_mode(self, mode: str):
+        """Set the tag view mode: 'tags', 'compact', or 'wysiwyg'"""
+        self.tag_view_mode = mode
+        self.show_tags = (mode == 'tags' or mode == 'compact')
 
-        # Update segmented control buttons if they exist
-        if hasattr(self, 'wysiwyg_btn') and hasattr(self, 'tags_btn'):
-            if checked:
-                self.tags_btn.setChecked(True)
-            else:
-                self.wysiwyg_btn.setChecked(True)
+        # Update segmented control buttons
+        if hasattr(self, 'wysiwyg_btn'):
+            self.wysiwyg_btn.setChecked(mode == 'wysiwyg')
+        if hasattr(self, 'compact_btn'):
+            self.compact_btn.setChecked(mode == 'compact')
+        if hasattr(self, 'tags_btn'):
+            self.tags_btn.setChecked(mode == 'tags')
 
-        self.log(f"{'🏷️ Tag View ENABLED - showing raw tags' if checked else '✨ WYSIWYG View ENABLED - showing formatted text'}")
+        labels = {'tags': '🏷️ Tag View — showing raw tags',
+                  'compact': '📦 Compact View — verbose tags shortened',
+                  'wysiwyg': '✨ WYSIWYG View — showing formatted text'}
+        self.log(labels.get(mode, mode))
 
-        # Refresh the grid to update display
         if hasattr(self, 'table') and self.current_project:
             self._refresh_grid_display_mode()
-    
+
+    def toggle_tag_view(self, checked: bool, button: QPushButton = None):
+        """Legacy toggle — routes to _set_tag_view_mode for backward compatibility"""
+        self._set_tag_view_mode('tags' if checked else 'wysiwyg')
+
     def _refresh_grid_display_mode(self):
         """Refresh all visible cells to reflect current tag view mode"""
         if not hasattr(self, 'table') or not self.current_project:
             return
+
+        mode = getattr(self, 'tag_view_mode', 'tags')
 
         # Suppress target change handlers during refresh to prevent data corruption
         # (switching display modes changes widget content which could trigger textChanged)
@@ -46733,30 +46907,44 @@ class SupervertalerQt(QMainWindow):
             target_for_display = segment.target
 
             if self.hide_outer_wrapping_tags:
-                # Strip outer wrapping tags from source
                 stripped_source, _ = strip_outer_wrapping_tags(segment.source)
                 source_for_display = stripped_source
-
-                # Strip outer wrapping tags from target
                 stripped_target, _ = strip_outer_wrapping_tags(segment.target)
                 target_for_display = stripped_target
+
+            # Compact mode: build tag map from source, apply to both columns.
+            # The map is stored on the target widget so edits can be reversed.
+            if mode == 'compact':
+                tag_map = {}
+                source_for_display = compact_tags(source_for_display, tag_map)
+                target_for_display = compact_tags(target_for_display, tag_map)
+            else:
+                tag_map = None
 
             # Apply invisible character replacements (e.g. ↵ for line breaks)
             source_for_display = self.apply_invisible_replacements(source_for_display)
             target_for_display = self.apply_invisible_replacements(target_for_display)
 
+            # For compact mode, use show_tags=True so TagHighlighter can color the placeholders
+            show_tags_for_cell = (mode in ('tags', 'compact'))
+
             # Update source cell (column 2)
             source_widget = self.table.cellWidget(row, 2)
             if source_widget and hasattr(source_widget, 'update_display_mode'):
-                source_widget.update_display_mode(source_for_display, self.show_tags)
+                source_widget.update_display_mode(source_for_display, show_tags_for_cell)
 
             # Update target cell (column 3)
             target_widget = self.table.cellWidget(row, 3)
             if target_widget and hasattr(target_widget, 'update_display_mode'):
-                target_widget.update_display_mode(target_for_display, self.show_tags)
+                target_widget.update_display_mode(target_for_display, show_tags_for_cell)
+                # Store tag map for reverse-expanding on save
+                target_widget._compact_tag_map = tag_map
 
         # Re-enable target change handlers
         self._suppress_target_change_handlers = False
+
+        # Auto-resize rows since tag length changes affect row heights
+        self.auto_resize_rows()
 
     def update_tab_segment_editor(self, segment_id: int, source_text: str, target_text: str,
                                    status: str = "untranslated", notes: str = ""):
