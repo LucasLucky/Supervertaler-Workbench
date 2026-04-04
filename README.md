@@ -73,7 +73,7 @@ macOS will block the app on first launch because it is not signed with an Apple 
 ## Contributing
 
 - [Report bugs](https://github.com/Supervertaler/Supervertaler-Workbench/issues)
-- [Request features](https://github.com/Supervertaler/Supervertaler-Workbench/discussions)
+- [Request features](https://github.com/orgs/Supervertaler/discussions)
 - [Contributing guide](CONTRIBUTING.md)
 
 ---
