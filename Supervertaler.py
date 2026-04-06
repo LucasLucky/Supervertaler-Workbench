@@ -9994,10 +9994,6 @@ class SupervertalerQt(QMainWindow):
         tmx_editor_action.triggered.connect(lambda: self._navigate_to_tool("TMX Editor"))
         tools_menu.addAction(tmx_editor_action)
         
-        tracked_changes_action = QAction("🔄 Tracked &Changes...", self)
-        tracked_changes_action.triggered.connect(lambda: self._navigate_to_tool("Tracked Changes"))
-        tools_menu.addAction(tracked_changes_action)
-        
         tools_menu.addSeparator()
         
         image_extractor_action = QAction("🖼️ &Image Extractor (Superimage)...", self)
@@ -11373,13 +11369,6 @@ class SupervertalerQt(QMainWindow):
         
         return encoding_repair_widget
     
-    def create_tracked_changes_tab(self) -> QWidget:
-        """Create the Tracked Changes tab - Post-Translation Analysis"""
-        return self._create_placeholder_tab(
-            "📊 Tracked Changes",
-            "Tracked Changes - Coming Soon\n\nFeatures:\n• Track translation changes\n• Version history\n• Comparison reports"
-        )
-    
     # ═══════════════════════════════════════════════════════════════════════════
     # Image Extractor Helper Methods
     # ═══════════════════════════════════════════════════════════════════════════
@@ -12210,9 +12199,6 @@ class SupervertalerQt(QMainWindow):
         tmx_tab = self.create_tmx_editor_tab()
         set_help_topic(tmx_tab, HelpTopics.TOOL_TMX_EDITOR)
         modules_tabs.addTab(tmx_tab, "✏️ TMX Editor")
-
-        tracked_tab = self.create_tracked_changes_tab()
-        modules_tabs.addTab(tracked_tab, "🔄 Tracked Changes")
 
         layout.addWidget(modules_tabs)
 
