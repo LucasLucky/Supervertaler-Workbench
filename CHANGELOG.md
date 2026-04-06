@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.372 (April 3, 2026)
+**Current Version:** v1.9.373 (April 6, 2026)
 
+
+## v1.9.373 - April 6, 2026
+
+### Removed
+- **Tracked Changes** – removed the unimplemented placeholder tab from the Tools panel and its menu entry. This feature will not be built
+
+---
 
 ## v1.9.372 - April 3, 2026
 
