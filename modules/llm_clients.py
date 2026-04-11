@@ -34,7 +34,7 @@ Usage:
 
 import os
 import sys
-from typing import Dict, Optional, Literal, List
+from typing import Dict, Optional, Literal, List, Tuple
 from dataclasses import dataclass
 
 
@@ -799,7 +799,211 @@ class LLMClient:
             result = self._clean_translation_response(result, prompt)
 
         return result
-    
+
+    def translate_with_usage(
+        self,
+        text: str,
+        source_lang: str = "en",
+        target_lang: str = "nl",
+        context: Optional[str] = None,
+        custom_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        images: Optional[List] = None,
+        system_prompt: Optional[str] = None,
+        skip_cleaning: bool = False
+    ) -> Tuple[str, Dict]:
+        """
+        Same as translate() but returns (text, usage_dict).
+
+        usage_dict contains:
+            input_tokens: int
+            output_tokens: int
+
+        Returns (text, {}) if usage data is unavailable.
+        """
+        if custom_prompt:
+            prompt = custom_prompt
+        else:
+            prompt = f"Translate the following text from {source_lang} to {target_lang}:\n\n{text}"
+            if context:
+                prompt = f"Context: {context}\n\n{prompt}"
+
+        if images and not self.model_supports_vision(self.provider, self.model):
+            images = None
+
+        if self.provider in ("openai", "custom_openai", "mistral", "openrouter"):
+            result, usage = self._call_openai_with_usage(prompt, max_tokens=max_tokens, images=images if self.provider in ("openai", "custom_openai") else None, system_prompt=system_prompt)
+        elif self.provider == "claude":
+            result, usage = self._call_claude_with_usage(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
+        elif self.provider == "gemini":
+            result, usage = self._call_gemini_with_usage(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
+        elif self.provider == "ollama":
+            result = self._call_ollama(prompt, max_tokens=max_tokens, system_prompt=system_prompt)
+            usage = {}
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
+
+        if not skip_cleaning:
+            result = self._clean_translation_response(result, prompt)
+
+        return result, usage
+
+    def _call_openai_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> Tuple[str, Dict]:
+        """Call OpenAI-compatible API and return (text, usage_dict)."""
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError("OpenAI library not installed. Install with: pip install openai")
+
+        model_lower = self.model.lower()
+        is_reasoning_model = any(x in model_lower for x in ["gpt-5", "o1", "o3"])
+        timeout_seconds = 600.0 if is_reasoning_model else 120.0
+
+        client_kwargs = {"api_key": self.api_key, "timeout": timeout_seconds}
+        if self.base_url:
+            client_kwargs["base_url"] = self.base_url
+        if self.provider == "openrouter":
+            client_kwargs["default_headers"] = {
+                "HTTP-Referer": "https://supervertaler.com",
+                "X-Title": "Supervertaler"
+            }
+        if self.http_proxy:
+            import httpx
+            client_kwargs["http_client"] = httpx.Client(proxy=self.http_proxy, timeout=timeout_seconds)
+        client = OpenAI(**client_kwargs)
+
+        if max_tokens is not None:
+            tokens_to_use = max_tokens
+        elif is_reasoning_model:
+            tokens_to_use = 32768
+        else:
+            tokens_to_use = self.max_tokens
+
+        content = prompt
+        if images:
+            content = [{"type": "text", "text": prompt}]
+            for img_ref, img_base64 in images:
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}})
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": content})
+
+        api_params = {"model": self.model, "messages": messages, "timeout": timeout_seconds}
+        if is_reasoning_model:
+            api_params["max_completion_tokens"] = tokens_to_use
+        else:
+            api_params["max_tokens"] = tokens_to_use
+            api_params["temperature"] = self.temperature
+
+        response = client.chat.completions.create(**api_params)
+
+        if not response.choices or not response.choices[0].message.content:
+            raise ValueError(f"OpenAI returned empty response for model {self.model}")
+
+        text = response.choices[0].message.content.strip()
+        if not text:
+            raise ValueError(f"OpenAI returned empty translation for model {self.model}")
+
+        usage = {}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                'input_tokens': getattr(response.usage, 'prompt_tokens', 0) or 0,
+                'output_tokens': getattr(response.usage, 'completion_tokens', 0) or 0,
+            }
+
+        return text, usage
+
+    def _call_claude_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> Tuple[str, Dict]:
+        """Call Claude API and return (text, usage_dict)."""
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("Anthropic library not installed. Install with: pip install anthropic")
+
+        prompt_length = len(prompt)
+        if prompt_length > 50000:
+            timeout_seconds = 300.0
+        elif prompt_length > 20000:
+            timeout_seconds = 180.0
+        else:
+            timeout_seconds = 120.0
+
+        claude_kwargs = {"api_key": self.api_key, "timeout": timeout_seconds}
+        if self.http_proxy:
+            import httpx
+            claude_kwargs["http_client"] = httpx.Client(proxy=self.http_proxy, timeout=timeout_seconds)
+        client = anthropic.Anthropic(**claude_kwargs)
+
+        tokens_to_use = max_tokens if max_tokens is not None else self.max_tokens
+
+        if images:
+            content = []
+            for img_ref, img_base64 in images:
+                content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_base64}})
+            content.append({"type": "text", "text": prompt})
+        else:
+            content = prompt
+
+        api_params = {
+            "model": self.model,
+            "max_tokens": tokens_to_use,
+            "messages": [{"role": "user", "content": content}],
+            "timeout": timeout_seconds
+        }
+        if system_prompt:
+            api_params["system"] = system_prompt
+
+        response = client.messages.create(**api_params)
+
+        if not response.content:
+            raise ValueError("Claude returned an empty response (no content blocks)")
+        text = response.content[0].text.strip()
+
+        usage = {}
+        if hasattr(response, 'usage') and response.usage:
+            usage = {
+                'input_tokens': getattr(response.usage, 'input_tokens', 0) or 0,
+                'output_tokens': getattr(response.usage, 'output_tokens', 0) or 0,
+            }
+
+        return text, usage
+
+    def _call_gemini_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> Tuple[str, Dict]:
+        """Call Gemini API and return (text, usage_dict)."""
+        try:
+            import google.generativeai as genai
+        except ImportError:
+            raise ImportError("Google AI library not installed. Install with: pip install google-generativeai")
+
+        genai.configure(api_key=self.api_key)
+
+        if system_prompt:
+            model = genai.GenerativeModel(self.model, system_instruction=system_prompt)
+        else:
+            model = genai.GenerativeModel(self.model)
+
+        if images:
+            content = [prompt]
+            for img_ref, pil_image in images:
+                content.append(pil_image)
+        else:
+            content = prompt
+
+        response = model.generate_content(content)
+        text = response.text.strip()
+
+        usage = {}
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            um = response.usage_metadata
+            usage = {
+                'input_tokens': getattr(um, 'prompt_token_count', 0) or 0,
+                'output_tokens': getattr(um, 'candidates_token_count', 0) or 0,
+            }
+
+        return text, usage
+
     def _call_openai(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> str:
         """Call OpenAI API with GPT-5/o1/o3 reasoning model support and vision capability"""
         print(f"🔵 _call_openai START: model={self.model}, prompt_len={len(prompt)}, max_tokens={max_tokens}, images={len(images) if images else 0}, has_system={bool(system_prompt)}")

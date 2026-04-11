@@ -626,8 +626,8 @@ class ShortcutManager:
         },
         "global_quicklauncher": {
             "category": "Global",
-            "description": "QuickLauncher (global — works from any app)",
-            "default": "Ctrl+Alt+Q",
+            "description": "Supervertaler Assistant (global — works from any app)",
+            "default": "Ctrl+Alt+A",
             "action": "global_quicklauncher",
             "context": "global"
         },

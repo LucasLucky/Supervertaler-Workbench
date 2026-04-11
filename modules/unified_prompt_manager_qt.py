@@ -31,6 +31,8 @@ from modules.ai_file_viewer_dialog import FileViewerDialog, FileRemoveConfirmDia
 from modules.ai_actions import AIActionSystem
 from modules.shortcut_display import format_shortcut_for_display
 from modules.document_analyzer import DocumentAnalyzer
+from modules.chat_backend import ChatBackend
+from modules.chat_view_widget import ChatViewWidget
 
 
 # Language code → full name mapping (matches Supervertaler.py available_langs)
@@ -875,11 +877,18 @@ class UnifiedPromptManagerQt:
         self.active_config_widget = None
         
         # AI Assistant state
-        self.llm_client: Optional[LLMClient] = None
-        self.attached_files: List[Dict] = []  # List of {path, name, content, type} - DEPRECATED, use attachment_manager
-        self.chat_history: List[Dict] = []  # List of {role, content, timestamp}
         self.ai_conversation_file = self.user_data_path / "workbench" / "ai_assistant" / "conversation.json"
         self._cached_document_markdown: Optional[str] = None  # Cached markdown conversion of current document
+
+        # Chat backend (shared across all chat views)
+        self.chat_backend = ChatBackend(
+            parent_app=self.parent_app,
+            conversation_file=self.ai_conversation_file,
+            log_callback=self.log_message
+        )
+
+        # Backward-compat property aliases
+        self.attached_files: List[Dict] = []  # DEPRECATED, use attachment_manager
 
         # Initialize Attachment Manager
         ai_assistant_dir = self.user_data_path / "workbench" / "ai_assistant"
@@ -905,10 +914,44 @@ class UnifiedPromptManagerQt:
         # Escape-to-return state
         self._assistant_return_external = False
 
-        self._init_llm_client()
-        self._load_conversation_history()
+        # Chat view references (set during create_tab / _create_ai_assistant_tab)
+        self._grid_chat_view: Optional[ChatViewWidget] = None
+        self._ai_tab_chat_view: Optional[ChatViewWidget] = None
+
         self._load_persisted_attachments()
-    
+
+    # ------------------------------------------------------------------
+    # Backward-compat properties (delegate to ChatBackend / ChatViewWidget)
+    # ------------------------------------------------------------------
+
+    @property
+    def llm_client(self):
+        return self.chat_backend.llm_client
+
+    @llm_client.setter
+    def llm_client(self, value):
+        self.chat_backend.llm_client = value
+
+    @property
+    def chat_history(self):
+        return self.chat_backend.chat_history
+
+    @chat_history.setter
+    def chat_history(self, value):
+        self.chat_backend.chat_history = value
+
+    @property
+    def chat_display(self):
+        if self._grid_chat_view:
+            return self._grid_chat_view._chat_display
+        return None
+
+    @property
+    def chat_input(self):
+        if self._grid_chat_view:
+            return self._grid_chat_view._chat_input
+        return None
+
     def _check_and_migrate(self):
         """Check if migration is needed and perform it, then ensure default folders exist"""
         try:
@@ -953,12 +996,8 @@ class UnifiedPromptManagerQt:
             parent_widget: Widget to add the tab to (will set its layout)
         """
         main_layout = QVBoxLayout(parent_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(5)
-        
-        # Main header for AI tab
-        header = self._create_main_header()
-        main_layout.addWidget(header, 0)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(2)
 
         # Sub-tabs: Prompt Manager, Supervertaler Assistant, Variables
         self.sub_tabs = QTabWidget()
@@ -978,6 +1017,16 @@ class UnifiedPromptManagerQt:
         # in Supervertaler.py so it's visible alongside the translation grid.
         self.assistant_tab = self._create_ai_assistant_tab()
 
+        # Tab 3: AI Assistant (full-width view, for use without a project open)
+        self._ai_tab_chat_view = ChatViewWidget(
+            self.chat_backend,
+            show_autoprompt=True,
+        )
+        self._ai_tab_chat_view.autoprompt_requested.connect(self._analyze_and_generate)
+        self._ai_tab_chat_view._do_send = self._context_aware_send
+        self._ai_tab_chat_view.escape_pressed.connect(self._return_from_assistant)
+        self.sub_tabs.addTab(self._ai_tab_chat_view, "💬 Assistant")
+
         main_layout.addWidget(self.sub_tabs, 1)  # 1 = stretch
 
     def _on_assistant_shown(self):
@@ -995,24 +1044,10 @@ class UnifiedPromptManagerQt:
         # Remember where to return on Escape
         self._assistant_return_external = from_external
 
-        # Switch to the Assistant tab in the right panel (handled by caller in Supervertaler.py)
-
-        # Insert text into the chat input (append if there's already text)
-        if text and text.strip():
-            current = self.chat_input.toPlainText()
-            if current.strip():
-                # There's existing text — append on a new line
-                self.chat_input.setPlainText(current + "\n" + text.strip())
-            else:
-                self.chat_input.setPlainText(text.strip())
-
-        # Focus the chat input so user can immediately type or press Enter to send
-        self.chat_input.setFocus()
-
-        # Move cursor to end
-        cursor = self.chat_input.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        self.chat_input.setTextCursor(cursor)
+        # Insert text into the grid-side chat view
+        if self._grid_chat_view:
+            self._grid_chat_view.insert_text(text)
+            self._grid_chat_view.focus_input()
 
     def _return_from_assistant(self):
         """Return to the Grid tab (or external app) after Escape in the Assistant."""
@@ -1179,46 +1214,22 @@ class UnifiedPromptManagerQt:
         return container
     
     def _create_ai_assistant_tab(self) -> QWidget:
-        """Create the AI Assistant sub-tab"""
+        """Create the AI Assistant tab for the grid-side right panel."""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
-        
-        # Quick Action Button at top
-        # Note: && is needed to display a single & (Qt uses & for keyboard shortcuts)
-        action_btn = QPushButton("🔍 AutoPrompt")
-        action_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1976D2;
-                color: white;
-                font-size: 11pt;
-                font-weight: bold;
-                padding: 10px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        action_btn.clicked.connect(self._analyze_and_generate)
-        layout.addWidget(action_btn, 0)
-        
-        # Context sidebar (collapsible) above chat area
-        context_panel = self._create_context_sidebar()
-        self._context_panel = context_panel
-        layout.addWidget(context_panel, 0)
 
-        # Chat Interface (gets all remaining space)
-        chat_panel = self._create_chat_interface()
-        layout.addWidget(chat_panel, 1)
-        
+        # Chat view widget (with AutoPrompt button + context chips)
+        self._grid_chat_view = ChatViewWidget(
+            self.chat_backend,
+            show_autoprompt=True,
+        )
+        self._grid_chat_view.autoprompt_requested.connect(self._analyze_and_generate)
+        self._grid_chat_view._do_send = self._context_aware_send
+        self._grid_chat_view.escape_pressed.connect(self._return_from_assistant)
+        layout.addWidget(self._grid_chat_view, 1)
+
         return tab
     
     def _create_placeholders_tab(self) -> QWidget:
@@ -1850,140 +1861,16 @@ class UnifiedPromptManagerQt:
             )
 
     def _create_chat_interface(self) -> QWidget:
-        """Create chat interface with messages and input"""
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
-
-        # Chat messages area (using QListWidget with custom delegate)
-        self.chat_display = QListWidget()
-        self.chat_display.setItemDelegate(ChatMessageDelegate())
-        self.chat_display.setStyleSheet("""
-            QListWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #E8E8EA;
-                border-radius: 4px;
-                font-size: 9pt;
-                font-family: 'Segoe UI', system-ui, sans-serif;
-            }
-            QListWidget::item {
-                border: none;
-                background: transparent;
-            }
-            QListWidget::item:selected {
-                background: transparent;
-            }
-            QListWidget::item:hover {
-                background: transparent;
-            }
-        """)
-        self.chat_display.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.chat_display.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.chat_display.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        self.chat_display.setSpacing(0)
-        # Enable context menu for copying messages
-        self.chat_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.chat_display.customContextMenuRequested.connect(self._show_chat_context_menu)
-        layout.addWidget(self.chat_display, 1)
-        
-        # Top toolbar with Clear button
-        toolbar_frame = QFrame()
-        toolbar_layout = QHBoxLayout(toolbar_frame)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(2)
-        
-        clear_btn = QPushButton("🗑️ Clear Chat")
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #757575;
-                color: white;
-                padding: 3px 8px;
-                border-radius: 4px;
-                border: none;
-                font-size: 9pt;
-            }
-            QPushButton:hover {
-                background-color: #616161;
-            }
-            QPushButton:pressed {
-                background-color: #424242;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        clear_btn.clicked.connect(self._clear_chat)
-        toolbar_layout.addWidget(clear_btn)
-        toolbar_layout.addStretch()
-        
-        layout.addWidget(toolbar_frame, 0)
-        
-        # Input area
-        input_frame = QFrame()
-        input_frame.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #E0E0E0;
-                border-radius: 5px;
-                padding: 5px;
-            }
-        """)
-        input_layout = QHBoxLayout(input_frame)
-        input_layout.setContentsMargins(5, 5, 5, 5)
-        input_layout.setSpacing(5)
-        
-        self.chat_input = QPlainTextEdit()
-        self.chat_input.setPlaceholderText(
-            f"Type your message here... ({format_shortcut_for_display('Shift+Enter')} for new line, Esc to return)"
-        )
-        self.chat_input.setMaximumHeight(80)
-        self.chat_input.setStyleSheet("""
-            QPlainTextEdit {
-                border: none;
-                font-size: 10pt;
-                color: #1a1a1a;
-                background-color: white;
-                padding: 4px;
-            }
-        """)
-        # Intercept Escape key to return to Grid / external app
-        _original_key_press = self.chat_input.keyPressEvent
-        def _chat_key_press(event):
-            if event.key() == Qt.Key.Key_Escape:
-                self._return_from_assistant()
-                return
-            _original_key_press(event)
-        self.chat_input.keyPressEvent = _chat_key_press
-        input_layout.addWidget(self.chat_input, 1)
-        
-        send_btn = QPushButton("Send")
-        send_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1976D2;
-                color: white;
-                font-weight: bold;
-                padding: 8px 20px;
-                border-radius: 5px;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        send_btn.clicked.connect(self._send_chat_message)
-        input_layout.addWidget(send_btn)
-        
-        layout.addWidget(input_frame, 0)
-        
-        return panel
+        """Legacy: returns the grid chat view widget.
+        Kept for backward compatibility — _create_ai_assistant_tab now
+        creates the ChatViewWidget directly.
+        """
+        if self._grid_chat_view:
+            return self._grid_chat_view
+        # Fallback: create a new view
+        view = ChatViewWidget(self.chat_backend)
+        view._do_send = self._context_aware_send
+        return view
 
     def _create_header(self) -> QWidget:
         """Create header - matches TMX Editor style exactly"""
@@ -2279,32 +2166,14 @@ class UnifiedPromptManagerQt:
         tree_state = self._capture_prompt_tree_state()
         self.tree_widget.clear()
         
-        # Debug: Show what we have
-        self.log_message(f"🔍 DEBUG: Refreshing tree with {len(self.library.prompts)} prompts")
-        self.log_message(f"🔍 DEBUG: Library dir: {self.unified_library_dir}")
-        self.log_message(f"🔍 DEBUG: Library dir exists: {self.unified_library_dir.exists()}")
-        
-        # Library folders (QuickLauncher parent folder removed - folder hierarchy now defines menu structure)
-        self.log_message(f"🔍 DEBUG: Building tree from {self.unified_library_dir}")
         self._build_tree_recursive(None, self.unified_library_dir, "")
-        
-        # Debug: Check what's in the tree
-        self.log_message(f"🔍 DEBUG: Tree has {self.tree_widget.topLevelItemCount()} top-level items")
-        for i in range(self.tree_widget.topLevelItemCount()):
-            item = self.tree_widget.topLevelItem(i)
-            text = item.text(0)
-            child_count = item.childCount()
-            self.log_message(f"🔍 DEBUG: Top-level item {i}: '{text}' with {child_count} children")
-        
+
         # Preserve user's expansion state across refreshes.
         if tree_state is None and not getattr(self, "_prompt_tree_state_initialized", False):
-            # First-ever refresh: default to collapsed ("popped in").
             self.tree_widget.collapseAll()
             self._prompt_tree_state_initialized = True
         else:
             self._restore_prompt_tree_state(tree_state)
-
-        self.log_message("🔍 DEBUG: Tree refresh complete")
 
     def _capture_prompt_tree_state(self) -> Optional[Dict[str, object]]:
         """Capture expansion + selection state for the Prompt Library tree."""
@@ -2632,13 +2501,13 @@ class UnifiedPromptManagerQt:
     def _build_tree_recursive(self, parent_item, directory: Path, relative_path: str):
         """Recursively build tree structure"""
         if not directory.exists():
-            self.log_message(f"🔍 DEBUG: Directory doesn't exist: {directory}")
+            return
             return
         
         # Get items sorted (folders first, then files)
         try:
             items = sorted(directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-            self.log_message(f"🔍 DEBUG: Found {len(items)} items in {directory.name}")
+            pass  # items counted
         except Exception as e:
             self.log_message(f"❌ ERROR listing directory {directory}: {e}")
             return
@@ -2659,8 +2528,6 @@ class UnifiedPromptManagerQt:
                 else:
                     self.tree_widget.addTopLevelItem(folder_item)
                 
-                self.log_message(f"🔍 DEBUG: Added folder: {item.name} (path: {rel_path})")
-                
                 # Recurse
                 self._build_tree_recursive(folder_item, item, rel_path)
             
@@ -2668,13 +2535,7 @@ class UnifiedPromptManagerQt:
                 # Prompt file (.md is preferred format, .svprompt/.txt legacy)
                 rel_path = str(Path(relative_path) / item.name) if relative_path else item.name
                 
-                self.log_message(f"🔍 DEBUG: Checking prompt file: {rel_path}")
-                self.log_message(f"🔍 DEBUG: In library.prompts? {rel_path in self.library.prompts}")
-                
-                # Show first few keys for comparison
-                if len(self.library.prompts) > 0:
-                    sample_keys = list(self.library.prompts.keys())[:3]
-                    self.log_message(f"🔍 DEBUG: Sample keys: {sample_keys}")
+                # Debug logging removed — was flooding terminal/session log
                 
                 if rel_path in self.library.prompts:
                     prompt_data = self.library.prompts[rel_path]
@@ -2703,9 +2564,8 @@ class UnifiedPromptManagerQt:
                     else:
                         self.tree_widget.addTopLevelItem(prompt_item)
                     
-                    self.log_message(f"🔍 DEBUG: Added prompt: {name}")
                 else:
-                    self.log_message(f"⚠️ DEBUG: Prompt not in library.prompts: {rel_path}")
+                    pass  # Prompt file not in library (may have invalid frontmatter)
     
     def _on_tree_item_clicked(self, item, column):
         """Handle tree item click"""
@@ -3691,98 +3551,16 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
     # ============================================================================
     
     def _init_llm_client(self):
-        """Initialize LLM client with available API keys"""
-        try:
-            # Use parent app's API key loading method (reads from user_data/api_keys.txt)
-            if hasattr(self.parent_app, 'load_api_keys'):
-                api_keys = self.parent_app.load_api_keys()
-            else:
-                # Fallback to module function (legacy path)
-                api_keys = load_api_keys()
-            
-            # Debug: Log which keys were found (without exposing the actual keys)
-            key_names = [k for k in api_keys.keys() if api_keys.get(k)]
-            if key_names:
-                self.log_message(f"🔑 Found API keys for: {', '.join(key_names)}")
-            else:
-                self.log_message("⚠ No API keys found in api_keys.txt")
-            
-            # Try to use the same provider as main app if available
-            provider = None
-            model = None
-            
-            # Check parent app settings
-            if hasattr(self.parent_app, 'current_provider'):
-                provider = self.parent_app.current_provider
-                if hasattr(self.parent_app, 'current_model'):
-                    model = self.parent_app.current_model
-            
-            # Fallback: use first available API key
-            if not provider:
-                if api_keys.get("openai"):
-                    provider = "openai"
-                elif api_keys.get("claude"):
-                    provider = "claude"
-                elif api_keys.get("google") or api_keys.get("gemini"):
-                    provider = "gemini"
-            
-            if provider:
-                # Map provider names to API key names (gemini uses 'google' key)
-                key_name = "google" if provider == "gemini" else provider
-                api_key = api_keys.get(key_name) or api_keys.get("gemini") or api_keys.get("openai") or api_keys.get("claude") or api_keys.get("google")
-                if api_key:
-                    http_proxy = None
-                    if provider != 'gemini' and hasattr(self, 'parent_app') and self.parent_app and hasattr(self.parent_app, '_get_proxy_url'):
-                        http_proxy = self.parent_app._get_proxy_url()
-                    self.llm_client = LLMClient(
-                        api_key=api_key,
-                        provider=provider,
-                        model=model,
-                        max_tokens=16384,
-                        http_proxy=http_proxy
-                    )
-                    self.log_message(f"✓ AI Assistant initialized with {provider}")
-                else:
-                    self.log_message("⚠ No API keys found for AI Assistant")
-            else:
-                self.log_message("⚠ No LLM provider configured")
-                
-        except Exception as e:
-            self.log_message(f"⚠ Failed to initialize AI Assistant: {e}")
-    
+        """Initialize LLM client — delegates to ChatBackend."""
+        self.chat_backend.init_llm_client()
+
     def _load_conversation_history(self):
-        """Load previous conversation from disk"""
-        try:
-            if self.ai_conversation_file.exists():
-                with open(self.ai_conversation_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.chat_history = data.get('history', [])
-                    # Don't load files from JSON - they're loaded from AttachmentManager
+        """Load conversation — handled by ChatBackend on init."""
+        pass
 
-                # Restore chat display
-                if hasattr(self, 'chat_display'):
-                    for msg in self.chat_history[-10:]:  # Show last 10 messages
-                        self._add_chat_message(msg['role'], msg['content'], save=False)
-
-                # Refresh attached files list after UI is created
-                if hasattr(self, 'attached_files_list_layout'):
-                    self._refresh_attached_files_list()
-
-        except Exception as e:
-            self.log_message(f"⚠ Failed to load conversation history: {e}")
-    
     def _save_conversation_history(self):
-        """Save conversation to disk"""
-        try:
-            self.ai_conversation_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.ai_conversation_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'history': self.chat_history,
-                    'files': self.attached_files,
-                    'updated': datetime.now().isoformat()
-                }, f, indent=2)
-        except Exception as e:
-            self.log_message(f"⚠ Failed to save conversation: {e}")
+        """Save conversation — handled by ChatBackend."""
+        self.chat_backend._save_history()
 
     def _load_persisted_attachments(self):
         """Load attached files from AttachmentManager"""
@@ -4794,27 +4572,10 @@ Output ONLY the delimiters and prompt content. No text before ===PROMPT_START===
             return None
 
     def _send_chat_message(self):
-        """Send a chat message to AI"""
-        message = self.chat_input.toPlainText().strip()
-        if not message:
-            return
-        
-        if not self.llm_client:
-            self._add_chat_message(
-                "system",
-                "⚠ AI Assistant not available. Please configure API keys in Settings."
-            )
-            return
-        
-        # Add user message
-        self._add_chat_message("user", message)
-        self.chat_input.clear()
-        
-        # Build context for AI
-        context = self._build_ai_context(message)
-        
-        # Send to AI
-        self._send_ai_request(context)
+        """Legacy: send chat message. Now handled by ChatViewWidget._send_message."""
+        # This is only called if old code still references it directly.
+        if self._grid_chat_view:
+            self._grid_chat_view._send_message()
     
     def _build_ai_context(self, user_message: str) -> str:
         """Build full context for AI request"""
@@ -4881,43 +4642,17 @@ Output ONLY the delimiters and prompt content. No text before ===PROMPT_START===
     
     def refresh_llm_client(self):
         """Refresh LLM client when settings change"""
-        self._init_llm_client()
+        self.chat_backend.refresh_llm_client()
 
-    def _send_ai_request(self, prompt: str, is_analysis: bool = False):
-        """Send request to AI and handle response"""
-        # Refresh LLM client to get latest provider settings
-        self._init_llm_client()
+    def _context_aware_send(self, user_text: str, images=None):
+        """
+        Context-aware send: builds AI context, calls backend, handles action system.
+        This method is monkey-patched onto each ChatViewWidget._do_send.
+        """
+        context = self._build_ai_context(user_text)
 
-        if not self.llm_client:
-            self._add_chat_message(
-                "system",
-                "⚠ AI Assistant not available. Please configure API keys in Settings."
-            )
-            return
-            
-        try:
-            # Log the request
-            self.log_message(f"[AI Assistant] Sending request to {self.llm_client.provider} ({self.llm_client.model})")
-            self.log_message(f"[AI Assistant] Prompt length: {len(prompt)} characters")
-
-            # Show thinking message (don't save to history)
-            self._add_chat_message("system", "🤔 Thinking...", save=False)
-
-            # Force UI update
-            if hasattr(self, 'chat_display'):
-                from PyQt6.QtWidgets import QApplication
-                QApplication.processEvents()
-
-            # Choose system prompt based on request type
-            if is_analysis:
-                ai_system_prompt = (
-                    "You are a prompt engineering specialist for professional translation. "
-                    "Generate the requested translation prompt and wrap it in "
-                    "===PROMPT_START=== and ===PROMPT_END=== delimiters. "
-                    "Output ONLY the delimiters and prompt content, nothing else."
-                )
-            else:
-                ai_system_prompt = """You are an AI assistant for Supervertaler, a professional translation workbench.
+        # Choose system prompt
+        system_prompt = """You are an AI assistant for Supervertaler, a professional translation workbench.
 
 You can execute actions using a special format. When you need to create, modify, or manage prompts, output ACTION blocks in this EXACT format:
 
@@ -4936,85 +4671,102 @@ IMPORTANT:
 3. Use valid JSON for PARAMS (double quotes for strings, escape special characters)
 4. Do not wrap in code fences or add any markdown formatting"""
 
-            # Call LLM using translate method with custom prompt
-            self.log_message("[AI Assistant] Calling LLM translate method...")
-            response = self.llm_client.translate(
-                text="",  # Empty text since we're using custom_prompt
-                source_lang="en",
-                target_lang="en",
-                custom_prompt=prompt,
-                system_prompt=ai_system_prompt,
-                skip_cleaning=is_analysis  # Don't strip translation keywords from generated prompts
+        try:
+            response, metadata = self.chat_backend.send_ai_request(
+                context, system_prompt, images=images
             )
 
-            # Log the response
-            self.log_message(f"[AI Assistant] Received response: {len(response) if response else 0} characters")
-            if response:
-                self.log_message(f"[AI Assistant] Response preview: {response[:200]}...")
-
-            # Clear the thinking message by clearing and reloading history
-            self._reload_chat_display()
-
-            # Check if we got a valid response
             if response and response.strip():
-                # For analysis requests, parse delimiter-based output instead of ACTION blocks
+                # Parse and execute actions
+                cleaned_response, action_results = self.ai_action_system.parse_and_execute(response)
+
+                if cleaned_response and cleaned_response.strip():
+                    self.chat_backend.add_message("assistant", cleaned_response, metadata=metadata)
+
+                if action_results:
+                    formatted_results = self.ai_action_system.format_action_results(action_results)
+                    self.chat_backend.add_message("system", formatted_results)
+                elif not (cleaned_response and cleaned_response.strip()):
+                    self.chat_backend.add_message("system", "\u26A0 AI responded but no actions were found.")
+
+                # Reload prompt library if prompts were modified
+                if action_results and any(
+                    r['action'] in ('create_prompt', 'update_prompt', 'delete_prompt', 'activate_prompt')
+                    for r in action_results if r['success']
+                ):
+                    self.library.load_all_prompts()
+                    if hasattr(self, 'tree_widget') and self.tree_widget:
+                        self._refresh_tree()
+                    if hasattr(self, '_update_active_prompt_display'):
+                        self._update_active_prompt_display()
+            else:
+                self.chat_backend.add_message("system", "\u26A0 Received empty response from AI.")
+
+        except Exception as e:
+            import traceback
+            self.log_message(f"[AI Assistant] \u274C ERROR: {traceback.format_exc()}")
+            self.chat_backend.add_message(
+                "system",
+                f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details.",
+            )
+
+    def _send_ai_request(self, prompt: str, is_analysis: bool = False):
+        """Send request to AI and handle response.
+
+        Used by _analyze_and_generate (AutoPrompt) and legacy code paths.
+        New chat messages go through _context_aware_send instead.
+        """
+        if not self.llm_client:
+            self._add_chat_message(
+                "system",
+                "\u26A0 AI Assistant not available. Please configure API keys in Settings."
+            )
+            return
+
+        try:
+            self.log_message(f"[AI Assistant] Sending request ({len(prompt)} chars)")
+
+            if is_analysis:
+                ai_system_prompt = (
+                    "You are a prompt engineering specialist for professional translation. "
+                    "Generate the requested translation prompt and wrap it in "
+                    "===PROMPT_START=== and ===PROMPT_END=== delimiters. "
+                    "Output ONLY the delimiters and prompt content, nothing else."
+                )
+            else:
+                ai_system_prompt = "You are an AI assistant for Supervertaler, a professional translation workbench."
+
+            response_text, metadata = self.chat_backend.send_ai_request(
+                prompt, ai_system_prompt, is_analysis=is_analysis
+            )
+
+            if response_text and response_text.strip():
                 if is_analysis:
-                    self._handle_analysis_response(response)
+                    self._handle_analysis_response(response_text)
                 else:
-                    self.log_message("[AI Assistant] Processing response with action system...")
-                    # Parse and execute actions (Phase 2)
-                    cleaned_response, action_results = self.ai_action_system.parse_and_execute(response)
-
-                    self.log_message(f"[AI Assistant] Cleaned response: {len(cleaned_response)} characters")
-                    self.log_message(f"[AI Assistant] Actions executed: {len(action_results)}")
-
-                    # Add the cleaned response (without ACTION blocks) - only if non-empty
+                    cleaned_response, action_results = self.ai_action_system.parse_and_execute(response_text)
                     if cleaned_response and cleaned_response.strip():
                         self._add_chat_message("assistant", cleaned_response)
-
-                    # If actions were executed, show results
                     if action_results:
                         formatted_results = self.ai_action_system.format_action_results(action_results)
                         self._add_chat_message("system", formatted_results)
-                    else:
-                        # No actions found - show warning with first 500 chars of response for debugging
-                        if not (cleaned_response and cleaned_response.strip()):
-                            self.log_message(f"[AI Assistant] ⚠ No actions found in response. First 500 chars: {response[:500]}")
-                            self._add_chat_message("system", "⚠ AI responded but no actions were found. Check logs for details.")
 
-                    # Reload prompt library if any prompts were modified
-                    if action_results and any(r['action'] in ['create_prompt', 'update_prompt', 'delete_prompt', 'activate_prompt']
-                               for r in action_results if r['success']):
-                            self.log_message("[AI Assistant] Reloading prompt library due to prompt modifications...")
-                            self.library.load_all_prompts()
-                            # Refresh tree widget if it exists
-                            if hasattr(self, 'tree_widget') and self.tree_widget:
-                                self._refresh_tree()
-                            # Refresh active prompt display
-                            if hasattr(self, '_update_active_prompt_display'):
-                                self._update_active_prompt_display()
-
-                self.log_message("[AI Assistant] ✓ Request completed successfully")
+                    if action_results and any(
+                        r['action'] in ('create_prompt', 'update_prompt', 'delete_prompt', 'activate_prompt')
+                        for r in action_results if r['success']
+                    ):
+                        self.library.load_all_prompts()
+                        if hasattr(self, 'tree_widget') and self.tree_widget:
+                            self._refresh_tree()
             else:
-                self.log_message("[AI Assistant] ⚠ Received empty response from AI")
-                self._add_chat_message(
-                    "system",
-                    "⚠ Received empty response from AI. Please try again."
-                )
+                self._add_chat_message("system", "\u26A0 Received empty response from AI.")
 
         except Exception as e:
-            # Clear the thinking message
-            self._reload_chat_display()
-
-            # Log the full error
             import traceback
-            error_details = traceback.format_exc()
-            self.log_message(f"[AI Assistant] ❌ ERROR: {error_details}")
-            print(f"AI Assistant Error:\n{error_details}")  # Also print to console
-
+            self.log_message(f"[AI Assistant] \u274C ERROR: {traceback.format_exc()}")
             self._add_chat_message(
                 "system",
-                f"⚠ Error communicating with AI: {str(e)}\n\nCheck the log for details."
+                f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details."
             )
     
     def _handle_analysis_response(self, response: str):
@@ -5129,109 +4881,30 @@ IMPORTANT:
                 self._update_active_prompt_display()
 
     def _reload_chat_display(self):
-        """Reload chat display from history"""
-        if not hasattr(self, 'chat_display'):
-            return
-
-        # Clear display
-        self.chat_display.clear()
-
-        # Reload all messages from history
-        for msg in self.chat_history:
-            self._add_chat_message(msg['role'], msg['content'], save=False)
+        """Reload chat display from history — now handled by ChatViewWidget via signals."""
+        # No-op: ChatViewWidget views auto-update via ChatBackend signals.
+        # Kept for backward compatibility with callers that still reference it.
+        pass
     
     def _clear_chat(self):
-        """Clear chat history and display"""
-        reply = QMessageBox.question(
-            None,
-            "Clear Chat History",
-            "Are you sure you want to clear the entire conversation history?\n\nThis cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            # Clear history
-            self.chat_history = []
-            self.attached_files = []
-            
-            # Save empty history
-            self._save_conversation_history()
-            
-            # Clear display
-            if hasattr(self, 'chat_display'):
-                self.chat_display.clear()
-            
-            # Update context sidebar
-            self._update_context_sidebar()
-            
-            # Show confirmation
-            self._add_chat_message(
-                "system",
-                "✨ Chat cleared! Start a new conversation.",
-                save=False
-            )
+        """Clear chat history — delegates to ChatBackend.
+        ChatViewWidgets handle their own clear confirmation dialogs.
+        """
+        self.chat_backend.clear_history()
+        self.attached_files = []
+        self._update_context_sidebar()
 
     def _show_chat_context_menu(self, position):
-        """Show context menu for chat messages to allow copying"""
-        item = self.chat_display.itemAt(position)
-        if item is None:
-            return
-
-        # Get message data
-        message_data = item.data(Qt.ItemDataRole.UserRole)
-        if not message_data:
-            return
-
-        message_text = message_data.get('content', '')
-
-        # Create context menu
-        menu = QMenu()
-
-        copy_action = menu.addAction("📋 Copy Message")
-        copy_action.triggered.connect(lambda: self._copy_message_to_clipboard(message_text))
-
-        # Show menu at cursor position
-        menu.exec(self.chat_display.mapToGlobal(position))
+        """Legacy context menu — now handled by ChatViewWidget internally."""
+        pass
 
     def _copy_message_to_clipboard(self, text: str):
-        """Copy message text to clipboard"""
-        from PyQt6.QtWidgets import QApplication
-        clipboard = QApplication.clipboard()
-        clipboard.setText(text)
-
-        # Show brief confirmation
-        self._add_chat_message(
-            "system",
-            "✓ Message copied to clipboard",
-            save=False
-        )
+        """Legacy copy — now handled by ChatViewWidget internally."""
+        pass
 
     def _add_chat_message(self, role: str, message: str, save: bool = True):
-        """Add a message to the chat display"""
-        # Save to history
-        if save:
-            self.chat_history.append({
-                'role': role,
-                'content': message,
-                'timestamp': datetime.now().isoformat()
-            })
-            self._save_conversation_history()
+        """Add a message to the chat display (delegates to ChatBackend).
 
-        # Update UI
-        if not hasattr(self, 'chat_display'):
-            return
-
-        # Create list item with message data
-        item = QListWidgetItem()
-        item.setData(Qt.ItemDataRole.UserRole, {
-            'role': role,
-            'content': message,
-            'timestamp': datetime.now().isoformat()
-        })
-
-        # Add to list
-        self.chat_display.addItem(item)
-
-        # Scroll to bottom
-        self.chat_display.scrollToBottom()
+        All connected ChatViewWidgets update automatically via signals.
+        """
+        self.chat_backend.add_message(role, message, save=save)

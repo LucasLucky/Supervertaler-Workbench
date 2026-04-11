@@ -1,118 +1,126 @@
-# QuickLauncher
+# Supervertaler Assistant
 
-The **Supervertaler QuickLauncher** is a floating AI action menu that gives you instant access to translation tools, the Supervertaler Assistant, and your custom prompts — without leaving your current workflow.
+The **Supervertaler Assistant** is a floating AI assistant window that gives you instant access to an AI chat, translation tools, text conversions, snippets, and your custom prompts -- from anywhere on your computer.
 
-## Opening QuickLauncher
+It replaces the old QuickLauncher popup menu with a persistent, resizable window featuring a chat panel on the left and an expandable action menu on the right.
 
-There are several ways to open the QuickLauncher:
+## Opening the Assistant
 
 ### Inside Supervertaler
 
-| Method | How |
-|--------|-----|
-| **Right-click** a source or target cell | Select text → right-click → **⚡ QuickLauncher** |
-| **Alt+K** keyboard shortcut | Place your cursor in a cell → press `Alt+K` |
+| Method | Shortcut |
+|--------|----------|
+| Keyboard shortcut | **Ctrl+Q** |
 
-The selected text in the cell is automatically used as input.
+### From any application (system-wide)
 
-### From any external application
+| Method | Shortcut |
+|--------|----------|
+| Global hotkey | **Ctrl+Alt+A** |
 
-| Method | How |
-|--------|-----|
-| **Ctrl+Alt+K** global hotkey | Select text in any app (Word, memoQ, Trados, browser, etc.) → press `Ctrl+Alt+K` |
+Select text in any application (Word, memoQ, Trados, browser, etc.), then press **Ctrl+Alt+A**. The assistant opens with the selected text available for AI tools, text conversions, or snippets.
 
 {% hint style="info" %}
-The global hotkey requires AutoHotkey to be installed. Supervertaler captures the selected text from your clipboard and opens the QuickLauncher.
+If Ctrl+Alt+A doesn't work, another application may have claimed that shortcut. You can change it in **Settings > Keyboard Shortcuts > Global > Supervertaler Assistant**.
 {% endhint %}
 
-## Menu Items
+## Window Layout
 
-When you open the QuickLauncher, you see a popup menu with the following items:
+The assistant has two panels separated by a draggable splitter:
 
-### QuickTrans
+- **Left: Chat panel** -- conversational AI chat with full markdown rendering, image paste support, and model selector
+- **Right: Action menu** -- expandable categories with tools, prompts, snippets, and text conversions
 
-**⚡ QuickTrans** opens a compact popup window that instantly translates the selected text using your configured AI provider.
+The window size, position, and splitter proportions are remembered across sessions.
 
-- Press `Ctrl+M` to open QuickTrans directly (without the menu)
-- The translation appears in a floating popup
-- Useful for quick lookups while working in the grid
+## Chat Panel
 
-See also: [Single Segment Translation](single-segment.md)
+The chat panel is a full AI assistant with the same capabilities as the chat in the AI tab:
 
-### Supervertaler Assistant
+- Type messages and press **Enter** to send (Shift+Enter for new line)
+- **Ctrl+V** to paste images from the clipboard (works with vision-capable models)
+- Click the **model indicator** next to Send to switch AI provider/model on the fly
+- **Context chips** (Document, TMs, Termbases, Files) toggle what data is included in the AI context. Right-click a chip for details or to attach files
 
-**💬 Supervertaler Assistant** opens a conversational AI chat inside the AI tab. Unlike one-shot translations, you can have a back-and-forth conversation:
+### Shared Conversation
 
-- Ask follow-up questions ("Can you rephrase this more formally?")
-- Get explanations ("What does this legal term mean?")
-- Iterate on translations ("Now adapt it for patents")
+All chat views share the same conversation: the grid-side AI Assistant panel, the AI tab's Assistant sub-tab, and the floating assistant window all show the same messages and stay in sync.
 
-The selected text is automatically inserted as your first message.
+## Action Menu
 
-{% hint style="tip" %}
-When launched from an external app via `Ctrl+Alt+K`, press **Escape** in the Assistant to return focus to the app you were working in.
-{% endhint %}
+The right panel has expandable categories. Click a category heading to expand or collapse it. Use **arrow keys** to navigate and **Enter** to activate.
 
-### Custom Prompts
+### Workbench Tools
 
-Below the built-in items, you'll see any prompts you've added to the QuickLauncher from the [Prompt Manager](prompt-library.md).
+- **QuickTrans** -- instant machine translation of the input text
+- **Superlookup** -- concordance search across TMs, glossaries, and web resources
 
-Each prompt offers two actions:
+### Prompts
 
-| Action | What it does |
-|--------|-------------|
-| **▶ Run (show response)…** | Runs the prompt and shows the result in a dialog |
-| **↺ Run and replace target selection** | Runs the prompt and replaces the selected text with the result |
+Your custom prompts from the Prompt Manager, grouped by folder. Clicking a prompt runs it against the input text and shows the AI response in the chat.
 
-When using the QuickLauncher from an external app (`Ctrl+Alt+K`), the second action becomes **↺ Run and paste into app** — the result is copied to your clipboard and pasted back into the external application.
+### Special Characters
 
-## Adding Prompts to QuickLauncher
+Quick-insert symbols, arrows, primes, dashes and quotes, currency signs, legal symbols, maths operators, and bullet characters. Clicking an item copies it to the clipboard and (if launched from an external app) pastes it over your selection.
 
-1. Go to the **✨ AI** tab → **📋 Prompt Manager**
-2. Create or select a prompt
-3. Enable the **Show in QuickLauncher** option for that prompt
+### Personal Snippets
 
-Your prompt will then appear in the QuickLauncher menu every time you open it.
+Frequently used text snippets (e.g. phone numbers, addresses, boilerplate text). Clicking an item copies it to the clipboard and pastes it back.
 
-## Context and Variables
+### Text Conversions
 
-When a prompt runs from the QuickLauncher, it has access to the following context variables:
+Transform selected text:
 
-| Variable | Description |
-|----------|-------------|
-| `{{SELECTION}}` | The selected / captured text |
-| `{{SOURCE_TEXT}}` | Full source text of the active segment (in-grid only) |
-| `{{TARGET_TEXT}}` | The current segment's target text (in-grid only) |
-| `{{SOURCE_LANGUAGE}}` | Project source language |
-| `{{TARGET_LANGUAGE}}` | Project target language |
-| `{{SOURCE_CONTEXT}}` | Recent project segments (source only) — amount controlled by Settings → AI Settings |
+| Conversion | Result |
+|-----------|--------|
+| Uppercase | SELECTED TEXT |
+| Lowercase | selected text |
+| Title Case | Selected Text |
+| Sentence case | Selected text |
+| Single curly quotes | 'Selected text' |
+| Double curly quotes | "Selected text" |
+| Round brackets | (Selected text) |
+| Square brackets | [Selected text] |
+| Remove soft hyphens | Strips invisible U+00AD characters |
+| Double to single quotes | Replaces " with ' |
+| Make bold | Wraps in `<b>...</b>` HTML tags |
 
-This means your prompts can be language-aware and context-sensitive. For example, a prompt like *"Explain {{SELECTION}} in simple {{TARGET_LANGUAGE}}"* will automatically use the correct languages.
+**Direct action flow:** When launched from an external app via Ctrl+Alt+A, text conversions and snippets are *direct actions* -- the assistant hides immediately, returns focus to the source application, and pastes the result over your selection.
 
-See [Creating Prompts](prompts.md) and [Prompt Manager](prompt-library.md) for more on writing and managing prompts.
+## Keyboard Navigation
 
-## Customizing Hotkeys
+| Key | Action |
+|-----|--------|
+| **Arrow keys** | Navigate menu items |
+| **Enter** | Activate selected item (or expand/collapse a category) |
+| **Tab** | Switch focus between the action menu and the chat input |
+| **Escape** | Close the assistant |
 
-You can change the default keyboard shortcuts for the QuickLauncher and QuickTrans in **Settings → Keyboard Shortcuts**.
+## Context Chips
+
+The context chips row appears above the chat input in all chat views:
+
+| Chip | Left-click | Right-click |
+|------|-----------|-------------|
+| Document | Toggle document context | View project/language info |
+| TMs | Toggle TM data inclusion | Browse available TMs |
+| Termbases | Toggle termbase inclusion | Browse available termbases |
+| Files | Toggle file context | Attach files or view attached files |
+
+## Customising Hotkeys
+
+You can change the default keyboard shortcuts in **Settings > Keyboard Shortcuts**:
 
 | Default shortcut | Action |
 |------------------|--------|
-| `Alt+K` | Open QuickLauncher (in-app) |
-| `Ctrl+Alt+K` | Open QuickLauncher (global, from any app) |
-| `Ctrl+M` | QuickTrans (direct, skip menu) |
+| **Ctrl+Q** | Open Supervertaler Assistant (in-app) |
+| **Ctrl+Alt+A** | Open Supervertaler Assistant (global, from any app) |
+| **Ctrl+M** | QuickTrans (direct, skip assistant) |
 
 ## Tips
 
-- **Start with QuickTrans** if you just need a quick translation — it's the fastest path.
-- **Use the Supervertaler Assistant** when you need to discuss or iterate on a translation.
-- **Create custom prompts** for repetitive tasks (e.g., "Simplify this", "Make formal", "Extract terminology").
-- The QuickLauncher works without a project open — useful for general-purpose AI lookups.
-
----
-
-## See Also
-
-- [Single Segment Translation](single-segment.md)
-- [Creating Prompts](prompts.md)
-- [Prompt Manager](prompt-library.md)
-- [Keyboard Shortcuts](../editor/keyboard-shortcuts.md)
+- **Press Ctrl+Alt+A without selecting text** to open the assistant for general AI chat
+- **Use text conversions** for quick formatting changes without leaving your current app
+- **Right-click context chips** to browse and select specific TMs or termbases
+- **Paste images** (Ctrl+V) to ask the AI about screenshots or diagrams
+- The assistant works without a project open -- useful for general-purpose AI lookups

@@ -8832,20 +8832,12 @@ class SupervertalerQt(QMainWindow):
             self.bottom_notes_edit.setFocus()
     
     def open_quicklauncher(self):
-        """Open QuickLauncher popup at current cursor position for quick AI prompt selection.
+        """Open the Floating Assistant (replaces the old QMenu-based QuickLauncher).
 
-        User can navigate with arrow keys and press Enter to select a prompt.
+        Captures selected text before toggling the floating window.
         """
         try:
-            # Get QuickLauncher items from prompt library
-            quicklauncher_items = []
-            if hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
-                lib = getattr(self.prompt_manager_qt, 'library', None)
-                if lib and hasattr(lib, 'get_quicklauncher_grid_prompts'):
-                    quicklauncher_items = lib.get_quicklauncher_grid_prompts() or []
-            
-            # Find the currently focused widget and capture selected text NOW
-            # (before the menu takes focus and potentially invalidates the widget)
+            # Capture selected text before focus changes
             focus_widget = QApplication.focusWidget()
             selected_text = None
             try:
@@ -8854,74 +8846,11 @@ class SupervertalerQt(QMainWindow):
             except Exception:
                 pass
 
-            # Build the menu
-            menu = QMenu(self)
-            menu.setTitle("⚡ QuickLauncher")
-
-            # Bold heading at the top
-            from PyQt6.QtWidgets import QWidgetAction, QLabel
-            _heading_lbl = QLabel("  Supervertaler QuickLauncher")
-            _heading_lbl.setStyleSheet("font-weight: bold; padding: 4px 8px; color: #1565C0;")
-            _heading_act = QWidgetAction(menu)
-            _heading_act.setDefaultWidget(_heading_lbl)
-            menu.addAction(_heading_act)
-            menu.addSeparator()
-
-            # QuickTrans at the top of the QuickLauncher
-            qt_action = QAction(f"⚡ QuickTrans ({format_shortcut_for_display('Ctrl+M')})", self)
-            qt_action.triggered.connect(lambda: self.show_mt_quick_popup(
-                text_override=selected_text
-            ))
-            menu.addAction(qt_action)
-
-            # Supervertaler Assistant — use QTimer.singleShot(0) to defer creation
-            # until after the QMenu has fully closed (avoids focus/event loop issues)
-            assistant_action = QAction("💬 Supervertaler Assistant", self)
-            assistant_action.triggered.connect(
-                lambda: QTimer.singleShot(0, lambda: self.show_supervertaler_assistant(initial_text=selected_text))
-            )
-            menu.addAction(assistant_action)
-
-            # Superlookup
-            superlookup_action = QAction("🔍 Superlookup", self)
-            superlookup_action.triggered.connect(
-                lambda: QTimer.singleShot(0, lambda: self._launch_superlookup_external(selected_text))
-            )
-            menu.addAction(superlookup_action)
-
-            if quicklauncher_items:
-                menu.addSeparator()
-
-            for rel_path, label in sorted(quicklauncher_items, key=lambda x: (x[1] or x[0]).lower()):
-                prompt_menu = menu.addMenu(label or rel_path)
-
-                run_show = QAction("▶ Run (show response)…", self)
-                run_show.triggered.connect(
-                    lambda checked=False, p=rel_path, w=focus_widget: self.run_grid_quicklauncher_prompt(p, origin_widget=w, behavior="show")
-                )
-                prompt_menu.addAction(run_show)
-
-                run_replace = QAction("↺ Run and replace target selection", self)
-                run_replace.triggered.connect(
-                    lambda checked=False, p=rel_path, w=focus_widget: self.run_grid_quicklauncher_prompt(p, origin_widget=w, behavior="replace")
-                )
-                prompt_menu.addAction(run_replace)
-
-            # Show menu at cursor position (or center of focused widget)
-            if focus_widget:
-                # Get cursor rectangle if it's a text editor
-                if hasattr(focus_widget, 'cursorRect'):
-                    cursor_rect = focus_widget.cursorRect()
-                    pos = focus_widget.mapToGlobal(cursor_rect.bottomLeft())
-                else:
-                    # Fallback to center of widget
-                    pos = focus_widget.mapToGlobal(focus_widget.rect().center())
+            if hasattr(self, '_floating_assistant') and self._floating_assistant:
+                self._floating_assistant.toggle(captured_text=selected_text)
             else:
-                # Fallback to mouse cursor position
-                pos = QCursor.pos()
-            
-            menu.exec(pos)
-            
+                self.log("⚠ Floating Assistant not available")
+
         except Exception as e:
             self.log(f"❌ Error opening QuickLauncher: {e}")
 
@@ -10351,7 +10280,18 @@ class SupervertalerQt(QMainWindow):
             # Bump stored indices that were shifted by the insert
             if hasattr(self, '_preview_tab_index'):
                 self._preview_tab_index += 1
-        
+
+        # Floating Assistant (replaces QMenu-based QuickLauncher)
+        try:
+            from modules.floating_assistant import FloatingAssistant
+            self._floating_assistant = FloatingAssistant(
+                chat_backend=self.prompt_manager_qt.chat_backend,
+                parent_app=self,
+            )
+        except Exception as e:
+            self.log(f"⚠ Failed to create Floating Assistant: {e}")
+            self._floating_assistant = None
+
         # Keep backward compatibility reference
         self.document_views_widget = self.main_tabs
         
@@ -12187,6 +12127,16 @@ class SupervertalerQt(QMainWindow):
         self.lookup_tab = lookup_tab  # Store reference for later use
         set_help_topic(lookup_tab, HelpTopics.SUPERLOOKUP)
         modules_tabs.addTab(lookup_tab, "🔍 Superlookup")
+
+        # Log global hotkey status to the session log (visible in-app)
+        if hasattr(lookup_tab, 'hotkey_registered') and lookup_tab.hotkey_registered:
+            failed = getattr(getattr(lookup_tab, '_hotkey_manager', None), 'failed_hotkeys', [])
+            if failed:
+                self.log(f"\u26A0 Global hotkeys: some failed to register: {', '.join(failed)}")
+            else:
+                self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+M, Ctrl+Alt+Q)")
+        else:
+            self.log("\u26A0 Global hotkeys NOT registered — check console for errors")
 
         # Supervoice - Voice Commands & Dictation
         supervoice_tab = self._create_voice_dictation_settings_tab()
@@ -55899,34 +55849,39 @@ class SuperlookupTab(QWidget):
             qm_shortcut = qm_shortcut.replace('alt', 'cmd')
 
         # --- Attempt 1: WinAPI / pynput (cross-platform) ---
+        import sys as _sys
+        def _log(m):
+            print(m, flush=True)
+            if self.main_window and hasattr(self.main_window, 'log'):
+                self.main_window.log(m)
         try:
             from modules.platform_helpers import GlobalHotkeyManager, CrossPlatformKeySender
             manager = GlobalHotkeyManager()
+            _log(f"[Global Hotkeys] Manager available: {manager.is_available}")
             if manager.is_available:
                 manager.register(sl_shortcut, self._on_pynput_superlookup)
                 manager.register(qt_shortcut, self._on_pynput_quicktrans)
                 manager.register(qm_shortcut, self._on_pynput_quicklauncher)
+                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {qm_shortcut}")
                 started = manager.start()
+                _log(f"[Global Hotkeys] Started: {started}")
                 if started:
                     self._hotkey_manager = manager
                     _hotkey_manager = manager  # global for atexit cleanup
                     self._using_pynput = True
                     self.hotkey_registered = True
-                    # Log to both stdout and in-app log
                     failed = getattr(manager, 'failed_hotkeys', [])
                     if failed:
-                        fail_msg = f"⚠️ [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)"
-                        print(fail_msg)
-                        if self.main_window and hasattr(self.main_window, 'log'):
-                            self.main_window.log(fail_msg)
+                        _log(f"\u26A0 [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)")
                     ok_keys = [k for k in [sl_shortcut, qt_shortcut, qm_shortcut] if k not in failed]
-                    msg = f"[Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}"
-                    print(msg)
-                    if self.main_window and hasattr(self.main_window, 'log'):
-                        self.main_window.log(f"⌨️ {msg}")
+                    _log(f"\u2328 [Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}")
                     return
+                else:
+                    _log("[Global Hotkeys] manager.start() returned False")
         except Exception as e:
-            print(f"[Superlookup] Global hotkey registration failed: {e}")
+            _log(f"[Global Hotkeys] Registration failed: {e}")
+            import traceback
+            traceback.print_exc()
             if IS_MACOS:
                 print("[Superlookup] macOS: Ensure Supervertaler (or Terminal/Python) has "
                       "Accessibility permission in System Settings → Privacy & Security → "
@@ -55974,11 +55929,10 @@ class SuperlookupTab(QWidget):
         IMPORTANT: Do NO work here -- see _on_pynput_superlookup docstring.
         """
         try:
-            from PyQt6.QtCore import QMetaObject, Qt as QtConst
-            QMetaObject.invokeMethod(
-                self, "_handle_quicklauncher_hotkey",
-                QtConst.ConnectionType.QueuedConnection,
-            )
+            print("[QuickLauncher] Global hotkey Ctrl+Alt+Q fired!")
+            from PyQt6.QtCore import QMetaObject, Qt as QtConst, QTimer
+            # Use QTimer.singleShot for more reliable cross-thread dispatch
+            QTimer.singleShot(0, self._handle_quicklauncher_hotkey)
         except Exception as e:
             print(f"[QuickLauncher] Error signaling main thread: {e}")
 
@@ -56252,9 +56206,8 @@ class SuperlookupTab(QWidget):
 
     def _read_clipboard_for_quicklauncher(self):
         """Read clipboard and dispatch to external QuickLauncher (main thread)."""
-        text = pyperclip.paste()
-        if text:
-            self.show_quicklauncher_external(text)
+        text = pyperclip.paste() or ""
+        self.show_quicklauncher_external(text)
 
     def _launch_superlookup_external(self, text):
         """Launch Superlookup with given text, bringing the window to foreground first."""
@@ -56470,27 +56423,46 @@ class SuperlookupTab(QWidget):
             print(f"[QuickTrans] Error pasting translation: {e}")
 
     def show_quicklauncher_external(self, text):
-        """Show QuickLauncher popup with text captured from an external app (global hotkey).
+        """Show Floating Assistant with text captured from an external app (global hotkey).
 
-        Builds a floating QMenu with QuickTrans + all prompt-based items.
-        Prompt results are shown in a dialog; QuickTrans opens its own popup.
+        Opens the floating assistant window with focus on the action panel
+        so the user can navigate with arrow keys immediately.
         """
+        try:
+            # _floating_assistant lives on the main window, not on SuperlookupTab
+            mw = self.main_window or self.window()
+            assistant = getattr(mw, '_floating_assistant', None) if mw else None
+            if not assistant:
+                # Also check self in case called from main window directly
+                assistant = getattr(self, '_floating_assistant', None)
+
+            if assistant:
+                # Pass the source window so direct actions can return focus
+                source_win = getattr(self, '_quicklauncher_source_window', None)
+                assistant.show_at_cursor(
+                    captured_text=text, focus_actions=True,
+                    source_window=source_win,
+                )
+            else:
+                print("[QuickLauncher] Floating Assistant not available")
+        except Exception as e:
+            print(f"[QuickLauncher] Error: {e}")
+
+    def _show_quicklauncher_external_legacy(self, text):
+        """Legacy QMenu-based external QuickLauncher (kept as fallback)."""
         try:
             from PyQt6.QtWidgets import QMenu
             from PyQt6.QtGui import QAction, QCursor
 
-            print(f"[QuickLauncher] show_quicklauncher_external called with text: {text[:50]}...")
+            print(f"[QuickLauncher] legacy external called with text: {text[:50]}...")
 
             main_window = self.main_window or self.window()
             if not main_window:
-                print("[QuickLauncher] ERROR: Could not find main window")
                 return
 
-            # Build the menu
             menu = QMenu()
-            menu.setWindowTitle("⚡ QuickLauncher")
+            menu.setWindowTitle("\u26A1 QuickLauncher")
 
-            # Bold heading at the top
             from PyQt6.QtWidgets import QWidgetAction, QLabel
             _heading_lbl = QLabel("  Supervertaler QuickLauncher")
             _heading_lbl.setStyleSheet("font-weight: bold; padding: 4px 8px; color: #1565C0;")

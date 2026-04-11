@@ -1,0 +1,917 @@
+"""
+Chat View Widget for Supervertaler
+=====================================
+
+A self-contained QWidget that displays a chat conversation and provides
+input controls. Multiple instances connect to the same ChatBackend so
+they all stay in sync.
+"""
+
+import base64
+from io import BytesIO
+
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtGui import QFont, QCursor, QAction, QImage
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+    QPlainTextEdit, QPushButton, QLabel, QFrame, QMenu, QApplication,
+    QAbstractItemView, QSizePolicy,
+)
+
+from modules.chat_backend import ChatBackend
+from modules.chat_message_delegate import ChatMessageDelegate
+
+
+class ChatViewWidget(QWidget):
+    """
+    Complete chat view: message list + input + send/clear buttons.
+
+    Parameters:
+        backend: ChatBackend instance (shared across views)
+        show_autoprompt: show the AutoPrompt header button
+        compact: tighter spacing for embedding in a floating window
+    """
+
+    # Emitted when the user presses Escape in the input field
+    escape_pressed = pyqtSignal()
+
+    # Emitted when AutoPrompt button is clicked (caller wires the action)
+    autoprompt_requested = pyqtSignal()
+
+    def __init__(self, backend: ChatBackend, parent=None, *,
+                 show_autoprompt: bool = False,
+                 compact: bool = False):
+        super().__init__(parent)
+        self._backend = backend
+        self._show_autoprompt = show_autoprompt
+        self._compact = compact
+
+        self._chat_display: QListWidget = None
+        self._chat_input: QPlainTextEdit = None
+        self._thinking_label: QLabel = None
+        self._thinking_timer: QTimer = None
+        self._thinking_dots: int = 0
+        self._pending_images: list = []  # List of (label, base64_str) tuples
+
+        self._init_ui()
+        self._connect_backend()
+        self._load_existing_history()
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        m = 2 if self._compact else 5
+        layout.setContentsMargins(m, m, m, m)
+        layout.setSpacing(3 if self._compact else 5)
+
+        # Optional AutoPrompt button
+        if self._show_autoprompt:
+            btn = QPushButton("\U0001F50D AutoPrompt")
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #1976D2; color: white;
+                    font-size: 11pt; font-weight: bold;
+                    padding: 10px; border-radius: 5px;
+                }
+                QPushButton:hover { background-color: #1565C0; }
+                QPushButton:pressed { background-color: #0D47A1; }
+                QPushButton:focus { outline: none; }
+            """)
+            btn.clicked.connect(self.autoprompt_requested.emit)
+            layout.addWidget(btn, 0)
+
+        # Chat display
+        self._chat_display = QListWidget()
+        self._chat_display.setItemDelegate(ChatMessageDelegate(self._chat_display))
+        self._chat_display.setStyleSheet("""
+            QListWidget {
+                background-color: #FFFFFF;
+                border: 1px solid #E8E8EA;
+                border-radius: 4px;
+                font-size: 9pt;
+                font-family: 'Segoe UI', system-ui, sans-serif;
+            }
+            QListWidget::item { border: none; background: transparent; }
+            QListWidget::item:selected { background: transparent; }
+            QListWidget::item:hover { background: transparent; }
+        """)
+        self._chat_display.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._chat_display.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._chat_display.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._chat_display.setVerticalScrollMode(
+            QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        self._chat_display.setSpacing(0)
+        self._chat_display.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._chat_display.customContextMenuRequested.connect(
+            self._show_context_menu
+        )
+        layout.addWidget(self._chat_display, 1)
+
+        # Context chips row (above input)
+        self._context_chips_row = QHBoxLayout()
+        self._context_chips_row.setContentsMargins(2, 0, 2, 0)
+        self._context_chips_row.setSpacing(4)
+        self._context_toggles = {}
+        self._init_context_chips()
+        layout.addLayout(self._context_chips_row, 0)
+
+        # Image attachment strip (hidden until images are pasted)
+        self._image_strip = QHBoxLayout()
+        self._image_strip.setContentsMargins(2, 0, 2, 0)
+        self._image_strip.setSpacing(4)
+        self._image_strip_widget = QWidget()
+        self._image_strip_widget.setLayout(self._image_strip)
+        self._image_strip_widget.hide()
+        layout.addWidget(self._image_strip_widget, 0)
+
+        # Input area
+        input_frame = QFrame()
+        input_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #E0E0E0;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
+        input_layout = QVBoxLayout(input_frame)
+        input_layout.setContentsMargins(5, 5, 5, 5)
+        input_layout.setSpacing(5)
+
+        self._chat_input = QPlainTextEdit()
+        self._chat_input.setMaximumHeight(80 if not self._compact else 60)
+        self._chat_input.setPlaceholderText(
+            "Type your message here... (Shift+Enter for new line, Esc to return)"
+        )
+        self._chat_input.setStyleSheet("""
+            QPlainTextEdit {
+                border: none; font-size: 10pt;
+                color: #1a1a1a; background-color: white;
+                padding: 4px;
+            }
+        """)
+        self._chat_input.installEventFilter(self)
+        input_layout.addWidget(self._chat_input)
+
+        # Bottom row: Clear (left) | stretch | model selector | Send (right)
+        bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 0, 0, 0)
+        bottom_row.setSpacing(6)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                color: #787878; background: transparent;
+                border: none; font-size: 8pt; padding: 2px 6px;
+            }
+            QPushButton:hover { color: #424242; }
+        """)
+        clear_btn.clicked.connect(self._clear_chat)
+        bottom_row.addWidget(clear_btn)
+
+        bottom_row.addStretch()
+
+        # Clickable model selector (opens provider/model menu)
+        self._model_btn = QPushButton(self._backend.get_model_display_name())
+        self._model_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self._model_btn.setStyleSheet("""
+            QPushButton {
+                color: #8C8C8C; background: transparent;
+                border: none; font-size: 7pt; padding: 2px 6px;
+            }
+            QPushButton:hover { color: #1976D2; text-decoration: underline; }
+        """)
+        self._model_btn.setToolTip("Click to change model")
+        self._model_btn.clicked.connect(self._show_model_menu)
+        bottom_row.addWidget(self._model_btn)
+
+        send_btn = QPushButton("Send")
+        send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1976D2; color: white;
+                font-weight: bold; padding: 8px 20px;
+                border-radius: 5px; border: none;
+            }
+            QPushButton:hover { background-color: #1565C0; }
+            QPushButton:pressed { background-color: #0D47A1; }
+        """)
+        send_btn.clicked.connect(self._send_message)
+        bottom_row.addWidget(send_btn)
+
+        input_layout.addLayout(bottom_row)
+        layout.addWidget(input_frame, 0)
+
+    # ------------------------------------------------------------------
+    # Backend connection
+    # ------------------------------------------------------------------
+
+    def _connect_backend(self):
+        self._backend.message_added.connect(self._on_message_added)
+        self._backend.chat_cleared.connect(self._on_chat_cleared)
+        self._backend.thinking_started.connect(self._on_thinking_started)
+        self._backend.thinking_finished.connect(self._on_thinking_finished)
+
+    def _load_existing_history(self):
+        """Populate display from existing backend history (for late-created views)."""
+        for msg in self._backend.get_recent_history(10):
+            self._add_display_item(msg)
+
+    # ------------------------------------------------------------------
+    # Slots (from backend signals)
+    # ------------------------------------------------------------------
+
+    def _on_message_added(self, msg: dict):
+        self._add_display_item(msg)
+        self._chat_display.scrollToBottom()
+
+    def _on_chat_cleared(self):
+        self._chat_display.clear()
+        self._on_thinking_finished()
+
+    def _on_thinking_started(self):
+        """Show an animated 'Thinking...' label below the chat."""
+        if not self._thinking_label:
+            self._thinking_label = QLabel()
+            self._thinking_label.setStyleSheet(
+                "color: #646464; font-size: 8pt; font-style: italic; "
+                "padding: 4px 8px; background-color: #FCFCFC; "
+                "border-top: 1px solid #E8E8EA;"
+            )
+            # Insert just above the input frame (second-to-last widget)
+            layout = self.layout()
+            layout.insertWidget(layout.count() - 1, self._thinking_label, 0)
+
+        self._thinking_dots = 0
+        self._thinking_label.setText("  Thinking")
+        self._thinking_label.show()
+
+        if not self._thinking_timer:
+            self._thinking_timer = QTimer(self)
+            self._thinking_timer.timeout.connect(self._animate_thinking)
+        self._thinking_timer.start(400)
+
+        self._chat_display.scrollToBottom()
+        QApplication.processEvents()
+
+    def _animate_thinking(self):
+        """Cycle through Thinking, Thinking., Thinking.., Thinking..."""
+        self._thinking_dots = (self._thinking_dots + 1) % 4
+        dots = "." * self._thinking_dots
+        self._thinking_label.setText(f"  Thinking{dots}")
+
+    def _on_thinking_finished(self):
+        """Hide the thinking indicator."""
+        if self._thinking_timer:
+            self._thinking_timer.stop()
+        if self._thinking_label:
+            self._thinking_label.hide()
+
+    # ------------------------------------------------------------------
+    # Context chips
+    # ------------------------------------------------------------------
+
+    _CHIP_OFF = """
+        QPushButton {
+            background-color: #F0F0F0; color: #888;
+            border: 1px solid #DDD; border-radius: 10px;
+            font-size: 7.5pt; padding: 2px 8px;
+        }
+        QPushButton:hover { background-color: #E0E0E0; color: #555; }
+    """
+    _CHIP_ON = """
+        QPushButton {
+            background-color: #D6E4F0; color: #3D5A80;
+            border: 1px solid #9BB8D3; border-radius: 10px;
+            font-size: 7.5pt; padding: 2px 8px; font-weight: bold;
+        }
+        QPushButton:hover { background-color: #C2D6E8; }
+    """
+
+    def _init_context_chips(self):
+        """Create toggleable context-source chips above the input.
+
+        Left-click toggles on/off. Right-click opens a popover with details.
+        """
+        chips = [
+            ("doc",       "\U0001F4C4 Document",    False),
+            ("tm",        "\U0001F4BE TMs",          False),
+            ("termbase",  "\U0001F4DA Termbases",    False),
+            ("files",     "\U0001F4CE Files",        False),
+        ]
+
+        label = QLabel("Context:")
+        label.setStyleSheet("color: #999; font-size: 7pt; padding-right: 2px;")
+        self._context_chips_row.addWidget(label)
+
+        for key, text, default_on in chips:
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.setChecked(default_on)
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn.setStyleSheet(self._CHIP_ON if default_on else self._CHIP_OFF)
+            btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.toggled.connect(lambda checked, k=key, b=btn: self._on_chip_toggled(k, checked, b))
+            btn.customContextMenuRequested.connect(
+                lambda pos, k=key, b=btn: self._show_chip_popover(k, b)
+            )
+            self._context_chips_row.addWidget(btn)
+            self._context_toggles[key] = btn
+
+        self._context_chips_row.addStretch()
+
+    def _on_chip_toggled(self, key: str, checked: bool, btn):
+        """Handle context chip toggle (left-click)."""
+        btn.setStyleSheet(self._CHIP_ON if checked else self._CHIP_OFF)
+
+        # Sync with prompt manager toggles
+        pm = self._get_prompt_manager()
+        if pm:
+            if key == "tm":
+                pm.include_tm_data = checked
+            elif key == "termbase":
+                pm.include_termbase_data = checked
+
+    def _get_prompt_manager(self):
+        return getattr(self._backend._parent_app, 'prompt_manager_qt', None)
+
+    def _get_parent_app(self):
+        return self._backend._parent_app
+
+    def _show_chip_popover(self, key: str, chip_btn):
+        """Show a context menu popover for the given chip (right-click)."""
+        if key == "doc":
+            self._popover_document(chip_btn)
+        elif key == "tm":
+            self._popover_tms(chip_btn)
+        elif key == "termbase":
+            self._popover_termbases(chip_btn)
+        elif key == "files":
+            self._popover_files(chip_btn)
+
+    def _popover_document(self, chip_btn):
+        """Show current document info."""
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { font-size: 9pt; } QMenu::item { padding: 4px 16px; }")
+
+        app = self._get_parent_app()
+        if hasattr(app, 'current_project') and app.current_project:
+            proj = app.current_project
+            name = getattr(proj, 'name', 'Unnamed')
+            src = getattr(proj, 'source_lang', '?')
+            tgt = getattr(proj, 'target_lang', '?')
+            seg_count = len(proj.segments) if hasattr(proj, 'segments') else 0
+            menu.addAction(f"\U0001F4C4 {name}").setEnabled(False)
+            menu.addAction(f"   {src} \u2192 {tgt} \u2022 {seg_count} segments").setEnabled(False)
+        else:
+            menu.addAction("No document loaded").setEnabled(False)
+
+        menu.exec(chip_btn.mapToGlobal(chip_btn.rect().bottomLeft()))
+
+    def _popover_tms(self, chip_btn):
+        """Show available TMs with checkboxes to select which to include."""
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { font-size: 9pt; } QMenu::item { padding: 4px 16px; }")
+
+        app = self._get_parent_app()
+        tm_list = []
+        if hasattr(app, 'tm_database') and app.tm_database:
+            try:
+                tm_list = app.tm_database.get_tm_list()
+            except Exception:
+                pass
+
+        if not tm_list:
+            menu.addAction("No translation memories loaded").setEnabled(False)
+        else:
+            header = menu.addAction(f"\U0001F4BE {len(tm_list)} TM(s) available")
+            header.setEnabled(False)
+            menu.addSeparator()
+            for tm in tm_list:
+                name = tm.get('name', tm.get('tm_id', '?'))
+                count = tm.get('entry_count', 0)
+                action = menu.addAction(f"{name} ({count:,} entries)")
+                action.setCheckable(True)
+                action.setChecked(tm.get('enabled', True))
+
+        menu.addSeparator()
+        toggle = menu.addAction("\u2713 Include TM data in AI context" if self._context_toggles["tm"].isChecked()
+                                else "Include TM data in AI context")
+        toggle.triggered.connect(lambda: self._context_toggles["tm"].toggle())
+
+        menu.exec(chip_btn.mapToGlobal(chip_btn.rect().bottomLeft()))
+
+    def _popover_termbases(self, chip_btn):
+        """Show available termbases."""
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { font-size: 9pt; } QMenu::item { padding: 4px 16px; }")
+
+        app = self._get_parent_app()
+        tb_list = []
+        if hasattr(app, 'termbase_mgr') and app.termbase_mgr:
+            try:
+                tb_list = app.termbase_mgr.get_all_termbases()
+            except Exception:
+                pass
+
+        if not tb_list:
+            menu.addAction("No termbases loaded").setEnabled(False)
+        else:
+            header = menu.addAction(f"\U0001F4DA {len(tb_list)} termbase(s) available")
+            header.setEnabled(False)
+            menu.addSeparator()
+            for tb in tb_list:
+                name = tb.get('name', '?')
+                count = tb.get('term_count', 0)
+                action = menu.addAction(f"{name} ({count:,} terms)")
+                action.setCheckable(True)
+                action.setChecked(True)
+
+        menu.addSeparator()
+        toggle = menu.addAction("\u2713 Include termbase data in AI context" if self._context_toggles["termbase"].isChecked()
+                                else "Include termbase data in AI context")
+        toggle.triggered.connect(lambda: self._context_toggles["termbase"].toggle())
+
+        menu.exec(chip_btn.mapToGlobal(chip_btn.rect().bottomLeft()))
+
+    def _popover_files(self, chip_btn):
+        """Show attached files with options to add/remove."""
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { font-size: 9pt; } QMenu::item { padding: 4px 16px; }")
+
+        pm = self._get_prompt_manager()
+        files = getattr(pm, 'attached_files', []) if pm else []
+
+        if not files:
+            menu.addAction("No files attached").setEnabled(False)
+        else:
+            header = menu.addAction(f"\U0001F4CE {len(files)} file(s) attached")
+            header.setEnabled(False)
+            menu.addSeparator()
+            for f in files:
+                name = f.get('name', '?')
+                action = menu.addAction(f"\u2022 {name}")
+                action.setEnabled(False)
+
+        menu.addSeparator()
+        attach_action = menu.addAction("\U0001F4C1 Attach file\u2026")
+        attach_action.triggered.connect(self._attach_file)
+
+        menu.exec(chip_btn.mapToGlobal(chip_btn.rect().bottomLeft()))
+
+    def _attach_file(self):
+        """Open a file dialog to attach a file to the chat context."""
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Attach file",
+            "",
+            "All supported (*.txt *.md *.csv *.json *.xml *.html *.pdf *.docx *.xlsx *.tmx *.sdlxliff *.xliff);;"
+            "Text files (*.txt *.md *.csv *.json *.xml *.html);;"
+            "Documents (*.pdf *.docx *.xlsx);;"
+            "Translation files (*.tmx *.sdlxliff *.xliff);;"
+            "All files (*)"
+        )
+        if not path:
+            return
+
+        import os
+        try:
+            name = os.path.basename(path)
+            size = os.path.getsize(path)
+
+            # Read content (text files only for now)
+            content = ""
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()[:50000]  # First 50K chars
+            except (UnicodeDecodeError, Exception):
+                content = f"[Binary file: {name}, {size:,} bytes]"
+
+            file_data = {
+                'name': name,
+                'path': path,
+                'size': size,
+                'content': content,
+                'type': os.path.splitext(name)[1].lower(),
+            }
+
+            pm = self._get_prompt_manager()
+            if pm:
+                pm.attached_files.append(file_data)
+
+            # Enable the files chip
+            self._context_toggles["files"].setChecked(True)
+
+            self._backend.add_message("system", f"\U0001F4CE Attached: {name} ({size:,} bytes)")
+
+        except Exception as e:
+            self._backend.add_message("system", f"\u26A0 Failed to attach file: {e}")
+
+    def get_context_state(self) -> dict:
+        """Return which context sources are enabled."""
+        return {k: btn.isChecked() for k, btn in self._context_toggles.items()}
+
+    # ------------------------------------------------------------------
+    # Display helpers
+    # ------------------------------------------------------------------
+
+    def _add_display_item(self, msg: dict) -> QListWidgetItem:
+        item = QListWidgetItem()
+        item.setData(Qt.ItemDataRole.UserRole, msg)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        self._chat_display.addItem(item)
+
+        # Force delegate to compute correct size
+        delegate = self._chat_display.itemDelegate()
+        from PyQt6.QtWidgets import QStyleOptionViewItem
+        option = QStyleOptionViewItem()
+        option.rect = self._chat_display.rect()
+        size = delegate.sizeHint(option, self._chat_display.indexFromItem(item))
+        item.setSizeHint(size)
+
+        return item
+
+    def _refresh_model_label(self):
+        self._model_btn.setText(self._backend.get_model_display_name())
+
+    def _show_model_menu(self):
+        """Show a provider/model selection menu (like Supervertaler for Trados)."""
+        from modules.llm_clients import LLMClient
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { font-size: 9pt; }
+            QMenu::item:checked { font-weight: bold; }
+        """)
+
+        current_provider = ""
+        current_model = ""
+        if self._backend.llm_client:
+            current_provider = self._backend.llm_client.provider
+            current_model = self._backend.llm_client.model
+
+        # Provider → models mapping
+        providers = [
+            ("claude", "Anthropic", LLMClient.CLAUDE_MODELS),
+            ("openai", "OpenAI", {
+                "gpt-4o": {"name": "GPT-4o", "description": "Fast, multimodal"},
+                "gpt-4o-mini": {"name": "GPT-4o Mini", "description": "Fast & affordable"},
+                "gpt-5": {"name": "GPT-5", "description": "Advanced reasoning"},
+            }),
+            ("gemini", "Google", {
+                "gemini-2.5-flash": {"name": "Gemini 2.5 Flash", "description": "Fast & affordable"},
+                "gemini-2.5-pro": {"name": "Gemini 2.5 Pro", "description": "High quality"},
+            }),
+            ("mistral", "Mistral", LLMClient.MISTRAL_MODELS),
+            ("ollama", "Ollama (local)", LLMClient.OLLAMA_MODELS),
+            ("openrouter", "OpenRouter", LLMClient.OPENROUTER_MODELS),
+        ]
+
+        for provider_key, provider_name, models in providers:
+            if not models:
+                continue
+
+            provider_menu = menu.addMenu(provider_name)
+            if provider_key == current_provider:
+                provider_menu.setTitle(f"\u2713 {provider_name}")
+                font = provider_menu.menuAction().font()
+                font.setBold(True)
+                provider_menu.menuAction().setFont(font)
+
+            for model_id, model_info in models.items():
+                name = model_info.get('name', model_id)
+                desc = model_info.get('description', '')
+                action = provider_menu.addAction(name)
+                action.setToolTip(desc)
+                action.setCheckable(True)
+                if provider_key == current_provider and model_id == current_model:
+                    action.setChecked(True)
+                action.setData((provider_key, model_id))
+                action.triggered.connect(
+                    lambda checked, a=action: self._on_model_selected(a)
+                )
+
+        # Show menu above the button
+        pos = self._model_btn.mapToGlobal(self._model_btn.rect().topLeft())
+        pos.setY(pos.y() - menu.sizeHint().height())
+        menu.exec(pos)
+
+    def _on_model_selected(self, action):
+        """Handle model selection from the menu."""
+        data = action.data()
+        if not data or len(data) != 2:
+            return
+        provider_key, model_id = data
+
+        # Update the backend's LLM client with the new provider/model
+        # We need to get API keys and create a new client
+        try:
+            from modules.llm_clients import LLMClient, load_api_keys
+
+            parent_app = self._backend._parent_app
+            if hasattr(parent_app, 'load_api_keys'):
+                api_keys = parent_app.load_api_keys()
+            else:
+                api_keys = load_api_keys()
+
+            # Determine API key
+            if provider_key == 'ollama':
+                api_key = 'not-needed'
+            else:
+                key_name = 'google' if provider_key == 'gemini' else provider_key
+                api_key = api_keys.get(key_name, '')
+
+            if not api_key and provider_key not in ('ollama', 'custom_openai'):
+                self._backend.add_message(
+                    "system",
+                    f"\u26A0 No API key found for {provider_key}. Configure it in Settings."
+                )
+                return
+
+            # Get proxy and base_url
+            http_proxy = None
+            if provider_key != 'gemini' and hasattr(parent_app, '_get_proxy_url'):
+                http_proxy = parent_app._get_proxy_url()
+
+            base_url = None
+            if provider_key == 'mistral':
+                base_url = 'https://api.mistral.ai/v1'
+            elif provider_key == 'openrouter':
+                base_url = 'https://openrouter.ai/api/v1'
+
+            self._backend.llm_client = LLMClient(
+                api_key=api_key,
+                provider=provider_key,
+                model=model_id,
+                max_tokens=16384,
+                base_url=base_url,
+                http_proxy=http_proxy,
+            )
+
+            self._refresh_model_label()
+            self._backend.add_message(
+                "system",
+                f"Switched to {provider_key} / {model_id}",
+            )
+
+        except Exception as e:
+            self._backend.add_message("system", f"\u26A0 Failed to switch model: {e}")
+
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+
+    def _send_message(self):
+        text = self._chat_input.toPlainText().strip()
+        if not text and not self._pending_images:
+            return
+
+        if not self._backend.llm_client:
+            self._backend.add_message(
+                "system",
+                "\u26A0 AI Assistant not available. Please configure API keys in Settings."
+            )
+            return
+
+        # Add user message (mention images if attached)
+        display_text = text or ""
+        if self._pending_images:
+            display_text += f" [\U0001F5BC {len(self._pending_images)} image(s)]"
+        self._backend.add_message("user", display_text.strip())
+        self._chat_input.clear()
+        self._refresh_model_label()
+
+        # Grab images before clearing
+        images = list(self._pending_images)
+        self._clear_pending_images()
+
+        # This will be overridden by UnifiedPromptManagerQt to inject context
+        self._do_send(text, images=images)
+
+    def _do_send(self, user_text: str, images=None):
+        """
+        Default send: call backend directly with minimal context.
+        UnifiedPromptManagerQt replaces this with context-aware sending.
+        """
+        prompt = user_text or "Describe this image."
+        system_prompt = "You are an AI assistant for Supervertaler, a professional translation tool."
+
+        try:
+            response, metadata = self._backend.send_ai_request(
+                prompt, system_prompt, images=images or None,
+            )
+            if response and response.strip():
+                self._backend.add_message("assistant", response, metadata=metadata)
+            else:
+                self._backend.add_message(
+                    "system", "\u26A0 Received empty response from AI."
+                )
+        except Exception as e:
+            self._backend.add_message(
+                "system",
+                f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details.",
+            )
+
+    def _clear_chat(self):
+        from PyQt6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Clear Chat",
+            "Are you sure you want to clear the chat history?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._backend.clear_history()
+
+    # ------------------------------------------------------------------
+    # Context menu
+    # ------------------------------------------------------------------
+
+    def _show_context_menu(self, pos):
+        item = self._chat_display.itemAt(pos)
+        if not item:
+            return
+
+        msg_data = item.data(Qt.ItemDataRole.UserRole)
+        if not msg_data:
+            return
+
+        menu = QMenu(self)
+        copy_action = menu.addAction("\U0001F4CB Copy Message")
+        action = menu.exec(self._chat_display.mapToGlobal(pos))
+
+        if action == copy_action:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(msg_data.get('content', ''))
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def insert_text(self, text: str):
+        """Insert text into the input field."""
+        if text and text.strip():
+            current = self._chat_input.toPlainText()
+            if current.strip():
+                self._chat_input.setPlainText(current + "\n" + text.strip())
+            else:
+                self._chat_input.setPlainText(text.strip())
+            cursor = self._chat_input.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            self._chat_input.setTextCursor(cursor)
+
+    def focus_input(self):
+        """Focus the input text field."""
+        self._chat_input.setFocus()
+        cursor = self._chat_input.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self._chat_input.setTextCursor(cursor)
+
+    def get_input_text(self) -> str:
+        return self._chat_input.toPlainText().strip()
+
+    # ------------------------------------------------------------------
+    # Event filter (keyboard handling)
+    # ------------------------------------------------------------------
+
+    def eventFilter(self, obj, event):
+        if obj is self._chat_input and event.type() == event.Type.KeyPress:
+            key = event.key()
+            modifiers = event.modifiers()
+
+            if key == Qt.Key.Key_Escape:
+                self.escape_pressed.emit()
+                return False  # Don't consume — let parent window handle it too
+
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                    return False  # Allow newline
+                self._send_message()
+                return True
+
+            # Ctrl+V with image on clipboard
+            if key == Qt.Key.Key_V and modifiers & Qt.KeyboardModifier.ControlModifier:
+                if self._try_paste_image():
+                    return True
+                # Fall through to normal text paste
+
+        return super().eventFilter(obj, event)
+
+    # ------------------------------------------------------------------
+    # Image attachments
+    # ------------------------------------------------------------------
+
+    def _try_paste_image(self) -> bool:
+        """Check clipboard for an image and add it if found. Returns True if handled."""
+        try:
+            clipboard = QApplication.clipboard()
+            mime = clipboard.mimeData()
+            if not mime:
+                return False
+
+            # Try QImage first
+            if mime.hasImage():
+                image = QImage(mime.imageData())
+                if not image.isNull():
+                    self._add_pasted_image(image)
+                    return True
+
+            # Try image formats in mime data
+            for fmt in ['image/png', 'image/jpeg', 'image/bmp']:
+                if mime.hasFormat(fmt):
+                    data = mime.data(fmt)
+                    if data and len(data) > 0:
+                        image = QImage()
+                        image.loadFromData(data)
+                        if not image.isNull():
+                            self._add_pasted_image(image)
+                            return True
+
+        except Exception as e:
+            print(f"[ChatView] Image paste error: {e}")
+        return False
+
+    def _add_pasted_image(self, image: QImage):
+        """Convert a QImage to base64 PNG and add to pending images."""
+        from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+
+        byte_array = QByteArray()
+        qbuffer = QBuffer(byte_array)
+        qbuffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        image.save(qbuffer, "PNG")
+        qbuffer.close()
+
+        img_base64 = base64.b64encode(bytes(byte_array)).decode('ascii')
+        label = f"image_{len(self._pending_images) + 1}"
+        self._pending_images.append((label, img_base64))
+
+        self._refresh_image_strip()
+
+        self._backend.add_message(
+            "system",
+            f"\U0001F5BC Image pasted ({image.width()}\u00D7{image.height()}px)",
+            save=False,
+        )
+
+    def _refresh_image_strip(self):
+        """Update the image strip to show pending image thumbnails."""
+        # Clear existing
+        while self._image_strip.count():
+            item = self._image_strip.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not self._pending_images:
+            self._image_strip_widget.hide()
+            return
+
+        for i, (label, img_b64) in enumerate(self._pending_images):
+            # Thumbnail
+            thumb_label = QLabel()
+            img_data = base64.b64decode(img_b64)
+            qimg = QImage()
+            qimg.loadFromData(img_data)
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap.fromImage(qimg).scaled(
+                48, 48, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            thumb_label.setPixmap(pixmap)
+            thumb_label.setStyleSheet("border: 1px solid #ccc; border-radius: 4px; padding: 1px;")
+            self._image_strip.addWidget(thumb_label)
+
+            # Remove button
+            remove_btn = QPushButton("\u00D7")
+            remove_btn.setFixedSize(16, 16)
+            remove_btn.setStyleSheet("""
+                QPushButton {
+                    background: #e74c3c; color: white; border: none;
+                    border-radius: 8px; font-size: 9pt; font-weight: bold;
+                }
+                QPushButton:hover { background: #c0392b; }
+            """)
+            remove_btn.clicked.connect(lambda checked, idx=i: self._remove_pending_image(idx))
+            self._image_strip.addWidget(remove_btn)
+
+        self._image_strip.addStretch()
+        self._image_strip_widget.show()
+
+    def _remove_pending_image(self, idx: int):
+        """Remove a pending image by index."""
+        if 0 <= idx < len(self._pending_images):
+            self._pending_images.pop(idx)
+            self._refresh_image_strip()
+
+    def _clear_pending_images(self):
+        """Clear all pending images."""
+        self._pending_images.clear()
+        self._refresh_image_strip()

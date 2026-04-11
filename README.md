@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.370 – fix QuickLauncher flags and read-only state for default prompts.
+**Latest release:** v1.9.374 – Supervertaler Assistant: system-wide floating AI assistant with chat, text conversions, snippets, model selector, and image paste support.
 
 ---
 
@@ -39,7 +39,8 @@ macOS will block the app on first launch because it is not signed with an Apple 
 
 ## Key Features
 
-- **Multi-LLM AI Translation** - OpenAI GPT-4/5, Anthropic Claude, Google Gemini, Mistral AI, Local Ollama
+- **Supervertaler Assistant** - System-wide floating AI assistant (Ctrl+Alt+A from any app) with chat, text conversions, snippets, and prompt library actions
+- **Multi-LLM AI Translation** - OpenAI GPT-4/5, Anthropic Claude, Google Gemini, Mistral AI, Local Ollama, OpenRouter (200+ models)
 - **Translation Memory** - Fuzzy matching TM with TMX import/export
 - **Glossary System** - Project/Background glossary highlighting with forbidden term marking
 - **Superlookup** - Unified concordance search across TM, glossaries, MT, and web resources

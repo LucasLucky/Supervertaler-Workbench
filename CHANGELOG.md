@@ -2,8 +2,39 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.373 (April 6, 2026)
+**Current Version:** v1.9.374 (April 12, 2026)
 
+
+## v1.9.374 - April 12, 2026
+
+### Added
+- **Supervertaler Assistant** – new floating AI assistant window (Ctrl+Q inside Supervertaler, Ctrl+Alt+A from any application). Features a chat panel on the left and an expandable action menu on the right with Workbench Tools, Prompts, Special Characters, Personal Snippets, and Text Conversions
+- **System-wide assistant** – select text in any application, press Ctrl+Alt+A, and use AI tools, text conversions, or snippets. Direct actions (snippets, text conversions) instantly paste the result back over your selection
+- **Chat backend architecture** – extracted shared ChatBackend class so all chat views (grid panel, AI tab, floating assistant) share the same conversation state and stay in sync via Qt signals
+- **AI tab chat view** – restored the AI Assistant as a third sub-tab under the AI tab, providing a full-width chat experience without needing a project open
+- **Model selector** – clickable model indicator next to the Send button opens a hierarchical menu to switch LLM provider/model on the fly (Anthropic, OpenAI, Google, Mistral, Ollama, OpenRouter)
+- **Token usage and cost tracking** – assistant responses now show model name, input/output token counts, estimated cost, and response time below each message
+- **Context chips** – toggleable chips (Document, TMs, Termbases, Files) above the chat input replace the old vertical context panel. Right-click any chip for details: browse TMs, termbases, or attach files
+- **Image paste** – Ctrl+V pastes clipboard images into the chat with thumbnail preview; images are sent to vision-capable models (GPT-4o, Claude, Gemini)
+- **File attachment** – right-click the Files chip to attach documents (.txt, .md, .docx, .pdf, .tmx, .sdlxliff, etc.) to the AI context
+- **Text Conversions menu** – uppercase, lowercase, title case, sentence case, curly quotes, brackets, soft hyphen removal, double-to-single quotes, HTML bold wrapping
+- **Special Characters menu** – quick-insert symbols, arrows, primes, dashes, currency, legal, maths, and bullet characters
+- **LLM pricing module** – token cost estimation for all supported providers
+
+### Changed
+- **Chat visual refresh** – lighter user bubble colours (#D6EBFF), avatar labels ("You" / "Supervertaler Assistant"), timestamps on all messages, model/cost info line on assistant responses – ported from Supervertaler for Trados plugin styling
+- **Thinking indicator** – replaced emoji bubble with animated "Thinking..." text that cycles dots, matching Trados plugin behaviour
+- **Markdown rendering** – added heading support (H1/H2/H3), horizontal rules, and numbered lists to chat message rendering
+- **QuickLauncher replaced** – the old QMenu-based QuickLauncher popup is replaced by the floating Supervertaler Assistant window with persistent state, keyboard navigation, and expandable categories
+- **Global hotkey** – changed from Ctrl+Alt+Q (often claimed by other apps) to Ctrl+Alt+A
+- **Window focus** – floating assistant uses AttachThreadInput for reliable keyboard focus capture, even from applications like Trados Studio that aggressively reclaim focus
+- **Floating assistant geometry** – window size, position, and splitter proportions are remembered across sessions
+
+### Removed
+- **Available Context panel** – replaced by the compact context chips row; no longer consumes vertical space
+- **Verbose debug logging** – removed prompt library tree debug output that was flooding the terminal and session log
+
+---
 
 ## v1.9.373 - April 6, 2026
 
