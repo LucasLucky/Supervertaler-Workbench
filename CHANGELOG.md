@@ -2,8 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.374 (April 12, 2026)
+**Current Version:** v1.9.375 (April 13, 2026)
 
+
+## v1.9.375 - April 13, 2026
+
+### Added
+- **QuickTrans tab** – QuickTrans is now embedded as a second tab inside the Supervertaler Assistant (Chat | QuickTrans). Results appear in a compact GT4T-style list with real provider logos. Select text anywhere, press **Ctrl+Alt+Q**, and translations from all enabled providers appear instantly
+- **QuickTrans input field** – the QuickTrans tab has its own input area with a Translate button; type or paste text and press Enter to translate without needing the global hotkey
+- **Provider icons** – real logos for Google Translate, DeepL, Microsoft, Amazon, ModernMT, MyMemory, OpenAI, Claude, Gemini, Mistral, Ollama, and OpenRouter replace the old generated letter icons
+- **QuickTrans keyboard navigation** – press 1–9 to instantly select a translation; use arrow keys + Enter to navigate; click any result to copy
+
+### Changed
+- **QuickTrans AI prompts** – LLM providers (Claude, OpenAI, Gemini, etc.) now use strict translation-only prompts, eliminating explanatory text, alternatives, and commentary from results
+- **Global QuickTrans shortcut** – changed from Ctrl+Alt+M to **Ctrl+Alt+Q**
+- **Chat tab auto-selected** – the Chat tab is always selected when the assistant opens; QuickTrans tab is only shown when triggered via its specific shortcut
+- **Assistant always opens** – pressing the global hotkey without text selected now opens the assistant with an empty input instead of doing nothing
+
+### Removed
+- **AI tab header** – removed the "✨ AI" header and description text from the AI tab to save vertical space
+
+---
 
 ## v1.9.374 - April 12, 2026
 

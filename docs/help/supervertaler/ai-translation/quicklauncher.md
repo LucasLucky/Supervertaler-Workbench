@@ -1,8 +1,6 @@
 # Supervertaler Assistant
 
-The **Supervertaler Assistant** is a floating AI assistant window that gives you instant access to an AI chat, translation tools, text conversions, snippets, and your custom prompts -- from anywhere on your computer.
-
-It replaces the old QuickLauncher popup menu with a persistent, resizable window featuring a chat panel on the left and an expandable action menu on the right.
+The **Supervertaler Assistant** is a floating AI assistant window that gives you instant access to an AI chat, instant machine translation (QuickTrans), text conversions, snippets, and your custom prompts -- from anywhere on your computer.
 
 ## Opening the Assistant
 
@@ -10,32 +8,36 @@ It replaces the old QuickLauncher popup menu with a persistent, resizable window
 
 | Method | Shortcut |
 |--------|----------|
-| Keyboard shortcut | **Ctrl+Q** |
+| Supervertaler Assistant | **Ctrl+Q** |
 
 ### From any application (system-wide)
 
 | Method | Shortcut |
 |--------|----------|
-| Global hotkey | **Ctrl+Alt+A** |
+| Supervertaler Assistant (Chat) | **Ctrl+Alt+A** |
+| QuickTrans (instant translation) | **Ctrl+Alt+Q** |
 
-Select text in any application (Word, memoQ, Trados, browser, etc.), then press **Ctrl+Alt+A**. The assistant opens with the selected text available for AI tools, text conversions, or snippets.
+Select text in any application (Word, memoQ, Trados, browser, etc.), then press the shortcut. The assistant opens with the selected text ready to use.
 
-{% hint style="info" %}
-If Ctrl+Alt+A doesn't work, another application may have claimed that shortcut. You can change it in **Settings > Keyboard Shortcuts > Global > Supervertaler Assistant**.
-{% endhint %}
+- **Ctrl+Alt+A** opens the **Chat** tab for AI conversation
+- **Ctrl+Alt+Q** opens the **QuickTrans** tab and immediately fetches translations from all enabled providers
+
+::: info
+If a shortcut doesn't work, another application may have claimed it. You can change shortcuts in **Settings > Keyboard Shortcuts > Global**.
+:::
 
 ## Window Layout
 
 The assistant has two panels separated by a draggable splitter:
 
-- **Left: Chat panel** -- conversational AI chat with full markdown rendering, image paste support, and model selector
-- **Right: Action menu** -- expandable categories with tools, prompts, snippets, and text conversions
+- **Left panel** -- two tabs: **Chat** and **QuickTrans**
+- **Right panel** -- expandable action menu with tools, prompts, snippets, and text conversions
 
 The window size, position, and splitter proportions are remembered across sessions.
 
-## Chat Panel
+## Chat Tab
 
-The chat panel is a full AI assistant with the same capabilities as the chat in the AI tab:
+The Chat tab is a full AI assistant with the same capabilities as the chat in the AI tab:
 
 - Type messages and press **Enter** to send (Shift+Enter for new line)
 - **Ctrl+V** to paste images from the clipboard (works with vision-capable models)
@@ -46,13 +48,43 @@ The chat panel is a full AI assistant with the same capabilities as the chat in 
 
 All chat views share the same conversation: the grid-side AI Assistant panel, the AI tab's Assistant sub-tab, and the floating assistant window all show the same messages and stay in sync.
 
+## QuickTrans Tab
+
+The QuickTrans tab provides instant machine translation from multiple providers simultaneously, similar to [GT4T](https://gt4t.cn/).
+
+### How It Works
+
+1. **From an external app:** Select text, press **Ctrl+Alt+Q** -- translations appear immediately
+2. **From the tab:** Type or paste text in the input field at the bottom, press Enter or click **Translate**
+
+### Translation Results
+
+Results arrive as they complete from each provider and are displayed in a compact list with provider icons:
+
+- **MT engines** -- Google Translate, DeepL, Microsoft, Amazon, ModernMT, MyMemory
+- **AI models** -- Claude, OpenAI, Gemini, Mistral, Ollama, and any custom provider
+
+### Selecting a Translation
+
+| Method | Action |
+|--------|--------|
+| **Press 1--9** | Instantly insert the numbered translation |
+| **Arrow keys + Enter** | Navigate and select |
+| **Click** | Copy the translation to clipboard |
+
+When launched from an external app, selecting a translation hides the assistant, returns focus to the source application, and pastes the result over your selection.
+
+### Configuring Providers
+
+Enable or disable individual MT and AI providers in **Settings > QuickTrans**. Each provider can be toggled independently.
+
 ## Action Menu
 
 The right panel has expandable categories. Click a category heading to expand or collapse it. Use **arrow keys** to navigate and **Enter** to activate.
 
 ### Workbench Tools
 
-- **QuickTrans** -- instant machine translation of the input text
+- **QuickTrans** -- switches to the QuickTrans tab and translates the input text
 - **Superlookup** -- concordance search across TMs, glossaries, and web resources
 
 ### Prompts
@@ -78,27 +110,28 @@ Transform selected text:
 | Title Case | Selected Text |
 | Sentence case | Selected text |
 | Single curly quotes | 'Selected text' |
-| Double curly quotes | "Selected text" |
+| Double curly quotes | \u201CSelected text\u201D |
 | Round brackets | (Selected text) |
 | Square brackets | [Selected text] |
 | Remove soft hyphens | Strips invisible U+00AD characters |
-| Double to single quotes | Replaces " with ' |
+| Double to single quotes | Replaces \u201C with \u2018 |
 | Make bold | Wraps in `<b>...</b>` HTML tags |
 
-**Direct action flow:** When launched from an external app via Ctrl+Alt+A, text conversions and snippets are *direct actions* -- the assistant hides immediately, returns focus to the source application, and pastes the result over your selection.
+**Direct action flow:** When launched from an external app, text conversions and snippets are *direct actions* -- the assistant hides immediately, returns focus to the source application, and pastes the result over your selection.
 
 ## Keyboard Navigation
 
 | Key | Action |
 |-----|--------|
-| **Arrow keys** | Navigate menu items |
-| **Enter** | Activate selected item (or expand/collapse a category) |
-| **Tab** | Switch focus between the action menu and the chat input |
+| **Arrow keys** | Navigate menu items or QuickTrans results |
+| **1--9** | Select QuickTrans result by number |
+| **Enter** | Activate selected item |
+| **Tab** | Switch focus between the action menu and the input |
 | **Escape** | Close the assistant |
 
 ## Context Chips
 
-The context chips row appears above the chat input in all chat views:
+The context chips row appears above the chat input:
 
 | Chip | Left-click | Right-click |
 |------|-----------|-------------|
@@ -115,10 +148,12 @@ You can change the default keyboard shortcuts in **Settings > Keyboard Shortcuts
 |------------------|--------|
 | **Ctrl+Q** | Open Supervertaler Assistant (in-app) |
 | **Ctrl+Alt+A** | Open Supervertaler Assistant (global, from any app) |
-| **Ctrl+M** | QuickTrans (direct, skip assistant) |
+| **Ctrl+Alt+Q** | Open QuickTrans (global, from any app) |
+| **Ctrl+M** | QuickTrans (in-app, direct) |
 
 ## Tips
 
+- **Ctrl+Alt+Q is the fastest way to translate** -- select text anywhere, press the shortcut, results appear instantly
 - **Press Ctrl+Alt+A without selecting text** to open the assistant for general AI chat
 - **Use text conversions** for quick formatting changes without leaving your current app
 - **Right-click context chips** to browse and select specific TMs or termbases
