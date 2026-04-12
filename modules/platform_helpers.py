@@ -327,7 +327,7 @@ class GlobalHotkeyManager:
 
         manager = GlobalHotkeyManager()
         manager.register('ctrl+alt+l', on_superlookup)
-        manager.register('ctrl+alt+m', on_quicktrans)
+        manager.register('ctrl+alt+q', on_quicktrans)
         success = manager.start()
         ...
         manager.stop()

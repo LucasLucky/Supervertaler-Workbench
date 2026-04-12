@@ -97,12 +97,32 @@ class FloatingAssistant(QWidget):
         title_bar = self._create_title_bar()
         outer_layout.addWidget(title_bar)
 
-        # Content: splitter with chat (left) + actions (right)
+        # Content: splitter with left panel (tabs) + right panel (actions)
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.setHandleWidth(4)
         self._splitter.setChildrenCollapsible(False)
 
-        # Chat view
+        # Left panel: tabbed Chat + QuickTrans
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
+        # Tab bar for Chat / QuickTrans
+        from PyQt6.QtWidgets import QTabWidget
+        self._left_tabs = QTabWidget()
+        self._left_tabs.setStyleSheet("""
+            QTabBar::tab {
+                padding: 6px 16px; font-size: 9pt;
+            }
+            QTabBar::tab:selected {
+                font-weight: bold;
+                border-bottom: 2px solid #3D5A80;
+            }
+        """)
+        self._left_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        # Chat tab
         self._chat_view = ChatViewWidget(
             self._backend,
             compact=True,
@@ -110,15 +130,22 @@ class FloatingAssistant(QWidget):
         )
         if hasattr(self._parent_app, 'prompt_manager_qt'):
             self._chat_view._do_send = self._parent_app.prompt_manager_qt._context_aware_send
-        self._splitter.addWidget(self._chat_view)
+        self._left_tabs.addTab(self._chat_view, "\U0001F4AC Chat")
 
-        # Action panel
+        # QuickTrans tab
+        self._quicktrans_widget = self._create_quicktrans_tab()
+        self._left_tabs.addTab(self._quicktrans_widget, "\u26A1 QuickTrans")
+
+        left_layout.addWidget(self._left_tabs)
+        self._splitter.addWidget(left_panel)
+
+        # Action panel (right)
         action_panel = self._create_action_panel()
         self._splitter.addWidget(action_panel)
 
         self._splitter.setSizes([520, 280])
-        self._splitter.setStretchFactor(0, 1)   # chat stretches
-        self._splitter.setStretchFactor(1, 0)   # actions keep size
+        self._splitter.setStretchFactor(0, 1)
+        self._splitter.setStretchFactor(1, 0)
         outer_layout.addWidget(self._splitter, 1)
 
         # Resize grip (bottom-right corner)
@@ -480,6 +507,276 @@ class FloatingAssistant(QWidget):
             result = result[0].upper() + result[1:]
         return result
 
+    # ------------------------------------------------------------------
+    # QuickTrans tab
+    # ------------------------------------------------------------------
+
+    # Provider code → icon filename (in assets/providers/)
+    _PROVIDER_ICONS = {
+        "GT":  "google",
+        "DL":  "deepl",
+        "MS":  "microsoft",
+        "AT":  "amazon",
+        "MMT": "modernmt",
+        "MM":  "mymemory",
+        # LLM providers (matched by name)
+    }
+    _PROVIDER_NAME_TO_ICON = {
+        "openai": "openai", "claude": "claude", "gemini": "gemini",
+        "mistral": "mistral", "ollama": "ollama", "openrouter": "openrouter",
+        "custom": "openrouter",
+    }
+
+    def _create_quicktrans_tab(self) -> QWidget:
+        """Create an embedded QuickTrans panel (compact GT4T style)."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+
+        # Source text (compact, one line if possible)
+        self._qt_source_label = QLabel("Select text and press Ctrl+Alt+Q to translate.")
+        self._qt_source_label.setWordWrap(True)
+        self._qt_source_label.setStyleSheet(
+            "color: #C0392B; font-size: 9pt; padding: 6px 8px; "
+            "background-color: #FEF9E7; border: 1px solid #F0E68C; "
+            "border-radius: 4px;"
+        )
+        layout.addWidget(self._qt_source_label)
+
+        # Results list (keyboard-navigable)
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        self._qt_list = QListWidget()
+        self._qt_list.setStyleSheet("""
+            QListWidget {
+                border: none; background: transparent;
+                font-size: 9pt; outline: none;
+            }
+            QListWidget::item {
+                padding: 3px 6px; border-bottom: 1px solid #F0F0F0;
+            }
+            QListWidget::item:selected {
+                background-color: #E8F4FD; color: #1E1E1E;
+            }
+            QListWidget::item:hover {
+                background-color: #F5F5F5;
+            }
+        """)
+        self._qt_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._qt_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self._qt_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._qt_list.itemActivated.connect(self._on_qt_item_activated)
+        self._qt_list.itemClicked.connect(self._on_qt_item_activated)
+        layout.addWidget(self._qt_list, 1)
+
+        # Hint bar
+        hint = QLabel("1\u20139 to insert \u2022 \u2191\u2193 Enter to select \u2022 Click to copy")
+        hint.setStyleSheet("color: #999; font-size: 7pt; padding: 2px 6px;")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(hint)
+
+        # Input area
+        from PyQt6.QtWidgets import QPlainTextEdit
+        input_frame = QFrame()
+        input_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #E0E0E0;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
+        input_layout = QVBoxLayout(input_frame)
+        input_layout.setContentsMargins(5, 5, 5, 5)
+        input_layout.setSpacing(4)
+
+        self._qt_input = QPlainTextEdit()
+        self._qt_input.setMaximumHeight(60)
+        self._qt_input.setPlaceholderText("Type or paste text to translate\u2026")
+        self._qt_input.setStyleSheet("""
+            QPlainTextEdit {
+                border: none; font-size: 10pt;
+                color: #1a1a1a; background-color: white;
+                padding: 4px;
+            }
+        """)
+        # Enter to translate (Shift+Enter for newline)
+        self._qt_input.installEventFilter(self)
+        input_layout.addWidget(self._qt_input)
+
+        # Bottom row: Translate button
+        qt_bottom = QHBoxLayout()
+        qt_bottom.setContentsMargins(0, 0, 0, 0)
+        qt_bottom.addStretch()
+
+        translate_btn = QPushButton("Translate")
+        translate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #E67E22; color: white;
+                font-weight: bold; padding: 8px 20px;
+                border-radius: 5px; border: none;
+            }
+            QPushButton:hover { background-color: #D35400; }
+            QPushButton:pressed { background-color: #BA4A00; }
+        """)
+        translate_btn.clicked.connect(self._on_qt_translate_clicked)
+        qt_bottom.addWidget(translate_btn)
+
+        input_layout.addLayout(qt_bottom)
+        layout.addWidget(input_frame)
+
+        # State
+        self._qt_suggestions = []
+        self._qt_popup_ref = None
+
+        return tab
+
+    def _on_qt_translate_clicked(self):
+        """Translate text from the QuickTrans input field."""
+        text = self._qt_input.toPlainText().strip()
+        if text:
+            self._run_quicktrans(text)
+
+    def _run_quicktrans(self, text: str):
+        """Fetch translations from all enabled providers and display results."""
+        if not text:
+            return
+
+        # Switch to QuickTrans tab
+        self._left_tabs.setCurrentIndex(1)
+
+        # Update source display
+        self._qt_source_label.setText(text)
+        self._qt_source_label.setStyleSheet(
+            "color: #C0392B; font-size: 9pt; padding: 6px 8px; "
+            "background-color: #FEF9E7; border: 1px solid #F0E68C; "
+            "border-radius: 4px;"
+        )
+
+        # Clear previous results
+        self._qt_suggestions.clear()
+        self._qt_list.clear()
+
+        # Use MTFetchWorker directly with providers from the main app
+        try:
+            from modules.quicktrans import MTFetchWorker, MTQuickPopup
+
+            app = self._parent_app
+
+            # Get languages
+            source_lang = getattr(app, 'source_language', 'English')
+            target_lang = getattr(app, 'target_language', 'Dutch')
+            if hasattr(app, 'current_project') and app.current_project:
+                source_lang = getattr(app.current_project, 'source_lang', source_lang) or source_lang
+                target_lang = getattr(app.current_project, 'target_lang', target_lang) or target_lang
+
+            # Get providers via a hidden popup (it auto-starts fetching, but we
+            # hide it immediately and also connect to our own result handlers)
+            popup = MTQuickPopup(
+                parent_app=app,
+                source_text=text,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                parent=None,
+                external_mode=True,
+            )
+            popup.hide()
+
+            # Connect our handlers to the already-running worker
+            if popup.worker:
+                popup.worker.result_ready.connect(self._on_qt_result)
+                popup.worker.all_complete.connect(self._on_qt_complete)
+                popup.worker.all_complete.connect(lambda: popup.close())
+            else:
+                self._qt_status_label.setText(
+                    "No providers configured.\nGo to Settings \u2192 QuickTrans."
+                )
+
+            # Keep reference to prevent GC
+            self._qt_popup_ref = popup
+
+        except Exception as e:
+            self._qt_status_label.setText(f"\u26A0 Error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_provider_icon(self, provider_code: str, provider_name: str):
+        """Resolve a provider icon (QIcon) from assets/providers/."""
+        from PyQt6.QtGui import QIcon, QPixmap
+        import os
+
+        # Try by code first, then by name
+        icon_name = self._PROVIDER_ICONS.get(provider_code)
+        if not icon_name:
+            name_lower = provider_name.lower()
+            for key, val in self._PROVIDER_NAME_TO_ICON.items():
+                if key in name_lower:
+                    icon_name = val
+                    break
+
+        if icon_name:
+            # Try relative to the app directory
+            for base in [os.path.dirname(os.path.dirname(__file__)), '.']:
+                path = os.path.join(base, 'assets', 'providers', f'{icon_name}.png')
+                if os.path.exists(path):
+                    return QIcon(path)
+
+        return QIcon()  # Empty icon fallback
+
+    def _on_qt_result(self, provider_name: str, provider_code: str, translation: str, is_error: bool):
+        """Handle a single translation result arriving (compact GT4T style with icons)."""
+        from PyQt6.QtWidgets import QListWidgetItem
+        from PyQt6.QtCore import QSize
+
+        idx = len(self._qt_suggestions) + 1
+        self._qt_suggestions.append((provider_name, translation, is_error))
+
+        # Compact format: "1  translation text"
+        if is_error:
+            display = f"{idx}  \u26A0 {translation}"
+        else:
+            short = translation[:200] + ("\u2026" if len(translation) > 200 else "")
+            display = f"{idx}  {short}"
+
+        item = QListWidgetItem(display)
+        item.setData(Qt.ItemDataRole.UserRole, translation)
+        item.setToolTip(f"{provider_name}: {translation}")
+
+        # Set provider icon
+        icon = self._get_provider_icon(provider_code, provider_name)
+        if not icon.isNull():
+            item.setIcon(icon)
+            self._qt_list.setIconSize(QSize(16, 16))
+
+        if is_error:
+            item.setForeground(QBrush(QColor("#c0392b")))
+        self._qt_list.addItem(item)
+
+        # Auto-select first result
+        if idx == 1:
+            self._qt_list.setCurrentRow(0)
+
+    def _on_qt_complete(self):
+        """All translations fetched."""
+        if not self._qt_suggestions:
+            from PyQt6.QtWidgets import QListWidgetItem
+            item = QListWidgetItem("No translations received.")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self._qt_list.addItem(item)
+
+        # Focus the list for keyboard navigation
+        self._qt_list.setFocus()
+
+    def _on_qt_item_activated(self, item):
+        """Handle Enter or click on a QuickTrans result."""
+        translation = item.data(Qt.ItemDataRole.UserRole)
+        if translation:
+            self._paste_and_return(translation)
+
+    def _copy_qt_result(self, text: str):
+        """Copy a QuickTrans result to clipboard."""
+        QApplication.clipboard().setText(text)
+
     def _on_tree_activated(self, item: QTreeWidgetItem, column: int):
         """Called when user presses Enter or double-clicks a tree item."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -523,16 +820,7 @@ class FloatingAssistant(QWidget):
         if not text:
             self._backend.add_message("system", "\u26A0 No text available. Type or select text first.")
             return
-
-        # Use the external-mode QuickTrans (works without grid context)
-        lookup_tab = self._get_lookup_tab()
-        if lookup_tab and hasattr(lookup_tab, 'show_mt_quick_lookup_from_ahk'):
-            self.hide()
-            lookup_tab.show_mt_quick_lookup_from_ahk(text)
-        elif hasattr(self._parent_app, 'show_mt_quick_popup'):
-            self._parent_app.show_mt_quick_popup(text_override=text)
-        else:
-            self._backend.add_message("system", "\u26A0 QuickTrans not available.")
+        self._run_quicktrans(text)
 
     def _on_superlookup(self):
         text = self._get_action_text()
@@ -664,6 +952,10 @@ class FloatingAssistant(QWidget):
                            (used to return focus after direct actions).
         """
         self._source_window = source_window
+
+        # Always start on the Chat tab (QuickTrans tab is only
+        # selected explicitly by _run_quicktrans)
+        self._left_tabs.setCurrentIndex(0)
 
         # Always start with a clean input field
         self._chat_view._chat_input.clear()
@@ -828,7 +1120,28 @@ class FloatingAssistant(QWidget):
     # Key handling
     # ------------------------------------------------------------------
 
+    def eventFilter(self, obj, event):
+        """Handle Enter in the QuickTrans input field."""
+        if obj is self._qt_input and event.type() == event.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    return False  # Allow newline
+                self._on_qt_translate_clicked()
+                return True
+        return super().eventFilter(obj, event)
+
     def keyPressEvent(self, event):
+        # Number keys 1-9: select QuickTrans result (when QT tab active)
+        if self._left_tabs.currentIndex() == 1:  # QuickTrans tab
+            key = event.key()
+            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+                idx = key - Qt.Key.Key_1
+                if 0 <= idx < self._qt_list.count():
+                    item = self._qt_list.item(idx)
+                    if item and item.data(Qt.ItemDataRole.UserRole):
+                        self._on_qt_item_activated(item)
+                        return
+
         # Tab switches focus between chat input and action tree
         if event.key() == Qt.Key.Key_Tab:
             if self._action_tree.hasFocus():

@@ -2,7 +2,7 @@
 QuickTrans - Instant translation popup (GT4T-style)
 
 A popup window that shows translations from all enabled MT engines and LLMs.
-Part of the Supervertaler tool suite. Triggered by Ctrl+M (in-app) or Ctrl+Alt+M (global).
+Part of the Supervertaler tool suite. Triggered by Ctrl+M (in-app) or Ctrl+Alt+Q (global).
 
 Features:
 - Shows source text at the top
@@ -579,11 +579,26 @@ class MTQuickPopup(QDialog):
                     base_url=base_url
                 )
 
-            # Use the translate method
+            # Use a strict prompt that forces translation-only output
+            prompt = (
+                f"Translate the following text from {source_lang} to {target_lang}.\n"
+                f"Output ONLY the translation, nothing else. "
+                f"No explanations, no alternatives, no notes, no quotation marks.\n\n"
+                f"{text}"
+            )
+            system_prompt = (
+                "You are a translation engine. Output only the translated text. "
+                "Never add explanations, alternatives, notes, or commentary. "
+                "Never wrap the output in quotes. "
+                "If the text is already in the target language, output it unchanged."
+            )
+
             result = client.translate(
-                text=text,
+                text="",
                 source_lang=source_lang,
-                target_lang=target_lang
+                target_lang=target_lang,
+                custom_prompt=prompt,
+                system_prompt=system_prompt,
             )
 
             # Clean up result - remove quotes if present
@@ -591,6 +606,10 @@ class MTQuickPopup(QDialog):
                 result = result.strip()
                 if (result.startswith('"') and result.endswith('"')) or (result.startswith("'") and result.endswith("'")):
                     result = result[1:-1]
+                # Remove any "Translation:" or similar prefixes
+                for prefix in ['Translation:', 'translation:', 'Result:', 'Output:']:
+                    if result.startswith(prefix):
+                        result = result[len(prefix):].strip()
 
             return result or "[No translation returned]"
 

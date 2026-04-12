@@ -620,7 +620,7 @@ class ShortcutManager:
         "global_quicktrans": {
             "category": "Global",
             "description": "QuickTrans (global — works from any app)",
-            "default": "Ctrl+Alt+M",
+            "default": "Ctrl+Alt+Q",
             "action": "global_quicktrans",
             "context": "global"
         },

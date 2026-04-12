@@ -133,7 +133,7 @@ A curated list of translation tools and AI-powered assistants that offer similar
 | Feature | Supervertaler | GT4T | TransAIde | OpenAI Provider | CotranslatorAI | Wordscope | Bureau Works | Wordplay | TWAS Suite |
 |---------|---------------|------|-----------|-----------------|----------------|-----------|--------------|----------|------------|
 | Multi-LLM Support | ✅ GPT, Claude, Gemini, Ollama | ➖ MT engines + ChatGPT | ✅ Any AI model | ❌ (OpenAI only) | ❌ | ✅ ChatGPT | ✅ AI-augmented | ✅ AI-powered | ❓ |
-| Global hotkey popup | ✅ QuickTrans (Ctrl+Alt+M) | ✅ Ctrl+J / Cmd+J | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Global hotkey popup | ✅ QuickTrans (Ctrl+Alt+Q) | ✅ Ctrl+J / Cmd+J | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Standalone App | ✅ Desktop | ✅ Desktop | ❌ (Trados plugin) | ❌ (Trados plugin) | ✅ Desktop | ✅ Web | ✅ Web | ✅ Web | ✅ Desktop |
 | Local/Offline Mode | ✅ Ollama | ✅ local-first | ✅ (via local model) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Trados Integration | ✅ SDLPPX/SDLRPX | ✅ SDLXLIFF batch | ✅ Native plugin | ✅ Native plugin | ✅ | ❌ | ❓ | ✅ (via XLIFF) | ✅ |

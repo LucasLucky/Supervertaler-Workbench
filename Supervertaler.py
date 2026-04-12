@@ -12134,7 +12134,7 @@ class SupervertalerQt(QMainWindow):
             if failed:
                 self.log(f"\u26A0 Global hotkeys: some failed to register: {', '.join(failed)}")
             else:
-                self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+M, Ctrl+Alt+Q)")
+                self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+Q, Ctrl+Alt+A)")
         else:
             self.log("\u26A0 Global hotkeys NOT registered — check console for errors")
 
@@ -19019,7 +19019,7 @@ class SupervertalerQt(QMainWindow):
 
         # Header info
         header_info = QLabel(
-            f"⚡ <b>QuickTrans</b> - Configure which providers appear in the QuickTrans popup ({format_shortcut_for_display('Ctrl+M')} / {format_shortcut_for_display('Meta+Ctrl+M') if IS_MACOS else format_shortcut_for_display('Ctrl+Alt+M')}).<br>"
+            f"⚡ <b>QuickTrans</b> - Configure which providers appear in the QuickTrans popup ({format_shortcut_for_display('Ctrl+M')} / {format_shortcut_for_display('Meta+Ctrl+Q') if IS_MACOS else format_shortcut_for_display('Ctrl+Alt+Q')}).<br>"
             "Enable MT engines and/or LLMs to get instant translation suggestions."
         )
         header_info.setTextFormat(Qt.TextFormat.RichText)
@@ -55910,7 +55910,7 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Error signaling main thread: {e}")
 
     def _on_pynput_quicktrans(self):
-        """Called from pynput background thread when Ctrl+Alt+M is pressed.
+        """Called from pynput background thread when Ctrl+Alt+Q is pressed.
 
         IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
         """
@@ -56180,9 +56180,19 @@ class SuperlookupTab(QWidget):
             print(f"[QuickTrans] Error in hotkey handler: {e}")
 
     def _read_clipboard_for_quicktrans(self):
-        """Read clipboard and dispatch to QuickTrans (main thread)."""
-        text = pyperclip.paste()
-        if text:
+        """Read clipboard and open QuickTrans tab in the floating assistant."""
+        text = pyperclip.paste() or ""
+        mw = self.main_window or self.window()
+        assistant = getattr(mw, '_floating_assistant', None) if mw else None
+        if assistant:
+            source_win = getattr(self, '_quicktrans_source_window', None)
+            assistant.show_at_cursor(
+                captured_text=None, focus_actions=False,
+                source_window=source_win,
+            )
+            assistant._run_quicktrans(text)
+        elif text:
+            # Fallback to old standalone popup
             self.on_ahk_mt_lookup_capture(text)
 
     @pyqtSlot()
@@ -56279,7 +56289,7 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Error handling capture: {e}")
 
     def on_ahk_mt_lookup_capture(self, text):
-        """Handle MT Quick Lookup text captured by AHK (Ctrl+Alt+M)"""
+        """Handle MT Quick Lookup text captured by AHK (Ctrl+Alt+Q)"""
         try:
             print(f"[QuickTrans] on_ahk_mt_lookup_capture called with text: {text[:50]}...")
 
@@ -56387,7 +56397,7 @@ class SuperlookupTab(QWidget):
         """Copy translation to clipboard and paste at cursor in the external app.
 
         Called when the user selects a translation in the QuickTrans popup that
-        was invoked via the global hotkey (Ctrl+Alt+M) from another application.
+        was invoked via the global hotkey (Ctrl+Alt+Q) from another application.
         """
         try:
             print(f"[QuickTrans] Pasting translation to external app: {translation[:50]}...")
