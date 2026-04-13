@@ -2,8 +2,42 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.375 (April 13, 2026)
+**Current Version:** v1.9.378 (April 14, 2026)
 
+
+## v1.9.378 - April 14, 2026
+
+### Fixed
+- **Superlookup table rendering** – source and target columns in TMs and Termbases tabs now use lightweight QLabel cell widgets with `WA_TransparentForMouseEvents`, fixing the UI freeze that occurred when switching tabs or clicking results. Search term highlighting (yellow) is preserved. Copying is handled via right-click context menu (Copy Source / Copy Target), double-click, and the Copy Target button.
+- **Superlookup Ctrl+Alt+L hotkey** – now correctly opens the floating Supervertaler Assistant with the Superlookup tab active instead of bringing the main Workbench window to the foreground.
+- **Screen artifact on main window** – the hidden SuperlookupTab (kept for global hotkey registration) was rendering as a child widget on top of the main window; now explicitly hidden.
+
+### Changed
+- **Removed Machine Translation tab from Superlookup** – MT is already handled by QuickTrans; having it in both places was redundant. The Web Resources tab is kept.
+- **Removed Type column from TM results** – every Superlookup result is a concordance match by definition; the column just repeated "concordance" for every row.
+- **Renamed Glossaries tab to Termbases** in Superlookup results for consistency with the rest of the product.
+- **Superlookup search syncs to QuickTrans** – when a search runs in Superlookup, the search text is automatically copied to the QuickTrans input field so users can switch tabs and run the same query with MT/AI engines without retyping.
+
+---
+
+## v1.9.377 - April 13, 2026
+
+### Added
+- **Superlookup tab in the Supervertaler Assistant.** Superlookup is now available as a third tab (Chat | QuickTrans | Superlookup) in the floating Supervertaler Assistant window. Search your TMs and termbases from anywhere – inside Trados, from any application, or from within Workbench itself. The global hotkey Ctrl+Alt+L now opens Superlookup directly in the floating assistant instead of bringing the main Workbench window to the foreground.
+- **Maximise button on the Supervertaler Assistant.** A new maximise/restore button (☐) sits between the minimise and close buttons in the assistant's title bar. Click it to fill the screen – useful when browsing Superlookup results – and click again to restore the previous size.
+
+### Changed
+- **Superlookup action in the assistant's action tree** now switches to the Superlookup tab within the assistant instead of hiding the assistant and opening the main window.
+
+---
+
+## v1.9.376 - April 13, 2026
+
+### Changed
+- **TSV export uses standard headers.** Export now writes "Source" / "Target" as column headers instead of "Source Term" / "Target Term", matching the Trados plugin format for cross-product compatibility.
+- **TSV import confirmation dialog improved.** The confirmation dialog now shows the filename, row count, termbase name, and language pair before importing – making it easier to catch mistakes.
+
+---
 
 ## v1.9.375 - April 13, 2026
 

@@ -34,11 +34,15 @@ class FloatingAssistant(QWidget):
     Floating window with chat + keyboard-navigable action panel.
     """
 
-    def __init__(self, chat_backend: ChatBackend, parent_app, parent=None):
+    def __init__(self, chat_backend: ChatBackend, parent_app, parent=None,
+                 superlookup_class=None):
         super().__init__(parent)
         self._backend = chat_backend
         self._parent_app = parent_app
+        self._superlookup_class = superlookup_class
         self._drag_pos = None
+        self._is_maximised = False
+        self._pre_max_geometry = None
 
         # Action data: list of callbacks
         self._action_items = []
@@ -136,6 +140,12 @@ class FloatingAssistant(QWidget):
         self._quicktrans_widget = self._create_quicktrans_tab()
         self._left_tabs.addTab(self._quicktrans_widget, "\u26A1 QuickTrans")
 
+        # Superlookup tab — deferred until first show to avoid init-order
+        # issues (the main window's database/termbase managers may not be
+        # fully wired when the FloatingAssistant is first constructed).
+        self._superlookup_widget = None
+        self._superlookup_tab_added = False
+
         left_layout.addWidget(self._left_tabs)
         self._splitter.addWidget(left_panel)
 
@@ -147,6 +157,17 @@ class FloatingAssistant(QWidget):
         self._splitter.setStretchFactor(0, 1)
         self._splitter.setStretchFactor(1, 0)
         outer_layout.addWidget(self._splitter, 1)
+
+        # Context-aware info bar — shows a short tip depending on the active tab
+        self._info_label = QLabel("")
+        self._info_label.setStyleSheet(
+            "color: #888; font-size: 8pt; padding: 2px 8px; border: none;")
+        self._info_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._info_label.setFixedHeight(18)
+        outer_layout.addWidget(self._info_label)
+        self._left_tabs.currentChanged.connect(self._update_info_label)
+        self._update_info_label(0)
 
         # Resize grip (bottom-right corner)
         grip_bar = QWidget()
@@ -191,6 +212,19 @@ class FloatingAssistant(QWidget):
         """)
         min_btn.clicked.connect(self.showMinimized)
         layout.addWidget(min_btn)
+
+        # Maximise / Restore
+        self._max_btn = QPushButton("\u25A1")  # □
+        self._max_btn.setFixedSize(24, 24)
+        self._max_btn.setStyleSheet("""
+            QPushButton {
+                color: white; background: transparent;
+                border: none; font-size: 12pt; font-weight: bold;
+            }
+            QPushButton:hover { background-color: rgba(255,255,255,0.2); border-radius: 4px; }
+        """)
+        self._max_btn.clicked.connect(self._toggle_maximise)
+        layout.addWidget(self._max_btn)
 
         # Close
         close_btn = QPushButton("\u00D7")
@@ -824,43 +858,45 @@ class FloatingAssistant(QWidget):
 
     def _on_superlookup(self):
         text = self._get_action_text()
-        if not text:
-            self._backend.add_message("system", "\u26A0 No text available. Type or select text first.")
+        self.show_superlookup(text)
+
+    def show_superlookup(self, text=None):
+        """Show the assistant, switch to the Superlookup tab, and optionally search."""
+        self._ensure_superlookup_tab()
+
+        if self._superlookup_widget is None:
+            self._backend.add_message("system", "\u26A0 Superlookup not available.")
             return
 
-        self.hide()
+        # Ensure the window is visible and in the foreground
+        if not self.isVisible():
+            self.show()
+        self.raise_()
+        self.activateWindow()
+        self._force_foreground_focus()
 
-        # Use the main window's show_superlookup path directly
-        mw = self._parent_app
-        lookup_tab = getattr(mw, 'lookup_tab', None)
-        if lookup_tab and hasattr(lookup_tab, 'show_superlookup'):
-            # Bring main window to foreground
-            if mw.isMinimized():
-                mw.showNormal()
-            mw.show()
-            mw.raise_()
-            mw.activateWindow()
+        # Switch to the Superlookup tab
+        self._left_tabs.setCurrentWidget(self._superlookup_widget)
 
-            import sys
-            if sys.platform == 'win32':
-                try:
-                    import ctypes
-                    hwnd = int(mw.winId())
-                    fg = ctypes.windll.user32.GetForegroundWindow()
-                    fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg, None)
-                    our_thread = ctypes.windll.kernel32.GetCurrentThreadId()
-                    if fg_thread != our_thread:
-                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, True)
-                        ctypes.windll.user32.SetForegroundWindow(hwnd)
-                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, False)
-                    else:
-                        ctypes.windll.user32.SetForegroundWindow(hwnd)
-                except Exception:
-                    pass
+        # Populate search field and trigger search if text provided
+        if text and hasattr(self._superlookup_widget, 'source_text'):
+            self._superlookup_widget.source_text.setEditText(text)
+            self._sync_text_to_quicktrans(text)
+            if hasattr(self._superlookup_widget, 'perform_lookup'):
+                self._superlookup_widget.perform_lookup()
 
-            lookup_tab.show_superlookup(text)
-        else:
-            self._backend.add_message("system", "\u26A0 Superlookup not available.")
+    def _sync_superlookup_to_quicktrans(self):
+        """Called when the Superlookup search button is clicked manually."""
+        if self._superlookup_widget and hasattr(self._superlookup_widget, 'source_text'):
+            text = self._superlookup_widget.source_text.currentText().strip()
+            if text:
+                self._sync_text_to_quicktrans(text)
+
+    def _sync_text_to_quicktrans(self, text):
+        """Pre-fill the QuickTrans input field so the user can switch tabs
+        and click Translate to run the same query with MT/AI engines."""
+        if text and hasattr(self, '_qt_input'):
+            self._qt_input.setPlainText(text)
 
     def _on_prompt_action(self, rel_path: str):
         """Run a prompt from the library using the chat input text as context."""
@@ -933,6 +969,51 @@ class FloatingAssistant(QWidget):
             self._backend.add_message("system", f"\u26A0 Error: {e}")
 
     # ------------------------------------------------------------------
+    # Context-aware info bar
+    # ------------------------------------------------------------------
+
+    _TAB_INFO = {
+        0: "AI chat assistant – ask questions, get translations, save answers to your memory bank",
+        1: "QuickTrans – instant translations from all configured providers (1–9 to select)",
+        2: "Superlookup – search your TMs and termbases from anywhere (Ctrl+Alt+L)",
+    }
+
+    def _update_info_label(self, index):
+        self._info_label.setText(self._TAB_INFO.get(index, ""))
+
+    # ------------------------------------------------------------------
+    # Lazy Superlookup tab init
+    # ------------------------------------------------------------------
+
+    def _ensure_superlookup_tab(self):
+        """Lazily create the Superlookup tab on first show.
+
+        Deferred because the main window's database and termbase managers
+        may not be fully wired when the FloatingAssistant is first
+        constructed during create_main_layout().
+        """
+        if self._superlookup_tab_added or self._superlookup_class is None:
+            return
+        self._superlookup_tab_added = True
+        try:
+            user_data = getattr(self._parent_app, 'user_data_path', None)
+            self._superlookup_widget = self._superlookup_class(
+                self._parent_app, user_data_path=user_data)
+            self._superlookup_widget.set_compact_mode(True)
+            self._left_tabs.addTab(
+                self._superlookup_widget, "\U0001F50D Superlookup")
+            # Sync search text to QuickTrans whenever a Superlookup search runs
+            if hasattr(self._superlookup_widget, 'search_btn'):
+                self._superlookup_widget.search_btn.clicked.connect(
+                    self._sync_superlookup_to_quicktrans)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            log = getattr(self._parent_app, 'log', None)
+            if log:
+                log(f"\u26A0 FloatingAssistant: Could not load Superlookup tab: {e}")
+
+    # ------------------------------------------------------------------
     # Show / toggle
     # ------------------------------------------------------------------
 
@@ -955,6 +1036,7 @@ class FloatingAssistant(QWidget):
 
         # Always start on the Chat tab (QuickTrans tab is only
         # selected explicitly by _run_quicktrans)
+        self._ensure_superlookup_tab()
         self._left_tabs.setCurrentIndex(0)
 
         # Always start with a clean input field
@@ -1028,6 +1110,24 @@ class FloatingAssistant(QWidget):
     # ------------------------------------------------------------------
     # Dragging (title bar)
     # ------------------------------------------------------------------
+
+    def _toggle_maximise(self):
+        """Toggle between maximised (fills screen) and normal size."""
+        if self._is_maximised:
+            # Restore to saved geometry
+            if self._pre_max_geometry:
+                self.setGeometry(self._pre_max_geometry)
+            self._is_maximised = False
+            self._max_btn.setText("\u25A1")  # □
+        else:
+            # Save current geometry and fill the available screen
+            self._pre_max_geometry = self.geometry()
+            screen = QApplication.primaryScreen()
+            if screen:
+                avail = screen.availableGeometry()
+                self.setGeometry(avail)
+            self._is_maximised = True
+            self._max_btn.setText("\u2750")  # ❐
 
     def _title_mouse_press(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

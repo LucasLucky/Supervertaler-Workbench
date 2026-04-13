@@ -412,10 +412,10 @@ class TermbaseExporter:
             
             # Define columns - always include UUID for tracking
             if include_metadata:
-                columns = ['Term UUID', 'Source Term', 'Target Term', 'Domain',
+                columns = ['Term UUID', 'Source', 'Target', 'Domain',
                           'Notes', 'Project', 'Client', 'Forbidden']
             else:
-                columns = ['Term UUID', 'Source Term', 'Target Term', 'Domain', 'Notes']
+                columns = ['Term UUID', 'Source', 'Target', 'Domain', 'Notes']
             
             # Write to file with UTF-8 BOM for Excel compatibility
             with open(filepath, 'w', encoding='utf-8-sig', newline='') as f:

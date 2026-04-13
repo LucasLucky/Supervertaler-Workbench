@@ -10287,6 +10287,7 @@ class SupervertalerQt(QMainWindow):
             self._floating_assistant = FloatingAssistant(
                 chat_backend=self.prompt_manager_qt.chat_backend,
                 parent_app=self,
+                superlookup_class=SuperlookupTab,
             )
         except Exception as e:
             self.log(f"⚠ Failed to create Floating Assistant: {e}")
@@ -12123,10 +12124,14 @@ class SupervertalerQt(QMainWindow):
 
         # Superdocs removed (online GitBook will be used instead)
 
+        # SuperlookupTab is still created here for two reasons:
+        # (a) it registers the global Ctrl+Alt+L hotkey in its __init__
+        # (b) it's the fallback if the floating assistant isn't available
+        # But it's no longer added to the sidebar — the floating assistant
+        # hosts the primary Superlookup tab now.
         lookup_tab = SuperlookupTab(self, user_data_path=self.user_data_path)
-        self.lookup_tab = lookup_tab  # Store reference for later use
-        set_help_topic(lookup_tab, HelpTopics.SUPERLOOKUP)
-        modules_tabs.addTab(lookup_tab, "🔍 Superlookup")
+        lookup_tab.hide()  # Not in the sidebar — prevent rendering as a floating child widget
+        self.lookup_tab = lookup_tab
 
         # Log global hotkey status to the session log (visible in-app)
         if hasattr(lookup_tab, 'hotkey_registered') and lookup_tab.hotkey_registered:
@@ -16584,16 +16589,32 @@ class SupervertalerQt(QMainWindow):
         
         if not filepath:
             return
-        
+
+        # Count rows and get language pair for the confirmation dialog
+        try:
+            with open(filepath, 'r', encoding='utf-8-sig') as f:
+                row_count = max(sum(1 for _ in f) - 1, 0)  # subtract header
+        except Exception:
+            row_count = 0
+
+        tb_info = termbase_mgr.get_termbase(termbase_id)
+        src_lang = (tb_info or {}).get('source_lang', '?') or '?'
+        tgt_lang = (tb_info or {}).get('target_lang', '?') or '?'
+        lang_pair = f"{src_lang} \u2192 {tgt_lang}"
+        file_name = os.path.basename(filepath)
+
         # Show options dialog
         options_dialog = QDialog(self)
         options_dialog.setWindowTitle("Import Options")
         options_dialog.setMinimumWidth(400)
-        
+
         layout = QVBoxLayout(options_dialog)
-        
-        # Info
-        info_label = QLabel(f"Importing into glossary: <b>{tb_name}</b>")
+
+        # Info with filename, row count, termbase name, and language pair
+        row_text = f"{row_count:,} row{'s' if row_count != 1 else ''}" if row_count > 0 else "unknown rows"
+        info_label = QLabel(
+            f'Import <b>{row_text}</b> from "<b>{file_name}</b>"'
+            f'<br>into glossary "<b>{tb_name}</b>" ({lang_pair})')
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
@@ -52347,6 +52368,28 @@ class SupervertalerQt(QMainWindow):
 # SUPERLOOKUP TAB
 # ============================================================================
 
+
+class _ReadOnlyHtmlCell(QLabel):
+    """Lightweight QLabel that displays highlighted HTML in table cells.
+
+    Used in the Superlookup results tables for search term highlighting.
+    No text interaction flags — copying is handled via the right-click
+    context menu on the table and the Copy Target button. This avoids
+    the focus-stealing and event-trapping issues that QTextEdit and
+    selectable QLabels cause inside QTableWidget cell widgets.
+    """
+
+    def __init__(self, html="", parent=None):
+        super().__init__(parent)
+        self.setText(html)
+        self.setTextFormat(Qt.TextFormat.RichText)
+        self.setWordWrap(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setStyleSheet(
+            "QLabel { border: none; padding: 2px 4px; background: transparent; }"
+        )
+
+
 class SuperlookupTab(QWidget):
     """
     Superlookup - System-wide translation lookup
@@ -52466,14 +52509,14 @@ class SuperlookupTab(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)  # Reduced from 10 to 5 for consistency
         
-        # Header
-        header = QLabel("🔍 Superlookup")
-        header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
-        layout.addWidget(header, 0)  # 0 = no stretch, stays compact
-        
-        # Description
+        # Header and description — shown only when embedded in the main
+        # window (hidden when inside the floating assistant, where the tab
+        # label already identifies the feature and vertical space is precious).
+        self._header_label = QLabel("🔍 Superlookup")
+        self._header_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
+        layout.addWidget(self._header_label, 0)
+
         if os.name == 'nt':
-            # Windows - full functionality
             description_text = (
                 "Look up translations anywhere on your computer.\n"
                 f"Press {format_shortcut_for_display('Ctrl+Alt+L')} or paste text manually to search your TMs and Termbases.\n"
@@ -52486,18 +52529,17 @@ class SuperlookupTab(QWidget):
                 "Note: Requires Accessibility permission in System Settings → Privacy & Security."
             )
         else:
-            # Linux
             description_text = (
                 "Look up translations anywhere on your computer.\n"
                 f"Press {format_shortcut_for_display('Ctrl+Alt+L')} or paste text manually to search your TMs and Termbases.\n"
                 "Note: Requires pynput installed (pip install pynput)."
             )
-        
-        description = QLabel(description_text)
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(description, 0)  # 0 = no stretch, stays compact
-        
+
+        self._description_label = QLabel(description_text)
+        self._description_label.setWordWrap(True)
+        self._description_label.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
+        layout.addWidget(self._description_label, 0)
+
         # Search input area - compact single-line layout with search box and controls
         search_row = QHBoxLayout()
         
@@ -52521,11 +52563,11 @@ class SuperlookupTab(QWidget):
         search_row.addWidget(self.source_text, stretch=1)
         
         # Search button
-        search_btn = QPushButton("🔍 Search")
-        search_btn.setStyleSheet("font-weight: bold; background-color: #2196F3; color: white; padding: 6px 12px; outline: none;")
-        search_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        search_btn.clicked.connect(self.perform_lookup)
-        search_row.addWidget(search_btn)
+        self.search_btn = QPushButton("🔍 Search")
+        self.search_btn.setStyleSheet("font-weight: bold; background-color: #2196F3; color: white; padding: 6px 12px; outline: none;")
+        self.search_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.search_btn.clicked.connect(self.perform_lookup)
+        search_row.addWidget(self.search_btn)
         
         # Clear button
         clear_btn = QPushButton("🗑️ Clear")
@@ -52587,12 +52629,10 @@ class SuperlookupTab(QWidget):
         
         # Termbase Results tab
         termbase_tab = self.create_termbase_results_tab()
-        self.results_tabs.addTab(termbase_tab, "📚 Glossaries")
+        self.results_tabs.addTab(termbase_tab, "📚 Termbases")
         
-        # MT Results tab
-        mt_tab = self.create_mt_results_tab()
-        self.results_tabs.addTab(mt_tab, "🤖 Machine Translation")
-        
+        # MT tab removed — handled by QuickTrans.
+
         # Web Resources tab
         web_tab = self.create_web_resources_tab()
         self.results_tabs.addTab(web_tab, "🌐 Web Resources")
@@ -52642,21 +52682,21 @@ class SuperlookupTab(QWidget):
         horizontal_layout.setContentsMargins(0, 0, 0, 0)
         
         self.tm_results_table = QTableWidget()
-        self.tm_results_table.setColumnCount(5)
-        self.tm_results_table.setHorizontalHeaderLabels(["Match %", "Source", "Target", "TM", "Type"])
+        self.tm_results_table.setColumnCount(4)
+        self.tm_results_table.setHorizontalHeaderLabels(["Match %", "Source", "Target", "TM"])
         self.tm_results_table.horizontalHeader().setStretchLastSection(False)
         self.tm_results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.tm_results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.tm_results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.tm_results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self.tm_results_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.tm_results_table.setColumnWidth(0, 60)  # Match % column
         self.tm_results_table.setColumnWidth(3, 150)  # TM name column
-        self.tm_results_table.setColumnWidth(4, 80)  # Type column
         self.tm_results_table.verticalHeader().setVisible(False)  # Hide row numbers
         self.tm_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tm_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tm_results_table.doubleClicked.connect(self.on_tm_result_double_click)
+        self.tm_results_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tm_results_table.customContextMenuRequested.connect(self._tm_table_context_menu)
         horizontal_layout.addWidget(self.tm_results_table)
         
         self.tm_view_stack.addWidget(horizontal_widget)
@@ -54649,21 +54689,17 @@ class SuperlookupTab(QWidget):
             status_parts.append(f"Termbase: {len(termbase_results)}")
         if supermemory_count:
             status_parts.append(f"Supermemory: {supermemory_count}")
-        if mt_results:
-            status_parts.append(f"MT: {len(mt_results)}")
-        
-        # Also trigger web resource searches
+
+        # Trigger web resource searches
         if hasattr(self, 'web_browser_mode'):
             if self.web_browser_mode == 'embedded' and hasattr(self, 'web_engine_available') and self.web_engine_available:
-                # Embedded mode - search all resources in background
                 self._perform_web_search(search_all=True)
                 status_parts.append("Web Resources")
             elif self.web_browser_mode == 'external':
-                # External mode - open current selected resource in browser
                 self._perform_web_search(search_all=False)
                 status_parts.append("Web (external)")
-        
-        total_results = len(tm_results) + len(termbase_results) + (supermemory_count or 0) + len(mt_results)
+
+        total_results = len(tm_results) + len(termbase_results) + (supermemory_count or 0)
         
         if status_parts:
             self.status_label.setText(f"✓ Found {total_results} results ({', '.join(status_parts)})")
@@ -54799,43 +54835,29 @@ class SuperlookupTab(QWidget):
                 match_item.setBackground(QColor("#FFF9C4"))  # Yellow for high
             self.tm_results_table.setItem(row, 0, match_item)
             
-            # Source - store plain text in the item (for copy/selection) and show rich label
+            # Source — QTextEdit cell widget with HTML highlighting + text selection
             source_item = QTableWidgetItem(result.source)
-            source_item.setToolTip(result.source)
+            source_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.tm_results_table.setItem(row, 1, source_item)
+            source_editor = _ReadOnlyHtmlCell(
+                self._highlight_search_term(result.source, search_text),
+                self.tm_results_table)
+            self.tm_results_table.setCellWidget(row, 1, source_editor)
 
-            # Source - with highlighted search term
-            source_html = self._highlight_search_term(result.source, search_text)
-            source_label = QLabel(source_html)
-            source_label.setTextFormat(Qt.TextFormat.RichText)
-            source_label.setWordWrap(True)
-            source_label.setStyleSheet("padding: 2px 4px; background: transparent;")
-            source_label.setToolTip(result.source)  # Full text on hover
-            self.tm_results_table.setCellWidget(row, 1, source_label)
-            
-            # Target - store plain text in the item (for copy/selection) and show rich label
+            # Target — same pattern
             target_item = QTableWidgetItem(result.target)
-            target_item.setToolTip(result.target)
+            target_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.tm_results_table.setItem(row, 2, target_item)
-
-            # Target - with highlighted search term
-            target_html = self._highlight_search_term(result.target, search_text)
-            target_label = QLabel(target_html)
-            target_label.setTextFormat(Qt.TextFormat.RichText)
-            target_label.setWordWrap(True)
-            target_label.setStyleSheet("padding: 2px 4px; background: transparent;")
-            target_label.setToolTip(result.target)  # Full text on hover
-            self.tm_results_table.setCellWidget(row, 2, target_label)
+            target_editor = _ReadOnlyHtmlCell(
+                self._highlight_search_term(result.target, search_text),
+                self.tm_results_table)
+            self.tm_results_table.setCellWidget(row, 2, target_editor)
             
             # TM name
             tm_name = result.metadata.get('tm_name', 'Unknown')
             tm_item = QTableWidgetItem(tm_name)
             tm_item.setToolTip(tm_name)  # Full name on hover
             self.tm_results_table.setItem(row, 3, tm_item)
-            
-            # Type
-            match_type = result.metadata.get('match_type', 'unknown')
-            self.tm_results_table.setItem(row, 4, QTableWidgetItem(match_type))
         
         # Resize rows to fit content but with reasonable limits
         self.tm_results_table.resizeRowsToContents()
@@ -54967,33 +54989,23 @@ class SuperlookupTab(QWidget):
             domain = metadata.get('domain', '')
             notes = metadata.get('notes', '')
             
-            # Source term - store plain text in the item (for copy/selection) and show rich label
+            # Source term — QTextEdit cell widget with HTML highlighting + text selection
             source_item = QTableWidgetItem(result.source)
-            source_item.setToolTip(result.source)
+            source_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.termbase_results_table.setItem(row, 0, source_item)
+            source_editor = _ReadOnlyHtmlCell(
+                self._highlight_search_term(result.source, search_text),
+                self.termbase_results_table)
+            self.termbase_results_table.setCellWidget(row, 0, source_editor)
 
-            # Source term - with highlighted search term
-            source_html = self._highlight_search_term(result.source, search_text)
-            source_label = QLabel(source_html)
-            source_label.setTextFormat(Qt.TextFormat.RichText)
-            source_label.setWordWrap(True)
-            source_label.setStyleSheet("padding: 2px 4px; background: transparent;")
-            source_label.setToolTip(result.source)  # Full text on hover
-            self.termbase_results_table.setCellWidget(row, 0, source_label)
-            
-            # Target term - store plain text in the item (for copy/selection) and show rich label
+            # Target term — same pattern
             target_item = QTableWidgetItem(result.target)
-            target_item.setToolTip(result.target)
+            target_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.termbase_results_table.setItem(row, 1, target_item)
-
-            # Target term - with highlighted search term
-            target_html = self._highlight_search_term(result.target, search_text)
-            target_label = QLabel(target_html)
-            target_label.setTextFormat(Qt.TextFormat.RichText)
-            target_label.setWordWrap(True)
-            target_label.setStyleSheet("padding: 2px 4px; background: transparent;")
-            target_label.setToolTip(result.target)  # Full text on hover
-            self.termbase_results_table.setCellWidget(row, 1, target_label)
+            target_editor = _ReadOnlyHtmlCell(
+                self._highlight_search_term(result.target, search_text),
+                self.termbase_results_table)
+            self.termbase_results_table.setCellWidget(row, 1, target_editor)
             
             # Termbase name
             tb_item = QTableWidgetItem(termbase_name)
@@ -55012,15 +55024,18 @@ class SuperlookupTab(QWidget):
             self.termbase_results_table.setItem(row, 4, notes_item)
             
             # Store metadata in first column item for right-click navigation
-            source_label.setProperty('termbase_id', metadata.get('termbase_id'))
-            source_label.setProperty('source_term', result.source)
-            source_label.setProperty('termbase_name', termbase_name)
-        
-        # Resize rows to fit content with height cap
+            source_editor.setProperty('termbase_id', metadata.get('termbase_id'))
+            source_editor.setProperty('source_term', result.source)
+            source_editor.setProperty('termbase_name', termbase_name)
+
+        # Resize rows to fit content
         self.termbase_results_table.resizeRowsToContents()
         for row in range(self.termbase_results_table.rowCount()):
-            if self.termbase_results_table.rowHeight(row) > 50:
-                self.termbase_results_table.setRowHeight(row, 50)
+            # Ensure minimum height for QTextEdit cell widgets
+            if self.termbase_results_table.rowHeight(row) < 30:
+                self.termbase_results_table.setRowHeight(row, 30)
+            elif self.termbase_results_table.rowHeight(row) > 80:
+                self.termbase_results_table.setRowHeight(row, 80)
     
     def _show_termbase_result_context_menu(self, position):
         """Show context menu for termbase results with option to navigate to term"""
@@ -55193,6 +55208,40 @@ class SuperlookupTab(QWidget):
         if trans_item:
             self._copy_mt_result(trans_item.text())
     
+    def _tm_table_context_menu(self, pos):
+        """Right-click context menu for TM results table."""
+        row = self.tm_results_table.rowAt(pos.y())
+        if row < 0:
+            return
+
+        source_item = self.tm_results_table.item(row, 1)
+        target_item = self.tm_results_table.item(row, 2)
+        source_text = source_item.text() if source_item else ""
+        target_text = target_item.text() if target_item else ""
+
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self.tm_results_table)
+
+        if source_text:
+            copy_source = menu.addAction("Copy source")
+            copy_source.triggered.connect(
+                lambda: (pyperclip.copy(source_text),
+                         self.status_label.setText(f"\u2713 Copied source: {source_text[:50]}...")))
+
+        if target_text:
+            copy_target = menu.addAction("Copy target")
+            copy_target.triggered.connect(
+                lambda: (pyperclip.copy(target_text),
+                         self.status_label.setText(f"\u2713 Copied target: {target_text[:50]}...")))
+
+        if source_text and target_text:
+            copy_both = menu.addAction("Copy source \u2192 target")
+            copy_both.triggered.connect(
+                lambda: (pyperclip.copy(f"{source_text}\t{target_text}"),
+                         self.status_label.setText("\u2713 Copied source \u2192 target")))
+
+        menu.exec(self.tm_results_table.viewport().mapToGlobal(pos))
+
     def on_tm_result_double_click(self, index):
         """Handle double-click on TM result"""
         self.copy_selected_tm_target()
@@ -56158,9 +56207,18 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Error in hotkey handler: {e}")
 
     def _read_clipboard_for_superlookup(self):
-        """Read clipboard and dispatch to Superlookup (main thread)."""
+        """Read clipboard and dispatch to Superlookup in the floating assistant."""
         text = pyperclip.paste()
-        if text:
+        if not text:
+            return
+
+        # Route to the floating assistant's Superlookup tab if available
+        mw = self.main_window
+        assistant = getattr(mw, '_floating_assistant', None) if mw else None
+        if assistant and hasattr(assistant, 'show_superlookup'):
+            assistant.show_superlookup(text)
+        else:
+            # Fallback to main window Superlookup
             self.on_ahk_capture(text)
 
     @pyqtSlot()
@@ -56628,6 +56686,13 @@ class SuperlookupTab(QWidget):
         else:
             # Show result dialog (with Copy button)
             main_window._quicklauncher_show_result_dialog("Supervertaler QuickLauncher", output_text)
+
+    def set_compact_mode(self, compact=True):
+        """Hide header and description to save vertical space (used in floating assistant)."""
+        if hasattr(self, '_header_label'):
+            self._header_label.setVisible(not compact)
+        if hasattr(self, '_description_label'):
+            self._description_label.setVisible(not compact)
 
     def show_superlookup(self, text):
         """Show Superlookup with pre-filled text"""
