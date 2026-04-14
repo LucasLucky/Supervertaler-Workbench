@@ -8,11 +8,9 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.379 - April 14, 2026
 
 ### Added
-- **Native text selection and copy in Superlookup tables.** Source and target cells in both the TMs and Termbases tables now use read-only `QTextEdit` widgets with a proper `QSyntaxHighlighter` (same pattern as the main grid). Users can now click-and-drag to select individual words, double-click to select a word, right-click to copy, and use Ctrl+C — all while keeping the yellow search-term highlighting intact.
+- **Native text selection and copy in Superlookup tables.** Source and target cells in both the TMs and Termbases tables now use read-only `QTextEdit` widgets with a proper `QSyntaxHighlighter` (same pattern as the main grid). You can click-and-drag to select individual words, double-click to select a word, right-click → Copy, and use Ctrl+C — all while keeping the yellow search-term highlighting intact. This replaces the earlier QLabel-based approach from v1.9.378, which did not support text selection inside cells.
 - **Settings (gear) button in the Supervertaler Assistant title bar.** Opens the main Workbench Settings tab directly from the floating assistant — brings the Workbench window to the foreground.
 - **Right-click "Open in TM browser"** on TM results — opens the TM Manager's Concordance tab pre-filled with the source text and auto-runs the search, jumping straight to the matching segment for editing. The Workbench window is brought to the foreground.
-- **"Edit in Termbase" right-click action** on Termbase results now brings the Workbench window to the foreground before navigating to the termbase entry (previously just navigated in the background).
-- **Superlookup → QuickTrans sync** — when you run a search in Superlookup, the text is automatically copied into the QuickTrans input field so you can switch tabs and click Translate without retyping.
 - **Multi-monitor positioning fix** — the floating assistant now remembers which monitor it was on and reopens there, and clamps its size to the available screen if the saved geometry would push it off-screen.
 
 ### Changed
@@ -21,31 +19,30 @@ All notable changes to Supervertaler Workbench are documented in this file.
 - **Source and target cells are now bold** in the Termbases and TMs tables for better readability.
 - **Removed the "Match %" column** from the TM results table — every concordance match was always 100%, making the column pointless. Table is now 3 columns (Source, Target, TM).
 - **Removed "Type: concordance"** from the vertical TM results view — redundant noise.
-- **Removed the Machine Translation tab** from Superlookup (handled by QuickTrans). Web Resources tab kept.
-- **Renamed "Glossaries" to "Termbases"** throughout Superlookup (tab labels, settings, right-click actions, info text).
 - **Row heights in results tables** now correctly measure the actual rendered widget content — short entries get compact rows, long entries expand only as much as they need.
-- **Removed the "Superlookup" header and info text** inside the floating assistant to save vertical space. A context-aware status bar at the bottom right of the assistant shows what each active tab does.
+- **"Edit in Termbase" right-click action** on Termbase results now brings the Workbench window to the foreground before navigating to the termbase entry (previously just navigated in the background). Also renamed from "Edit in Glossary".
 - **Renamed Superlookup "Settings" tab** to "Superlookup Settings" to distinguish it from the general Workbench settings.
-
-### Fixed
-- **UI freeze when switching tabs in the Superlookup tables** — rewrote the cell widgets to avoid the HTML/layout issues that caused the floating assistant to become unresponsive.
-- **Screen artifact on main window** — the hidden `SuperlookupTab` (kept for global hotkey registration) was rendering as a child widget on top of the main window; now explicitly hidden.
-- **Global `Ctrl+Alt+L` hotkey** — now correctly opens the floating Supervertaler Assistant with the Superlookup tab active instead of bringing the main Workbench window to the foreground.
 
 ---
 
 ## v1.9.378 - April 14, 2026
 
-### Fixed
-- **Superlookup table rendering** – source and target columns in TMs and Termbases tabs now use lightweight QLabel cell widgets with `WA_TransparentForMouseEvents`, fixing the UI freeze that occurred when switching tabs or clicking results. Search term highlighting (yellow) is preserved. Copying is handled via right-click context menu (Copy Source / Copy Target), double-click, and the Copy Target button.
-- **Superlookup Ctrl+Alt+L hotkey** – now correctly opens the floating Supervertaler Assistant with the Superlookup tab active instead of bringing the main Workbench window to the foreground.
-- **Screen artifact on main window** – the hidden SuperlookupTab (kept for global hotkey registration) was rendering as a child widget on top of the main window; now explicitly hidden.
+### Added
+- **Right-click "Copy source → target"** action on TM results — copies both source and target tab-separated, convenient for pasting into spreadsheets or glossaries. Alongside existing Copy Source / Copy Target items.
+- **Context-aware status bar** at the bottom right of the floating assistant — shows a short tip describing what the active tab (Chat / QuickTrans / Superlookup) does.
+- **Superlookup search syncs to QuickTrans** — when a search runs in Superlookup, the search text is automatically copied to the QuickTrans input field so you can switch tabs and run the same query with MT/AI engines without retyping.
 
 ### Changed
-- **Removed Machine Translation tab from Superlookup** – MT is already handled by QuickTrans; having it in both places was redundant. The Web Resources tab is kept.
-- **Removed Type column from TM results** – every Superlookup result is a concordance match by definition; the column just repeated "concordance" for every row.
+- **Removed the embedded Superlookup tab from the main Workbench Tools section.** Superlookup is now only accessible via the floating Supervertaler Assistant (third tab) and the Ctrl+Alt+L global hotkey. The `SuperlookupTab` instance is still created in the background to register the global hotkey, but it no longer occupies a slot in the Tools sidebar.
+- **Removed the "Superlookup" header and info text** inside the floating assistant to save vertical space. The active tab label and the context-aware status bar at the bottom identify the feature.
+- **Removed Machine Translation tab from Superlookup** — MT is already handled by QuickTrans; having it in both places was redundant. The Web Resources tab is kept.
+- **Removed Type column from TM results horizontal table** — every Superlookup result is a concordance match by definition; the column just repeated "concordance" for every row.
 - **Renamed Glossaries tab to Termbases** in Superlookup results for consistency with the rest of the product.
-- **Superlookup search syncs to QuickTrans** – when a search runs in Superlookup, the search text is automatically copied to the QuickTrans input field so users can switch tabs and run the same query with MT/AI engines without retyping.
+
+### Fixed
+- **Superlookup table rendering (first pass)** — source and target columns in TMs and Termbases tabs switched to lightweight QLabel cell widgets with `WA_TransparentForMouseEvents`, fixing the UI freeze that occurred when switching tabs or clicking results. Search term highlighting (yellow) is preserved. *Note: this was superseded in v1.9.379 by a proper `QTextEdit` + `QSyntaxHighlighter` approach that also supports individual-word text selection.*
+- **Superlookup Ctrl+Alt+L hotkey** — now correctly opens the floating Supervertaler Assistant with the Superlookup tab active instead of bringing the main Workbench window to the foreground.
+- **Screen artifact on main window** — the hidden SuperlookupTab (kept for global hotkey registration) was rendering as a child widget on top of the main window; now explicitly hidden.
 
 ---
 
