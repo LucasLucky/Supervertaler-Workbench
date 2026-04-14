@@ -627,7 +627,7 @@ class ShortcutManager:
         "global_quicklauncher": {
             "category": "Global",
             "description": "Supervertaler Assistant (global — works from any app)",
-            "default": "Ctrl+Alt+A",
+            "default": "Ctrl+Shift+A",
             "action": "global_quicklauncher",
             "context": "global"
         },

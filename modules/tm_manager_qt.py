@@ -529,18 +529,26 @@ class ConcordanceSearchDialog(QDialog):
 class TMManagerDialog(QDialog):
     """Translation Memory Manager dialog"""
     
-    def __init__(self, parent, db_manager, log_callback: Optional[Callable] = None, tm_ids: list = None):
+    def __init__(self, parent, db_manager, log_callback: Optional[Callable] = None, tm_ids: list = None,
+                 initial_concordance_query: str = None):
         super().__init__(parent)
         self.db_manager = db_manager
         self.log = log_callback if log_callback else lambda x: None
         self.parent_app = parent
         self.filter_tm_ids = tm_ids  # Optional filter: only show entries from these TM IDs
-        
+        self._initial_concordance_query = initial_concordance_query
+
         self.setWindowTitle("Translation Memory Manager")
         self.resize(1000, 700)
-        
+
         self.setup_ui()
         self.load_initial_data()
+
+        # If a concordance query was provided, switch to Concordance tab and run it
+        if self._initial_concordance_query:
+            self.tabs.setCurrentIndex(1)  # Concordance tab
+            self.search_input.setText(self._initial_concordance_query)
+            self.do_concordance_search()
     
     def setup_ui(self):
         """Setup the UI with tabs"""

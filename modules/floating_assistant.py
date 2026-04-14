@@ -56,9 +56,12 @@ class FloatingAssistant(QWidget):
         else:
             self._state_file = None
 
+        # Regular top-level window (NOT always-on-top) — behaves like any
+        # other app window: clicking a different program brings that
+        # program to the front. The assistant can be brought back via
+        # Ctrl+Shift+A, Ctrl+Q, or by clicking its taskbar icon.
         self.setWindowFlags(
             Qt.WindowType.Window
-            | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.FramelessWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
@@ -199,6 +202,20 @@ class FloatingAssistant(QWidget):
         title.setStyleSheet("color: white; font-weight: bold; font-size: 10pt; border: none;")
         layout.addWidget(title)
         layout.addStretch()
+
+        # Settings (gear) — opens Workbench Settings tab
+        settings_btn = QPushButton("\u2699")  # ⚙
+        settings_btn.setFixedSize(24, 24)
+        settings_btn.setToolTip("Open Supervertaler Workbench settings")
+        settings_btn.setStyleSheet("""
+            QPushButton {
+                color: white; background: transparent;
+                border: none; font-size: 14pt;
+            }
+            QPushButton:hover { background-color: rgba(255,255,255,0.2); border-radius: 4px; }
+        """)
+        settings_btn.clicked.connect(self._open_workbench_settings)
+        layout.addWidget(settings_btn)
 
         # Minimise
         min_btn = QPushButton("\u2013")
@@ -1056,16 +1073,23 @@ class FloatingAssistant(QWidget):
             return
 
         if self._has_saved_position:
-            # Reopen where the user last left it, clamped to screen bounds
+            # Reopen where the user last left it.
             x, y = self._saved_x, self._saved_y
-            screen = QApplication.screenAt(QCursor.pos())
-            if screen:
-                geom = screen.availableGeometry()
-                x = max(geom.left(), min(x, geom.right() - self.width()))
-                y = max(geom.top(), min(y, geom.bottom() - self.height()))
+            # Pick the screen the saved position belongs to (if any), so
+            # a window saved on monitor 2 reopens on monitor 2.
+            from PyQt6.QtCore import QPoint
+            screen = QApplication.screenAt(QPoint(x + self.width() // 2,
+                                                  y + self.height() // 2))
+            if screen is None:
+                # Saved position is off-screen (monitor removed?) — fall
+                # back to the screen under the cursor.
+                screen = QApplication.screenAt(QCursor.pos()) \
+                    or QApplication.primaryScreen()
         else:
-            # First launch — centre on the primary monitor
-            screen = QApplication.primaryScreen()
+            # First launch — open on the screen where the cursor currently is
+            # (user's active monitor), not necessarily the primary.
+            screen = QApplication.screenAt(QCursor.pos()) \
+                or QApplication.primaryScreen()
             if screen:
                 geom = screen.availableGeometry()
                 x = geom.left() + (geom.width() - self.width()) // 2
@@ -1073,6 +1097,19 @@ class FloatingAssistant(QWidget):
             else:
                 x = 200
                 y = 200
+
+        # Always clamp to the chosen screen so the window is fully visible,
+        # even if the saved geometry is larger than the screen or extends
+        # past its edges.
+        if screen:
+            geom = screen.availableGeometry()
+            # If the window is wider/taller than the screen, shrink it.
+            w = min(self.width(), geom.width())
+            h = min(self.height(), geom.height())
+            if w != self.width() or h != self.height():
+                self.resize(w, h)
+            x = max(geom.left(), min(x, geom.right() - w))
+            y = max(geom.top(), min(y, geom.bottom() - h))
 
         self.move(x, y)
         self.show()
@@ -1110,6 +1147,45 @@ class FloatingAssistant(QWidget):
     # ------------------------------------------------------------------
     # Dragging (title bar)
     # ------------------------------------------------------------------
+
+    def _open_workbench_settings(self):
+        """Bring the main Workbench window to the foreground and switch to
+        its Settings tab. The floating assistant stays open so the user
+        can reference it while adjusting settings."""
+        mw = self._parent_app
+        if not mw:
+            return
+        try:
+            if mw.isMinimized():
+                mw.showNormal()
+            mw.show()
+            mw.raise_()
+            mw.activateWindow()
+
+            import sys
+            if sys.platform == 'win32':
+                try:
+                    import ctypes
+                    hwnd = int(mw.winId())
+                    fg = ctypes.windll.user32.GetForegroundWindow()
+                    fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg, None)
+                    our_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+                    if fg_thread != our_thread:
+                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, True)
+                        ctypes.windll.user32.SetForegroundWindow(hwnd)
+                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, False)
+                    else:
+                        ctypes.windll.user32.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+
+            # Switch to the Settings tab (index 4)
+            if hasattr(mw, 'main_tabs'):
+                mw.main_tabs.setCurrentIndex(4)
+        except Exception as e:
+            log = getattr(mw, 'log', None)
+            if log:
+                log(f"\u26A0 Could not open Workbench settings: {e}")
 
     def _toggle_maximise(self):
         """Toggle between maximised (fills screen) and normal size."""
