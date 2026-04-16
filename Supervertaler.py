@@ -7777,6 +7777,16 @@ class SupervertalerQt(QMainWindow):
             self._migrate_settings_to_unified()
             self._migrate_to_workbench_layout()
 
+        # Load the saved source/target language pair NOW, before any UI is
+        # built. The Language Pair combo boxes read self.source_language /
+        # self.target_language when they're created; if the load happens
+        # later, the combos show the hard-coded defaults and the next
+        # dropdown change will save the stale UI values back to disk.
+        # Spellcheck initialization stays in load_language_settings(),
+        # which runs later after spellcheck_manager and log are ready.
+        if not self._needs_data_location_dialog:
+            self._load_language_pair_from_disk()
+
         # Database Manager for Termbases
         self.db_manager = DatabaseManager(
             db_path=str(self.user_data_path / "resources" / "supervertaler.db"),
@@ -12080,7 +12090,7 @@ class SupervertalerQt(QMainWindow):
         resources_tabs.addTab(tm_tab, "💾 TMs")
 
         termbase_tab = self.create_termbases_tab()
-        resources_tabs.addTab(termbase_tab, "🏷️ Glossaries")
+        resources_tabs.addTab(termbase_tab, "🏷️ Termbases")
 
         nt_tab = self.create_non_translatables_tab()
         resources_tabs.addTab(nt_tab, "🚫 Non-Translatables")
@@ -15230,18 +15240,18 @@ class SupervertalerQt(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         
         # Header
-        header = QLabel("📚 Glossaries")
+        header = QLabel("📚 Termbases")
         header.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 10px;")
         layout.addWidget(header)
-        
+
         # Description
-        desc = QLabel("Manage glossaries for terminology searching. Activate/deactivate for current project.")
+        desc = QLabel("Manage termbases for terminology searching. Activate/deactivate for current project.")
         desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 10px;")
         layout.addWidget(desc)
-        
+
         # Check if database is available
         if not (hasattr(self, 'db_manager') and self.db_manager):
-            placeholder = QLabel("Glossary Manager\n\nDatabase not initialized.")
+            placeholder = QLabel("Termbase Manager\n\nDatabase not initialized.")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder.setStyleSheet("color: #888; font-size: 12px;")
             layout.addWidget(placeholder, stretch=1)
@@ -15265,7 +15275,7 @@ class SupervertalerQt(QMainWindow):
         # Search bar
         search_layout = QHBoxLayout()
         search_box = QLineEdit()
-        search_box.setPlaceholderText("Search glossaries...")
+        search_box.setPlaceholderText("Search termbases...")
         search_box.setMaximumWidth(300)
         search_layout.addWidget(search_box)
         search_layout.addStretch()
@@ -15273,12 +15283,12 @@ class SupervertalerQt(QMainWindow):
         
         # Help message
         help_msg = QLabel(
-            "💡 <b>Glossaries</b><br>"
-            "Manage glossaries for terminology searching. Activate/deactivate for current project.<br>"
-            "• <b>Read</b> (green ✓): Glossary is used for terminology matching<br>"
-            "• <b>Write</b> (blue ✓): Glossary is updated with new terms<br>"
-            "• <b>Project</b> (pink ✓): Set as Project Glossary (highest priority, one at a time)<br>"
-            "• <b>AI</b> (orange ✓): Send glossary terms to LLM with every translation (increases prompt size)"
+            "💡 <b>Termbases</b><br>"
+            "Manage termbases for terminology searching. Activate/deactivate for current project.<br>"
+            "• <b>Read</b> (green ✓): Termbase is used for terminology matching<br>"
+            "• <b>Write</b> (blue ✓): Termbase is updated with new terms<br>"
+            "• <b>Project</b> (pink ✓): Set as Project Termbase (highest priority, one at a time)<br>"
+            "• <b>AI</b> (orange ✓): Send termbase terms to LLM with every translation (increases prompt size)"
         )
         help_msg.setWordWrap(True)
         help_msg.setStyleSheet("background-color: #e3f2fd; padding: 8px; border-radius: 4px; color: #1976d2;")
@@ -15622,7 +15632,24 @@ class SupervertalerQt(QMainWindow):
             terms_search_box.clear()  # Clear search box
             selected_tb_label.setText(f"<b>{tb_name}</b>")
             selected_tb_label.setStyleSheet("color: #1976d2; font-weight: bold;")
-            
+
+            # Update Source/Target column headers with the termbase's actual
+            # base-language names (e.g. "Dutch" instead of "Source Term",
+            # stripping region variants like "nl-NL" → "Dutch").
+            try:
+                tb_info = termbase_mgr.get_termbase(tb_id)
+                if tb_info:
+                    src_code = tb_info.get('source_lang') or ''
+                    tgt_code = tb_info.get('target_lang') or ''
+                    src_header = self._normalize_language_code(src_code) if src_code else "Source Term"
+                    tgt_header = self._normalize_language_code(tgt_code) if tgt_code else "Target Term"
+                    terms_table.setHorizontalHeaderLabels([
+                        src_header, tgt_header, "Domain", "Notes",
+                        "Project", "Client", "Forbidden", ""
+                    ])
+            except Exception:
+                pass
+
             load_terms_page()
             self.log(f"📝 Loaded {terms_total_count[0]:,} terms from termbase '{tb_name}'")
         
@@ -17875,13 +17902,39 @@ class SupervertalerQt(QMainWindow):
             target_val = target_combo.currentText()
             source_combo.setCurrentText(target_val)
             target_combo.setCurrentText(source_val)
-        
+
         swap_btn.clicked.connect(on_swap)
-        
+
+        # Auto-save on any dropdown change so the chosen pair persists
+        # across restarts without requiring the user to click Save.
+        # Triggers for typed entries and swap clicks alike via currentTextChanged.
+        #
+        # IMPORTANT: only save if the value actually differs from what's
+        # already in self.source_language / self.target_language. This
+        # prevents a spurious startup-time currentTextChanged (from
+        # setCurrentText, or from Qt laying out the combo) from clobbering
+        # the loaded-from-disk values with whatever happens to be on the
+        # widget at that moment.
+        def _autosave_lang(_=None):
+            new_src = source_combo.currentText()
+            new_tgt = target_combo.currentText()
+            if not new_src or not new_tgt:
+                return  # combo not fully populated yet
+            if new_src == self.source_language and new_tgt == self.target_language:
+                return  # no real change
+            self.source_language = new_src
+            self.target_language = new_tgt
+            self.save_language_settings(self.source_language, self.target_language)
+            self.log(f"✓ Language settings auto-saved: {self.source_language} → {self.target_language}")
+
+        source_combo.currentTextChanged.connect(_autosave_lang)
+        target_combo.currentTextChanged.connect(_autosave_lang)
+
         lang_group.setLayout(lang_layout)
         layout.addWidget(lang_group)
-        
-        # Save button
+
+        # Save button — kept for users who want an explicit confirmation
+        # dialog. Auto-save above means it's no longer strictly required.
         save_btn = QPushButton("💾 Save Language Settings")
         save_btn.setStyleSheet("font-weight: bold; padding: 8px;")
         save_btn.clicked.connect(lambda: self._save_language_settings_from_ui(source_combo, target_combo))
@@ -37465,32 +37518,47 @@ class SupervertalerQt(QMainWindow):
             self.log(f"⚠ Could not save Supervoice settings: {str(e)}")
             QMessageBox.warning(self, "Save Error", f"Could not save settings:\n{str(e)}")
 
-    def load_language_settings(self):
-        """Load language settings from preferences"""
-        defaults = {
-            'source_language': 'English',
-            'target_language': 'Dutch'
-        }
+    def _load_language_pair_from_disk(self):
+        """Read just the source/target language pair from settings.json.
 
+        This must run BEFORE the Language Pair tab UI is built, otherwise
+        the combo boxes are populated from the stale hard-coded defaults
+        (English / Dutch). Called early in __init__ where spellcheck and
+        log may not be set up yet, so we avoid touching them here.
+        """
+        defaults = ('English', 'Dutch')
         try:
             prefs = self._load_settings_section("ui")
-            lang_settings = prefs.get('language_settings', {})
-            self.source_language = lang_settings.get('source_language', defaults['source_language'])
-            self.target_language = lang_settings.get('target_language', defaults['target_language'])
+            lang_settings = prefs.get('language_settings', {}) or {}
+            src = lang_settings.get('source_language') or defaults[0]
+            tgt = lang_settings.get('target_language') or defaults[1]
+            self.source_language = src
+            self.target_language = tgt
+            print(f"[LangSettings] Loaded from settings.json: {src} → {tgt}")
+        except Exception as e:
+            print(f"[LangSettings] Load failed, keeping defaults: {e!r}")
 
-            # Load spellcheck settings
-            spellcheck_settings = prefs.get('spellcheck_settings', {})
+    def load_language_settings(self):
+        """Initialize spellcheck based on the already-loaded target language.
+
+        The source/target pair itself is loaded earlier by
+        _load_language_pair_from_disk() so the UI sees the right values.
+        This method now handles only the spellcheck side-effects that
+        depend on self.spellcheck_manager and self.log existing.
+        """
+        try:
+            prefs = self._load_settings_section("ui")
+            spellcheck_settings = prefs.get('spellcheck_settings', {}) or {}
             self.spellcheck_enabled = spellcheck_settings.get('enabled', False)
             TagHighlighter.set_spellcheck_enabled(self.spellcheck_enabled)
 
-            # Set spellcheck language based on target language
             if self.spellcheck_manager and self.spellcheck_enabled:
                 if self.spellcheck_manager.set_language(self.target_language):
                     self.log(f"✓ Spellcheck initialized for {self.target_language}")
                 else:
                     self.log(f"⚠ Spellcheck dictionary not available for {self.target_language}")
-        except:
-            pass
+        except Exception as e:
+            print(f"[LangSettings] Spellcheck init failed: {e!r}")
 
     def save_language_settings(self, source_lang: str, target_lang: str):
         """Save language settings to preferences"""
@@ -52572,19 +52640,34 @@ class SuperlookupTab(QWidget):
         """Populate language dropdowns after a short delay"""
         if self._languages_populated:
             return
-        
+
         # Get database connections from main window
         if self.main_window:
             if hasattr(self.main_window, 'db_manager') and self.main_window.db_manager:
                 self.db_manager = self.main_window.db_manager
             if hasattr(self.main_window, 'termbase_mgr') and self.main_window.termbase_mgr:
                 self.termbase_mgr = self.main_window.termbase_mgr
-        
+
         # Populate if we have database access
         if self.db_manager or self.termbase_mgr:
             self.populate_language_dropdowns()
+            # Also populate the Settings → Translation Memories / Termbases
+            # lists so they're not empty the first time the user opens them.
+            # Previously these only populated when the user clicked "Refresh
+            # List" or (in the main Workbench) switched to the Settings tab,
+            # which confused users into thinking no resources were being
+            # searched even though the fallback logic (empty selection =
+            # search all) meant everything WAS being searched.
+            try:
+                self.refresh_tm_list()
+            except Exception as e:
+                print(f"[Superlookup] refresh_tm_list failed on first show: {e}")
+            try:
+                self.refresh_termbase_list()
+            except Exception as e:
+                print(f"[Superlookup] refresh_termbase_list failed on first show: {e}")
             self._languages_populated = True
-            print("[Superlookup] Languages populated on first show")
+            print("[Superlookup] Languages + resource lists populated on first show")
     
     def init_ui(self):
         """Initialize the UI"""
@@ -52767,6 +52850,14 @@ class SuperlookupTab(QWidget):
         self.tm_results_table = QTableWidget()
         self.tm_results_table.setColumnCount(3)
         self.tm_results_table.setHorizontalHeaderLabels(["Source", "Target", "TM"])
+        # Make column headers bold (body cells are rendered non-bold by _ReadOnlyHtmlCell).
+        # Use both setFont and a stylesheet so bold is honoured on every Qt style.
+        _tm_hdr_font = self.tm_results_table.horizontalHeader().font()
+        _tm_hdr_font.setBold(True)
+        self.tm_results_table.horizontalHeader().setFont(_tm_hdr_font)
+        self.tm_results_table.setStyleSheet(
+            "QHeaderView::section { font-weight: bold; }"
+        )
         self.tm_results_table.horizontalHeader().setStretchLastSection(False)
         self.tm_results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tm_results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -52825,6 +52916,14 @@ class SuperlookupTab(QWidget):
         self.termbase_results_table.setHorizontalHeaderLabels(["Source", "Target", "Termbase", "Domain", "Notes"])
         # Make all columns resizable (Interactive) with stretch for Source/Target
         header = self.termbase_results_table.horizontalHeader()
+        # Make column headers bold (body cells are rendered non-bold by _ReadOnlyHtmlCell).
+        # Use both setFont and a stylesheet so bold is honoured on every Qt style.
+        _tb_hdr_font = header.font()
+        _tb_hdr_font.setBold(True)
+        header.setFont(_tb_hdr_font)
+        self.termbase_results_table.setStyleSheet(
+            "QHeaderView::section { font-weight: bold; }"
+        )
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # All columns resizable
         header.setStretchLastSection(False)  # Don't auto-stretch last column
         # Set initial column widths
@@ -53754,6 +53853,16 @@ class SuperlookupTab(QWidget):
                             self._create_web_view_for_resource(resource)
                         if resource['id'] in self.web_views:
                             self.web_views[resource['id']].setUrl(QUrl(url))
+                # Ensure the currently-selected resource's view is actually
+                # shown in the stack — without this, the stack can remain on
+                # the startup welcome view and the tab looks blank.
+                try:
+                    current_resource = self.web_resources[self.current_web_resource_index]
+                    idx = self._get_web_view_index(current_resource['id'])
+                    if idx >= 0:
+                        self.web_view_stack.setCurrentIndex(idx)
+                except Exception:
+                    pass
                 self.status_label.setText(f"Searching all web resources for '{query}'")
             else:
                 # Search current resource only
@@ -54051,20 +54160,14 @@ class SuperlookupTab(QWidget):
         
         # Info section
         info = QLabel(
-            "Select which Translation Memories to search in Superlookup.\n"
-            "You can search specific TMs or all available TMs."
+            "All Translation Memories are searched by default. "
+            "Uncheck any you want to exclude. "
+            "Uncheck every TM to disable TM search entirely."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
         layout.addWidget(info, 0)
-        
-        # Enable/disable TM search
-        self.tm_search_checkbox = CheckmarkCheckBox("✓ Enable TM search in Superlookup")
-        self.tm_search_checkbox.setChecked(self.search_tm_enabled)
-        self.tm_search_checkbox.setStyleSheet("font-weight: bold; font-size: 11pt; color: #2196F3; padding: 10px 0;")
-        self.tm_search_checkbox.stateChanged.connect(self.on_tm_search_toggled)
-        layout.addWidget(self.tm_search_checkbox, 0)
-        
+
         # TM selection label
         list_label = QLabel("Select Translation Memories:")
         list_label.setStyleSheet("font-weight: bold; padding-top: 10px;")
@@ -54088,7 +54191,7 @@ class SuperlookupTab(QWidget):
         self.tm_checkboxes = []
         
         # Info label
-        tm_info = QLabel("💡 Tip: If no TMs are selected, all available TMs will be searched")
+        tm_info = QLabel("💡 Tip: Unchecking every TM disables TM search for Superlookup.")
         tm_info.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 5px 0;")
         layout.addWidget(tm_info, 0)
         
@@ -54120,19 +54223,13 @@ class SuperlookupTab(QWidget):
         
         # Info section
         info = QLabel(
-            "Select which Termbases to search in Superlookup.\n"
-            "You can search specific termbases or all available termbases."
+            "All termbases are searched by default. "
+            "Uncheck any you want to exclude. "
+            "Uncheck every termbase to disable termbase search entirely."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
         layout.addWidget(info, 0)
-
-        # Enable/disable termbase search
-        self.tb_search_checkbox = CheckmarkCheckBox("✓ Enable Termbase search in Superlookup")
-        self.tb_search_checkbox.setChecked(self.search_termbase_enabled)
-        self.tb_search_checkbox.setStyleSheet("font-weight: bold; font-size: 11pt; color: #2196F3; padding: 10px 0;")
-        self.tb_search_checkbox.stateChanged.connect(self.on_termbase_search_toggled)
-        layout.addWidget(self.tb_search_checkbox, 0)
 
         # Termbase selection label
         list_label = QLabel("Select Termbases:")
@@ -54157,7 +54254,7 @@ class SuperlookupTab(QWidget):
         self.tb_checkboxes = []
         
         # Info label
-        tb_info = QLabel("💡 Tip: If no glossaries are selected, all available glossaries will be searched")
+        tb_info = QLabel("💡 Tip: Unchecking every termbase disables termbase search for Superlookup.")
         tb_info.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 5px 0;")
         layout.addWidget(tb_info, 0)
         
@@ -54220,19 +54317,14 @@ class SuperlookupTab(QWidget):
         
         # Info section
         info = QLabel(
-            "Configure which web resources to show in the Web Resources tab.\n"
-            "Search results will open in your default web browser."
+            "All web resources appear in the Web Resources tab by default. "
+            "Uncheck any you want to hide. "
+            "Uncheck every resource to disable web search entirely."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #666; padding: 5px; background-color: #E8F5E9; border-radius: 3px;")
         layout.addWidget(info, 0)
-        
-        # Enable checkbox
-        self.web_search_checkbox = CheckmarkCheckBox("✓ Enable Web Resources in Superlookup")
-        self.web_search_checkbox.setChecked(True)
-        self.web_search_checkbox.setStyleSheet("font-weight: bold; font-size: 11pt; color: #4CAF50; padding: 10px 0;")
-        layout.addWidget(self.web_search_checkbox, 0)
-        
+
         # Available resources list
         resources_label = QLabel("Available Web Resources:")
         resources_label.setStyleSheet("font-weight: bold; padding-top: 10px;")
@@ -54288,15 +54380,20 @@ class SuperlookupTab(QWidget):
         return tab
     
     def on_results_tab_changed(self, index):
-        """Handle results tab change - initialize Supermemory and refresh Settings when viewed"""
-        # Supermemory tab is at index 2 (TM=0, Termbase=1, Supermemory=2, MT=3, Web=4, Settings=5)
-        if index == 2:
-            # Initialize Supermemory when tab is first viewed
-            if not self.supermemory_engine:
-                print("[Superlookup] Supermemory tab viewed - initializing engine")
-                self.init_supermemory()
-        # Settings tab is at index 5
-        elif index == 5:
+        """Handle results tab change - refresh resource lists when Settings is viewed.
+
+        Current tab layout after MT and Supermemory tabs were removed:
+        TM=0, Termbase=1, Web Resources=2, Settings=3.
+        Look up the Settings tab dynamically by title so this keeps working
+        if more tabs are added/removed later.
+        """
+        settings_index = -1
+        for i in range(self.results_tabs.count()):
+            if "Settings" in self.results_tabs.tabText(i):
+                settings_index = i
+                break
+
+        if index == settings_index and settings_index >= 0:
             print("[Superlookup] Settings tab viewed - refreshing resource lists")
             self.refresh_tm_list()
             self.refresh_termbase_list()
@@ -54350,7 +54447,8 @@ class SuperlookupTab(QWidget):
                 
                 for db_id, tm_name, tm_id_str in tms:
                     checkbox = CheckmarkCheckBox(f"{tm_name} (ID: {db_id})")
-                    checkbox.setChecked(False)  # Start unchecked; user activates explicitly
+                    checkbox.setChecked(True)  # Start checked; user deselects to exclude.
+                    # Unchecking every TM disables TM search entirely.
                     checkbox.setProperty("tm_id", tm_id_str)  # Store tm_id string for search
                     checkbox.setProperty("db_id", db_id)  # Store db_id for reference
                     self.tm_checkboxes.append(checkbox)
@@ -54392,7 +54490,8 @@ class SuperlookupTab(QWidget):
                     tb_id = tb.get('id')
                     tb_name = tb.get('name', 'Unnamed')
                     checkbox = CheckmarkCheckBox(f"{tb_name} (ID: {tb_id})")
-                    checkbox.setChecked(False)  # Start unchecked; user activates explicitly
+                    checkbox.setChecked(True)  # Start checked; user deselects to exclude.
+                    # Unchecking every termbase disables termbase search entirely.
                     checkbox.setProperty("tb_id", tb_id)
                     self.tb_checkboxes.append(checkbox)
                     # Insert before the stretch at the end
@@ -54417,7 +54516,8 @@ class SuperlookupTab(QWidget):
                 
                 for tb_id, tb_name in termbases:
                     checkbox = CheckmarkCheckBox(f"{tb_name} (ID: {tb_id})")
-                    checkbox.setChecked(False)  # Start unchecked; user activates explicitly
+                    checkbox.setChecked(True)  # Start checked; user deselects to exclude.
+                    # Unchecking every termbase disables termbase search entirely.
                     checkbox.setProperty("tb_id", tb_id)
                     self.tb_checkboxes.append(checkbox)
                     # Insert before the stretch at the end
@@ -54731,17 +54831,27 @@ class SuperlookupTab(QWidget):
         self.status_label.setText("🔍 Searching...")
         QApplication.processEvents()
         
-        # Set enabled TM IDs from Superlookup's own checkboxes (independent selection)
+        # Set enabled TM IDs from Superlookup's own checkboxes (independent selection).
+        # NEW BEHAVIOUR (all-checked-by-default model): unchecking every TM in
+        # the Settings → Translation Memories sub-tab disables TM search
+        # entirely. If any TM checkboxes exist but none are selected, skip
+        # the TM search. If the list hasn't been built yet (no checkboxes at
+        # all), fall back to searching everything so we don't silently return
+        # zero results on first use.
         selected_tm_ids = self.get_selected_tm_ids()
         search_direction = self.get_search_direction()
         from_lang, to_lang = self.get_language_filters()
 
+        tm_search_disabled = bool(self.tm_checkboxes) and not selected_tm_ids
+
         if self.engine:
+            # None = no filter (search all). When a non-empty selection exists,
+            # restrict to those IDs.
             self.engine.set_enabled_tm_ids(selected_tm_ids if selected_tm_ids else None)
-        
+
         # Perform TM lookup with direction and language filters
         tm_results = []
-        if self.tm_database:
+        if self.tm_database and not tm_search_disabled:
             tm_results = self.engine.search_tm(text, direction=search_direction,
                                                 source_lang=from_lang, target_lang=to_lang)
 
@@ -54771,8 +54881,18 @@ class SuperlookupTab(QWidget):
         if supermemory_count:
             status_parts.append(f"Supermemory: {supermemory_count}")
 
-        # Trigger web resource searches
-        if hasattr(self, 'web_browser_mode'):
+        # Trigger web resource searches.
+        # NEW BEHAVIOUR (all-checked-by-default model): unchecking every web
+        # resource in the Settings → Web Resources sub-tab disables web search
+        # entirely. The individual checkbox.stateChanged handler already
+        # hides the corresponding sidebar button, so if NONE are checked the
+        # Web Resources tab has nothing to show — skip the per-engine URL
+        # loads so we don't fire requests to disabled sites.
+        any_web_checked = True
+        if hasattr(self, 'web_resource_checkboxes') and self.web_resource_checkboxes:
+            any_web_checked = any(cb.isChecked() for cb in self.web_resource_checkboxes)
+
+        if hasattr(self, 'web_browser_mode') and any_web_checked:
             if self.web_browser_mode == 'embedded' and hasattr(self, 'web_engine_available') and self.web_engine_available:
                 self._perform_web_search(search_all=True)
                 status_parts.append("Web Resources")
@@ -54890,17 +55010,25 @@ class SuperlookupTab(QWidget):
         """Display TM results in both horizontal (table) and vertical (list) views"""
         # Store results for view toggling
         self._current_tm_results = results
-        
+
         # Get search term for highlighting
         search_text = self.source_text.currentText().strip().lower()
-        
-        # Get language names from main window
-        source_lang_name = "Dutch"
-        target_lang_name = "English"
+
+        # Get language names from main window, normalised to base language
+        # names (e.g. 'en-US' → 'English') and stripped of any "(variant)"
+        # suffix so the column headers stay compact.
+        source_lang_name = "Source"
+        target_lang_name = "Target"
         if self.main_window:
-            source_lang_name = getattr(self.main_window, 'source_language', 'Source')
-            target_lang_name = getattr(self.main_window, 'target_language', 'Target')
-        
+            raw_src = getattr(self.main_window, 'source_language', None)
+            raw_tgt = getattr(self.main_window, 'target_language', None)
+            source_lang_name = self._lang_base_name(raw_src) or "Source"
+            target_lang_name = self._lang_base_name(raw_tgt) or "Target"
+
+        # Update column headers with the actual language names
+        self.tm_results_table.setHorizontalHeaderLabels(
+            [source_lang_name, target_lang_name, "TM"])
+
         # === Update Horizontal View (Table) ===
         self.tm_results_table.setRowCount(0)
         
@@ -54914,7 +55042,7 @@ class SuperlookupTab(QWidget):
             self.tm_results_table.setItem(row, 0, source_item)
             source_editor = _ReadOnlyHtmlCell(
                 result.source, search_term=search_text,
-                parent=self.tm_results_table, bold=True)
+                parent=self.tm_results_table, bold=False)
             self.tm_results_table.setCellWidget(row, 0, source_editor)
 
             # Target — same pattern
@@ -54923,7 +55051,7 @@ class SuperlookupTab(QWidget):
             self.tm_results_table.setItem(row, 1, target_item)
             target_editor = _ReadOnlyHtmlCell(
                 result.target, search_term=search_text,
-                parent=self.tm_results_table, bold=True)
+                parent=self.tm_results_table, bold=False)
             self.tm_results_table.setCellWidget(row, 1, target_editor)
 
             # TM name
@@ -54994,7 +55122,30 @@ class SuperlookupTab(QWidget):
             """
         
         self.tm_results_vertical.setHtml(html)
-    
+
+    def _lang_base_name(self, lang):
+        """Return the base-language display name for a code or display string.
+
+        Handles ISO codes ('en', 'en-US') via the main window's
+        _normalize_language_code mapping, and strips any trailing
+        "(variant)" suffix from display strings like "English (US)".
+        Returns None when the input is empty.
+        """
+        if not lang:
+            return None
+        name = lang
+        # Prefer the main window's normalisation if available — it maps
+        # 'en'/'en-US'/'en-GB' all to 'English', etc.
+        try:
+            if self.main_window and hasattr(self.main_window, '_normalize_language_code'):
+                name = self.main_window._normalize_language_code(lang)
+        except Exception:
+            pass
+        # Strip trailing " (…)" if present (e.g. "English (US)" → "English")
+        if name and '(' in name:
+            name = name.split('(', 1)[0].strip()
+        return name or None
+
     def _highlight_search_term(self, text, search_term):
         """Highlight search term in text with theme-aware background.
 
@@ -55062,9 +55213,22 @@ class SuperlookupTab(QWidget):
     def display_termbase_results(self, results):
         """Display termbase results with search term highlighting and metadata"""
         self.termbase_results_table.setRowCount(0)
-        
+
         # Get search term for highlighting
         search_text = self.source_text.currentText().strip().lower()
+
+        # Update column headers with the current project's base language names
+        # (e.g. 'en-US' → 'English'). Falls back to "Source"/"Target" if no
+        # project is loaded or the language is unknown.
+        src_header = "Source"
+        tgt_header = "Target"
+        if self.main_window:
+            raw_src = getattr(self.main_window, 'source_language', None)
+            raw_tgt = getattr(self.main_window, 'target_language', None)
+            src_header = self._lang_base_name(raw_src) or "Source"
+            tgt_header = self._lang_base_name(raw_tgt) or "Target"
+        self.termbase_results_table.setHorizontalHeaderLabels(
+            [src_header, tgt_header, "Termbase", "Domain", "Notes"])
         
         # Filter duplicates: if same source→target exists in multiple glossaries,
         # only keep the one from the project glossary (ranking=1) or first seen
@@ -55105,7 +55269,7 @@ class SuperlookupTab(QWidget):
             self.termbase_results_table.setItem(row, 0, source_item)
             source_editor = _ReadOnlyHtmlCell(
                 result.source, search_term=search_text,
-                parent=self.termbase_results_table, bold=True)
+                parent=self.termbase_results_table, bold=False)
             self.termbase_results_table.setCellWidget(row, 0, source_editor)
 
             # Target term — same pattern
@@ -55114,7 +55278,7 @@ class SuperlookupTab(QWidget):
             self.termbase_results_table.setItem(row, 1, target_item)
             target_editor = _ReadOnlyHtmlCell(
                 result.target, search_term=search_text,
-                parent=self.termbase_results_table, bold=True)
+                parent=self.termbase_results_table, bold=False)
             self.termbase_results_table.setCellWidget(row, 1, target_editor)
             
             # Termbase name
@@ -55273,6 +55437,13 @@ class SuperlookupTab(QWidget):
 
     def display_mt_results(self, results):
         """Display MT results in the table"""
+        # The MT tab was removed from the Superlookup UI (MT is now handled by
+        # QuickTrans). When this SuperlookupTab instance was built without the
+        # MT tab (e.g. inside the Floating Assistant), mt_results_table does
+        # not exist — silently skip so perform_lookup() can continue to the
+        # web-resource search that follows.
+        if not hasattr(self, 'mt_results_table'):
+            return
         self.mt_results_table.setRowCount(0)
         
         if results:
@@ -55590,17 +55761,24 @@ class SuperlookupTab(QWidget):
             # Get search direction
             direction = self.get_search_direction()
             
-            # Get termbases selected in Superlookup's Settings tab (independent selection)
+            # Get termbases selected in Superlookup's Settings tab (independent selection).
+            # NEW BEHAVIOUR (all-checked-by-default model): unchecking every
+            # termbase disables termbase search entirely. If the checkbox
+            # list hasn't been built yet (no checkboxes at all), fall back to
+            # searching all termbases so first-use returns results.
             selected_tb_ids = self.get_selected_termbase_ids()
-            
-            # If no termbases selected, search all available termbases
             all_termbases = self.termbase_mgr.get_all_termbases()
-            
+
+            if self.tb_checkboxes and not selected_tb_ids:
+                # User has explicitly unchecked every termbase → disabled.
+                print("[DEBUG search_termbases] All termbases deselected — skipping termbase search.")
+                return results
+
             if selected_tb_ids:
                 # Filter to only selected termbases
                 termbases_to_search = [tb for tb in all_termbases if tb['id'] in selected_tb_ids]
             else:
-                # No selection = search all (as indicated by the tip in UI)
+                # Checkbox list not yet built — search everything.
                 termbases_to_search = all_termbases
             
             text_lower = text.lower()

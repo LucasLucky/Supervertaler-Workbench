@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.375 – QuickTrans embedded in the Supervertaler Assistant with real provider logos, GT4T-style compact results, and strict AI translation prompts.
+**Latest release:** v1.9.380 – Language pair now persists across restarts; Superlookup Settings simplified (everything on by default, uncheck to exclude); Web Resources tab fix; "Glossaries" renamed to "Termbases" throughout.
 
 ---
 

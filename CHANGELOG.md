@@ -2,8 +2,29 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.379 (April 14, 2026)
+**Current Version:** v1.9.380 (April 16, 2026)
 
+
+## v1.9.380 - April 16, 2026
+
+### Added
+- **Language pair now persists across restarts — automatically.** Changing the Source or Target language in Settings → Language Pair auto-saves to disk on each change; no more clicking "💾 Save Language Settings". The button is kept for users who want a visible confirmation dialog. This fixes the long-standing complaint that the defaults reverted to English → Dutch on every restart.
+- **Dynamic base-language column headers in Superlookup.** The TMs and Termbases result tables now show the project's actual base source/target language names (e.g. "Dutch | English | TM") instead of the generic "Source | Target". Region variants like `nl-NL` or "English (US)" are stripped to just "Dutch" / "English" to keep headers compact.
+- **Base-language column headers in the Termbases terms table** (Resources → Termbases). When you select a termbase, the "Source Term" / "Target Term" columns now show the termbase's actual languages.
+
+### Changed
+- **Renamed Resources tab "Glossaries" to "Termbases"** for consistency with the Trados plugin and the rest of the product. The section header, description, search placeholder, help panel, and error messages inside this tab now all say "Termbases" / "termbase".
+- **Removed the three "Enable … search in Superlookup" master checkboxes** from the Superlookup Settings sub-tabs (TMs, Termbases, Web Resources). Replaced with a simpler model: **everything starts checked; uncheck items you don't want; uncheck every item of a type to disable that type entirely.** The master checkboxes were confusing (they looked washed out because of a stylesheet conflict with CheckmarkCheckBox) and redundant with the per-item lists.
+- **TM and Termbase resource lists now auto-populate when Superlookup first opens** — users no longer have to click "🔄 Refresh List" before seeing anything. Resolves a disconnect where searches were running (and returning results via the "empty = search all" fallback) but the Settings panel looked empty.
+- **Superlookup tables: headers bold, body cells non-bold** — proper visual hierarchy. Enforced via `QHeaderView::section { font-weight: bold; }` stylesheet on top of `setFont` so Qt themes can't strip the bold.
+
+### Fixed
+- **Web Resources tab was blank after every search.** `display_mt_results()` referenced `mt_results_table`, which no longer exists (MT was moved to QuickTrans). The resulting `AttributeError` aborted `perform_lookup()` before the web search could run, so views were created but never got their URLs set. Same fix guards `on_results_tab_changed()` against a missing `supermemory_engine`.
+- **Stale Settings-tab index in `on_results_tab_changed`** — was hard-coded to `index == 5` (the position before MT and Supermemory tabs were removed). Now looks up the Settings tab by its title, so adding/removing tabs in the future won't break the refresh trigger.
+- **Language pair load race condition** — `load_language_settings()` ran *after* the Language Pair combo boxes were built, so the UI showed the hard-coded defaults (English/Dutch) while `self.source_language` / `self.target_language` held the correct loaded values in memory. The next dropdown change then wrote a half-stale value back to disk. Split the load into an early `_load_language_pair_from_disk()` (called before UI construction) and a later spellcheck-only pass.
+- **Bare `except: pass` in `load_language_settings`** silently swallowed any error (including spellcheck failures) and reverted the in-memory language pair to hard-coded defaults. Now uses explicit try blocks with diagnostic logging.
+
+---
 
 ## v1.9.379 - April 14, 2026
 
