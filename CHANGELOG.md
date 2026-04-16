@@ -2,8 +2,32 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.380 (April 16, 2026)
+**Current Version:** v1.9.381 (April 17, 2026)
 
+
+## v1.9.381 - April 17, 2026
+
+### Added
+- **Silent launch — no more terminal window next to the app.**
+  - Pip users: running `supervertaler` no longer opens a black console window alongside the Qt UI. The command is now registered under `[project.gui-scripts]` (Windows GUI subsystem). A new `supervertaler-debug` command runs the same app but keeps a terminal attached for live stdout/stderr.
+  - Source users: new `run-silent.cmd` sits next to `run.cmd`. Double-click the silent one for a clean launch; `run.cmd` stays for live debugging.
+  - The production `Supervertaler.exe` and Start Menu shortcut were already console-less — unchanged.
+- **Diagnostic log file** — every launch (silent or not) now tees stdout and stderr into a rolling log at `<user_data>/workbench/logs/supervertaler.log`. Rotates once past ~2 MB to `supervertaler-previous.log`. The log captures all `[LOG]` lines, diagnostic prints, and full tracebacks on unhandled exceptions. Works even under pythonw where there's no console at all — crashes now leave a paper trail instead of disappearing silently. Implementation guards against pythonw's detached std handles so silent mode can't break logging. ([Supervertaler.py: `_setup_diagnostic_log`](Supervertaler.py)).
+- **Help menu entries: 📄 Open Diagnostic Log and 📁 Open Log Folder** — one-click access to the log file (opens in the OS default editor) or the folder (opens in Explorer/Finder) for users reporting issues.
+- **Help → 📋 Copy Version Info** now also includes the diagnostic-log path, so a copy-paste into an email or GitHub issue always tells support exactly which file to ask for.
+- **QuickTrans is now the first sub-tab of SuperLookup.** Clicking 🔍 SuperLookup with selected text auto-fires QuickTrans (same behaviour as Ctrl+Alt+Q) and lands on the populated QuickTrans results — no Translate-button click needed. TMs and Termbases populate in parallel on the other sub-tabs.
+
+### Changed
+- **Removed the separate "⚡ QuickTrans" action from the right-hand Workbench Tools menu.** Clicking "🔍 SuperLookup" with selected text now does everything QuickTrans used to do (opens SuperLookup, switches to the QuickTrans sub-tab, fires MT across all enabled providers), so the dedicated entry was redundant.
+- **QuickTrans moved from a top-level outer tab into a SuperLookup sub-tab** (at position 0, before TMs). Outer tabs are now just **Chat** and **SuperLookup** — one click less to reach the translation tools, and the three result types (TMs, Termbases, QuickTrans) sit next to each other.
+- **First-pass rename: Superlookup → SuperLookup** in user-visible strings. Tab labels, menu actions, dialog titles, header labels, and tooltips now consistently use the camel-cased spelling. Internal class names, module filenames, and debug prints are scheduled for later passes (explicit "slowly" scope).
+
+### Fixed
+- **Web resource searches (IATE, Linguee, ProZ.com, BabelNet) fired with the wrong language pair when the From/To filters were "Any".** The URL builder hard-coded a fallback of English → Dutch. Now falls back to the current project's language pair (and the saved default pair when no project is loaded), matching what QuickTrans already uses. Same source of truth throughout the app.
+- **Linguee URLs use a canonical slug order** (English is always first in any English↔X pair; `source=auto` handles the query direction). Our URL builder was sending `dutch-english` when the project direction called for it, which Linguee redirects and QWebEngine renders as a blank page. Now we put English first when it's present, or fall back to alphabetical for non-English pairs — matches Linguee's actual URL scheme. Direction of results is unaffected (the query word is auto-detected).
+- **Maximise button on a secondary monitor** no longer sends the window flying to the primary monitor. Was calling `QApplication.primaryScreen()` unconditionally; now uses `self.screen()` (the window's current monitor) with a `screenAt(frameCenter)` fallback.
+
+---
 
 ## v1.9.380 - April 16, 2026
 

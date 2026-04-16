@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.380"
+version = "1.9.381"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -140,8 +140,16 @@ Changelog = "https://github.com/Supervertaler/Supervertaler-Workbench/blob/main/
 Documentation = "https://github.com/Supervertaler/Supervertaler-Workbench/blob/main/AGENTS.md"
 "Author Website" = "https://michaelbeijer.co.uk"
 
-[project.scripts]
+[project.gui-scripts]
+# Normal launcher — Windows GUI subsystem, no terminal window attached.
+# Most users want this: pip-installed `supervertaler` runs silently.
 supervertaler = "Supervertaler:main"
+
+[project.scripts]
+# Debug launcher — Windows console subsystem, terminal window visible so
+# stdout/stderr (all the [LOG] lines) are usable. Invoke via
+# `supervertaler-debug` when you need to see crashes or diagnostic output.
+supervertaler-debug = "Supervertaler:main"
 
 [tool.setuptools]
 py-modules = ["Supervertaler"]

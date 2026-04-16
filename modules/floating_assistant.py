@@ -139,9 +139,12 @@ class FloatingAssistant(QWidget):
             self._chat_view._do_send = self._parent_app.prompt_manager_qt._context_aware_send
         self._left_tabs.addTab(self._chat_view, "\U0001F4AC Chat")
 
-        # QuickTrans tab
+        # QuickTrans widget — constructed here (so all self._qt_* state is
+        # initialised) but NOT added to _left_tabs. It's reparented into the
+        # Superlookup results_tabs as a sub-tab (after Termbases) once the
+        # Superlookup widget is lazy-created in _ensure_superlookup_tab().
         self._quicktrans_widget = self._create_quicktrans_tab()
-        self._left_tabs.addTab(self._quicktrans_widget, "\u26A1 QuickTrans")
+        self._quicktrans_embedded_in_superlookup = False
 
         # Superlookup tab — deferred until first show to avoid init-order
         # issues (the main window's database/termbase managers may not be
@@ -380,9 +383,11 @@ class FloatingAssistant(QWidget):
         self._action_tree.itemCollapsed.connect(self._on_tree_expanded_collapsed)
 
         # -- Workbench Tools --
+        # QuickTrans is no longer a separate menu entry: it's the first
+        # sub-tab inside SuperLookup, so clicking "SuperLookup" lands on it
+        # automatically. Leaving only one entry here keeps the menu tidy.
         tools_cat = self._make_category("\U0001F6E0 Workbench Tools", expanded=True)
-        self._add_tree_action(tools_cat, "\u26A1 QuickTrans", self._on_quicktrans)
-        self._add_tree_action(tools_cat, "\U0001F50D Superlookup", self._on_superlookup)
+        self._add_tree_action(tools_cat, "\U0001F50D SuperLookup", self._on_superlookup)
 
         # -- Prompt library items (grouped by folder) --
         self._populate_prompt_library_tree()
@@ -693,8 +698,29 @@ class FloatingAssistant(QWidget):
         if not text:
             return
 
-        # Switch to QuickTrans tab
-        self._left_tabs.setCurrentIndex(1)
+        # QuickTrans now lives as a sub-tab of Superlookup (outer Superlookup
+        # tab, inner sub-tab index 2 — after Termbases). Make sure Superlookup
+        # is lazy-built (this also re-parents QuickTrans into its results_tabs
+        # on first call), then switch the outer tab to Superlookup and the
+        # inner tab to QuickTrans.
+        self._ensure_superlookup_tab()
+
+        # Outer: find Superlookup tab index (it's dynamic — Chat + possibly
+        # Superlookup, so don't hard-code a number).
+        outer_superlookup_idx = self._left_tabs.indexOf(self._superlookup_widget) \
+            if self._superlookup_widget is not None else -1
+        if outer_superlookup_idx >= 0:
+            self._left_tabs.setCurrentIndex(outer_superlookup_idx)
+
+        # Inner: find QuickTrans inside the Superlookup results_tabs.
+        try:
+            rtabs = getattr(self._superlookup_widget, 'results_tabs', None)
+            if rtabs is not None:
+                qt_inner_idx = rtabs.indexOf(self._quicktrans_widget)
+                if qt_inner_idx >= 0:
+                    rtabs.setCurrentIndex(qt_inner_idx)
+        except Exception:
+            pass
 
         # Update source display
         self._qt_source_label.setText(text)
@@ -878,11 +904,19 @@ class FloatingAssistant(QWidget):
         self.show_superlookup(text)
 
     def show_superlookup(self, text=None):
-        """Show the assistant, switch to the Superlookup tab, and optionally search."""
+        """Show the assistant, switch to the SuperLookup tab, and optionally search.
+
+        When text is supplied, we also auto-fire QuickTrans for the same text
+        (via _run_quicktrans, which switches to the QuickTrans sub-tab and
+        kicks off the MT fetch). That means clicking the SuperLookup action
+        in the right-hand menu with text selected lands the user on a
+        populated QuickTrans sub-tab with translations already loading —
+        no need to click the Translate button separately.
+        """
         self._ensure_superlookup_tab()
 
         if self._superlookup_widget is None:
-            self._backend.add_message("system", "\u26A0 Superlookup not available.")
+            self._backend.add_message("system", "\u26A0 SuperLookup not available.")
             return
 
         # Ensure the window is visible and in the foreground
@@ -892,7 +926,7 @@ class FloatingAssistant(QWidget):
         self.activateWindow()
         self._force_foreground_focus()
 
-        # Switch to the Superlookup tab
+        # Switch to the SuperLookup tab
         self._left_tabs.setCurrentWidget(self._superlookup_widget)
 
         # Populate search field and trigger search if text provided
@@ -901,6 +935,11 @@ class FloatingAssistant(QWidget):
             self._sync_text_to_quicktrans(text)
             if hasattr(self._superlookup_widget, 'perform_lookup'):
                 self._superlookup_widget.perform_lookup()
+            # Auto-fire QuickTrans as well. _run_quicktrans switches the
+            # SuperLookup sub-tab to QuickTrans and starts the provider
+            # fetches immediately — matches what Ctrl+Alt+Q does, so the
+            # user doesn't have to click "Translate" after navigating here.
+            self._run_quicktrans(text)
 
     def _sync_superlookup_to_quicktrans(self):
         """Called when the Superlookup search button is clicked manually."""
@@ -989,10 +1028,12 @@ class FloatingAssistant(QWidget):
     # Context-aware info bar
     # ------------------------------------------------------------------
 
+    # Outer tab info bar. QuickTrans is the first sub-tab of SuperLookup
+    # (opens automatically when the SuperLookup outer tab is clicked), with
+    # TMs/Termbases/Web Resources/Settings as the remaining sub-tabs.
     _TAB_INFO = {
         0: "AI chat assistant – ask questions, get translations, save answers to your memory bank",
-        1: "QuickTrans – instant translations from all configured providers (1–9 to select)",
-        2: "Superlookup – search your TMs and termbases from anywhere (Ctrl+Alt+L)",
+        1: "SuperLookup – QuickTrans (Ctrl+Alt+Q), TMs, termbases (Ctrl+Alt+L), and web resources in one place",
     }
 
     def _update_info_label(self, index):
@@ -1008,6 +1049,10 @@ class FloatingAssistant(QWidget):
         Deferred because the main window's database and termbase managers
         may not be fully wired when the FloatingAssistant is first
         constructed during create_main_layout().
+
+        Also re-parents the pre-built QuickTrans widget into Superlookup's
+        internal results_tabs at index 2 (after Termbases) so QuickTrans
+        lives as a Superlookup sub-tab rather than a top-level outer tab.
         """
         if self._superlookup_tab_added or self._superlookup_class is None:
             return
@@ -1018,11 +1063,27 @@ class FloatingAssistant(QWidget):
                 self._parent_app, user_data_path=user_data)
             self._superlookup_widget.set_compact_mode(True)
             self._left_tabs.addTab(
-                self._superlookup_widget, "\U0001F50D Superlookup")
+                self._superlookup_widget, "\U0001F50D SuperLookup")
             # Sync search text to QuickTrans whenever a Superlookup search runs
             if hasattr(self._superlookup_widget, 'search_btn'):
                 self._superlookup_widget.search_btn.clicked.connect(
                     self._sync_superlookup_to_quicktrans)
+
+            # Re-parent QuickTrans into SuperLookup's results_tabs at index 0,
+            # so the sub-tab order becomes:
+            #   0 QuickTrans | 1 TMs | 2 Termbases | 3 Web Resources | 4 SuperLookup Settings
+            # QuickTrans is first because that's where users most often want
+            # to land when pressing Ctrl+Alt+Q or clicking the SuperLookup tab.
+            try:
+                rtabs = getattr(self._superlookup_widget, 'results_tabs', None)
+                if rtabs is not None and not self._quicktrans_embedded_in_superlookup:
+                    rtabs.insertTab(0, self._quicktrans_widget, "\u26A1 QuickTrans")
+                    # Select QuickTrans by default so opening the SuperLookup
+                    # outer tab lands on it automatically.
+                    rtabs.setCurrentIndex(0)
+                    self._quicktrans_embedded_in_superlookup = True
+            except Exception as e:
+                print(f"[FloatingAssistant] Could not embed QuickTrans into SuperLookup: {e}")
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -1188,7 +1249,12 @@ class FloatingAssistant(QWidget):
                 log(f"\u26A0 Could not open Workbench settings: {e}")
 
     def _toggle_maximise(self):
-        """Toggle between maximised (fills screen) and normal size."""
+        """Toggle between maximised (fills screen) and normal size.
+
+        Uses the window's OWN current screen, not the primary one. If you
+        dragged the assistant to a secondary monitor and press Maximise, it
+        should fill that monitor — not jump back to the primary display.
+        """
         if self._is_maximised:
             # Restore to saved geometry
             if self._pre_max_geometry:
@@ -1196,9 +1262,15 @@ class FloatingAssistant(QWidget):
             self._is_maximised = False
             self._max_btn.setText("\u25A1")  # □
         else:
-            # Save current geometry and fill the available screen
+            # Save current geometry and fill the available area of the
+            # screen this window is currently on. self.screen() (Qt6) is
+            # monitor-aware; if it's somehow unavailable fall back to the
+            # screen under the window centre, then finally to primaryScreen.
             self._pre_max_geometry = self.geometry()
-            screen = QApplication.primaryScreen()
+            screen = self.screen() if hasattr(self, 'screen') else None
+            if screen is None:
+                center = self.frameGeometry().center()
+                screen = QApplication.screenAt(center) or QApplication.primaryScreen()
             if screen:
                 avail = screen.availableGeometry()
                 self.setGeometry(avail)
@@ -1307,8 +1379,21 @@ class FloatingAssistant(QWidget):
         return super().eventFilter(obj, event)
 
     def keyPressEvent(self, event):
-        # Number keys 1-9: select QuickTrans result (when QT tab active)
-        if self._left_tabs.currentIndex() == 1:  # QuickTrans tab
+        # Number keys 1-9: select QuickTrans result. QuickTrans is now a
+        # sub-tab of Superlookup, so "active" means outer=Superlookup AND
+        # inner=QuickTrans (we look up both by widget, not by index, so the
+        # check survives future tab reorderings).
+        qt_active = False
+        if self._superlookup_widget is not None:
+            outer_idx = self._left_tabs.indexOf(self._superlookup_widget)
+            if outer_idx >= 0 and self._left_tabs.currentIndex() == outer_idx:
+                rtabs = getattr(self._superlookup_widget, 'results_tabs', None)
+                if rtabs is not None:
+                    inner_idx = rtabs.indexOf(self._quicktrans_widget)
+                    if inner_idx >= 0 and rtabs.currentIndex() == inner_idx:
+                        qt_active = True
+
+        if qt_active:
             key = event.key()
             if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
                 idx = key - Qt.Key.Key_1

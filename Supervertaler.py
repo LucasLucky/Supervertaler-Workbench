@@ -3246,7 +3246,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
         
         # Superlookup search action
         if self.textCursor().hasSelection():
-            superlookup_action = QAction(f"🔍 Search in Superlookup ({format_shortcut_for_display('Ctrl+K')})", self)
+            superlookup_action = QAction(f"🔍 Search in SuperLookup ({format_shortcut_for_display('Ctrl+K')})", self)
             superlookup_action.triggered.connect(self._handle_superlookup_search)
             menu.addAction(superlookup_action)
 
@@ -4045,7 +4045,7 @@ class EditableGridTextEditor(QTextEdit):
         
         # Superlookup search action
         if self.textCursor().hasSelection():
-            superlookup_action = QAction(f"🔍 Search in Superlookup ({format_shortcut_for_display('Ctrl+K')})", self)
+            superlookup_action = QAction(f"🔍 Search in SuperLookup ({format_shortcut_for_display('Ctrl+K')})", self)
             superlookup_action.triggered.connect(self._handle_superlookup_search)
             menu.addAction(superlookup_action)
 
@@ -9764,7 +9764,7 @@ class SupervertalerQt(QMainWindow):
         edit_menu.addSeparator()
         
         # Superlookup
-        superlookup_action = QAction("🔍 &Superlookup...", self)
+        superlookup_action = QAction("🔍 &SuperLookup...", self)
         if IS_MACOS:
             superlookup_action.setShortcut("Meta+Ctrl+L")  # Ctrl+Cmd+L on Mac
         else:
@@ -9996,6 +9996,21 @@ class SupervertalerQt(QMainWindow):
         copy_version_info_action.triggered.connect(self.copy_version_info_to_clipboard)
         help_menu.addAction(copy_version_info_action)
 
+        # Diagnostic log — so users can send us error output even when they
+        # launched Supervertaler without a terminal window (silent / .exe /
+        # gui-scripts entry point).
+        open_log_action = QAction("📄 Open Diagnostic Log", self)
+        open_log_action.setToolTip(
+            "Open the log file containing startup output and errors — useful when reporting issues"
+        )
+        open_log_action.triggered.connect(self.open_diagnostic_log)
+        help_menu.addAction(open_log_action)
+
+        open_log_folder_action = QAction("📁 Open Log Folder", self)
+        open_log_folder_action.setToolTip("Reveal the folder that contains the diagnostic log files")
+        open_log_folder_action.triggered.connect(self.open_diagnostic_log_folder)
+        help_menu.addAction(open_log_folder_action)
+
         help_menu.addSeparator()
 
         github_action = QAction("🔗 GitHub Repository", self)
@@ -10008,7 +10023,7 @@ class SupervertalerQt(QMainWindow):
         if os.name == 'nt':
             ahk_setup_action = QAction("⌨️ Setup AutoHotkey (Global Hotkey)", self)
             ahk_setup_action.setToolTip(
-                f"Configure AutoHotkey for Superlookup global hotkey ({format_shortcut_for_display('Ctrl+Alt+L')})"
+                f"Configure AutoHotkey for SuperLookup global hotkey ({format_shortcut_for_display('Ctrl+Alt+L')})"
             )
             ahk_setup_action.triggered.connect(self._show_ahk_setup_from_menu)
             help_menu.addAction(ahk_setup_action)
@@ -11941,7 +11956,7 @@ class SupervertalerQt(QMainWindow):
             
             # Create detached window
             self.lookup_detached_window = QDialog(self)
-            self.lookup_detached_window.setWindowTitle("🔍 Superlookup - Supervertaler Workbench")
+            self.lookup_detached_window.setWindowTitle("🔍 SuperLookup - Supervertaler Workbench")
             self.lookup_detached_window.setMinimumSize(600, 700)
             self.lookup_detached_window.resize(700, 800)
             
@@ -11995,13 +12010,13 @@ class SupervertalerQt(QMainWindow):
             # Header with reattach button
             header_layout = QVBoxLayout()
             
-            header_title = QLabel("🔍 Superlookup")
+            header_title = QLabel("🔍 SuperLookup")
             header_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #333;")
             header_layout.addWidget(header_title)
             
             button_layout = QVBoxLayout()
             reattach_btn = QPushButton("📥 Attach to Main Window")
-            reattach_btn.setToolTip("Re-attach Superlookup to the Home tab")
+            reattach_btn.setToolTip("Re-attach SuperLookup to the Home tab")
             reattach_btn.setStyleSheet("font-size: 9pt; padding: 4px 12px; max-width: 200px;")
             reattach_btn.clicked.connect(self.reattach_superlookup)
             button_layout.addWidget(reattach_btn, alignment=Qt.AlignmentFlag.AlignRight)
@@ -47153,7 +47168,7 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'modules_tabs'):
                 # Find Superlookup index in modules tabs
                 for i in range(self.modules_tabs.count()):
-                    if "Superlookup" in self.modules_tabs.tabText(i):
+                    if "superlookup" in self.modules_tabs.tabText(i).lower():
                         self.modules_tabs.setCurrentIndex(i)
                         break
     
@@ -48179,6 +48194,19 @@ class SupervertalerQt(QMainWindow):
         lines.append(f"Frozen (PyInstaller): {bool(getattr(sys, 'frozen', False))}")
         lines.append(f"Executable: {sys.executable}")
 
+        # Diagnostic log location — makes support easier: users paste this
+        # block, and the path to attach is right there in the output.
+        try:
+            log_path = self._get_diagnostic_log_path()
+            if log_path is not None:
+                lines.append("")
+                lines.append(f"Diagnostic log: {log_path}")
+                lines.append(
+                    "  (Help \u2192 Open Diagnostic Log — attach this file when reporting issues)"
+                )
+        except Exception:
+            pass
+
         return "\n".join(lines)
 
     def copy_version_info_to_clipboard(self):
@@ -48195,6 +48223,61 @@ class SupervertalerQt(QMainWindow):
             )
         except Exception as e:
             QMessageBox.warning(self, "Copy Failed", f"Could not copy version info: {e}")
+
+    def _get_diagnostic_log_path(self):
+        """Return the Path to the active diagnostic log, or None if unknown.
+
+        Preferred source is sys._supervertaler_log_path (set by
+        _setup_diagnostic_log in main()). If that's missing for any reason
+        we compute the expected default location so the menu action still
+        works — the folder might be empty but at least the user sees where
+        to look.
+        """
+        try:
+            path = getattr(sys, '_supervertaler_log_path', None)
+            if path is not None:
+                return Path(path)
+        except Exception:
+            pass
+        try:
+            return Path(self.user_data_path) / "workbench" / "logs" / "supervertaler.log"
+        except Exception:
+            return None
+
+    def open_diagnostic_log(self):
+        """Open the diagnostic log file in the system's default text editor."""
+        log_path = self._get_diagnostic_log_path()
+        if log_path is None:
+            QMessageBox.warning(
+                self, "Log Unavailable",
+                "The diagnostic log path could not be determined."
+            )
+            return
+        if not log_path.exists():
+            QMessageBox.information(
+                self, "No Log Yet",
+                f"No diagnostic log has been written yet.\n\nExpected location:\n{log_path}"
+            )
+            return
+        # QDesktopServices with a file:// URL opens the OS default handler
+        # for .log (Notepad on Windows, TextEdit on macOS, etc.).
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_path)))
+
+    def open_diagnostic_log_folder(self):
+        """Reveal the folder that contains the diagnostic log files."""
+        log_path = self._get_diagnostic_log_path()
+        log_dir = log_path.parent if log_path is not None else None
+        if log_dir is None:
+            QMessageBox.warning(
+                self, "Log Folder Unavailable",
+                "The diagnostic log folder could not be determined."
+            )
+            return
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_dir)))
     
     def _show_ahk_setup_from_menu(self):
         """Show AutoHotkey setup dialog from Help menu"""
@@ -48203,8 +48286,8 @@ class SupervertalerQt(QMainWindow):
         else:
             QMessageBox.warning(
                 self,
-                "Superlookup Not Available",
-                "Superlookup tab is not available. Please restart the application."
+                "SuperLookup Not Available",
+                "SuperLookup tab is not available. Please restart the application."
             )
 
     def show_about(self):
@@ -52678,7 +52761,7 @@ class SuperlookupTab(QWidget):
         # Header and description — shown only when embedded in the main
         # window (hidden when inside the floating assistant, where the tab
         # label already identifies the feature and vertical space is precious).
-        self._header_label = QLabel("🔍 Superlookup")
+        self._header_label = QLabel("🔍 SuperLookup")
         self._header_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
         layout.addWidget(self._header_label, 0)
 
@@ -52805,7 +52888,7 @@ class SuperlookupTab(QWidget):
         
         # Settings tab
         settings_tab = self.create_settings_tab()
-        self.results_tabs.addTab(settings_tab, "⚙️ Superlookup Settings")
+        self.results_tabs.addTab(settings_tab, "⚙️ SuperLookup Settings")
         
         # Connect tab change for Settings refresh
         self.results_tabs.currentChanged.connect(self.on_results_tab_changed)
@@ -53921,18 +54004,41 @@ class SuperlookupTab(QWidget):
     def _build_web_search_url(self, resource, query):
         """Build the search URL for a web resource with proper language codes"""
         import urllib.parse
-        
+
         # Get language settings (may be a list of variants)
         from_lang = self.lang_from_combo.currentData() if hasattr(self, 'lang_from_combo') else None
         to_lang = self.lang_to_combo.currentData() if hasattr(self, 'lang_to_combo') else None
-        
+
         # If we got a list of variants, use the first one for web URLs
         if isinstance(from_lang, list) and from_lang:
             from_lang = from_lang[0]
         if isinstance(to_lang, list) and to_lang:
             to_lang = to_lang[0]
-        
-        # Default to English-Dutch if not specified
+
+        # If the From/To combos are set to "Any" (or not yet populated), fall
+        # back to the main window's project language pair — the same pair
+        # QuickTrans uses. This is what the user configured as their default
+        # in Settings → Language Pair (e.g. Dutch → English), so resources
+        # like IATE / Linguee / ProZ / BabelNet fire with the right codes
+        # instead of the hard-coded English → Dutch fallback.
+        if not from_lang or not to_lang:
+            mw = self.main_window
+            if mw is not None:
+                # Prefer current_project pair if a project is loaded; otherwise
+                # use the app-wide default.
+                proj = getattr(mw, 'current_project', None)
+                if proj is not None:
+                    if not from_lang:
+                        from_lang = getattr(proj, 'source_lang', None) or getattr(mw, 'source_language', None)
+                    if not to_lang:
+                        to_lang = getattr(proj, 'target_lang', None) or getattr(mw, 'target_language', None)
+                else:
+                    if not from_lang:
+                        from_lang = getattr(mw, 'source_language', None)
+                    if not to_lang:
+                        to_lang = getattr(mw, 'target_language', None)
+
+        # Final safety net — if everything above failed, default to English-Dutch
         if not from_lang:
             from_lang = 'en'
         if not to_lang:
@@ -53949,6 +54055,21 @@ class SuperlookupTab(QWidget):
         tl_full = self._get_web_lang_code(to_lang, 'full_lower')
         sl_upper = self._get_web_lang_code(from_lang, 'iso2').upper()
         tl_upper = self._get_web_lang_code(to_lang, 'iso2').upper()
+
+        # Linguee uses a canonical language-pair slug: English is always
+        # first in any English↔X pair (e.g. /english-dutch/, never
+        # /dutch-english/), and source=auto handles the query direction.
+        # Non-canonical URLs redirect/error — particularly badly inside the
+        # embedded QWebEngineView. Swap sl_full/tl_full for this resource
+        # when one side is English and it isn't already first. For non-
+        # English pairs (e.g. French↔German), fall back to alphabetical
+        # ordering — this mirrors Linguee's actual slug scheme.
+        if resource.get('id') == 'linguee' and sl_full and tl_full:
+            if 'english' in (sl_full, tl_full):
+                if sl_full != 'english':
+                    sl_full, tl_full = tl_full, sl_full
+            elif sl_full > tl_full:
+                sl_full, tl_full = tl_full, sl_full
         
         # Build URL from template
         url = resource['url_template']
@@ -54191,7 +54312,7 @@ class SuperlookupTab(QWidget):
         self.tm_checkboxes = []
         
         # Info label
-        tm_info = QLabel("💡 Tip: Unchecking every TM disables TM search for Superlookup.")
+        tm_info = QLabel("💡 Tip: Unchecking every TM disables TM search for SuperLookup.")
         tm_info.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 5px 0;")
         layout.addWidget(tm_info, 0)
         
@@ -54254,7 +54375,7 @@ class SuperlookupTab(QWidget):
         self.tb_checkboxes = []
         
         # Info label
-        tb_info = QLabel("💡 Tip: Unchecking every termbase disables termbase search for Superlookup.")
+        tb_info = QLabel("💡 Tip: Unchecking every termbase disables termbase search for SuperLookup.")
         tb_info.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 5px 0;")
         layout.addWidget(tb_info, 0)
         
@@ -54287,7 +54408,7 @@ class SuperlookupTab(QWidget):
         # Info section
         info = QLabel(
             "Machine Translation integration is coming soon.\n"
-            "This will allow Superlookup to query DeepL, Google Translate, and other MT services."
+            "This will allow SuperLookup to query DeepL, Google Translate, and other MT services."
         )
         info.setWordWrap(True)
         info.setStyleSheet("padding: 5px; border-radius: 3px;")
@@ -56092,7 +56213,7 @@ class SuperlookupTab(QWidget):
     def _show_autohotkey_setup_dialog(self):
         """Show dialog to help user install or locate AutoHotkey"""
         dialog = QDialog(self)
-        dialog.setWindowTitle("AutoHotkey Setup - Superlookup")
+        dialog.setWindowTitle("AutoHotkey Setup - SuperLookup")
         dialog.setMinimumWidth(500)
         
         layout = QVBoxLayout(dialog)
@@ -56104,9 +56225,9 @@ class SuperlookupTab(QWidget):
         
         # Explanation
         explanation = QLabel(
-            f"Superlookup uses AutoHotkey to provide a global hotkey ({format_shortcut_for_display('Ctrl+Alt+L')}) "
+            f"SuperLookup uses AutoHotkey to provide a global hotkey ({format_shortcut_for_display('Ctrl+Alt+L')}) "
             "that works from any application.\n\n"
-            "Without AutoHotkey, Superlookup will still work, but only when "
+            "Without AutoHotkey, SuperLookup will still work, but only when "
             "Supervertaler is the active window."
         )
         explanation.setWordWrap(True)
@@ -56134,7 +56255,7 @@ class SuperlookupTab(QWidget):
         options_layout.addLayout(browse_layout)
         
         # Option 3: Skip
-        skip_btn = QPushButton("⏭️ Skip (Use Superlookup without global hotkey)")
+        skip_btn = QPushButton("⏭️ Skip (Use SuperLookup without global hotkey)")
         skip_btn.setStyleSheet("padding: 8px; font-size: 11px; color: #666;")
         skip_btn.clicked.connect(dialog.reject)
         options_layout.addWidget(skip_btn)
@@ -56911,7 +57032,7 @@ class SuperlookupTab(QWidget):
             menu.addAction(assistant_action)
 
             # Superlookup — defer with QTimer so menu fully closes first
-            superlookup_action = QAction("🔍 Superlookup", menu)
+            superlookup_action = QAction("🔍 SuperLookup", menu)
             superlookup_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: self._launch_superlookup_external(text))
             )
@@ -57079,7 +57200,7 @@ class SuperlookupTab(QWidget):
             if hasattr(main_window, 'modules_tabs'):
                 print(f"[Superlookup] Current modules_tab index: {main_window.modules_tabs.currentIndex()}")
                 for i in range(main_window.modules_tabs.count()):
-                    if "Superlookup" in main_window.modules_tabs.tabText(i):
+                    if "superlookup" in main_window.modules_tabs.tabText(i).lower():
                         main_window.modules_tabs.setCurrentIndex(i)
                         print(f"[Superlookup] Switched to Superlookup tab (index {i})")
                         QApplication.processEvents()  # Force GUI update
@@ -58383,11 +58504,130 @@ class AutoFingersWidget(QWidget):
 # APPLICATION ENTRY POINT
 # ============================================================================
 
+def _setup_diagnostic_log():
+    """Tee stdout + stderr into a rolling diagnostic log file.
+
+    Runs at the very start of main() so all startup output is captured.
+    Critical for silent launches (pythonw / Windows GUI subsystem) where
+    stdout/stderr would otherwise go to a null device — users have no
+    console to copy from, but they can point us at a file.
+
+    Path: <user_data_path>/workbench/logs/supervertaler.log
+    Rotation: once the log exceeds ~2 MB it is renamed to
+    supervertaler-previous.log (overwriting any older copy). Keeps at most
+    2 files, ~4 MB total, so the disk footprint is negligible.
+
+    The tee preserves the original stdout/stderr, so developers running
+    from `run.cmd` or `supervertaler-debug` still see everything in the
+    console AND get a copy in the file.
+
+    Returns the Path of the active log file, or None on failure.
+    """
+    import io
+    from datetime import datetime
+
+    try:
+        log_dir = get_user_data_path() / "workbench" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "supervertaler.log"
+        prev_path = log_dir / "supervertaler-previous.log"
+
+        # Rotate if the existing log is too large (~2 MB).
+        try:
+            if log_path.exists() and log_path.stat().st_size > 2 * 1024 * 1024:
+                if prev_path.exists():
+                    prev_path.unlink()
+                log_path.rename(prev_path)
+        except Exception:
+            pass  # Non-fatal — keep going with append mode
+
+        # Open in line-buffered append mode so a hard crash still leaves a
+        # usable log on disk (nothing stuck in a Python-side buffer).
+        log_file = open(log_path, 'a', encoding='utf-8', errors='replace', buffering=1)
+        log_file.write(
+            f"\n{'=' * 70}\n"
+            f"Supervertaler session started {datetime.now().isoformat(timespec='seconds')}\n"
+            f"Python: {sys.version.split()[0]} on {sys.platform}\n"
+            f"{'=' * 70}\n"
+        )
+        log_file.flush()
+
+        class _Tee:
+            """Duplicate writes to the original stream + the log file.
+
+            `original` may be None when running under pythonw (the Windows
+            GUI-subsystem Python has no stdout/stderr attached at all);
+            we guard every forward so we never hit AttributeError in that
+            case.
+            """
+
+            def __init__(self, original, log_handle):
+                self._orig = original
+                self._log = log_handle
+
+            def write(self, text):
+                if self._orig is not None:
+                    try:
+                        self._orig.write(text)
+                    except Exception:
+                        pass
+                try:
+                    self._log.write(text)
+                except Exception:
+                    pass
+
+            def flush(self):
+                if self._orig is not None:
+                    try:
+                        self._orig.flush()
+                    except Exception:
+                        pass
+                try:
+                    self._log.flush()
+                except Exception:
+                    pass
+
+            def isatty(self):
+                if self._orig is None:
+                    return False
+                try:
+                    return self._orig.isatty()
+                except Exception:
+                    return False
+
+            def fileno(self):
+                # Some libraries expect a real fd; expose the log file's fd
+                # as a best-effort fallback when the original is detached.
+                if self._orig is not None and hasattr(self._orig, 'fileno'):
+                    try:
+                        return self._orig.fileno()
+                    except (OSError, io.UnsupportedOperation):
+                        pass
+                return self._log.fileno()
+
+        sys.stdout = _Tee(sys.stdout, log_file)
+        sys.stderr = _Tee(sys.stderr, log_file)
+        # Stash the path so UI actions ("Open Diagnostic Log") can find it.
+        sys._supervertaler_log_path = log_path
+        return log_path
+    except Exception as e:
+        # Never prevent the app from launching because logging failed.
+        try:
+            sys.__stderr__.write(f"[Diagnostic log setup failed: {e}]\n")
+        except Exception:
+            pass
+        return None
+
+
 def main():
     """Application entry point"""
+    # Redirect stdout/stderr to a rolling log file FIRST — so even crashes
+    # during QApplication import or QWebEngine init get captured.
+    _setup_diagnostic_log()
+
     # Install global exception handler to catch unhandled exceptions
     import traceback
-    
+
     def global_exception_handler(exc_type, exc_value, exc_traceback):
         """Global exception handler - prints full traceback before crashing"""
         print("\n" + "="*60)
@@ -58397,7 +58637,7 @@ def main():
         print("="*60 + "\n")
         # Call the default handler
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
-    
+
     sys.excepthook = global_exception_handler
     
     # Suppress Chromium/QtWebEngine verbose error output (cache errors, GPU warnings, JS console)
