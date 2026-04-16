@@ -1,5 +1,7 @@
 # Supervertaler Workbench
 
+_Help system last updated: 17 April 2026 (for Workbench v1.9.381)_
+
 Welcome to the help center for **Supervertaler Workbench** — a free, open-source translation application built by translators, for translators.
 
 **Supervertaler Workbench** integrates AI-powered translation with traditional CAT tool workflows. It runs on Windows, macOS, and Linux.
