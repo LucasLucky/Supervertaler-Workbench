@@ -191,11 +191,17 @@ class LLMClient:
             "strengths": ["General translation", "Multilingual", "Fast"],
             "use_case": "Recommended for most translation tasks"
         },
+        "anthropic/claude-opus-4.7": {
+            "name": "Claude Opus 4.7",
+            "description": "Anthropic's most capable — 1M context, top-tier reasoning",
+            "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "1M context"],
+            "use_case": "Specialised legal/technical translation, long-context jobs"
+        },
         "anthropic/claude-opus-4.6": {
             "name": "Claude Opus 4.6",
-            "description": "Anthropic premium — best reasoning",
+            "description": "Previous Opus — still excellent for reasoning",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning"],
-            "use_case": "Specialized legal/technical translation"
+            "use_case": "Specialised legal/technical translation"
         },
         "openai/gpt-5.4": {
             "name": "GPT 5.4",
@@ -323,6 +329,7 @@ class LLMClient:
             "claude-haiku-4-5-20251001",
             "claude-sonnet-4-6",
             "claude-opus-4-6",
+            "claude-opus-4-7",
             "claude-opus-4-1-20250805"
         ],
         "gemini": [
@@ -340,9 +347,17 @@ class LLMClient:
 
     # Available Claude models with descriptions
     CLAUDE_MODELS = {
+        "claude-opus-4-7": {
+            "name": "Claude Opus 4.7",
+            "description": "Most capable - Anthropic's flagship, 1M context, 128k max output",
+            "released": "2026-04-16",
+            "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy", "1M context"],
+            "pricing": {"input": 5, "output": 25},  # USD per million tokens
+            "use_case": "Best for specialised legal/technical translation and long-context jobs"
+        },
         "claude-sonnet-4-6": {
             "name": "Claude Sonnet 4.6",
-            "description": "Latest flagship - Best balance of speed, quality, and cost",
+            "description": "Best balance of speed, quality, and cost",
             "released": "2026-02-18",
             "strengths": ["General translation", "Multilingual", "Fast", "Cost-effective"],
             "pricing": {"input": 3, "output": 15},  # USD per million tokens
@@ -350,11 +365,11 @@ class LLMClient:
         },
         "claude-opus-4-6": {
             "name": "Claude Opus 4.6",
-            "description": "Latest premium - Exceptional coding and reasoning",
+            "description": "Previous flagship - still excellent for coding and reasoning",
             "released": "2026-02-04",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy"],
-            "pricing": {"input": 15, "output": 75},  # USD per million tokens
-            "use_case": "Best for specialized legal/technical translation requiring deep reasoning"
+            "pricing": {"input": 5, "output": 25},  # USD per million tokens
+            "use_case": "Previous Opus generation — still strong for legal/technical translation"
         },
         "claude-sonnet-4-5-20250929": {
             "name": "Claude Sonnet 4.5",
@@ -366,7 +381,7 @@ class LLMClient:
         },
         "claude-haiku-4-5-20251001": {
             "name": "Claude Haiku 4.5",
-            "description": "Fast & affordable - 2x speed, 1/3 cost of Sonnet",
+            "description": "Fast & affordable - 2x speed, 1/5 cost of Sonnet",
             "released": "2025-10-01",
             "strengths": ["High-volume translation", "Speed", "Budget-friendly", "Batch processing"],
             "pricing": {"input": 1, "output": 5},
@@ -374,11 +389,11 @@ class LLMClient:
         },
         "claude-opus-4-1-20250805": {
             "name": "Claude Opus 4.1",
-            "description": "Premium quality - Complex reasoning for nuanced translation",
+            "description": "Legacy - Complex reasoning for nuanced translation",
             "released": "2025-08-05",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy"],
             "pricing": {"input": 15, "output": 75},
-            "use_case": "For specialized legal/technical translation requiring deep reasoning"
+            "use_case": "For specialised legal/technical translation requiring deep reasoning"
         }
     }
 

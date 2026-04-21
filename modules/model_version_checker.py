@@ -61,6 +61,7 @@ class ModelVersionChecker:
                 "open-mistral-nemo"
             ],
             "claude": [
+                "claude-opus-4-7",
                 "claude-sonnet-4-6",
                 "claude-opus-4-6",
                 "claude-sonnet-4-5-20250929",

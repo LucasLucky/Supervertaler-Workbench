@@ -18100,18 +18100,20 @@ class SupervertalerQt(QMainWindow):
         
         claude_combo = QComboBox()
         claude_combo.addItems([
-            "claude-sonnet-4-6 (Recommended - Latest Flagship)",
-            "claude-opus-4-6 (Latest Premium - Exceptional Reasoning)",
-            "claude-sonnet-4-5-20250929 (Sonnet 4.5 - Best Balance)",
+            "claude-sonnet-4-6 (Recommended - Best Balance)",
+            "claude-opus-4-7 (Latest Premium - Most Capable)",
+            "claude-opus-4-6 (Premium - Exceptional Reasoning)",
+            "claude-sonnet-4-5-20250929 (Sonnet 4.5 - Previous Flagship)",
             "claude-haiku-4-5-20251001 (Fast & Affordable)",
-            "claude-opus-4-1-20250805 (Premium - Complex Reasoning)"
+            "claude-opus-4-1-20250805 (Legacy Premium)"
         ])
         claude_combo.setToolTip(
-            "Claude Sonnet 4.6: Latest flagship model, best balance of speed, quality, and cost.\n"
-            "Claude Opus 4.6: Latest premium model with exceptional reasoning.\n"
-            "Claude Sonnet 4.5: Previous flagship model.\n"
-            "Claude Haiku 4.5: 2x faster, 1/3 the cost.\n"
-            "Claude Opus 4.1: Previous premium model for complex reasoning."
+            "Claude Sonnet 4.6: Best balance of speed, quality, and cost.\n"
+            "Claude Opus 4.7: Anthropic's most capable model (1M context, 128k max output).\n"
+            "Claude Opus 4.6: Previous flagship, still excellent for reasoning.\n"
+            "Claude Sonnet 4.5: Previous generation flagship.\n"
+            "Claude Haiku 4.5: Fast and affordable for batch jobs.\n"
+            "Claude Opus 4.1: Legacy premium model."
         )
         current_claude_model = settings.get('claude_model', 'claude-sonnet-4-6')
         for i in range(claude_combo.count()):
@@ -18186,7 +18188,8 @@ class SupervertalerQt(QMainWindow):
         openrouter_combo.setEditable(True)
         openrouter_combo.addItems([
             "anthropic/claude-sonnet-4.6 (Recommended)",
-            "anthropic/claude-opus-4.6 (Premium Reasoning)",
+            "anthropic/claude-opus-4.7 (Latest Premium)",
+            "anthropic/claude-opus-4.6 (Previous Premium)",
             "openai/gpt-5.4 (Advanced Reasoning)",
             "openai/gpt-5.4-mini (Fast & Economical)",
             "google/gemini-3.1-pro-preview (Latest Gemini)",
@@ -18414,7 +18417,8 @@ class SupervertalerQt(QMainWindow):
             friendly = {
                 "gpt-4o": "GPT-4o", "gpt-4o-mini": "GPT-4o Mini",
                 "gpt-5": "GPT-5", "o3-mini": "o3-mini", "o1": "o1", "gpt-4-turbo": "GPT-4 Turbo",
-                "claude-sonnet-4-6": "Claude Sonnet 4.6", "claude-opus-4-6": "Claude Opus 4.6",
+                "claude-sonnet-4-6": "Claude Sonnet 4.6", "claude-opus-4-7": "Claude Opus 4.7",
+                "claude-opus-4-6": "Claude Opus 4.6",
                 "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5", "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
                 "claude-opus-4-1-20250805": "Claude Opus 4.1",
                 "gemini-2.5-flash": "Gemini 2.5 Flash", "gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
@@ -19190,6 +19194,7 @@ class SupervertalerQt(QMainWindow):
         llm_providers = [
             ("claude", "Claude", "claude", [
                 ("claude-sonnet-4-6", "Claude Sonnet 4.6 (Recommended)"),
+                ("claude-opus-4-7", "Claude Opus 4.7 (Latest Premium)"),
                 ("claude-opus-4-6", "Claude Opus 4.6 (Premium)"),
                 ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5"),
                 ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 (Fast)"),
@@ -19371,11 +19376,12 @@ class SupervertalerQt(QMainWindow):
             ("gpt-4-turbo",  "GPT-4 Turbo",         "Previous generation"),
         ],
         "claude": [
-            ("claude-sonnet-4-6",          "Claude Sonnet 4.6",  "Recommended — latest flagship"),
+            ("claude-sonnet-4-6",          "Claude Sonnet 4.6",  "Recommended — best balance"),
+            ("claude-opus-4-7",            "Claude Opus 4.7",    "Latest premium — most capable, 1M context"),
             ("claude-opus-4-6",            "Claude Opus 4.6",    "Premium — exceptional reasoning"),
             ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5",  "Previous flagship"),
             ("claude-haiku-4-5-20251001",  "Claude Haiku 4.5",   "Fast & affordable"),
-            ("claude-opus-4-1-20250805",   "Claude Opus 4.1",    "Premium — complex reasoning"),
+            ("claude-opus-4-1-20250805",   "Claude Opus 4.1",    "Legacy premium"),
         ],
         "gemini": [
             ("gemini-2.5-flash",       "Gemini 2.5 Flash",      "Recommended — best balance"),
@@ -19399,8 +19405,8 @@ class SupervertalerQt(QMainWindow):
     # Default enabled model IDs when no user preference has been saved yet
     _DEFAULT_ENABLED_MODELS = {
         "openai": ["gpt-4o", "gpt-4o-mini", "gpt-5", "o3", "o3-mini", "o1", "gpt-4-turbo"],
-        "claude": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-sonnet-4-5-20250929",
-                   "claude-haiku-4-5-20251001", "claude-opus-4-1-20250805"],
+        "claude": ["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6",
+                   "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "claude-opus-4-1-20250805"],
         "gemini": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro",
                    "gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.0-flash"],
         "ollama": ["translategemma:12b"],
@@ -32300,12 +32306,47 @@ class SupervertalerQt(QMainWindow):
         
         try:
             from modules.sdlppx_handler import TradosPackageHandler
-            
-            # Load the package
+
+            # Load the package behind a progress dialog so large packages
+            # (hundreds of SDLXLIFFs) don't look frozen during extraction/parsing.
+            load_progress = QProgressDialog(
+                f"Opening {Path(file_path).name}...", "Cancel", 0, 100, self
+            )
+            load_progress.setWindowTitle("Importing Trados Package")
+            load_progress.setWindowModality(Qt.WindowModality.WindowModal)
+            load_progress.setMinimumDuration(0)
+            load_progress.setAutoClose(False)
+            load_progress.setAutoReset(False)
+            load_progress.setValue(0)
+            QApplication.processEvents()
+
+            def _on_load_progress(stage: str, current: int, total: int, message: str) -> bool:
+                if load_progress.wasCanceled():
+                    return False
+                if stage == 'extract':
+                    # Extraction is a single zipfile.extractall() call — can't
+                    # stream progress through it; show indeterminate-style label.
+                    load_progress.setRange(0, 0)
+                    load_progress.setLabelText(message)
+                elif stage == 'parse':
+                    load_progress.setRange(0, max(total, 1))
+                    load_progress.setValue(current)
+                    load_progress.setLabelText(
+                        f"Parsing SDLXLIFF: {message} ({current}/{total})"
+                        if total else f"Parsing: {message}"
+                    )
+                QApplication.processEvents()
+                return not load_progress.wasCanceled()
+
             handler = TradosPackageHandler(log_callback=self.log)
-            package = handler.load_package(file_path)
-            
+            package = handler.load_package(file_path, progress_callback=_on_load_progress)
+            load_progress.close()
+
             if not package:
+                if load_progress.wasCanceled():
+                    self.log("❌ SDLPPX load cancelled by user")
+                    handler.cleanup()
+                    return
                 QMessageBox.critical(
                     self, "Error",
                     "Failed to load the Trados Studio package.\n\n"
@@ -32383,10 +32424,30 @@ class SupervertalerQt(QMainWindow):
             global_index = 0
             total_locked_filtered = 0
 
+            # Progress dialog so large packages don't look frozen
+            total_files = len(package.xliff_files)
+            progress_dialog = QProgressDialog(
+                "Building segments...", "Cancel", 0, total_files, self
+            )
+            progress_dialog.setWindowTitle("Importing Trados Package")
+            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+
+            cancelled = False
             for file_idx, xliff_file in enumerate(package.xliff_files):
+                if progress_dialog.wasCanceled():
+                    cancelled = True
+                    break
+
                 file_id = file_idx + 1
                 file_name = Path(xliff_file.file_path).name
                 file_start = global_index
+
+                progress_dialog.setValue(file_idx)
+                progress_dialog.setLabelText(
+                    f"Building segments: {file_name} ({file_idx + 1}/{total_files})"
+                )
+                QApplication.processEvents()
 
                 for sdl_seg in xliff_file.segments:
                     # Lock TU structural segments are always excluded
@@ -32418,6 +32479,13 @@ class SupervertalerQt(QMainWindow):
                         'start_segment_id': file_segs[0].id if file_segs else None,
                         'end_segment_id': file_segs[-1].id if file_segs else None,
                     })
+
+            progress_dialog.setValue(total_files)
+
+            if cancelled:
+                self.log("❌ SDLPPX import cancelled by user")
+                handler.cleanup()
+                return
 
             if total_locked_filtered:
                 self.log(f"Filtered {total_locked_filtered} "
@@ -49687,6 +49755,8 @@ class SupervertalerQt(QMainWindow):
                 # Ollama doesn't need API keys - it's local
                 if llm_provider == 'ollama':
                     api_keys = {'ollama': 'not-needed'}  # Placeholder - Ollama doesn't use API keys
+                elif llm_provider == 'custom_openai':
+                    pass  # Key is optional for custom endpoints
                 elif not api_keys:
                     QMessageBox.critical(
                         self, "API Keys Missing",

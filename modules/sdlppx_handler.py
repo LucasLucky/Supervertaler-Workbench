@@ -1458,58 +1458,69 @@ class TradosPackageHandler:
         self.package: Optional[TradosPackage] = None
         self.extract_dir: Optional[str] = None
     
-    def load_package(self, package_path: str, extract_dir: str = None) -> Optional[TradosPackage]:
+    def load_package(self, package_path: str, extract_dir: str = None,
+                     progress_callback=None) -> Optional[TradosPackage]:
         """
         Load and extract a Trados package.
-        
+
         Args:
             package_path: Path to .sdlppx or .sdlrpx file
             extract_dir: Directory to extract to (temp if not specified)
-            
+            progress_callback: Optional callable(stage: str, current: int, total: int,
+                message: str) -> bool. Return False to cancel loading. Called during
+                extraction and SDLXLIFF parsing so large packages don't look frozen.
+
         Returns:
-            TradosPackage object with parsed content
+            TradosPackage object with parsed content, or None on error/cancel.
         """
         try:
             package_path = Path(package_path)
-            
+
             if not package_path.exists():
                 self.log(f"ERROR: Package not found: {package_path}")
                 return None
-            
+
             # Determine package type
             ext = package_path.suffix.lower()
             if ext not in ['.sdlppx', '.sdlrpx']:
                 self.log(f"ERROR: Not a Trados package: {ext}")
                 return None
-            
+
             package_type = 'sdlppx' if ext == '.sdlppx' else 'sdlrpx'
-            
+
             # Create extraction directory
             if extract_dir:
                 self.extract_dir = Path(extract_dir)
             else:
                 self.extract_dir = Path(tempfile.mkdtemp(prefix='sdlppx_'))
-            
+
             self.extract_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Extract the ZIP
             self.log(f"Extracting {package_path.name}...")
+            if progress_callback:
+                if progress_callback('extract', 0, 1,
+                                     f"Extracting {package_path.name}...") is False:
+                    return None
             with zipfile.ZipFile(package_path, 'r') as zf:
                 zf.extractall(self.extract_dir)
-            
+            if progress_callback:
+                if progress_callback('extract', 1, 1, "Extraction complete") is False:
+                    return None
+
             # Find and parse the project file
             project_file = None
             for f in self.extract_dir.glob('*.sdlproj'):
                 project_file = f
                 break
-            
+
             if not project_file:
                 self.log("ERROR: No .sdlproj file found in package")
                 return None
-            
+
             # Parse project file
             project_info = self._parse_project_file(project_file)
-            
+
             # Create package object
             self.package = TradosPackage(
                 package_path=str(package_path),
@@ -1521,9 +1532,10 @@ class TradosPackageHandler:
                 created_by=project_info.get('created_by', ''),
                 extract_dir=str(self.extract_dir)
             )
-            
+
             # Find and parse SDLXLIFF files
-            self._load_xliff_files()
+            if self._load_xliff_files(progress_callback=progress_callback) is False:
+                return None
             
             total_segments = sum(len(f.segments) for f in self.package.xliff_files)
             self.log(f"Loaded package: {self.package.project_name}")
@@ -1564,53 +1576,63 @@ class TradosPackageHandler:
         
         return info
     
-    def _load_xliff_files(self):
+    def _load_xliff_files(self, progress_callback=None):
         """Find and load SDLXLIFF files from the TARGET language folder only.
-        
+
         Trados packages contain SDLXLIFF files in both source and target language
         folders. We only want to load from the target folder (e.g., nl-nl/) since
         that's where the translator works.
+
+        If progress_callback is supplied it's called as
+        callback('parse', current, total, filename) after each file is parsed.
+        Returning False from the callback cancels the load; this function then
+        returns False. Returns None on success.
         """
         if not self.package or not self.extract_dir:
-            return
-        
+            return None
+
         extract_path = Path(self.extract_dir)
         target_lang = self.package.target_lang.lower()
-        
-        # Look for SDLXLIFF files in the target language folder
+
+        # Resolve which folder holds the target-language SDLXLIFFs
         target_folder = extract_path / target_lang
-        
-        if target_folder.exists():
-            # Load from target language folder
-            self.log(f"Loading SDLXLIFF files from target folder: {target_lang}/")
-            for xliff_path in target_folder.rglob('*.sdlxliff'):
-                xliff_file = self.parser.parse_file(str(xliff_path))
-                if xliff_file:
-                    self.package.xliff_files.append(xliff_file)
-        else:
-            # Fallback: try to find target folder by matching language code patterns
-            # (e.g., nl-NL, nl-nl, nl_NL, etc.)
+        if not target_folder.exists():
+            # Fallback: find folder by matching language code patterns (nl-NL, nl_NL, ...)
             self.log(f"Target folder '{target_lang}' not found, searching alternatives...")
-            found = False
+            target_folder = None
+            source_lang = self.package.source_lang.lower()
             for folder in extract_path.iterdir():
-                if folder.is_dir():
-                    folder_lower = folder.name.lower().replace('_', '-')
-                    if folder_lower == target_lang or folder_lower.startswith(target_lang.split('-')[0]):
-                        # Skip if this looks like the source language
-                        source_lang = self.package.source_lang.lower()
-                        if folder_lower == source_lang or folder_lower.startswith(source_lang.split('-')[0]):
-                            continue
-                        
-                        self.log(f"Loading SDLXLIFF files from folder: {folder.name}/")
-                        for xliff_path in folder.rglob('*.sdlxliff'):
-                            xliff_file = self.parser.parse_file(str(xliff_path))
-                            if xliff_file:
-                                self.package.xliff_files.append(xliff_file)
-                        found = True
-                        break
-            
-            if not found:
+                if not folder.is_dir():
+                    continue
+                folder_lower = folder.name.lower().replace('_', '-')
+                if folder_lower == target_lang or folder_lower.startswith(target_lang.split('-')[0]):
+                    if folder_lower == source_lang or folder_lower.startswith(source_lang.split('-')[0]):
+                        continue
+                    target_folder = folder
+                    break
+            if target_folder is None:
                 self.log(f"Warning: Could not find target language folder for {target_lang}")
+                return None
+
+        self.log(f"Loading SDLXLIFF files from folder: {target_folder.name}/")
+
+        # Collect paths first so we can report a meaningful total
+        xliff_paths = list(target_folder.rglob('*.sdlxliff'))
+        total = len(xliff_paths)
+
+        for idx, xliff_path in enumerate(xliff_paths):
+            if progress_callback:
+                if progress_callback('parse', idx, total, xliff_path.name) is False:
+                    self.log("SDLXLIFF parse cancelled by caller")
+                    return False
+            xliff_file = self.parser.parse_file(str(xliff_path))
+            if xliff_file:
+                self.package.xliff_files.append(xliff_file)
+
+        if progress_callback:
+            if progress_callback('parse', total, total, "Parsing complete") is False:
+                return False
+        return None
     
     def get_all_segments(self) -> List[SDLSegment]:
         """Get all segments from all files in the package."""

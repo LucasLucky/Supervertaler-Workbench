@@ -2,8 +2,35 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.381 (April 17, 2026)
+**Current Version:** v1.9.383 (April 22, 2026)
 
+
+## v1.9.383 - April 22, 2026
+
+### Fixed
+- **Bulk-translate (Ctrl+Shift+T) with a Custom Endpoint provider no longer errors out asking for a Custom API key.** The single-segment path (Ctrl+T) correctly treated the API key as optional for `custom_openai` providers, but the batch path only special-cased Ollama and fell through to the generic "API key missing" error for custom endpoints. Now the batch path matches the single-segment path: the key is optional for custom endpoints. Thanks to [@jaychen-xilinx](https://github.com/jaychen-xilinx) for the report ([#182](https://github.com/Supervertaler/Supervertaler-Workbench/issues/182)).
+
+### Changed
+- **Trados package (SDLPPX) import now shows progress throughout and is cancellable.** Large packages (hundreds of SDLXLIFFs, 200k+ words) used to look frozen for the entire import. Now there is per-stage progress feedback and a Cancel button:
+  - **Extraction:** "Extracting package.sdlppx..." while the zip is unpacked.
+  - **SDLXLIFF parsing:** "Parsing SDLXLIFF: file.sdlxliff (N / total)" — the biggest time sink for large packages, previously completely silent before the info dialog appeared.
+  - **Segment build:** "Building segments: file.sdlxliff (N / total)" — the post-dialog loop that maps parsed segments into Workbench's internal format.
+  - Cancel at any stage cleans up the temp extraction directory and returns to the project you had open. ([#185](https://github.com/Supervertaler/Supervertaler-Workbench/issues/185))
+
+---
+
+## v1.9.382 - April 17, 2026
+
+### Added
+- **Claude Opus 4.7 support.** Anthropic's new flagship model (released 2026-04-16) is now selectable in Settings → LLM Models under the Claude provider and in the OpenRouter model list (`anthropic/claude-opus-4.7`). Opus 4.7 has a 1M-token context window, 128k max output, and is Anthropic's most capable generally available model. Pricing is $5 / input MTok, $25 / output MTok — the same as Opus 4.6. Sonnet 4.6 remains the recommended default for most translation work; reach for Opus 4.7 when you need top-tier reasoning or long-context jobs. See [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7) for details.
+
+### Fixed (cost estimates)
+- **Corrected stale pricing for Claude Opus 4.6 and Haiku 4.5.** The internal pricing table in `llm_pricing.py` and the `CLAUDE_MODELS` metadata in `llm_clients.py` had Opus 4.6 at the pre-4.6 rate of $15 / $75 per MTok — Anthropic dropped Opus pricing to $5 / $25 with the 4.6 release. Haiku 4.5 was listed at $0.80 / $4.00, corrected to the current $1.00 / $5.00. Cost estimates in the LLM Leaderboard and Reports panels were over-stating Opus usage and under-stating Haiku usage — now accurate.
+
+### Note on Opus 4.7 tokenizer
+- Claude Opus 4.7 uses a new tokenizer that can use **~1.0×–1.35× more tokens** for the same text compared to earlier models. Cost estimates based on output-token counts are accurate; estimates based on the `chars / 4` heuristic for unsent text will under-estimate Opus 4.7 costs by a similar margin. Actual billing is based on Anthropic's token counts.
+
+---
 
 ## v1.9.381 - April 17, 2026
 
