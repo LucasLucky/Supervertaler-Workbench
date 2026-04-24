@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.385 – Removed the Superbrowser tool (multi-chat AI browser with ChatGPT/Claude/Gemini side-by-side) as part of an ongoing simplification pass. Users who want a multi-chat workflow can open each service in their own browser or use dedicated third-party tools.
+**Latest release:** v1.9.386 – Removed the Supercleaner tool (DOCX pre-import cleaner) as part of an ongoing simplification pass – it was not safe to use and TransTools does the same job much better. Also: Compact UI chrome is now the default for new installs (still a toggle under Settings → View Settings).
 
 ---
 

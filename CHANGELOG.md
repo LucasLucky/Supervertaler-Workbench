@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.385 (April 24, 2026)
+**Current Version:** v1.9.386 (April 24, 2026)
 
+
+## v1.9.386 - April 24, 2026
+
+### Removed
+- **Supercleaner tool removed from the Tools tab, Tools menu, and the "Import monolingual DOCX" options dialog.** The DOCX tag cleaner (inspired by TransTools Document Cleaner / Unbreaker / CodeZapper) has been retired. It was not safe to use in its current state and would need substantial work to reach the quality bar TransTools has already set – time better spent on translator-facing features elsewhere. Continuing the simplification series that started with Superbrowser in v1.9.385. `modules/supercleaner.py`, `modules/supercleaner_ui.py`, the "🧹 Supercleaner" Tools-tab sub-tab, the Tools-menu entry, and the "🧹 Clean document before import" checkbox in the DOCX import dialog (including its cleanup handler) have all been deleted. Translators wanting pre-import DOCX cleanup should use TransTools (or similar) directly and then import the cleaned file into the Workbench as normal. The glossary entry has been removed; agent-archive references are kept for historical accuracy.
+
+### Changed
+- **Compact UI chrome is now the default on new / unset installs.** The toggle (added in v1.9.385's follow-up commit under Settings → View Settings → 📐 Compact UI Chrome) now defaults to enabled. Tightens padding on the menu bar, main tab strip (Grid / Resources / AI / Tools / Settings), and the right-panel tab strip (Match Panel / AI Assistant / Preview / Segment note / …) to give the translation grid more room. Users who previously toggled the setting off keep that preference; only users who have never touched it are affected on next launch. Still a toggle – nothing has been locked in. The startup hook now runs at 0 ms instead of 100 ms, so the compact styling lands in the same event loop iteration the widgets are constructed in – no visible flash of uncompact chrome before the restyle on fresh installs.
+
+---
 
 ## v1.9.385 - April 24, 2026
 

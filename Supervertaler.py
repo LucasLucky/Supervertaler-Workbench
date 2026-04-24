@@ -9907,10 +9907,6 @@ class SupervertalerQt(QMainWindow):
         superbench_action.triggered.connect(lambda: self._navigate_to_tool("Superbench"))
         tools_menu.addAction(superbench_action)
 
-        supercleaner_action = QAction("🧹 Supercleaner...", self)
-        supercleaner_action.triggered.connect(lambda: self._navigate_to_tool("Supercleaner"))
-        tools_menu.addAction(supercleaner_action)
-        
         superlookup_action = QAction(f"🔍 Super&lookup ({format_shortcut_for_display('Ctrl+K')})...", self)
         # Note: Actual Ctrl+K shortcut handled by QShortcut in setup_global_shortcuts()
         # which calls show_concordance_search() for proper selection capture
@@ -10987,39 +10983,6 @@ class SupervertalerQt(QMainWindow):
         tabs.addTab(tmx_tab, "🔄 TMX Tools")
         
         main_layout.addWidget(tabs)
-        
-        return container
-    
-    def create_supercleaner_tab(self) -> QWidget:
-        """Create the Supercleaner tab - Clean DOCX documents"""
-        from modules.supercleaner_ui import SupercleanerUI
-        
-        # Create container widget with header
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(5)
-        
-        # Header (matches TMX Editor / AutoFingers / PDF Rescue style)
-        header = QLabel("🧹 Supercleaner")
-        header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
-        layout.addWidget(header, 0)
-        
-        # Description box (matches other tools style)
-        description = QLabel(
-            "Clean DOCX documents before translation - removes formatting issues, excessive tags, and OCR artifacts.\n"
-            "Inspired by TransTools Document Cleaner, Unbreaker, and CodeZapper."
-        )
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(description, 0)
-        
-        # Create Supercleaner UI widget
-        supercleaner = SupercleanerUI(parent=self)
-        layout.addWidget(supercleaner, 1)  # 1 = stretch factor
-        
-        # Store reference
-        self.supercleaner_embedded = supercleaner
         
         return container
     
@@ -12133,9 +12096,6 @@ class SupervertalerQt(QMainWindow):
         # Superbench
         leaderboard_tab = self.create_llm_leaderboard_tab()
         modules_tabs.addTab(leaderboard_tab, "📊 Superbench")
-
-        supercleaner_tab = self.create_supercleaner_tab()
-        modules_tabs.addTab(supercleaner_tab, "🧹 Supercleaner")
 
         # Superdocs removed (online GitBook will be used instead)
 
@@ -17790,10 +17750,13 @@ class SupervertalerQt(QMainWindow):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(100, lambda: self._apply_global_ui_font_scale(saved_scale))
 
-        # Apply saved Compact UI chrome preference on startup
+        # Apply saved Compact UI chrome preference on startup.
+        # Defaults to compact (v1.9.386+); use 0ms timer so it lands in the same event
+        # loop iteration the widgets were constructed in — no visible flash of
+        # non-compact chrome before the restyle.
         if self._get_ui_chrome_compact():
             from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, lambda: self._apply_ui_chrome_compactness(True, persist=False))
+            QTimer.singleShot(0, lambda: self._apply_ui_chrome_compactness(True, persist=False))
 
         # Apply dark sidebar style if current theme is dark
         self._update_settings_sidebar_theme()
@@ -21015,8 +20978,9 @@ class SupervertalerQt(QMainWindow):
         chrome_info.setWordWrap(True)
         chrome_layout.addWidget(chrome_info)
 
-        compact_chrome_check = QCheckBox("Compact UI chrome (tighter menu / tab padding)")
+        compact_chrome_check = CheckmarkCheckBox("Compact UI chrome (tighter menu / tab padding)")
         compact_chrome_check.setChecked(self._get_ui_chrome_compact())
+        compact_chrome_check.setToolTip("Tighten padding on the menu bar and tab strips to make more room for the translation grid")
         compact_chrome_check.toggled.connect(self._apply_ui_chrome_compactness)
         chrome_layout.addWidget(compact_chrome_check)
 
@@ -23505,9 +23469,14 @@ class SupervertalerQt(QMainWindow):
                                     general_settings.get('settings_ui_font_scale', 100))
 
     def _get_ui_chrome_compact(self) -> bool:
-        """True when Compact UI chrome is enabled (tighter menu bar and tab strip padding)."""
+        """True when Compact UI chrome is enabled (tighter menu bar and tab strip padding).
+
+        Default changed from False → True in v1.9.386: compact is now the shipped look.
+        Users who have explicitly set it False keep that setting; only users who have
+        never touched it get the new default on next launch.
+        """
         general_settings = self.load_general_settings()
-        return bool(general_settings.get('compact_ui_chrome', False))
+        return bool(general_settings.get('compact_ui_chrome', True))
 
     def _apply_ui_chrome_compactness(self, compact: bool, persist: bool = True):
         """Apply or remove compact-chrome styling on menu bar, main tabs, and right tabs.
@@ -27443,7 +27412,7 @@ class SupervertalerQt(QMainWindow):
         if not file_path:
             return
 
-        # Show import options dialog with Supercleaner option
+        # Show import options dialog (language pair selection)
         dialog = QDialog(self)
         dialog.setWindowTitle("Import DOCX Options")
         dialog.setMinimumWidth(500)
@@ -27527,21 +27496,6 @@ class SupervertalerQt(QMainWindow):
         
         layout.addWidget(lang_group)
 
-        layout.addSpacing(10)
-
-        # Supercleaner option
-        clean_checkbox = CheckmarkCheckBox("🧹 Clean document before import (Supercleaner)")
-        clean_checkbox.setChecked(False)  # Default to disabled
-        clean_checkbox.setToolTip(
-            "Automatically clean the document before importing:\n"
-            "• Remove formatting issues and excessive tags\n"
-            "• Fix incorrect line breaks (Unbreaker)\n"
-            "• Remove excessive spaces\n"
-            "• Normalize fonts, colors, and sizes\n\n"
-            "Recommended for OCR/PDF-converted documents"
-        )
-        layout.addWidget(clean_checkbox)
-
         layout.addSpacing(20)
 
         # Buttons
@@ -27560,51 +27514,18 @@ class SupervertalerQt(QMainWindow):
         # Show dialog
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        
+
         # Store selected languages for import
         self._import_source_lang = source_combo.currentData()
         self._import_target_lang = target_combo.currentData()
-        
+
         # Save selected languages to settings for next time
         general_settings = self.load_general_settings()
         general_settings['last_import_source_lang'] = self._import_source_lang
         general_settings['last_import_target_lang'] = self._import_target_lang
         self.save_general_settings(general_settings)
 
-        # Clean document if requested
-        import_path = file_path
-        if clean_checkbox.isChecked():
-            self.log("🧹 Running Supercleaner on document before import...")
-            try:
-                from modules.supercleaner import clean_document_simple
-                import tempfile
-                import shutil
-
-                # Create temp file for cleaned version
-                temp_fd, temp_path = tempfile.mkstemp(suffix='.docx')
-                os.close(temp_fd)
-
-                # Clean the document
-                stats = clean_document_simple(file_path, temp_path, quick_clean=True)
-
-                self.log(f"✓ Supercleaner complete:")
-                self.log(f"  - Paragraphs processed: {stats['paragraphs_processed']}")
-                self.log(f"  - Changes made: {stats['changes_made']}")
-                for op in stats.get('operations', []):
-                    self.log(f"  - {op}")
-
-                import_path = temp_path
-
-            except Exception as e:
-                self.log(f"⚠️ Supercleaner error (importing original): {e}")
-                QMessageBox.warning(
-                    self,
-                    "Supercleaner Warning",
-                    f"Could not clean document, importing original:\n\n{str(e)}"
-                )
-                import_path = file_path
-
-        self.import_docx_from_path(import_path)
+        self.import_docx_from_path(file_path)
     
     def import_docx_from_path(self, file_path):
         """Import a monolingual DOCX document from a given path"""
