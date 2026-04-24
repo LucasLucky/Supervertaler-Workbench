@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-Write-Host "Creating Start Menu shortcut for Supervertaler Workbench..." -ForegroundColor Cyan
+Write-Host "Creating Start Menu shortcut for Supervertaler Workbench (Dev)..." -ForegroundColor Cyan
 
 # Get the directory where this script is located
 $SupervertalerDir = $PSScriptRoot
@@ -22,9 +22,32 @@ if (!(Test-Path $RunCmdPath)) {
 
 # Create shortcut in Start Menu
 $StartMenuPath = [Environment]::GetFolderPath("StartMenu")
-$ShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler Workbench.lnk"
+$ShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler Workbench (Dev).lnk"
 
 $WshShell = New-Object -ComObject WScript.Shell
+
+# Clean up legacy dev shortcut names from previous versions of this script.
+# Only remove shortcuts whose target matches this source directory — never
+# touch a "Supervertaler Workbench.lnk" belonging to an installed end-user build.
+$LegacyShortcutNames = @(
+    "Supervertaler (Dev).lnk",
+    "Supervertaler Workbench.lnk"
+)
+foreach ($name in $LegacyShortcutNames) {
+    $legacyPath = Join-Path $StartMenuPath "Programs\$name"
+    if (Test-Path $legacyPath) {
+        try {
+            $legacyShortcut = $WshShell.CreateShortcut($legacyPath)
+        } catch {
+            $legacyShortcut = $null
+        }
+        if ($legacyShortcut -and $legacyShortcut.TargetPath -eq $RunCmdPath) {
+            Remove-Item $legacyPath -Force
+            Write-Host "Removed legacy shortcut '$name'." -ForegroundColor Yellow
+        }
+    }
+}
+
 $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $RunCmdPath
 $Shortcut.WorkingDirectory = $SupervertalerDir
@@ -43,10 +66,10 @@ $Shortcut.Save()
 Write-Host ""
 Write-Host "SUCCESS: Start Menu shortcut created!" -ForegroundColor Green
 Write-Host ""
-Write-Host "Shortcut name: 'Supervertaler Workbench'" -ForegroundColor Cyan
+Write-Host "Shortcut name: 'Supervertaler Workbench (Dev)'" -ForegroundColor Cyan
 Write-Host "Shortcut location: $ShortcutPath" -ForegroundColor Gray
 Write-Host ""
-Write-Host "You can now find 'Supervertaler Workbench' in your Start Menu." -ForegroundColor Cyan
+Write-Host "You can now find 'Supervertaler Workbench (Dev)' in your Start Menu." -ForegroundColor Cyan
 Write-Host "You can also pin it to the taskbar by right-clicking the shortcut." -ForegroundColor Cyan
 Write-Host ""
 $null = Read-Host "Press Enter to close"
