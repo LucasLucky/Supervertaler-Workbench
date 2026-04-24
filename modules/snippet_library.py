@@ -107,7 +107,12 @@ class SnippetLibrary:
                 self.log(f"[SnippetLibrary] Cannot create folder {folder}: {e}")
                 continue
 
-            filename = self._safe_filename(defn['name']) + '.md'
+            # Filename comes from the explicit `filename` field if given, falling
+            # back to a sanitised version of `name`. This lets the display label
+            # (front-matter `name:`, shown in the Sidekick tree) carry unicode
+            # glyphs while the on-disk filename stays ASCII-safe and predictable.
+            raw_filename = defn.get('filename') or defn.get('name') or 'snippet'
+            filename = self._safe_filename(raw_filename) + '.md'
             filepath = folder / filename
 
             if not filepath.exists():
@@ -159,28 +164,48 @@ class SnippetLibrary:
 
 DEFAULT_SNIPPETS: List[Dict] = [
     # -- Special Characters --
-    {"category": "Special Characters", "name": "Misc symbols",
+    #
+    # Each entry has three fields:
+    #   `filename` — the on-disk .md file stem (ASCII-safe, stable across OSes)
+    #   `name`     — the display label shown in the Sidekick menu (free to use
+    #                unicode glyphs so you can see at a glance what you're
+    #                about to insert)
+    #   `body`     — the actual text inserted at the cursor on click
+    #
+    # Users can edit any of these freely in the generated .md files; we never
+    # overwrite once a file exists. If you want the old plain-word labels
+    # back, just change the `name:` line in the front matter.
+    {"category": "Special Characters", "filename": "Misc symbols",
+     "name": "\u25A3 \u25A0 \u25EF \u25B6 \u25C6",
      "body": "\u25A3 \u25A0 \u25A1 \u25A2 \u25EF \u25B2 \u25B6 \u25BA \u25BC \u25C6 \u25E2 \u25E3 \u25E4 \u25E5"},
-    {"category": "Special Characters", "name": "Arrows",
+    {"category": "Special Characters", "filename": "Arrows",
+     "name": "\u2190 \u2192 \u2191 \u2193 \u21C4 \u2194",
      "body": "\u2190 \u2192 \u2191 \u2193 \u27EB \u2B07 \u2B06 \u21C4 \u2194"},
-    {"category": "Special Characters", "name": "Primes",
+    {"category": "Special Characters", "filename": "Primes",
+     "name": "\u2032 \u2033 \u2034",
      "body": "\u2032 \u2033 \u2034 \u2057"},
-    {"category": "Special Characters", "name": "Dashes and quotes",
+    {"category": "Special Characters", "filename": "Dashes and quotes",
+     "name": "\u2013 \u2014 \u00AB \u00BB \u201C \u201D",
      "body": "\u2013 \u2014 \u00AB \u00BB \u2039 \u203A \u201C \u201D \u201E \u201A"},
-    {"category": "Special Characters", "name": "Currency",
+    {"category": "Special Characters", "filename": "Currency",
+     "name": "\u20AC \u00A3 $ \u00A5 \u00A2",
      "body": "\u00A5 \u20AC $ \u00A2 \u00A3"},
-    {"category": "Special Characters", "name": "Legal symbols",
+    {"category": "Special Characters", "filename": "Legal symbols",
+     "name": "\u00A9 \u00AE \u2122 \u00B0 \u2030",
      "body": "\u00A9 \u00AE @ \u2122 \u00B0 \u2030"},
-    {"category": "Special Characters", "name": "Maths symbols",
+    {"category": "Special Characters", "filename": "Maths symbols",
+     "name": "\u00B1 \u00D7 \u00F7 \u2260 \u03C0 \u221E",
      "body": "\u00B1 \u00D7 ~ \u2248 \u00F7 \u2260 \u03C0 \u221E"},
-    {"category": "Special Characters", "name": "Bullets",
+    {"category": "Special Characters", "filename": "Bullets",
+     "name": "\u2022 \u25CF \u00B7 \u2026",
      "body": "\u2026 \u00B7 \u2022 \u25CF"},
 
     # -- Personal Snippets --
     # Placeholder so the category appears in the menu with guidance for
     # first-time users. Shipping an example here is intentional; it should
     # NOT contain anything personal or sensitive.
-    {"category": "Personal Snippets", "name": "Example snippet",
+    {"category": "Personal Snippets", "filename": "Example snippet",
+     "name": "Example snippet",
      "body": "This is a sample snippet. Edit this file or add new .md files "
              "under snippet_library/Personal Snippets/ to build your own "
              "library of reusable text."},

@@ -14,6 +14,9 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ### Added
 - **`modules/snippet_library.py` — new minimal loader class `SnippetLibrary`.** Mirrors `UnifiedPromptLibrary` in shape (recursive `rglob("*.md")` walk, YAML-ish front-matter parsing, `ensure_defaults()` for idempotent first-run seeding) but without the prompt-specific metadata (no variables, no system/user distinction, no model binding, no quicklauncher flags). Default snippet definitions live in the module-level `DEFAULT_SNIPPETS` constant, migrated verbatim from the pre-v1.9.387 hardcoded entries in `floating_assistant.py` (minus the phone number, minus the two placeholder one-character snippets that looked like ad-hoc test entries).
 
+### Changed (follow-up, same day)
+- **Default snippet labels now show the actual characters in the Sidekick menu.** The front-matter `name:` field (already supported — `label = meta.get('name') or md.stem` on the load side) was previously set identical to the filename in the bundled defaults, which wasted its purpose. `DEFAULT_SNIPPETS` now supplies both `filename` (ASCII-safe, stays stable across Windows/macOS/Linux and cloud sync) and `name` (unicode glyph preview shown in the menu), and `ensure_defaults()` reads `filename` explicitly rather than sanitising `name`. So the Arrows entry, for example, is `Arrows.md` on disk but `← → ↑ ↓ ⇄ ↔` in the menu. Users who already had v1.9.387's original snippet files will still see the plain labels — delete the `user_data/snippet_library/Special Characters/` folder (or any individual file) and relaunch to pick up the new labels; user-added and user-edited files are unaffected.
+
 ---
 
 ## v1.9.386 - April 24, 2026
