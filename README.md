@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.387 – Sidekick Special Characters and Personal Snippets are now file-backed and user-editable: each entry lives as a `.md` file under `user_data/snippet_library/`. Removed a hardcoded real phone number that was shipping in the defaults. Lays the groundwork for a forthcoming in-app Library editor.
+**Latest release:** v1.9.388 – Supervertaler Sidekick now carries the canonical Sv brand mark in its taskbar entry, alt-tab switcher, and custom title bar, matching the main Workbench window. Small polish release on top of v1.9.387's file-backed snippet library.
 
 ---
 

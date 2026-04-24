@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.387 (April 24, 2026)
+**Current Version:** v1.9.388 (April 25, 2026)
 
+
+## v1.9.388 - April 25, 2026
+
+### Changed
+- **Supervertaler Sidekick now uses the canonical Sv brand icon.** The floating assistant window previously had no window icon at all (so it fell back to Qt's generic default in the taskbar and alt-tab switcher) and its custom title bar showed only the "Supervertaler Sidekick" text. Now it sets `setWindowIcon(assets/icon.ico)` — the same file the main Workbench window uses — and the title bar leads with a 24×24 render of `assets/icon_24.png` before the title text. Title bar height bumped 36→40 px so the 24×24 icon (and the equally-sized window buttons) sit on an 8 px top/bottom margin rather than hugging the edges. The route to getting this looking right ran through five commits to untangle a Qt stylesheet cascade — the final fix was an explicit `border-radius: 0` override on the icon QLabel to stop the parent bar's `border-top-*-radius` rule from triggering Qt's styled-background painter on the label (which was shifting the pixmap a pixel down and making the circle look clipped at the bottom).
+
+---
 
 ## v1.9.387 - April 24, 2026
 
