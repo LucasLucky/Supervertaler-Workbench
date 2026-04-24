@@ -221,11 +221,15 @@ class FloatingAssistant(QWidget):
 
     def _create_title_bar(self) -> QWidget:
         bar = QWidget()
-        # 40px gives the 24px Sv icon and the 24px window buttons 8px top/bottom
-        # breathing room; at 36px the icon's circle looked cropped at the bottom.
+        # 40px with explicit 8px top/bottom layout margins leaves a clean 24px
+        # content band for the 24×24 Sv icon and 24×24 window buttons.
         bar.setFixedHeight(40)
+        # Scope the stylesheet to only this bar via object name — otherwise the
+        # `QWidget { ... }` selector cascades to every QLabel / QPushButton
+        # child and interferes with their own styling.
+        bar.setObjectName("sidekickTitleBar")
         bar.setStyleSheet("""
-            QWidget {
+            QWidget#sidekickTitleBar {
                 background-color: #3D5A80;
                 border-top-left-radius: 7px;
                 border-top-right-radius: 7px;
@@ -233,22 +237,20 @@ class FloatingAssistant(QWidget):
         """)
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(10, 0, 8, 0)
+        # 8px top/bottom margins guarantee the vertical centring of 24×24
+        # content regardless of per-widget alignment flags.
+        layout.setContentsMargins(10, 8, 8, 8)
         layout.setSpacing(8)
 
-        # Sv icon — canonical Workbench brand mark.
-        # Rendered at the icon's native 24×24 size (no scale/anti-alias pass)
-        # and explicitly vertically centred in the 36px title bar so the Sv
-        # circle doesn't sit flush against the top edge.
+        # Sv icon — canonical Workbench brand mark, native 24×24 (no scaling).
         sv_icon_label = QLabel()
-        sv_icon_label.setStyleSheet("border: none; background: transparent;")
         sv_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sv_icon_path = self._resource_path("assets", "icon_24.png")
         if sv_icon_path.exists():
             from PyQt6.QtGui import QPixmap
             sv_icon_label.setPixmap(QPixmap(str(sv_icon_path)))
         sv_icon_label.setFixedSize(24, 24)
-        layout.addWidget(sv_icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(sv_icon_label)
 
         title = QLabel("Supervertaler Sidekick")
         title.setStyleSheet("color: white; font-weight: bold; font-size: 10pt; border: none;")
