@@ -234,20 +234,19 @@ class FloatingAssistant(QWidget):
         layout.setContentsMargins(10, 0, 8, 0)
         layout.setSpacing(8)
 
-        # Sv icon — canonical Workbench brand mark
+        # Sv icon — canonical Workbench brand mark.
+        # Rendered at the icon's native 24×24 size (no scale/anti-alias pass)
+        # and explicitly vertically centred in the 36px title bar so the Sv
+        # circle doesn't sit flush against the top edge.
         sv_icon_label = QLabel()
         sv_icon_label.setStyleSheet("border: none; background: transparent;")
+        sv_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sv_icon_path = self._resource_path("assets", "icon_24.png")
         if sv_icon_path.exists():
             from PyQt6.QtGui import QPixmap
-            pixmap = QPixmap(str(sv_icon_path)).scaled(
-                20, 20,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            sv_icon_label.setPixmap(pixmap)
-        sv_icon_label.setFixedSize(20, 20)
-        layout.addWidget(sv_icon_label)
+            sv_icon_label.setPixmap(QPixmap(str(sv_icon_path)))
+        sv_icon_label.setFixedSize(24, 24)
+        layout.addWidget(sv_icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         title = QLabel("Supervertaler Sidekick")
         title.setStyleSheet("color: white; font-weight: bold; font-size: 10pt; border: none;")
