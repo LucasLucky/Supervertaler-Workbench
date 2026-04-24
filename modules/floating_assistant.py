@@ -392,22 +392,11 @@ class FloatingAssistant(QWidget):
         # -- Prompt library items (grouped by folder) --
         self._populate_prompt_library_tree()
 
-        # -- Snippets: Special Characters --
-        chars_cat = self._make_category("\u2728 Special Characters")
-        self._add_snippet(chars_cat, "Misc symbols", "\u25A3 \u25A0 \u25A1 \u25A2 \u25EF \u25B2 \u25B6 \u25BA \u25BC \u25C6 \u25E2 \u25E3 \u25E4 \u25E5")
-        self._add_snippet(chars_cat, "Arrows", "\u2190 \u2192 \u2191 \u2193 \u27EB \u2B07 \u2B06 \u21C4 \u2194")
-        self._add_snippet(chars_cat, "Primes \u2032\u2033\u2034", "\u2032 \u2033 \u2034 \u2057")
-        self._add_snippet(chars_cat, "Dashes & quotes", "\u2013 \u2014 \u00AB \u00BB \u2039 \u203A \u201C \u201D \u201E \u201A")
-        self._add_snippet(chars_cat, "Currency \u20AC \u00A3 \u00A5", "\u00A5 \u20AC $ \u00A2 \u00A3")
-        self._add_snippet(chars_cat, "Legal \u00A9 \u00AE \u2122", "\u00A9 \u00AE @ \u2122 \u00B0 \u2030")
-        self._add_snippet(chars_cat, "Maths \u00B1 \u00D7 \u00F7 \u2260", "\u00B1 \u00D7 ~ \u2248 \u00F7 \u2260 \u03C0 \u221E")
-        self._add_snippet(chars_cat, "Bullets \u2022 \u25CF \u00B7", "\u2026 \u00B7 \u2022 \u25CF")
-        self._add_snippet(chars_cat, "\u00EB", "\u00EB")
-        self._add_snippet(chars_cat, "\u25B6", "\u25B6")
-
-        # -- Snippets: Personal --
-        personal_cat = self._make_category("\U0001F4C7 Personal Snippets")
-        self._add_snippet(personal_cat, "Mobile number", "07475771720")
+        # -- Snippets (file-backed, user-editable) --
+        # Replaces the pre-v1.9.387 hardcoded Special Characters / Personal
+        # Snippets entries. Reads .md files from <user_data>/snippet_library/
+        # and groups them into tree categories by top-level folder name.
+        self._populate_snippet_library_tree()
 
         # -- Text Conversions --
         text_cat = self._make_category("\U0001F524 Text Conversions")
@@ -425,6 +414,54 @@ class FloatingAssistant(QWidget):
 
         # Set initial expand indicators
         self._update_expand_indicators()
+
+    def _populate_snippet_library_tree(self):
+        """Add file-backed snippets to the Sidekick tree.
+
+        Reads .md snippet files from ``<user_data>/snippet_library/`` via the
+        :class:`SnippetLibrary` loader. Top-level folders become tree categories
+        (Special Characters, Personal Snippets, plus any user-created folders).
+        Defaults are seeded on first run; existing files are never overwritten.
+        """
+        try:
+            from modules.snippet_library import SnippetLibrary, DEFAULT_SNIPPETS
+
+            user_data_path = getattr(self._parent_app, 'user_data_path', None)
+            if not user_data_path:
+                return
+
+            library_dir = Path(user_data_path) / "snippet_library"
+            lib = SnippetLibrary(library_dir=str(library_dir))
+            lib.ensure_defaults(DEFAULT_SNIPPETS)
+            lib.load_all()
+
+            if not lib.snippets:
+                return
+
+            # Group by top-level category (folder name). Files placed directly
+            # in the library root fall back to a generic "Snippets" bucket.
+            from collections import defaultdict
+            by_category = defaultdict(list)
+            for snip in lib.snippets:
+                cat = snip['category'] or "Snippets"
+                by_category[cat].append(snip)
+
+            # Category icons for the known defaults. Any other folder the user
+            # creates gets the generic folder glyph.
+            category_icons = {
+                "Special Characters": "\u2728",        # ✨
+                "Personal Snippets": "\U0001F4C7",     # 📇
+            }
+            default_icon = "\U0001F4C1"                # 📁
+
+            for cat_name in sorted(by_category.keys(), key=str.lower):
+                icon = category_icons.get(cat_name, default_icon)
+                cat_item = self._make_category(f"{icon} {cat_name}")
+                for snip in sorted(by_category[cat_name], key=lambda s: s['label'].lower()):
+                    self._add_snippet(cat_item, snip['label'], snip['body'])
+
+        except Exception as e:
+            print(f"FloatingAssistant: Error populating snippets: {e}")
 
     def _populate_prompt_library_tree(self):
         """Add prompt library items grouped by their folder structure."""

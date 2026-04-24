@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.386 (April 24, 2026)
+**Current Version:** v1.9.387 (April 24, 2026)
 
+
+## v1.9.387 - April 24, 2026
+
+### Changed
+- **Sidekick "Special Characters" and "Personal Snippets" are now file-backed and user-editable.** Each entry lives as its own `.md` file under `user_data/snippet_library/`, with folder structure mapping to tree categories in the Sidekick menu (e.g. `snippet_library/Special Characters/Arrows.md` appears under "Special Characters → Arrows"). File format mirrors the prompt library's `.md` + YAML-ish front matter convention (`type: snippet`, `name`, `category`, `default: true`, `read_only: true`) so the two libraries can be unified behind a single editor in a later release without a data migration. Default snippets are seeded on first launch and re-seeded only when absent — user edits, renames, and deletions are preserved. Users can already customise today by editing or adding .md files directly under `snippet_library/`; an in-app editor will follow in a subsequent release. "Text Conversions" remains hardcoded for now — those are logic entries (casing, wrap-in-X, strip-U+00AD), not static payloads, and don't fit the file-backed model.
+- **Removed a hardcoded real phone number (`07475771720`) that was shipping in the default Personal Snippets.** The category now seeds with a single "Example snippet" placeholder that explains how to add your own entries. Anyone who has already installed a previous release will still have the old hardcoded entry in their Sidekick menu — deleting the in-memory hardcoded version is immediate with this release; the new .md-file example will appear on next launch. No one should have typed that number into an email from inside their CAT tool, but here we are, so: fixed.
+
+### Added
+- **`modules/snippet_library.py` — new minimal loader class `SnippetLibrary`.** Mirrors `UnifiedPromptLibrary` in shape (recursive `rglob("*.md")` walk, YAML-ish front-matter parsing, `ensure_defaults()` for idempotent first-run seeding) but without the prompt-specific metadata (no variables, no system/user distinction, no model binding, no quicklauncher flags). Default snippet definitions live in the module-level `DEFAULT_SNIPPETS` constant, migrated verbatim from the pre-v1.9.387 hardcoded entries in `floating_assistant.py` (minus the phone number, minus the two placeholder one-character snippets that looked like ad-hoc test entries).
+
+---
 
 ## v1.9.386 - April 24, 2026
 
