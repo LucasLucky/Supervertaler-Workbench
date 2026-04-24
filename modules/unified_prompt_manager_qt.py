@@ -999,7 +999,7 @@ class UnifiedPromptManagerQt:
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(2)
 
-        # Sub-tabs: Prompt Manager, Supervertaler Assistant, Variables
+        # Sub-tabs: Prompt Manager, Supervertaler Sidekick, Variables
         self.sub_tabs = QTabWidget()
         self.sub_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sub_tabs.tabBar().setDrawBase(False)
@@ -1013,7 +1013,7 @@ class UnifiedPromptManagerQt:
         variables_tab = self._create_placeholders_tab()
         self.sub_tabs.addTab(variables_tab, "📝 Variables")
 
-        # Supervertaler Assistant — created here but added to the right panel
+        # Supervertaler Sidekick — created here but added to the right panel
         # in Supervertaler.py so it's visible alongside the translation grid.
         self.assistant_tab = self._create_ai_assistant_tab()
 
@@ -1035,8 +1035,8 @@ class UnifiedPromptManagerQt:
 
     def receive_text_for_assistant(self, text: str, from_external: bool = False):
         """
-        Switch to the Supervertaler Assistant sub-tab, insert text into the chat input,
-        and focus the input field. Called from QuickLauncher "Supervertaler Assistant".
+        Switch to the Supervertaler Sidekick sub-tab, insert text into the chat input,
+        and focus the input field. Called from QuickLauncher "Supervertaler Sidekick".
 
         Pressing Escape while in the Assistant tab will return the user to the Grid tab,
         or re-activate the external app if launched via the global hotkey.
@@ -4849,7 +4849,7 @@ IMPORTANT:
         params = {
             'name': prompt_name,
             'content': content,
-            'folder': 'Supervertaler Assistant Prompts',
+            'folder': 'Supervertaler Sidekick Prompts',
             'description': description,
             'activate': True,
         }

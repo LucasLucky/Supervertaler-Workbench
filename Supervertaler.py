@@ -3278,8 +3278,8 @@ class ReadOnlyGridTextEditor(QTextEdit):
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
-            # Supervertaler Assistant — defer with QTimer so menu fully closes first
-            assistant_action = QAction("💬 Supervertaler Assistant", self)
+            # Supervertaler Sidekick — defer with QTimer so menu fully closes first
+            assistant_action = QAction("💬 Supervertaler Sidekick", self)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: main_window.show_supervertaler_assistant(
                     initial_text=_sel_text
@@ -4080,8 +4080,8 @@ class EditableGridTextEditor(QTextEdit):
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
-            # Supervertaler Assistant — defer with QTimer so menu fully closes first
-            assistant_action = QAction("💬 Supervertaler Assistant", self)
+            # Supervertaler Sidekick — defer with QTimer so menu fully closes first
+            assistant_action = QAction("💬 Supervertaler Sidekick", self)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: main_window.show_supervertaler_assistant(
                     initial_text=_sel_text
@@ -8865,7 +8865,7 @@ class SupervertalerQt(QMainWindow):
             self.log(f"❌ Error opening QuickLauncher: {e}")
 
     def show_supervertaler_assistant(self, initial_text=None, external_mode=False):
-        """Navigate to the Supervertaler Assistant (AI Assistant tab) and optionally insert text.
+        """Navigate to the Supervertaler Sidekick (AI Assistant tab) and optionally insert text.
 
         Instead of a separate floating window, this reuses the existing AI Assistant
         inside the AI tab. For external mode, it also brings Supervertaler
@@ -8892,7 +8892,7 @@ class SupervertalerQt(QMainWindow):
                     initial_text or "", from_external=external_mode
                 )
 
-            print(f"[Assistant] Navigated to Supervertaler Assistant (external={external_mode})")
+            print(f"[Assistant] Navigated to Supervertaler Sidekick (external={external_mode})")
 
         except Exception as e:
             print(f"[Assistant] Error navigating to assistant: {e}")
@@ -10846,7 +10846,7 @@ class SupervertalerQt(QMainWindow):
         return tab
     
     def create_prompt_manager_tab(self) -> QWidget:
-        """Create the AI tab (Prompt Manager, Supervertaler Assistant, Variables)"""
+        """Create the AI tab (Prompt Manager, Supervertaler Sidekick, Variables)"""
         from modules.unified_prompt_manager_qt import UnifiedPromptManagerQt
         
         # Create Unified Prompt Manager widget (embedded mode, not standalone)
@@ -56964,7 +56964,7 @@ class SuperlookupTab(QWidget):
             traceback.print_exc()
 
     def show_supervertaler_assistant(self, initial_text=None, external_mode=False):
-        """Navigate to the Supervertaler Assistant (AI Assistant tab) and optionally insert text.
+        """Navigate to the Supervertaler Sidekick (AI Assistant tab) and optionally insert text.
 
         Instead of a separate floating window, this reuses the existing AI Assistant
         inside the AI tab. For external mode, it also brings Supervertaler
@@ -56986,13 +56986,13 @@ class SuperlookupTab(QWidget):
             if hasattr(main_window, 'main_tabs'):
                 main_window.main_tabs.setCurrentIndex(2)
 
-            # Switch to Supervertaler Assistant sub-tab and insert text
+            # Switch to Supervertaler Sidekick sub-tab and insert text
             if hasattr(main_window, 'prompt_manager_qt') and main_window.prompt_manager_qt:
                 main_window.prompt_manager_qt.receive_text_for_assistant(
                     initial_text or "", from_external=external_mode
                 )
 
-            print(f"[Assistant] Navigated to Supervertaler Assistant (external={external_mode})")
+            print(f"[Assistant] Navigated to Supervertaler Sidekick (external={external_mode})")
 
         except Exception as e:
             print(f"[Assistant] Error navigating to assistant: {e}")
@@ -57092,8 +57092,8 @@ class SuperlookupTab(QWidget):
             qt_action.triggered.connect(lambda: self.show_mt_quick_lookup_from_ahk(text))
             menu.addAction(qt_action)
 
-            # Supervertaler Assistant — defer with QTimer so menu fully closes first
-            assistant_action = QAction("💬 Supervertaler Assistant", menu)
+            # Supervertaler Sidekick — defer with QTimer so menu fully closes first
+            assistant_action = QAction("💬 Supervertaler Sidekick", menu)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: self.show_supervertaler_assistant(
                     initial_text=text, external_mode=True

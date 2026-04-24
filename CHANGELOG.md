@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.383 (April 22, 2026)
+**Current Version:** v1.9.384 (April 24, 2026)
 
+
+## v1.9.384 - April 24, 2026
+
+### Changed
+- **Floating panel renamed from "Supervertaler Assistant" to "Supervertaler Sidekick".** The new name disambiguates the Workbench's floating panel (Chat + SuperLookup tabs + Workbench Tools / Prompts / Special Characters / Personal Snippets / Text Conversions menu) from the "Supervertaler Assistant" panel inside Supervertaler for Trados, which keeps that name. The two products are commonly installed together by the same user and were sharing a title, which was getting confusing. Renamed across user-facing strings in the Workbench codebase (`Supervertaler.py`, `modules/floating_assistant.py`, `modules/chat_message_delegate.py`, `modules/unified_prompt_manager_qt.py`, `modules/shortcut_manager.py`), help docs under `docs/help/supervertaler/`, and `README.md`. Internal Python identifiers (file names like `floating_assistant.py`, any `Assistant`-named classes) are kept as-is — they are not user-facing. Historical CHANGELOG entries from before this rename keep the old name for accuracy.
+
+---
 
 ## v1.9.383 - April 22, 2026
 

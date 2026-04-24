@@ -201,7 +201,7 @@ class FloatingAssistant(QWidget):
         layout.setContentsMargins(12, 0, 8, 0)
         layout.setSpacing(8)
 
-        title = QLabel("Supervertaler Assistant")
+        title = QLabel("Supervertaler Sidekick")
         title.setStyleSheet("color: white; font-weight: bold; font-size: 10pt; border: none;")
         layout.addWidget(title)
         layout.addStretch()

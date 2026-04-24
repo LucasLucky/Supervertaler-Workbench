@@ -626,7 +626,7 @@ class ShortcutManager:
         },
         "global_quicklauncher": {
             "category": "Global",
-            "description": "Supervertaler Assistant (global — works from any app)",
+            "description": "Supervertaler Sidekick (global — works from any app)",
             "default": "Ctrl+Shift+A",
             "action": "global_quicklauncher",
             "context": "global"

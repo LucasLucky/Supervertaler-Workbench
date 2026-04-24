@@ -1,6 +1,6 @@
-# Supervertaler Assistant
+# Supervertaler Sidekick
 
-The **Supervertaler Assistant** is a floating AI assistant window that gives you instant access to an AI chat, instant machine translation (QuickTrans), text conversions, snippets, and your custom prompts -- from anywhere on your computer.
+The **Supervertaler Sidekick** is a floating AI assistant window that gives you instant access to an AI chat, instant machine translation (QuickTrans), text conversions, snippets, and your custom prompts -- from anywhere on your computer.
 
 ## Opening the Assistant
 
@@ -8,13 +8,13 @@ The **Supervertaler Assistant** is a floating AI assistant window that gives you
 
 | Method | Shortcut |
 |--------|----------|
-| Supervertaler Assistant | **Ctrl+Q** |
+| Supervertaler Sidekick | **Ctrl+Q** |
 
 ### From any application (system-wide)
 
 | Method | Shortcut |
 |--------|----------|
-| Supervertaler Assistant (Chat) | **Ctrl+Alt+A** |
+| Supervertaler Sidekick (Chat) | **Ctrl+Alt+A** |
 | QuickTrans (instant translation) | **Ctrl+Alt+Q** |
 
 Select text in any application (Word, memoQ, Trados, browser, etc.), then press the shortcut. The assistant opens with the selected text ready to use.
@@ -146,8 +146,8 @@ You can change the default keyboard shortcuts in **Settings > Keyboard Shortcuts
 
 | Default shortcut | Action |
 |------------------|--------|
-| **Ctrl+Q** | Open Supervertaler Assistant (in-app) |
-| **Ctrl+Alt+A** | Open Supervertaler Assistant (global, from any app) |
+| **Ctrl+Q** | Open Supervertaler Sidekick (in-app) |
+| **Ctrl+Alt+A** | Open Supervertaler Sidekick (global, from any app) |
 | **Ctrl+Alt+Q** | Open QuickTrans (global, from any app) |
 | **Ctrl+M** | QuickTrans (in-app, direct) |
 

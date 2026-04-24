@@ -39,7 +39,7 @@ macOS will block the app on first launch because it is not signed with an Apple 
 
 ## Key Features
 
-- **Supervertaler Assistant** - System-wide floating AI assistant (Ctrl+Alt+A from any app) with chat, text conversions, snippets, and prompt library actions
+- **Supervertaler Sidekick** - System-wide floating AI assistant (Ctrl+Alt+A from any app) with chat, text conversions, snippets, and prompt library actions
 - **Multi-LLM AI Translation** - OpenAI GPT-4/5, Anthropic Claude, Google Gemini, Mistral AI, Local Ollama, OpenRouter (200+ models)
 - **Translation Memory** - Fuzzy matching TM with TMX import/export
 - **Glossary System** - Project/Background glossary highlighting with forbidden term marking
