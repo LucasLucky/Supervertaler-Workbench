@@ -1,9 +1,9 @@
-# Create Windows Start Menu shortcut for Supervertaler
+# Create Windows Start Menu shortcut for Supervertaler Workbench
 # Run this script ONCE after extracting the ZIP
 
 $ErrorActionPreference = 'Stop'
 
-Write-Host "Creating Start Menu shortcut for Supervertaler..." -ForegroundColor Cyan
+Write-Host "Creating Start Menu shortcut for Supervertaler Workbench..." -ForegroundColor Cyan
 
 # Get the directory where this script is located
 $SupervertalerDir = $PSScriptRoot
@@ -24,13 +24,20 @@ if (!(Test-Path $ExePath)) {
 
 # Create shortcut in Start Menu
 $StartMenuPath = [Environment]::GetFolderPath("StartMenu")
-$ShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler.lnk"
+$ShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler Workbench.lnk"
+
+# Clean up the pre-rename shortcut if it exists (was named 'Supervertaler.lnk')
+$LegacyShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler.lnk"
+if (Test-Path $LegacyShortcutPath) {
+    Remove-Item $LegacyShortcutPath -Force
+    Write-Host "Removed old 'Supervertaler' shortcut (renamed to 'Supervertaler Workbench')." -ForegroundColor Yellow
+}
 
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $ExePath
 $Shortcut.WorkingDirectory = $SupervertalerDir
-$Shortcut.Description = "Supervertaler - AI-powered translation workbench"
+$Shortcut.Description = "Supervertaler Workbench – AI-enhanced translation"
 
 # Use the EXE's embedded icon
 $Shortcut.IconLocation = "$ExePath,0"
@@ -40,7 +47,7 @@ $Shortcut.Save()
 Write-Host ""
 Write-Host "SUCCESS: Start Menu shortcut created!" -ForegroundColor Green
 Write-Host ""
-Write-Host "You can now find 'Supervertaler' in your Start Menu." -ForegroundColor Cyan
+Write-Host "You can now find 'Supervertaler Workbench' in your Start Menu." -ForegroundColor Cyan
 Write-Host "You can also pin it to the taskbar by right-clicking the shortcut." -ForegroundColor Cyan
 Write-Host ""
 $null = Read-Host "Press Enter to close"

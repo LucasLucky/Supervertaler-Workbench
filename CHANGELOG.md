@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.384 (April 24, 2026)
+**Current Version:** v1.9.385 (April 24, 2026)
 
+
+## v1.9.385 - April 24, 2026
+
+### Removed
+- **Superbrowser tool removed from the Tools tab and Tools menu.** The multi-chat AI browser (ChatGPT / Claude / Gemini in three resizable columns, with persistent login sessions) has been retired. First of a series of planned simplifications – the goal is to strip out functionality that isn't being used so the Workbench stays focused on what translators actually reach for. Users who want the same multi-chat workflow can open each service in their own browser window, or use a dedicated multi-chat tool. The `modules/superbrowser.py` module and `docs/technical/SUPERBROWSER_GUIDE.md` guide have been deleted; the "🌐 Superbrowser" entries in the Tools menu and Tools tab, the `superbrowser_profiles` migration list entry, the `.gitignore` rule, the Workbench landing-page feature card, and the glossary entry have all been cleaned up. `PyQt6-WebEngine` stays in `requirements.txt` because SuperLookup still uses it for its embedded web browser. Any `workbench/superbrowser_profiles/` folder on disk is left in place – it's harmless orphan data and can be deleted manually if you want to reclaim the space.
+
+---
 
 ## v1.9.384 - April 24, 2026
 

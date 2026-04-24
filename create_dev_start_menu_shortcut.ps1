@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-Write-Host "Creating Start Menu shortcut for Supervertaler (Dev)..." -ForegroundColor Cyan
+Write-Host "Creating Start Menu shortcut for Supervertaler Workbench..." -ForegroundColor Cyan
 
 # Get the directory where this script is located
 $SupervertalerDir = $PSScriptRoot
@@ -22,7 +22,7 @@ if (!(Test-Path $RunCmdPath)) {
 
 # Create shortcut in Start Menu
 $StartMenuPath = [Environment]::GetFolderPath("StartMenu")
-$ShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler (Dev).lnk"
+$ShortcutPath = Join-Path $StartMenuPath "Programs\Supervertaler Workbench.lnk"
 
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
@@ -43,10 +43,10 @@ $Shortcut.Save()
 Write-Host ""
 Write-Host "SUCCESS: Start Menu shortcut created!" -ForegroundColor Green
 Write-Host ""
-Write-Host "Shortcut name: 'Supervertaler (Dev)'" -ForegroundColor Cyan
+Write-Host "Shortcut name: 'Supervertaler Workbench'" -ForegroundColor Cyan
 Write-Host "Shortcut location: $ShortcutPath" -ForegroundColor Gray
 Write-Host ""
-Write-Host "You can now find 'Supervertaler (Dev)' in your Start Menu." -ForegroundColor Cyan
+Write-Host "You can now find 'Supervertaler Workbench' in your Start Menu." -ForegroundColor Cyan
 Write-Host "You can also pin it to the taskbar by right-clicking the shortcut." -ForegroundColor Cyan
 Write-Host ""
 $null = Read-Host "Press Enter to close"

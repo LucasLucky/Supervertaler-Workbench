@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.384 – Floating panel renamed from "Supervertaler Assistant" to "Supervertaler Sidekick" to disambiguate from the panel of the same name inside Supervertaler for Trados.
+**Latest release:** v1.9.385 – Removed the Superbrowser tool (multi-chat AI browser with ChatGPT/Claude/Gemini side-by-side) as part of an ongoing simplification pass. Users who want a multi-chat workflow can open each service in their own browser or use dedicated third-party tools.
 
 ---
 

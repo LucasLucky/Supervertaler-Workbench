@@ -14,7 +14,6 @@
   - AutoFingers (Automated translation pasting for memoQ from TMX files)
   - PDF Rescue (AI OCR)
   - Superbench (LLM Translation Quality Benchmarking System)
-  - Superbrowser (Multi-Chat AI Browser)
   - Supercleaner (DOCX tag cleaner, like CodeZapper)
   - Superlookup: unified concordance search
   - Supervoice: dictation stuff

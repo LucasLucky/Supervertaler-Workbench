@@ -9906,11 +9906,7 @@ class SupervertalerQt(QMainWindow):
         superbench_action = QAction("📊 Super&bench...", self)
         superbench_action.triggered.connect(lambda: self._navigate_to_tool("Superbench"))
         tools_menu.addAction(superbench_action)
-        
-        superbrowser_action = QAction("🌐 Super&browser...", self)
-        superbrowser_action.triggered.connect(lambda: self._navigate_to_tool("Superbrowser"))
-        tools_menu.addAction(superbrowser_action)
-        
+
         supercleaner_action = QAction("🧹 Supercleaner...", self)
         supercleaner_action.triggered.connect(lambda: self._navigate_to_tool("Supercleaner"))
         tools_menu.addAction(supercleaner_action)
@@ -11727,15 +11723,6 @@ class SupervertalerQt(QMainWindow):
 
         return leaderboard_widget
 
-    def create_superbrowser_tab(self) -> QWidget:
-        """Create the Superbrowser tab - Multi-Chat AI Browser"""
-        from modules.superbrowser import SuperbrowserWidget
-
-        # Create and return the Superbrowser widget
-        superbrowser_widget = SuperbrowserWidget(parent=self, user_data_path=self.user_data_path)
-
-        return superbrowser_widget
-
     def create_superdocs_tab(self) -> QWidget:
         """Create the Help tab - Online Documentation Viewer"""
         # The embedded docs viewer was removed in favor of online documentation.
@@ -12146,10 +12133,6 @@ class SupervertalerQt(QMainWindow):
         # Superbench
         leaderboard_tab = self.create_llm_leaderboard_tab()
         modules_tabs.addTab(leaderboard_tab, "📊 Superbench")
-
-        # Superbrowser - Multi-Chat AI Browser
-        superbrowser_tab = self.create_superbrowser_tab()
-        modules_tabs.addTab(superbrowser_tab, "🌐 Superbrowser")
 
         supercleaner_tab = self.create_supercleaner_tab()
         modules_tabs.addTab(supercleaner_tab, "🧹 Supercleaner")
@@ -37421,7 +37404,6 @@ class SupervertalerQt(QMainWindow):
             ~/Supervertaler/dictionaries/     → workbench/dictionaries/
             ~/Supervertaler/voice_scripts/    → workbench/voice_scripts/
             ~/Supervertaler/ai_assistant/     → workbench/ai_assistant/
-            ~/Supervertaler/superbrowser_profiles/ → workbench/superbrowser_profiles/
             ~/Supervertaler/web_cache/        → workbench/web_cache/
             ~/Supervertaler/projects/         → workbench/projects/
 
@@ -37466,7 +37448,7 @@ class SupervertalerQt(QMainWindow):
 
             # Move top-level directories → workbench/
             for dirname in ['dictionaries', 'voice_scripts', 'ai_assistant',
-                            'superbrowser_profiles', 'web_cache', 'projects']:
+                            'web_cache', 'projects']:
                 old_dir = self.user_data_path / dirname
                 new_dir = wb / dirname
                 if old_dir.exists() and not new_dir.exists():
