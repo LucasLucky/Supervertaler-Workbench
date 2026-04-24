@@ -17790,6 +17790,11 @@ class SupervertalerQt(QMainWindow):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(100, lambda: self._apply_global_ui_font_scale(saved_scale))
 
+        # Apply saved Compact UI chrome preference on startup
+        if self._get_ui_chrome_compact():
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, lambda: self._apply_ui_chrome_compactness(True, persist=False))
+
         # Apply dark sidebar style if current theme is dark
         self._update_settings_sidebar_theme()
 
@@ -20998,7 +21003,26 @@ class SupervertalerQt(QMainWindow):
         
         ui_scale_group.setLayout(ui_scale_layout)
         layout.addWidget(ui_scale_group)
-        
+
+        # ===== Compact UI Chrome =====
+        chrome_group = QGroupBox("📐 Compact UI Chrome")
+        chrome_layout = QVBoxLayout()
+
+        chrome_info = QLabel(
+            "Reduce vertical padding on the menu bar, main tab strip, and right-panel tab "
+            "strip to give the translation grid more room. Takes effect immediately."
+        )
+        chrome_info.setWordWrap(True)
+        chrome_layout.addWidget(chrome_info)
+
+        compact_chrome_check = QCheckBox("Compact UI chrome (tighter menu / tab padding)")
+        compact_chrome_check.setChecked(self._get_ui_chrome_compact())
+        compact_chrome_check.toggled.connect(self._apply_ui_chrome_compactness)
+        chrome_layout.addWidget(compact_chrome_check)
+
+        chrome_group.setLayout(chrome_layout)
+        layout.addWidget(chrome_group)
+
         # Quick Reference section
         reference_group = QGroupBox("⌨️ Font Size Quick Reference")
         reference_layout = QVBoxLayout()
@@ -23479,7 +23503,62 @@ class SupervertalerQt(QMainWindow):
         # Check new key first, fall back to old key for migration
         return general_settings.get('global_ui_font_scale',
                                     general_settings.get('settings_ui_font_scale', 100))
-    
+
+    def _get_ui_chrome_compact(self) -> bool:
+        """True when Compact UI chrome is enabled (tighter menu bar and tab strip padding)."""
+        general_settings = self.load_general_settings()
+        return bool(general_settings.get('compact_ui_chrome', False))
+
+    def _apply_ui_chrome_compactness(self, compact: bool, persist: bool = True):
+        """Apply or remove compact-chrome styling on menu bar, main tabs, and right tabs.
+
+        Saves the new state to general settings by default; pass persist=False for
+        non-interactive re-application on startup.
+        """
+        compact = bool(compact)
+
+        if persist:
+            general_settings = self.load_general_settings()
+            general_settings['compact_ui_chrome'] = compact
+            self.save_general_settings(general_settings)
+
+        main_tab_padding = "3px 12px" if compact else "8px 15px"
+        right_tab_padding_rule = (
+            f"QTabBar::tab {{ padding: 3px 10px; outline: 0; }}"
+            if compact
+            else "QTabBar::tab { outline: 0; }"
+        )
+        menu_item_padding = "2px 8px" if compact else ""
+
+        if hasattr(self, 'main_tabs') and self.main_tabs is not None:
+            self.main_tabs.setStyleSheet(
+                f"QTabBar::tab {{ padding: {main_tab_padding}; outline: 0; }}\n"
+                "QTabBar::tab:focus { outline: none; }\n"
+                "QTabBar::tab:selected {\n"
+                "    border-bottom: 1px solid #2196F3;\n"
+                "    background-color: rgba(33, 150, 243, 0.08);\n"
+                "}"
+            )
+
+        if hasattr(self, 'right_tabs') and self.right_tabs is not None:
+            self.right_tabs.setStyleSheet(
+                f"{right_tab_padding_rule} "
+                "QTabBar::tab:focus { outline: none; } "
+                "QTabBar::tab:selected { border-bottom: 1px solid #2196F3; "
+                "background-color: rgba(33, 150, 243, 0.08); }"
+            )
+
+        menu_bar = self.menuBar() if hasattr(self, 'menuBar') else None
+        if menu_bar is not None:
+            menu_bar.setStyleSheet(
+                f"QMenuBar::item {{ padding: {menu_item_padding}; }}" if menu_item_padding else ""
+            )
+
+        try:
+            self.log(f"✓ UI chrome: {'compact' if compact else 'default'}")
+        except Exception:
+            pass
+
     def create_grid_view_widget(self):
         """Create the Grid View widget (existing grid functionality)"""
         widget = QWidget()
@@ -34546,8 +34625,8 @@ class SupervertalerQt(QMainWindow):
                 elif type_display.startswith("#") or type_display in ("•", "li"):
                     type_item.setForeground(QColor("#388E3C"))  # Green for list items (works in both themes)
 
-                # Smaller font for type symbols
-                type_font = QFont(self.default_font_family, max(9, self.default_font_size - 1))
+                # Slightly smaller font for type symbols (kept in sync with apply_font_to_grid)
+                type_font = QFont(self.default_font_family, max(7, self.default_font_size - 1))
                 type_item.setFont(type_font)
 
                 self.table.setItem(row, 1, type_item)
@@ -36864,12 +36943,21 @@ class SupervertalerQt(QMainWindow):
         header_font = QFont(self.default_font_family, self.default_font_size, QFont.Weight.Normal)
         self.table.horizontalHeader().setFont(header_font)
 
+        # Type column (1) uses its own slightly smaller font – must match the
+        # formula used at grid-creation time so zoom scales ¶ along with the text.
+        type_font = QFont(self.default_font_family, max(7, self.default_font_size - 1))
+
         # Update fonts in QTextEdit widgets (source and target columns)
         if hasattr(self, 'table') and self.table:
             for row in range(self.table.rowCount()):
                 # Keep UI responsive during large grid updates
                 if row % 50 == 0:
                     QApplication.processEvents()
+
+                # Type column (1) - QTableWidgetItem with paragraph mark / heading label
+                type_item = self.table.item(row, 1)
+                if type_item is not None:
+                    type_item.setFont(type_font)
 
                 # Source column (2) - ReadOnlyGridTextEditor
                 source_widget = self.table.cellWidget(row, 2)
