@@ -221,7 +221,9 @@ class FloatingAssistant(QWidget):
 
     def _create_title_bar(self) -> QWidget:
         bar = QWidget()
-        bar.setFixedHeight(36)
+        # 40px gives the 24px Sv icon and the 24px window buttons 8px top/bottom
+        # breathing room; at 36px the icon's circle looked cropped at the bottom.
+        bar.setFixedHeight(40)
         bar.setStyleSheet("""
             QWidget {
                 background-color: #3D5A80;
