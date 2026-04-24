@@ -244,8 +244,18 @@ class FloatingAssistant(QWidget):
         layout.setSpacing(8)
 
         # Sv icon — canonical Workbench brand mark, native 24×24 (no scaling).
+        # The explicit stylesheet override is required: the bar's unscoped
+        # `QWidget { background-color; border-top-*-radius }` rule otherwise
+        # cascades down to this QLabel, and a border-radius on a QLabel triggers
+        # Qt's styled-background painter which introduces a subtle rendering
+        # offset (most visibly: the bottom edge of the pixmap looks clipped).
         sv_icon_label = QLabel()
+        sv_icon_label.setStyleSheet(
+            "QLabel { background: transparent; border: none; "
+            "border-radius: 0; padding: 0; margin: 0; }"
+        )
         sv_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sv_icon_label.setContentsMargins(0, 0, 0, 0)
         sv_icon_path = self._resource_path("assets", "icon_24.png")
         if sv_icon_path.exists():
             from PyQt6.QtGui import QPixmap
