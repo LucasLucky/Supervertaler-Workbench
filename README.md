@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.381 – Silent launch (no terminal window) with rolling diagnostic log file accessible from Help menu; QuickTrans moved into SuperLookup as the first sub-tab (auto-fires on click); Linguee + web-resource language-pair fixes; Maximise button fixed on secondary monitors.
+**Latest release:** v1.9.384 – Floating panel renamed from "Supervertaler Assistant" to "Supervertaler Sidekick" to disambiguate from the panel of the same name inside Supervertaler for Trados.
 
 ---
 
