@@ -68,6 +68,10 @@ class FloatingAssistant(QWidget):
         self.setMinimumSize(500, 350)
         self.resize(850, 520)
 
+        # Window icon (taskbar / alt-tab) — canonical Sv mark, same file the
+        # main Workbench window uses.
+        self._apply_app_icon()
+
         self._init_ui()
         self._restore_state()
 
@@ -76,6 +80,35 @@ class FloatingAssistant(QWidget):
         esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         esc_shortcut.activated.connect(self.hide)
+
+    # ------------------------------------------------------------------
+    # Branding helpers
+    # ------------------------------------------------------------------
+
+    def _resource_path(self, *parts) -> Path:
+        """Resolve a repo-relative resource path. Works in dev and under PyInstaller.
+
+        Mirrors Supervertaler.py's ``get_resource_path`` but is inlined here to
+        avoid a circular import (Supervertaler.py imports from modules/, not
+        the other way round).
+        """
+        import sys
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            base_path = Path(sys._MEIPASS)
+        else:
+            # modules/floating_assistant.py → .../Supervertaler/
+            base_path = Path(__file__).resolve().parent.parent
+        return base_path.joinpath(*parts)
+
+    def _apply_app_icon(self):
+        """Set the window icon (taskbar, alt-tab) to the canonical Sv mark."""
+        try:
+            from PyQt6.QtGui import QIcon
+            icon_path = self._resource_path("assets", "icon.ico")
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception as e:
+            print(f"FloatingAssistant: Could not set window icon: {e}")
 
     # ------------------------------------------------------------------
     # UI construction
@@ -198,8 +231,23 @@ class FloatingAssistant(QWidget):
         """)
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 0, 8, 0)
+        layout.setContentsMargins(10, 0, 8, 0)
         layout.setSpacing(8)
+
+        # Sv icon — canonical Workbench brand mark
+        sv_icon_label = QLabel()
+        sv_icon_label.setStyleSheet("border: none; background: transparent;")
+        sv_icon_path = self._resource_path("assets", "icon_24.png")
+        if sv_icon_path.exists():
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap(str(sv_icon_path)).scaled(
+                20, 20,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            sv_icon_label.setPixmap(pixmap)
+        sv_icon_label.setFixedSize(20, 20)
+        layout.addWidget(sv_icon_label)
 
         title = QLabel("Supervertaler Sidekick")
         title.setStyleSheet("color: white; font-weight: bold; font-size: 10pt; border: none;")
