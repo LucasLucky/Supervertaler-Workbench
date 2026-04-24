@@ -224,12 +224,13 @@ class FloatingAssistant(QWidget):
         # 40px with explicit 8px top/bottom layout margins leaves a clean 24px
         # content band for the 24×24 Sv icon and 24×24 window buttons.
         bar.setFixedHeight(40)
-        # Scope the stylesheet to only this bar via object name — otherwise the
-        # `QWidget { ... }` selector cascades to every QLabel / QPushButton
-        # child and interferes with their own styling.
-        bar.setObjectName("sidekickTitleBar")
+        # Keep the un-scoped `QWidget { ... }` selector — scoping via object
+        # name stops Qt from enabling styled background painting on a plain
+        # QWidget, which made the bar lose its navy fill in an earlier pass.
+        # The descendant-cascading is harmless since children (buttons, icon
+        # label) supply their own background/border styling.
         bar.setStyleSheet("""
-            QWidget#sidekickTitleBar {
+            QWidget {
                 background-color: #3D5A80;
                 border-top-left-radius: 7px;
                 border-top-right-radius: 7px;
