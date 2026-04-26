@@ -12,9 +12,11 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget,
                               QTableWidget, QTableWidgetItem, QLineEdit, QPushButton,
                               QLabel, QMessageBox, QFileDialog, QHeaderView,
                               QGroupBox, QTextEdit, QComboBox, QSpinBox, QCheckBox,
-                              QProgressBar, QWidget, QStyle, QStyledItemDelegate)
+                              QProgressBar, QProgressDialog, QWidget, QStyle,
+                              QStyledItemDelegate)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QColor, QFont, QPalette
+import sqlite3
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -91,9 +93,132 @@ class TMXImportThread(QThread):
                     self.progress.emit(progress_pct, f"Importing... {idx}/{total}")
             
             self.finished.emit(True, f"Successfully imported {imported} entries", imported)
-            
+
         except Exception as e:
             self.finished.emit(False, f"Import failed: {str(e)}", 0)
+
+
+class TMCleanupThread(QThread):
+    """Background worker for TM Maintenance cleanup operations.
+
+    Opens its own SQLite connection inside ``run`` so it never touches the
+    main-thread connection. WAL mode (set on the database at startup) lets
+    this writer coexist with the main thread's readers without locking the
+    UI.
+
+    Modes:
+      MODE_IDENTICAL_PAIRS   — DELETE rows where source_text == target_text.
+      MODE_DUPLICATE_SOURCES — for each duplicated source_hash, keep the row
+                               with the most recent modified_date and delete
+                               the rest (ties broken by id, deterministic).
+    """
+
+    MODE_IDENTICAL_PAIRS = "identical_pairs"
+    MODE_DUPLICATE_SOURCES = "duplicate_sources"
+
+    progress = pyqtSignal(int, int, str)        # done, total, status text
+    finished = pyqtSignal(bool, str, int, int)  # success, error_msg, deleted, considered
+
+    def __init__(self, db_path: str, mode: str, filter_tm_ids=None):
+        super().__init__()
+        self.db_path = db_path
+        self.mode = mode
+        self.filter_tm_ids = list(filter_tm_ids) if filter_tm_ids else None
+
+    def _filter_clause(self, joiner: str):
+        """Return ('AND tm_id IN (?,?,?)', [ids…]) or ('', [])."""
+        if not self.filter_tm_ids:
+            return "", []
+        placeholders = ",".join("?" * len(self.filter_tm_ids))
+        return f"{joiner} tm_id IN ({placeholders})", list(self.filter_tm_ids)
+
+    def run(self):
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=60)
+            conn.execute("PRAGMA journal_mode=WAL")
+            cursor = conn.cursor()
+            try:
+                if self.mode == self.MODE_IDENTICAL_PAIRS:
+                    deleted, considered = self._clean_identical_pairs(cursor)
+                elif self.mode == self.MODE_DUPLICATE_SOURCES:
+                    deleted, considered = self._clean_duplicate_sources(cursor)
+                else:
+                    raise ValueError(f"Unknown cleanup mode: {self.mode}")
+                conn.commit()
+                self.finished.emit(True, "", deleted, considered)
+            finally:
+                conn.close()
+        except Exception as e:
+            self.finished.emit(False, str(e), 0, 0)
+
+    def _clean_identical_pairs(self, cursor):
+        clause, params = self._filter_clause("AND")
+        self.progress.emit(0, 0, "Counting identical source/target pairs…")
+        cursor.execute(
+            f"SELECT COUNT(*) FROM translation_units "
+            f"WHERE source_text = target_text {clause}",
+            params,
+        )
+        before = cursor.fetchone()[0]
+        if before == 0:
+            return 0, 0
+        self.progress.emit(0, 0, f"Deleting {before:,} identical pairs…")
+        cursor.execute(
+            f"DELETE FROM translation_units "
+            f"WHERE source_text = target_text {clause}",
+            params,
+        )
+        return before, before
+
+    def _clean_duplicate_sources(self, cursor):
+        # Find all duplicated source hashes (one row per group).
+        where_clause, where_params = self._filter_clause("WHERE")
+        self.progress.emit(0, 0, "Finding duplicate sources…")
+        cursor.execute(
+            f"""
+            SELECT source_hash
+            FROM translation_units
+            {where_clause}
+            GROUP BY source_hash
+            HAVING COUNT(*) > 1
+            """,
+            where_params,
+        )
+        duplicate_hashes = [r[0] for r in cursor.fetchall()]
+        total_groups = len(duplicate_hashes)
+        if total_groups == 0:
+            return 0, 0
+
+        and_clause, and_params = self._filter_clause("AND")
+        total_deleted = 0
+        report_every = max(1, total_groups // 200)  # ≈200 progress ticks max
+
+        for idx, source_hash in enumerate(duplicate_hashes, start=1):
+            params = [source_hash] + and_params
+            cursor.execute(
+                f"""
+                SELECT id FROM translation_units
+                WHERE source_hash = ? {and_clause}
+                ORDER BY modified_date DESC, id DESC
+                """,
+                params,
+            )
+            ids = [row[0] for row in cursor.fetchall()]
+            if len(ids) > 1:
+                ids_to_delete = ids[1:]  # keep the newest
+                placeholders = ",".join("?" * len(ids_to_delete))
+                cursor.execute(
+                    f"DELETE FROM translation_units WHERE id IN ({placeholders})",
+                    ids_to_delete,
+                )
+                total_deleted += len(ids_to_delete)
+            if idx % report_every == 0 or idx == total_groups:
+                self.progress.emit(
+                    idx, total_groups,
+                    f"Processing duplicate sources… {idx:,} / {total_groups:,} "
+                    f"(removed {total_deleted:,} so far)"
+                )
+        return total_deleted, total_groups
 
 
 class HighlightDelegate(QStyledItemDelegate):
@@ -1141,148 +1266,111 @@ Average Target Length: {avg_target:.1f} characters
         return widget
     
     def clean_identical_source_target(self):
-        """Remove entries where source and target are identical"""
-        try:
-            # Confirm with user
-            reply = QMessageBox.question(
-                self, "Confirm Cleaning",
-                "This will delete all TM entries where the source and target text are identical.\n\n"
-                "This action cannot be undone. Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-            
-            # Build TM filter clause
-            tm_filter = ""
-            params = []
-            if self.filter_tm_ids:
-                placeholders = ','.join('?' * len(self.filter_tm_ids))
-                tm_filter = f" AND tm_id IN ({placeholders})"
-                params = self.filter_tm_ids[:]
-            
-            # Find and count identical entries
-            query = f"SELECT COUNT(*) FROM translation_units WHERE source_text = target_text{tm_filter}"
-            self.db_manager.cursor.execute(query, params)
-            count_before = self.db_manager.cursor.fetchone()[0]
-            
-            if count_before == 0:
-                self.maintenance_results.setPlainText("✅ No identical source/target entries found. TM is clean!")
-                return
-            
-            # Delete identical entries
-            query = f"DELETE FROM translation_units WHERE source_text = target_text{tm_filter}"
-            self.db_manager.cursor.execute(query, params)
-            self.db_manager.connection.commit()
-            
-            # Report results
-            result_text = f"""
-✅ Cleaning Complete!
+        """Remove entries where source and target are identical (background)."""
+        reply = QMessageBox.question(
+            self, "Confirm Cleaning",
+            "This will delete all TM entries where the source and target text are identical.\n\n"
+            "This action cannot be undone. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._run_cleanup(
+            mode=TMCleanupThread.MODE_IDENTICAL_PAIRS,
+            dialog_title="Cleaning identical pairs",
+            initial_label="Counting identical source/target pairs…",
+            on_zero_text="✅ No identical source/target entries found. TM is clean!",
+            success_template=(
+                "✅ Cleaning Complete!\n\n"
+                "Removed {deleted:,} entries where source = target\n\n"
+                "These were likely untranslated entries or placeholders.\n"
+                "Your TM is now cleaner and more efficient."
+            ),
+            log_template="Cleaned {deleted} identical source/target entries from TM",
+        )
 
-Removed {count_before:,} entries where source = target
-
-These were likely untranslated entries or placeholders.
-Your TM is now cleaner and more efficient.
-"""
-            self.maintenance_results.setPlainText(result_text)
-            self.log(f"Cleaned {count_before} identical source/target entries from TM")
-            
-            # Refresh stats if on stats tab
-            self.refresh_stats()
-            
-        except Exception as e:
-            error_msg = f"❌ Error during cleaning:\n{str(e)}"
-            self.maintenance_results.setPlainText(error_msg)
-            QMessageBox.critical(self, "Cleaning Error", str(e))
-    
     def clean_duplicate_sources(self):
-        """Remove duplicate sources, keeping only the newest translation"""
-        try:
-            # Confirm with user
-            reply = QMessageBox.question(
-                self, "Confirm Cleaning",
-                "This will find entries with identical source text and keep only the most recent translation.\n\n"
-                "Older translations of the same source will be deleted.\n"
-                "This action cannot be undone. Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        """Remove duplicate sources, keep newest translation (background)."""
+        reply = QMessageBox.question(
+            self, "Confirm Cleaning",
+            "This will find entries with identical source text and keep only the most recent translation.\n\n"
+            "Older translations of the same source will be deleted.\n"
+            "This action cannot be undone. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._run_cleanup(
+            mode=TMCleanupThread.MODE_DUPLICATE_SOURCES,
+            dialog_title="Cleaning duplicate sources",
+            initial_label="Finding duplicate sources…",
+            on_zero_text="✅ No duplicate sources found. TM is clean!",
+            success_template=(
+                "✅ Cleaning Complete!\n\n"
+                "Found {considered:,} sources with multiple translations\n"
+                "Removed {deleted:,} older translations\n"
+                "Kept the most recent translation for each source\n\n"
+                "Your TM now has only the latest translations."
+            ),
+            log_template="Cleaned {deleted} duplicate source entries from TM (kept newest)",
+        )
+
+    def _run_cleanup(self, *, mode, dialog_title, initial_label, on_zero_text,
+                     success_template, log_template):
+        """Spin up a TMCleanupThread + QProgressDialog and wire the signals.
+
+        Keeps the cleanup off the main thread so the UI stays responsive on
+        large TMs. Cancellation is intentionally not offered: a partial
+        cleanup mid-DELETE could leave the user wondering which rows
+        survived. The progress dialog is informational only.
+        """
+        progress = QProgressDialog(initial_label, "", 0, 0, self)
+        progress.setWindowTitle(dialog_title)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)  # no cancel — see docstring
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+
+        thread = TMCleanupThread(
+            db_path=self.db_manager.db_path,
+            mode=mode,
+            filter_tm_ids=self.filter_tm_ids,
+        )
+
+        def on_progress(done, total, msg):
+            progress.setLabelText(msg)
+            if total > 0:
+                if progress.maximum() != total:
+                    progress.setRange(0, total)
+                progress.setValue(done)
+            else:
+                # Indeterminate — keep range (0,0)
+                if progress.maximum() != 0 or progress.minimum() != 0:
+                    progress.setRange(0, 0)
+
+        def on_finished(success, error_msg, deleted, considered):
+            progress.close()
+            if not success:
+                text = f"❌ Error during cleaning:\n{error_msg}"
+                self.maintenance_results.setPlainText(text)
+                QMessageBox.critical(self, "Cleaning Error", error_msg)
+                return
+            if deleted == 0 and considered == 0:
+                self.maintenance_results.setPlainText(on_zero_text)
+                return
+            self.maintenance_results.setPlainText(
+                success_template.format(deleted=deleted, considered=considered)
             )
-            
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-            
-            # Build TM filter clause
-            tm_filter = ""
-            params = []
-            if self.filter_tm_ids:
-                placeholders = ','.join('?' * len(self.filter_tm_ids))
-                tm_filter = f" WHERE tm_id IN ({placeholders})"
-                params = self.filter_tm_ids[:]
-            
-            # Find duplicate sources
-            query = f"""
-                SELECT source_hash, COUNT(*) as cnt
-                FROM translation_units{tm_filter}
-                GROUP BY source_hash
-                HAVING cnt > 1
-            """
-            self.db_manager.cursor.execute(query, params)
-            duplicates = self.db_manager.cursor.fetchall()
-            
-            if not duplicates:
-                self.maintenance_results.setPlainText("✅ No duplicate sources found. TM is clean!")
-                return
-            
-            total_deleted = 0
-            
-            # For each duplicate source, keep only the newest
-            for source_hash, count in duplicates:
-                # Build filter for this source hash
-                hash_params = [source_hash]
-                hash_filter = ""
-                if self.filter_tm_ids:
-                    hash_filter = f" AND tm_id IN ({','.join('?' * len(self.filter_tm_ids))})"
-                    hash_params.extend(self.filter_tm_ids)
-                
-                # Get all entries for this source, ordered by date (newest first)
-                query = f"""
-                    SELECT id FROM translation_units
-                    WHERE source_hash = ?{hash_filter}
-                    ORDER BY modified_date DESC
-                """
-                self.db_manager.cursor.execute(query, hash_params)
-                
-                ids = [row[0] for row in self.db_manager.cursor.fetchall()]
-                
-                # Keep the first (newest), delete the rest
-                if len(ids) > 1:
-                    ids_to_delete = ids[1:]  # All except the first
-                    placeholders = ','.join('?' * len(ids_to_delete))
-                    self.db_manager.cursor.execute(f"""
-                        DELETE FROM translation_units
-                        WHERE id IN ({placeholders})
-                    """, ids_to_delete)
-                    total_deleted += len(ids_to_delete)
-            
-            self.db_manager.connection.commit()
-            
-            # Report results
-            result_text = f"""
-✅ Cleaning Complete!
+            self.log(log_template.format(deleted=deleted))
+            try:
+                self.refresh_stats()
+            except Exception:
+                pass
 
-Found {len(duplicates):,} sources with multiple translations
-Removed {total_deleted:,} older translations
-Kept the most recent translation for each source
-
-Your TM now has only the latest translations.
-"""
-            self.maintenance_results.setPlainText(result_text)
-            self.log(f"Cleaned {total_deleted} duplicate source entries from TM (kept newest)")
-            
-            # Refresh stats if on stats tab
-            self.refresh_stats()
-            
-        except Exception as e:
-            error_msg = f"❌ Error during cleaning:\n{str(e)}"
-            self.maintenance_results.setPlainText(error_msg)
-            QMessageBox.critical(self, "Cleaning Error", str(e))
+        thread.progress.connect(on_progress)
+        thread.finished.connect(on_finished)
+        # Keep a reference so the thread isn't garbage-collected mid-run.
+        self._cleanup_thread = thread
+        thread.start()

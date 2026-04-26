@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.389 – Sidekick web views get a permanently visible find-on-page toolbar (Ctrl+F focuses it; live "X of N" match count) and a right-click menu offering "Open page/link in default browser". Quality-of-life pass on the embedded SuperLookup browser.
+**Latest release:** v1.9.390 – Tools tab returns to horizontal sub-tabs, focus-rectangle outlines suppressed app-wide, Superlookup menu/right-click actions correctly land in Sidekick, TMs section streamlined (Statistics and Maintenance folded into TM List as buttons + a one-click markdown stats report), and TM cleanup operations now run on a worker thread with a progress dialog instead of freezing the UI.
 
 ---
 

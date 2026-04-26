@@ -2992,18 +2992,12 @@ class ReadOnlyGridTextEditor(QTextEdit):
             source_lang = main_window.current_project.source_lang
             target_lang = main_window.current_project.target_lang
         
-        # Navigate to Superlookup
-        main_window._go_to_superlookup()
-        
-        # Trigger search
-        if hasattr(main_window, 'lookup_tab') and main_window.lookup_tab:
-            main_window.lookup_tab.search_with_query(
-                selected_text,
-                switch_to_vertical=True,
-                source_lang=source_lang,
-                target_lang=target_lang
-            )
-    
+        main_window._go_to_superlookup(
+            query=selected_text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+
     def mouseMoveEvent(self, event):
         """Show tooltip when hovering over highlighted termbase matches"""
         super().mouseMoveEvent(event)
@@ -3968,18 +3962,12 @@ class EditableGridTextEditor(QTextEdit):
             source_lang = main_window.current_project.source_lang
             target_lang = main_window.current_project.target_lang
         
-        # Navigate to Superlookup
-        main_window._go_to_superlookup()
-        
-        # Trigger search
-        if hasattr(main_window, 'lookup_tab') and main_window.lookup_tab:
-            main_window.lookup_tab.search_with_query(
-                selected_text,
-                switch_to_vertical=True,
-                source_lang=source_lang,
-                target_lang=target_lang
-            )
-    
+        main_window._go_to_superlookup(
+            query=selected_text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+
     def contextMenuEvent(self, event):
         """Show context menu with Add to Glossary, Non-Translatables, and Spellcheck options"""
         from PyQt6.QtWidgets import QMenu
@@ -11753,31 +11741,28 @@ class SupervertalerQt(QMainWindow):
             else:
                 self.log(f"[Concordance] Opening Superlookup (no selection)")
             
-            # Navigate to Superlookup tab
-            self._go_to_superlookup()
-            
-            # Trigger search if we have a query
-            if hasattr(self, 'lookup_tab') and self.lookup_tab:
-                if initial_query:
-                    # Use vertical view for traditional concordance layout
-                    # Pass language pair from project
-                    self.lookup_tab.search_with_query(
-                        initial_query, 
-                        switch_to_vertical=True,
-                        source_lang=source_lang,
-                        target_lang=target_lang
-                    )
-                else:
-                    # Just focus the source text input
-                    self.lookup_tab.source_text.setFocus()
-                    # Reset language dropdowns to "Any" (index 0) for unrestricted search
-                    if hasattr(self.lookup_tab, 'lang_from_combo'):
-                        self.lookup_tab.lang_from_combo.setCurrentIndex(0)  # "Any"
-                    if hasattr(self.lookup_tab, 'lang_to_combo'):
-                        self.lookup_tab.lang_to_combo.setCurrentIndex(0)  # "Any"
-                    # Switch to vertical view for consistency
-                    if hasattr(self.lookup_tab, 'tm_view_vertical_radio'):
-                        self.lookup_tab.tm_view_vertical_radio.setChecked(True)
+            # Open Superlookup in Sidekick, with the query + language pair if any
+            self._go_to_superlookup(
+                query=initial_query,
+                source_lang=source_lang,
+                target_lang=target_lang,
+            )
+
+            # No-query path: focus the input, reset language dropdowns to "Any",
+            # and switch to vertical view, mirroring the original behaviour now
+            # that Superlookup lives inside Sidekick.
+            if not initial_query:
+                assistant = getattr(self, '_floating_assistant', None)
+                widget = getattr(assistant, '_superlookup_widget', None) if assistant else None
+                if widget is not None:
+                    if hasattr(widget, 'source_text'):
+                        widget.source_text.setFocus()
+                    if hasattr(widget, 'lang_from_combo'):
+                        widget.lang_from_combo.setCurrentIndex(0)
+                    if hasattr(widget, 'lang_to_combo'):
+                        widget.lang_to_combo.setCurrentIndex(0)
+                    if hasattr(widget, 'tm_view_vertical_radio'):
+                        widget.tm_view_vertical_radio.setChecked(True)
                         
         except Exception as e:
             self.log(f"Error opening concordance search: {e}")
@@ -11803,6 +11788,96 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"Error opening TM Manager: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open TM Manager:\n{str(e)}")
+
+    def _show_tm_maintenance_dialog(self):
+        """Open a focused TM Maintenance dialog.
+
+        Reuses TMManagerDialog and hides every tab except Maintenance, so the
+        user lands on the cleanup actions with no surrounding noise.
+        """
+        from modules.tm_manager_qt import TMManagerDialog
+        try:
+            dialog = TMManagerDialog(self, self.db_manager, self.log)
+            maintenance_index = -1
+            for i in range(dialog.tabs.count()):
+                if "Maintenance" in dialog.tabs.tabText(i):
+                    maintenance_index = i
+                else:
+                    dialog.tabs.setTabVisible(i, False)
+            if maintenance_index >= 0:
+                dialog.tabs.setCurrentIndex(maintenance_index)
+            dialog.setWindowTitle("TM Maintenance")
+            dialog.exec()
+        except Exception as e:
+            self.log(f"Error opening TM Maintenance: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open TM Maintenance:\n{str(e)}")
+
+    def _copy_tm_stats_to_clipboard(self, tm_metadata_mgr):
+        """Build a markdown TM statistics report and copy it to the clipboard."""
+        try:
+            from datetime import datetime
+            from modules.tmx_generator import normalize_lang_variant
+
+            tms = tm_metadata_mgr.get_all_tms()
+            total_entries = sum((tm.get('entry_count') or 0) for tm in tms)
+            tm_count = len(tms)
+
+            cursor = self.db_manager.cursor
+            cursor.execute(
+                "SELECT AVG(LENGTH(source_text)), AVG(LENGTH(target_text)) "
+                "FROM translation_units"
+            )
+            row = cursor.fetchone()
+            avg_source = row[0] if row and row[0] is not None else 0
+            avg_target = row[1] if row and row[1] is not None else 0
+
+            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            lines = [
+                "# Translation Memory Statistics",
+                "",
+                f"_Generated {now}_",
+                "",
+                f"- **Total translation units:** {total_entries:,}",
+                f"- **Number of TMs:** {tm_count}",
+                f"- **Average source length:** {avg_source:.1f} characters",
+                f"- **Average target length:** {avg_target:.1f} characters",
+                "",
+                "## Breakdown by TM",
+                "",
+                "| TM | Languages | Entries | Share | Last modified |",
+                "| --- | --- | ---: | ---: | --- |",
+            ]
+            sorted_tms = sorted(
+                tms, key=lambda t: (t.get('entry_count') or 0), reverse=True
+            )
+            for tm in sorted_tms:
+                entries = tm.get('entry_count') or 0
+                pct = (entries / total_entries * 100) if total_entries > 0 else 0
+                src = normalize_lang_variant(tm.get('source_lang')) if tm.get('source_lang') else '?'
+                tgt = normalize_lang_variant(tm.get('target_lang')) if tm.get('target_lang') else '?'
+                modified = tm.get('modified_date') or ''
+                if isinstance(modified, str) and len(modified) > 16:
+                    modified = modified[:16].replace('T', ' ')
+                name = (tm.get('name') or tm.get('tm_id') or '?').replace('|', '\\|')
+                lines.append(
+                    f"| {name} | {src} → {tgt} | {entries:,} | {pct:.1f}% | {modified} |"
+                )
+            markdown = "\n".join(lines) + "\n"
+
+            QApplication.clipboard().setText(markdown)
+            self.log(
+                f"📊 TM statistics copied to clipboard "
+                f"({total_entries:,} TUs across {tm_count} TMs)"
+            )
+            QMessageBox.information(
+                self,
+                "Stats copied",
+                f"Translation memory statistics copied to clipboard "
+                f"({total_entries:,} TUs across {tm_count} TMs).",
+            )
+        except Exception as e:
+            self.log(f"Error copying TM stats: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to copy TM stats:\n{str(e)}")
 
     def create_log_tab(self) -> QWidget:
         """Create the Log tab - Session Log"""
@@ -12068,16 +12143,13 @@ class SupervertalerQt(QMainWindow):
         return tab
     
     def create_specialised_tools_tab(self):
-        """Create the Specialised Tools tab with vertical sidebar navigation"""
-        from modules.settings_sidebar import SettingsSidebar
-
+        """Create the Specialised Tools tab with horizontal tab navigation"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Vertical sidebar (same pattern as Settings) — drop-in QTabWidget replacement
-        modules_tabs = SettingsSidebar()
+        modules_tabs = QTabWidget()
         self.modules_tabs = modules_tabs  # Store for navigation
 
         # Add tool tabs (alphabetical order)
@@ -12172,16 +12244,12 @@ class SupervertalerQt(QMainWindow):
         from modules.tm_manager_qt import TMManagerDialog
         temp_manager = TMManagerDialog(self, self.db_manager, self.log)
         tm_tabs.addTab(temp_manager.browser_tab, "📖 Browse All")
-        
-        # Note: Concordance tab removed - functionality moved to Superlookup (Ctrl+K)
-        # Note: Import/Export tab removed - functionality available in TM List tab
-        
-        # Tab 3: Statistics - aggregate stats for all TMs
-        tm_tabs.addTab(temp_manager.stats_tab, "📊 Statistics")
-        
-        # Tab 4: Maintenance - cleanup and maintenance tools
-        tm_tabs.addTab(temp_manager.maintenance_tab, "🧹 Maintenance")
-        
+
+        # Statistics (now a "Copy stats" button on the TM List tab — copies a
+        # markdown report to the clipboard) and Maintenance (now a button that
+        # opens a focused cleanup dialog) used to be sibling sub-tabs here.
+        # Folded into TM List to reduce sub-tab noise.
+
         # Store reference to prevent garbage collection
         tab._tm_manager = temp_manager
         
@@ -12204,7 +12272,12 @@ class SupervertalerQt(QMainWindow):
         desc = QLabel("Manage TMs. Activate/deactivate TMs for current project. Import client TMX files as named TMs.")
         desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 10px;")
         layout.addWidget(desc)
-        
+
+        # Live summary line — updated by refresh_tm_list() below.
+        summary_label = QLabel("")
+        summary_label.setStyleSheet("color: #555; font-size: 11px; margin-bottom: 6px;")
+        layout.addWidget(summary_label)
+
         # Search bar
         search_layout = QHBoxLayout()
         search_box = QLineEdit()
@@ -12399,6 +12472,13 @@ class SupervertalerQt(QMainWindow):
             write_header_checkbox.setChecked(all_write_checked)
             read_header_checkbox.blockSignals(False)
             write_header_checkbox.blockSignals(False)
+
+            # Summary line: total TUs across N TMs
+            total_tus = sum((tm.get('entry_count') or 0) for tm in tms)
+            summary_label.setText(
+                f"📊 {total_tus:,} translation units across {len(tms)} TM"
+                f"{'s' if len(tms) != 1 else ''}"
+            )
         
         # Store callback as instance attribute so load_project can refresh UI after restoration
         self.tm_tab_refresh_callback = refresh_tm_list
@@ -12435,10 +12515,29 @@ class SupervertalerQt(QMainWindow):
         delete_btn = QPushButton("🗑️ Delete TM")
         delete_btn.clicked.connect(lambda: self._delete_tm(tm_metadata_mgr, tm_table, refresh_tm_list))
         button_layout.addWidget(delete_btn)
-        
+
         button_layout.addStretch()
+
+        maintenance_btn = QPushButton("🧹 Maintenance…")
+        maintenance_btn.setToolTip(
+            "Open TM maintenance dialog: remove identical source/target pairs, "
+            "remove duplicate sources (keep newest)."
+        )
+        maintenance_btn.clicked.connect(self._show_tm_maintenance_dialog)
+        button_layout.addWidget(maintenance_btn)
+
+        copy_stats_btn = QPushButton("📊 Copy stats")
+        copy_stats_btn.setToolTip(
+            "Copy a markdown TM statistics report to the clipboard "
+            "(total TUs, per-TM breakdown, averages)."
+        )
+        copy_stats_btn.clicked.connect(
+            lambda: self._copy_tm_stats_to_clipboard(tm_metadata_mgr)
+        )
+        button_layout.addWidget(copy_stats_btn)
+
         layout.addLayout(button_layout)
-        
+
         return tab
     
     def _show_tm_context_menu(self, tm_table, tm_metadata_mgr, refresh_callback, pos):
@@ -47218,18 +47317,30 @@ class SupervertalerQt(QMainWindow):
                             ))
                         break
     
-    def _go_to_superlookup(self):
-        """Navigate to Superlookup in Tools tab"""
-        if hasattr(self, 'main_tabs'):
-            # Main tabs: Grid=0, Resources=1, QuickLauncher=2, Tools=3, Settings=4
-            self.main_tabs.setCurrentIndex(3)  # Switch to Tools tab
-            # Then switch to Superlookup sub-tab
-            if hasattr(self, 'modules_tabs'):
-                # Find Superlookup index in modules tabs
-                for i in range(self.modules_tabs.count()):
-                    if "superlookup" in self.modules_tabs.tabText(i).lower():
-                        self.modules_tabs.setCurrentIndex(i)
-                        break
+    def _go_to_superlookup(self, query=None, source_lang=None, target_lang=None,
+                           switch_to_vertical=True):
+        """Open Superlookup in the Sidekick (Floating Assistant).
+
+        Superlookup no longer lives as a sub-tab in the Tools tab — Sidekick
+        hosts it. This method brings Sidekick to the foreground, switches to
+        the SuperLookup pane, and (optionally) runs a search with the given
+        query and language pair.
+        """
+        assistant = getattr(self, '_floating_assistant', None)
+        if assistant is None:
+            self.log("⚠ Sidekick not available — Superlookup cannot be opened")
+            return
+
+        assistant.show_superlookup()
+
+        widget = getattr(assistant, '_superlookup_widget', None)
+        if widget is not None and query and hasattr(widget, 'search_with_query'):
+            widget.search_with_query(
+                query,
+                switch_to_vertical=switch_to_vertical,
+                source_lang=source_lang,
+                target_lang=target_lang,
+            )
     
     def _navigate_to_tool(self, tool_name: str):
         """Navigate to a specific tool in the Tools tab"""
@@ -58943,7 +59054,8 @@ def main():
     app.setApplicationName("Supervertaler")
     app.setOrganizationName("Supervertaler")
     
-    # Global stylesheet to remove ugly focus rectangles from buttons
+    # Global stylesheet to remove ugly focus rectangles (dotted outlines)
+    # from buttons, tool buttons, tabs, and tree/list views.
     # Note: QToolTip styling is handled by theme_manager.apply_theme()
     app.setStyleSheet("""
         QPushButton:focus {
@@ -58954,6 +59066,18 @@ def main():
             outline: none;
             border: none;
         }
+        QTabBar::tab {
+            outline: 0;
+        }
+        QTabBar::tab:focus {
+            outline: none;
+        }
+        QTreeView::item:focus, QListView::item:focus, QTableView::item:focus {
+            outline: none;
+        }
+        QAbstractItemView {
+            outline: 0;
+        }
     """)
 
     # macOS: use Fusion style instead of native QMacStyle.
@@ -58962,6 +59086,22 @@ def main():
     # and the app's custom stylesheets still apply on top.
     if sys.platform == 'darwin':
         app.setStyle("Fusion")
+
+    # Suppress dotted focus rectangles app-wide. Native styles (notably the
+    # Windows Vista style) draw PE_FrameFocusRect at the QStyle level, which
+    # bypasses CSS — `outline: none` does nothing against it. A QProxyStyle
+    # that intercepts that single primitive removes the rectangle from every
+    # tab, button, list item, and tree item without touching individual
+    # widgets.
+    from PyQt6.QtWidgets import QProxyStyle, QStyle
+
+    class _NoFocusRectStyle(QProxyStyle):
+        def drawPrimitive(self, element, option, painter, widget=None):
+            if element == QStyle.PrimitiveElement.PE_FrameFocusRect:
+                return
+            super().drawPrimitive(element, option, painter, widget)
+
+    app.setStyle(_NoFocusRectStyle(app.style()))
 
     # Set Windows AppUserModelID for taskbar icon grouping (Windows 7+)
     if sys.platform == 'win32':
