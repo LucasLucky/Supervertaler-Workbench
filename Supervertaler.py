@@ -53396,11 +53396,11 @@ class SuperlookupTab(QWidget):
         try:
             from PyQt6.QtWebEngineWidgets import QWebEngineView
             from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
-            
+
             # Create a custom page class that silences JavaScript console messages
             class SilentWebEnginePage(QWebEnginePage):
                 """Custom QWebEnginePage that suppresses JavaScript console output.
-                
+
                 External websites (IATE, Juremy, Google Patents, etc.) emit tons of
                 noisy console messages about CSP violations, mixed content, etc.
                 These are not relevant to Supervertaler and clutter the terminal.
@@ -53408,9 +53408,42 @@ class SuperlookupTab(QWidget):
                 def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
                     # Silently ignore all JS console messages from web pages
                     pass
-            
+
+            # Subclassed view that adds default-browser items to the right-click
+            # menu: "Open link in default browser" when the click target is a
+            # hyperlink, plus an always-available "Open page in default browser".
+            class SidekickWebEngineView(QWebEngineView):
+                def contextMenuEvent(self, event):
+                    menu = self.createStandardContextMenu()
+                    try:
+                        request = self.lastContextMenuRequest()
+                    except AttributeError:
+                        request = None
+                    link_url = None
+                    if request is not None:
+                        try:
+                            url = request.linkUrl()
+                            if url is not None and not url.isEmpty():
+                                link_url = QUrl(url)
+                        except Exception:
+                            link_url = None
+
+                    menu.addSeparator()
+                    if link_url is not None:
+                        link_action = menu.addAction("Open link in default browser")
+                        link_action.triggered.connect(
+                            lambda _checked=False, u=link_url: QDesktopServices.openUrl(u)
+                        )
+                    page_url = self.url()
+                    if page_url is not None and not page_url.isEmpty() and page_url.toString() != "about:blank":
+                        page_action = menu.addAction("Open page in default browser")
+                        page_action.triggered.connect(
+                            lambda _checked=False, u=QUrl(page_url): QDesktopServices.openUrl(u)
+                        )
+                    menu.exec(event.globalPos())
+
             self.SilentWebPage = SilentWebEnginePage
-            self.QWebEngineView = QWebEngineView
+            self.QWebEngineView = SidekickWebEngineView
             self.QWebEngineProfile = QWebEngineProfile
             self.web_engine_available = True
             
@@ -53801,6 +53834,10 @@ class SuperlookupTab(QWidget):
         # This dramatically improves startup performance and memory usage
         # Each QWebEngineView spawns a Chromium process, so 14 views = 14 processes
         self.web_views = {}  # Will be populated lazily when resources are selected
+        # Each web view is wrapped in a container widget that adds a find-in-page bar.
+        # The stack stores containers, but self.web_views still holds the raw views
+        # so existing setUrl() / page() callers keep working unchanged.
+        self.web_view_containers = {}
         
         # Fallback view for external mode or when web engine not available
         self.web_results_view = QTextEdit()
@@ -53873,24 +53910,176 @@ class SuperlookupTab(QWidget):
             return  # Already created
             
         web_view = self.QWebEngineView()
-        
+
         # Use persistent profile with silent page (suppresses JS console spam)
         if self.web_profile and self.SilentWebPage:
             page = self.SilentWebPage(self.web_profile, web_view)
             web_view.setPage(page)
-        
+
         web_view.setUrl(QUrl("about:blank"))
-        
-        # Add to stack - we'll use indexOf() to find it later instead of tracking indices
-        self.web_view_stack.addWidget(web_view)
+
+        # Wrap the view in a container that adds a Ctrl+F find-in-page toolbar.
+        # The container is what gets added to the stack; self.web_views still
+        # maps to the raw view so existing setUrl()/page() callers are unchanged.
+        container = self._create_web_view_container(web_view)
+
+        self.web_view_stack.addWidget(container)
         self.web_views[resource['id']] = web_view
-        
+        self.web_view_containers[resource['id']] = container
+
         print(f"[Superlookup] Created web view for {resource['name']} (lazy load)")
-    
+
+    def _create_web_view_container(self, web_view):
+        """Wrap a QWebEngineView in a container with a hidden find-in-page bar.
+
+        The bar toggles via Ctrl+F (when the container has focus) and Esc.
+        Enter / Shift+Enter cycle next/previous match. Match count and a
+        case-sensitive toggle live on the bar itself.
+        """
+        from PyQt6.QtGui import QShortcut, QKeySequence
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+
+        container = QWidget()
+        v = QVBoxLayout(container)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        v.addWidget(web_view, stretch=1)
+
+        # --- Find bar ---
+        find_bar = QWidget()
+        find_bar.setStyleSheet("""
+            QWidget#sl_find_bar { background-color: #f5f5f5; border-top: 1px solid #ddd; }
+            QLineEdit { border: 1px solid #bbb; border-radius: 3px; padding: 3px 6px; background: white; }
+            QPushButton { padding: 2px 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; }
+            QPushButton:hover { background: #e3e3e3; border: 1px solid #ccc; }
+            QLabel { color: #666; font-size: 9pt; }
+        """)
+        find_bar.setObjectName("sl_find_bar")
+        h = QHBoxLayout(find_bar)
+        h.setContentsMargins(8, 4, 8, 4)
+        h.setSpacing(4)
+
+        h.addWidget(QLabel("Find:"))
+        find_input = QLineEdit()
+        find_input.setPlaceholderText("Find on page…")
+        find_input.setMinimumWidth(220)
+        h.addWidget(find_input, stretch=1)
+
+        status = QLabel("")
+        status.setMinimumWidth(80)
+        h.addWidget(status)
+
+        prev_btn = QPushButton("▲")
+        prev_btn.setToolTip("Previous match (Shift+Enter)")
+        prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        h.addWidget(prev_btn)
+
+        next_btn = QPushButton("▼")
+        next_btn.setToolTip("Next match (Enter)")
+        next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        h.addWidget(next_btn)
+
+        case_check = QCheckBox("Match case")
+        case_check.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        h.addWidget(case_check)
+
+        clear_btn = QPushButton("✕")
+        clear_btn.setToolTip("Clear (Esc)")
+        clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        h.addWidget(clear_btn)
+
+        # Bar is permanently visible so users discover it without needing Ctrl+F.
+        v.addWidget(find_bar)
+
+        # --- Behaviour ---
+        def _do_find(backward=False):
+            text = find_input.text()
+            flags = QWebEnginePage.FindFlag(0)
+            if backward:
+                flags |= QWebEnginePage.FindFlag.FindBackward
+            if case_check.isChecked():
+                flags |= QWebEnginePage.FindFlag.FindCaseSensitively
+
+            if not text:
+                web_view.findText("")
+                status.setText("")
+                find_input.setStyleSheet("")
+                return
+
+            def _cb(result):
+                try:
+                    total = result.numberOfMatches()
+                    active = result.activeMatch()
+                except Exception:
+                    return
+                if total == 0:
+                    status.setText("No matches")
+                    find_input.setStyleSheet("background: #fde7e9;")
+                else:
+                    status.setText(f"{active} of {total}")
+                    find_input.setStyleSheet("")
+
+            try:
+                web_view.findText(text, flags, _cb)
+            except TypeError:
+                # Older Qt without callback overload
+                web_view.findText(text, flags)
+                status.setText("")
+
+        def focus_find_bar():
+            """Focus the find input (bar is always visible)."""
+            find_input.setFocus()
+            find_input.selectAll()
+            if find_input.text():
+                _do_find()
+
+        def clear_find():
+            """Clear the search and return focus to the page."""
+            find_input.clear()
+            web_view.findText("")
+            status.setText("")
+            find_input.setStyleSheet("")
+            web_view.setFocus()
+
+        find_input.textChanged.connect(lambda _t: _do_find(backward=False))
+        find_input.returnPressed.connect(lambda: _do_find(backward=False))
+        prev_btn.clicked.connect(lambda: _do_find(backward=True))
+        next_btn.clicked.connect(lambda: _do_find(backward=False))
+        case_check.toggled.connect(lambda _c: _do_find(backward=False))
+        clear_btn.clicked.connect(clear_find)
+
+        # Ctrl+F focuses the input (bar is always visible).
+        find_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Find), container)
+        find_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        find_shortcut.activated.connect(focus_find_bar)
+
+        # Esc clears the search and returns focus to the page.
+        esc_shortcut = QShortcut(QKeySequence("Escape"), find_input)
+        esc_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+        esc_shortcut.activated.connect(clear_find)
+
+        # Shift+Enter for previous match while the input has focus.
+        shift_enter = QShortcut(QKeySequence("Shift+Return"), find_input)
+        shift_enter.setContext(Qt.ShortcutContext.WidgetShortcut)
+        shift_enter.activated.connect(lambda: _do_find(backward=True))
+        shift_enter_pad = QShortcut(QKeySequence("Shift+Enter"), find_input)
+        shift_enter_pad.setContext(Qt.ShortcutContext.WidgetShortcut)
+        shift_enter_pad.activated.connect(lambda: _do_find(backward=True))
+
+        # Stash references on the container so they aren't garbage-collected
+        # and so callers can introspect (e.g. tests).
+        container.web_view = web_view
+        container.find_bar = find_bar
+        container.find_input = find_input
+        container.focus_find_bar = focus_find_bar
+        container.clear_find = clear_find
+
+        return container
+
     def _get_web_view_index(self, resource_id):
-        """Get the stack index for a web view by resource ID"""
-        if resource_id in self.web_views:
-            return self.web_view_stack.indexOf(self.web_views[resource_id])
+        """Get the stack index for a web view container by resource ID"""
+        if resource_id in self.web_view_containers:
+            return self.web_view_stack.indexOf(self.web_view_containers[resource_id])
         return -1
     
     def _on_web_mode_changed(self, checked):

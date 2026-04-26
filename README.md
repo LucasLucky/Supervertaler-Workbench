@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.388 – Supervertaler Sidekick now carries the canonical Sv brand mark in its taskbar entry, alt-tab switcher, and custom title bar, matching the main Workbench window. Small polish release on top of v1.9.387's file-backed snippet library.
+**Latest release:** v1.9.389 – Sidekick web views get a permanently visible find-on-page toolbar (Ctrl+F focuses it; live "X of N" match count) and a right-click menu offering "Open page/link in default browser". Quality-of-life pass on the embedded SuperLookup browser.
 
 ---
 

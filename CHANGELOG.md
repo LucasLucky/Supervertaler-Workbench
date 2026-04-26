@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.388 (April 25, 2026)
+**Current Version:** v1.9.389 (April 26, 2026)
 
+
+## v1.9.389 - April 26, 2026
+
+### Added
+- **Find on page in Sidekick web views.** Every embedded browser view in SuperLookup → Web Resources now has a permanently visible find toolbar pinned to the bottom (live search as you type, ▲/▼ + Enter/Shift+Enter to cycle matches, "Match case" toggle, "X of N" status, ✕ to clear). Ctrl+F focuses the input and selects existing text; Esc clears the search and returns focus to the page. The toolbar is always shown rather than hidden-behind-a-shortcut so users discover it without needing to know Ctrl+F exists. Implemented via `QWebEnginePage.findText()` with a result callback for live match counts; the shortcut uses `WidgetWithChildrenShortcut` context so it doesn't collide with the segment editor's Ctrl+F.
+- **"Open page in default browser" and "Open link in default browser" right-click items.** When you right-click anywhere in an embedded web view, the context menu now offers "Open page in default browser" (always available for any real page); right-clicking on a hyperlink additionally offers "Open link in default browser". Both route through `QDesktopServices.openUrl` to your system default browser. Useful when you want to leave the embedded view for things the embedded Chromium doesn't handle as well as your real browser (extensions, persistent logins, multi-tab workflows). Implemented by subclassing `QWebEngineView` and overriding `contextMenuEvent` to append items to the standard Chromium menu rather than replacing it.
+
+---
 
 ## v1.9.388 - April 25, 2026
 
