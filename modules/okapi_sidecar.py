@@ -29,6 +29,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -128,6 +129,17 @@ class OkapiSidecar:
                                if platform.system() == "Windows" else 0),
             )
             self._started_by_us = True
+            # Drain the merged stdout/stderr pipe in a daemon thread.
+            # Without this the OS pipe buffer (~64 KB on Windows) eventually
+            # fills and the sidecar blocks on its next write — a latent
+            # hang that's hard to diagnose without a console.
+            if self._process.stdout is not None:
+                threading.Thread(
+                    target=self._drain_pipe,
+                    args=(self._process.stdout,),
+                    name="okapi-stdout-drain",
+                    daemon=True,
+                ).start()
             atexit.register(self.stop)
         except Exception as e:
             logger.error("Failed to start Okapi sidecar: %s", e)
@@ -157,6 +169,32 @@ class OkapiSidecar:
                 self._process.wait(timeout=2)
             self._process = None
             self._started_by_us = False
+
+    @staticmethod
+    def _drain_pipe(pipe):
+        """Read the sidecar's stdout/stderr line-by-line into the log.
+
+        Runs on a daemon thread for the lifetime of the subprocess.
+        Each line is forwarded through the stdlib ``logging`` module so
+        it lands in supervertaler.log via the diagnostic-log tee.
+        """
+        try:
+            for raw in iter(pipe.readline, b""):
+                if not raw:
+                    break
+                try:
+                    text = raw.decode("utf-8", errors="replace").rstrip()
+                except Exception:
+                    text = repr(raw)
+                if text:
+                    logger.info("[sidecar] %s", text)
+        except Exception:
+            pass
+        finally:
+            try:
+                pipe.close()
+            except Exception:
+                pass
 
     def is_running(self) -> bool:
         """Check if the sidecar is responding on its health endpoint."""

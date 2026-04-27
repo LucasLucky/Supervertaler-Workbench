@@ -2,8 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.390 (April 27, 2026)
+**Current Version:** v1.9.391 (April 27, 2026)
 
+
+## v1.9.391 - April 27, 2026
+
+### Added
+- **System tray icon with close-to-tray, start-minimized, and start-with-computer toggles.** Right-clicking the new tray icon offers Show Workbench, three checkable preferences (Close to tray, Start minimized to tray, Start with computer), and Quit. *Close to tray* makes the window's X button hide to tray instead of quitting the process. *Start minimized to tray* launches with no visible window – useful when paired with *Start with computer*, which registers Workbench with the OS autostart facility (Windows `HKCU\…\Run`, macOS `~/Library/LaunchAgents`, Linux FreeDesktop `~/.config/autostart`) without elevation. The autostart launch command resolves the GUI Python variant in dev (`pythonw.exe`) and `sys.executable` directly in frozen builds, so no terminal flashes at boot. `QApplication.setQuitOnLastWindowClosed(False)` is flipped on when the tray initialises, with `QApplication.quit()` called explicitly from the X-button path so close-to-tray-off behaves as before.
+- **Diagnostic log now captures everything the dev terminal would.** Four sources that previously vanished under `pythonw` / the frozen Windows .exe (`console=False`) are now teed into `supervertaler.log` via a new `_install_log_hooks()` helper called immediately after `_setup_diagnostic_log()`: `threading.excepthook` for worker-thread crashes, `qInstallMessageHandler` for `qWarning` / `qCritical` / layout warnings, the stdlib `logging` module (router for every `modules/*` `logger.info(...)`), and `logging.captureWarnings(True)` for `DeprecationWarning` / `ResourceWarning` etc. Combined with the existing `_Tee`, the in-app diagnostic log is now a true superset of stdout/stderr – Help → Open Diagnostic Log shows everything `run.cmd` would have shown.
+- **Okapi sidecar stdout drained into the log.** A daemon thread now reads `self._process.stdout` line-by-line in `OkapiSidecar.start()` and forwards each line via `logger.info("[sidecar] …")`. Fixes a latent ~64 KB Windows pipe-buffer hang where the sidecar would block on its next write once the unread pipe filled, and surfaces sidecar diagnostics in the Workbench log.
+
+### Changed
+- **Default global hotkey for Supervertaler Sidekick changed from `Ctrl+Shift+A` to `Alt+K`.** Existing user customisations of `Ctrl+Shift+A` (the previous default) are auto-migrated to the new default on first launch via a value-upgrade path in `ShortcutManager.load_shortcuts`; explicit overrides to anything else are preserved. Frees `Ctrl+Shift+A` for the AutoFingers menu shortcut, which had been silently shadowed by the global hotkey on Windows.
+- **Sidekick is now a `Qt.WindowType.Tool` window – invisible when not in use.** Sidekick previously had a regular `Qt.WindowType.Window` flag, which gave it a taskbar entry whenever it was visible. Switching to `Tool` means Windows never allocates a taskbar slot for Sidekick: it has no taskbar icon, no Alt+Tab entry, no system tray presence – it's purely summon-on-demand via Alt+K (global) or Ctrl+Q (in-app). Trade-off accepted: the previous "click the Sidekick taskbar icon to bring it back" path is gone; the keyboard hotkeys are the only way in, which matches how the user invokes it 99% of the time anyway.
+- **Sidekick activation tries plain `SetForegroundWindow` first, falls back to AttachThreadInput.** The original implementation in `_force_foreground_focus` always used the AttachThreadInput + SetForegroundWindow trick to bypass focus-stealing prevention. That trick is unnecessary for hotkey-driven summons (Windows briefly grants the receiving process foreground rights when a registered global hotkey fires) and carries Windows shell side effects on Windows 11. Plain `SetForegroundWindow` runs first now; the AttachThreadInput trick is reserved as a fallback for cases where the plain call is rejected (e.g. Trados Studio aggressively reclaiming focus from a non-hotkey path).
+- **`global_quicklauncher` shortcut ID renamed to `global_sidekick`.** Internal cleanup: the global hotkey's settings ID, callback (`_on_pynput_quicklauncher` → `_on_pynput_sidekick`), main-thread handler, and clipboard reader along the global Sidekick chain now all read "sidekick" rather than the stale "quicklauncher" name. `_LEGACY_IDS` and the `load_shortcuts` migration map both accept the old key, so persisted user customisations carry across. The editor-only QuickLauncher prompt-action menu (Ctrl+Q within the grid) keeps its `editor_open_quicklauncher` ID – that genuinely is QuickLauncher.
+- **B:/ "no disk in drive" pop-ups suppressed at startup on Windows.** A `SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX)` call early in `main()` tells Windows to fail-silently when in-process code probes a removed/unmounted drive, instead of presenting a system-modal dialog the user can do nothing useful with.
+
+### Known limitations
+- **Tray icons briefly bounce when Sidekick is summoned via Alt+K on Windows 11.** Investigated and ruled out as taskbar reflow, focus-stealing trick, clipboard manager, and Workbench's own tray icon being queried. Appears to be a Windows 11 shell broadcast triggered by any visible foreground transition into a previously-invisible window of a process that has tray icons. Considered an acceptable cosmetic quirk – the bounce is brief and the user is rarely looking at the tray when summoning Sidekick.
+
+---
 
 ## v1.9.390 - April 27, 2026
 

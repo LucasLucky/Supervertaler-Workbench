@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.390 – Tools tab returns to horizontal sub-tabs, focus-rectangle outlines suppressed app-wide, Superlookup menu/right-click actions correctly land in Sidekick, TMs section streamlined (Statistics and Maintenance folded into TM List as buttons + a one-click markdown stats report), and TM cleanup operations now run on a worker thread with a progress dialog instead of freezing the UI.
+**Latest release:** v1.9.391 – System tray icon for Workbench (close-to-tray, start-minimized, start-with-computer toggles, cross-platform autostart), Sidekick is now a Tool window (no taskbar/Alt+Tab/tray presence – pure summon-on-demand), default Sidekick global hotkey changed to **Alt+K** with auto-migration from the previous default, and the diagnostic log now captures every channel the dev terminal would (Qt warnings, threading exceptions, stdlib `logging`, Python warnings, okapi-sidecar stdout – plus a fix for a latent ~64 KB pipe-buffer hang in the sidecar).
 
 ---
 

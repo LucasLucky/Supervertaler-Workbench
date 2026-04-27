@@ -56,12 +56,21 @@ class FloatingAssistant(QWidget):
         else:
             self._state_file = None
 
-        # Regular top-level window (NOT always-on-top) — behaves like any
-        # other app window: clicking a different program brings that
-        # program to the front. The assistant can be brought back via
-        # Ctrl+Shift+A, Ctrl+Q, or by clicking its taskbar icon.
+        # ``Tool`` window (NOT always-on-top): behaves like any other app
+        # window when visible — clicking a different program brings that
+        # program to the front — but the Tool style means Windows does NOT
+        # allocate a taskbar slot for it. That has two consequences:
+        #
+        #  1. Sidekick is invisible whenever it's hidden — no taskbar icon,
+        #     no Alt+Tab entry, no system tray entry. Pure summon-on-demand.
+        #  2. Showing it never adds a taskbar slot, so the taskbar (and the
+        #     system tray icons sharing its right edge) doesn't reflow — no
+        #     visible "bounce" of the tray icons every time you press Alt+K.
+        #
+        # Trade-off accepted: you can't click a taskbar icon to bring
+        # Sidekick back. Use Alt+K (global) or Ctrl+Q (in-app) instead.
         self.setWindowFlags(
-            Qt.WindowType.Window
+            Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
@@ -79,7 +88,17 @@ class FloatingAssistant(QWidget):
         from PyQt6.QtGui import QShortcut, QKeySequence
         esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-        esc_shortcut.activated.connect(self.hide)
+        esc_shortcut.activated.connect(self._dismiss_to_tray)
+
+    def _dismiss_to_tray(self):
+        """Hide Sidekick completely — Tool-style windows have no taskbar
+        slot, so hiding doesn't cause a slot to be deallocated, and the
+        next summon doesn't cause one to be allocated. No taskbar reflow,
+        no system-tray-icon bounce. The method name is kept for symmetry
+        with how it's wired up across dismiss paths (Esc, paste-and-return,
+        Ctrl+Q toggle).
+        """
+        self.hide()
 
     # ------------------------------------------------------------------
     # Branding helpers
@@ -623,8 +642,9 @@ class FloatingAssistant(QWidget):
         # 1. Put result on clipboard
         QApplication.clipboard().setText(text)
 
-        # 2. Hide the assistant window
-        self.hide()
+        # 2. Get the assistant window out of the user's way (minimized so
+        #    the taskbar entry stays — see _dismiss_to_tray).
+        self._dismiss_to_tray()
 
         # 3. After a short delay, activate the source window and send Ctrl+V
         def _do_paste():
@@ -1221,7 +1241,7 @@ class FloatingAssistant(QWidget):
         if captured_text:
             self._chat_view.insert_text(captured_text)
 
-        # If already visible, just bring to front
+        # If already visible, just bring to front.
         if self.isVisible():
             self.raise_()
             self.activateWindow()
@@ -1296,7 +1316,7 @@ class FloatingAssistant(QWidget):
         """
         if self.isVisible():
             if self.isActiveWindow():
-                self.hide()
+                self._dismiss_to_tray()
             else:
                 # Visible but not in front — bring to foreground
                 self.raise_()
@@ -1522,9 +1542,18 @@ class FloatingAssistant(QWidget):
     def _force_foreground_focus(self):
         """Force OS-level keyboard focus to this window.
 
-        Uses the Windows AttachThreadInput + SetForegroundWindow trick.
-        Necessary because some applications (notably Trados Studio)
-        aggressively reclaim keyboard focus after losing it.
+        Tries a plain ``SetForegroundWindow`` first — that suffices when
+        the call is happening in response to a registered global hotkey
+        (Windows briefly grants the receiving process foreground rights),
+        and avoids the Windows shell side effect of ``AttachThreadInput``
+        which on Windows 11 manifests as a visible bounce of the system
+        tray icons every time Sidekick is summoned.
+
+        Falls back to the AttachThreadInput + SetForegroundWindow trick
+        only if the plain call doesn't actually move us to the foreground —
+        e.g. when invoked from a context where Windows hasn't granted
+        foreground permission and another app (notably Trados Studio)
+        would otherwise reclaim focus.
         """
         import sys
         if sys.platform != 'win32':
@@ -1539,16 +1568,23 @@ class FloatingAssistant(QWidget):
             if fg_hwnd == hwnd:
                 return  # Already foreground
 
+            # First attempt: plain SetForegroundWindow. Quiet — no shell
+            # broadcast, no tray bounce.
+            user32.SetForegroundWindow(hwnd)
+            if user32.GetForegroundWindow() == hwnd:
+                return
+
+            # Fallback: aggressive thread-input attachment. Only reaches
+            # here when plain activation was rejected by Windows' focus-
+            # stealing prevention (rare for hotkey-driven summons since
+            # the hotkey grants foreground rights).
             fg_thread = user32.GetWindowThreadProcessId(fg_hwnd, None)
             our_thread = kernel32.GetCurrentThreadId()
-
             attached = False
             if fg_thread != our_thread:
                 attached = user32.AttachThreadInput(fg_thread, our_thread, True)
-
             user32.SetForegroundWindow(hwnd)
             user32.BringWindowToTop(hwnd)
-
             if attached:
                 user32.AttachThreadInput(fg_thread, our_thread, False)
         except Exception:

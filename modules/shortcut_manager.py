@@ -624,11 +624,11 @@ class ShortcutManager:
             "action": "global_quicktrans",
             "context": "global"
         },
-        "global_quicklauncher": {
+        "global_sidekick": {
             "category": "Global",
             "description": "Supervertaler Sidekick (global — works from any app)",
-            "default": "Ctrl+Shift+A",
-            "action": "global_quicklauncher",
+            "default": "Alt+K",
+            "action": "global_sidekick",
             "context": "global"
         },
     }
@@ -689,10 +689,13 @@ class ShortcutManager:
             self.disabled_shortcuts = old_disabled
             self.save_shortcuts()
 
-        # Migrate quickmenu → quicklauncher shortcut IDs
+        # Migrate quickmenu → quicklauncher → sidekick shortcut IDs.
+        # The global hotkey was renamed to "sidekick" to match the user-facing
+        # feature name; the editor-only QuickLauncher kept its name.
         _QM_RENAMES = {
             'editor_open_quickmenu': 'editor_open_quicklauncher',
-            'global_quickmenu': 'global_quicklauncher',
+            'global_quickmenu': 'global_sidekick',
+            'global_quicklauncher': 'global_sidekick',
         }
         qm_migrated = {}
         qm_needs_save = False
@@ -707,6 +710,16 @@ class ShortcutManager:
             for d in self.disabled_shortcuts:
                 new_disabled.add(_QM_RENAMES.get(d, d))
             self.disabled_shortcuts = new_disabled
+            self.save_shortcuts()
+
+        # Default-value upgrade for global_sidekick: Ctrl+Shift+A → Alt+K.
+        # Users on the previous default had it persisted as a "custom" entry
+        # (matching the old default). Drop that entry so the new default
+        # takes effect; explicit user overrides to anything other than the
+        # old default are preserved.
+        sk = self.custom_shortcuts.get('global_sidekick')
+        if sk and sk.lower() == 'ctrl+shift+a':
+            del self.custom_shortcuts['global_sidekick']
             self.save_shortcuts()
 
     def save_shortcuts(self):
@@ -736,7 +749,8 @@ class ShortcutManager:
         # Backward compat: accept old shortcut IDs
         _LEGACY_IDS = {
             'editor_open_quickmenu': 'editor_open_quicklauncher',
-            'global_quickmenu': 'global_quicklauncher',
+            'global_quickmenu': 'global_sidekick',
+            'global_quicklauncher': 'global_sidekick',
         }
         shortcut_id = _LEGACY_IDS.get(shortcut_id, shortcut_id)
 

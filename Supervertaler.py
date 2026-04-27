@@ -10286,7 +10286,11 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, '_preview_tab_index'):
                 self._preview_tab_index += 1
 
-        # Floating Assistant (replaces QMenu-based QuickLauncher)
+        # Floating Assistant (Sidekick — replaces QMenu-based QuickLauncher).
+        # Constructed but NOT shown — Sidekick uses Qt.WindowType.Tool so
+        # it never has a taskbar / Alt+Tab / system-tray presence; it lives
+        # purely as a summon-on-demand window via Alt+K (global) or Ctrl+Q
+        # (in-app). See FloatingAssistant.__init__ for why Tool was chosen.
         try:
             from modules.floating_assistant import FloatingAssistant
             self._floating_assistant = FloatingAssistant(
@@ -12186,7 +12190,7 @@ class SupervertalerQt(QMainWindow):
             if failed:
                 self.log(f"\u26A0 Global hotkeys: some failed to register: {', '.join(failed)}")
             else:
-                self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+Q, Ctrl+Shift+A)")
+                self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+Q, Alt+K)")
         else:
             self.log("\u26A0 Global hotkeys NOT registered — check console for errors")
 
@@ -25674,8 +25678,179 @@ class SupervertalerQt(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 self.save_project_as()
     
+    # ────────────────────────────────────────────────────────────────────
+    #  System tray integration (cross-platform via QSystemTrayIcon).
+    #
+    #  Three preferences live in settings.json under the "ui" section:
+    #    close_to_tray             — clicking the window's X hides instead of quits
+    #    start_minimized_to_tray   — launch with no visible window (tray only)
+    #    close_to_tray_hint_shown  — internal: have we shown the first-time hint?
+    #
+    #  Toggleable from the tray icon's right-click menu, no Settings-dialog
+    #  trip needed. On platforms with no system tray (e.g. headless Linux)
+    #  the tray simply stays None and these features are no-ops.
+    # ────────────────────────────────────────────────────────────────────
+
+    def _setup_tray_icon(self):
+        """Create the system-tray icon. Called once from main() after __init__."""
+        from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+        from PyQt6.QtGui import QAction, QIcon
+
+        self._tray_icon = None
+        self._really_quit = False  # Set by tray "Quit" so closeEvent doesn't hide
+
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            print("[Tray] System tray unavailable on this platform — skipping")
+            return
+
+        # Reuse the window icon if set, fall back to assets/icon.ico.
+        icon = self.windowIcon()
+        if icon.isNull():
+            icon_path = get_resource_path("assets/icon.ico")
+            if icon_path.exists():
+                icon = QIcon(str(icon_path))
+
+        self._tray_icon = QSystemTrayIcon(icon, self)
+        self._tray_icon.setToolTip("Supervertaler Workbench")
+
+        prefs = self._load_settings_section("ui")
+        menu = QMenu()
+
+        show_action = QAction("Show Workbench", self)
+        show_action.triggered.connect(self._tray_show_window)
+        menu.addAction(show_action)
+
+        menu.addSeparator()
+
+        self._tray_close_to_tray_action = QAction("Close to tray (instead of quit)", self)
+        self._tray_close_to_tray_action.setCheckable(True)
+        self._tray_close_to_tray_action.setChecked(bool(prefs.get("close_to_tray", False)))
+        self._tray_close_to_tray_action.toggled.connect(self._on_toggle_close_to_tray)
+        menu.addAction(self._tray_close_to_tray_action)
+
+        self._tray_start_minimized_action = QAction("Start minimized to tray", self)
+        self._tray_start_minimized_action.setCheckable(True)
+        self._tray_start_minimized_action.setChecked(bool(prefs.get("start_minimized_to_tray", False)))
+        self._tray_start_minimized_action.toggled.connect(self._on_toggle_start_minimized)
+        menu.addAction(self._tray_start_minimized_action)
+
+        # "Start with computer" — registers an HKCU Run entry on Windows,
+        # ~/Library/LaunchAgents plist on macOS, ~/.config/autostart .desktop
+        # on Linux. No elevation needed; the auto-started instance uses the
+        # GUI Python variant so no terminal window appears at boot.
+        try:
+            from modules import autostart as _autostart_mod
+            self._autostart_mod = _autostart_mod
+            if _autostart_mod.is_supported():
+                self._tray_autostart_action = QAction("Start with computer", self)
+                self._tray_autostart_action.setCheckable(True)
+                self._tray_autostart_action.setChecked(_autostart_mod.is_enabled())
+                self._tray_autostart_action.toggled.connect(self._on_toggle_autostart)
+                menu.addAction(self._tray_autostart_action)
+        except Exception as e:
+            print(f"[Tray] Autostart menu item not available: {e}")
+            self._autostart_mod = None
+
+        menu.addSeparator()
+
+        quit_action = QAction("Quit Supervertaler", self)
+        quit_action.triggered.connect(self._tray_quit)
+        menu.addAction(quit_action)
+
+        self._tray_icon.setContextMenu(menu)
+        self._tray_icon.activated.connect(self._on_tray_activated)
+        self._tray_icon.show()
+
+        # Tell Qt not to quit when all windows are closed — we manage lifecycle
+        # via the tray "Quit" item. Otherwise hiding the only window via close
+        # would terminate the app on some platforms.
+        QApplication.instance().setQuitOnLastWindowClosed(False)
+
+    def _on_tray_activated(self, reason):
+        """Left-click the tray icon → toggle window visibility (Windows/Linux convention)."""
+        from PyQt6.QtWidgets import QSystemTrayIcon
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            if self.isVisible():
+                self.hide()
+            else:
+                self._tray_show_window()
+
+    def _tray_show_window(self):
+        """Restore, raise, and focus the main window from the tray."""
+        self.show()
+        # Clear the minimized state if Qt set it during hide.
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.raise_()
+        self.activateWindow()
+
+    def _on_toggle_close_to_tray(self, checked: bool):
+        prefs = self._load_settings_section("ui")
+        prefs["close_to_tray"] = bool(checked)
+        self._save_settings_section("ui", prefs)
+
+    def _on_toggle_start_minimized(self, checked: bool):
+        prefs = self._load_settings_section("ui")
+        prefs["start_minimized_to_tray"] = bool(checked)
+        self._save_settings_section("ui", prefs)
+
+    def _on_toggle_autostart(self, checked: bool):
+        """Register or unregister Supervertaler with the OS autostart facility."""
+        mod = getattr(self, "_autostart_mod", None)
+        if mod is None:
+            return
+        ok = mod.enable() if checked else mod.disable()
+        # Re-sync the checkbox with reality — if the registry / plist write
+        # failed silently, don't leave the menu showing a stale state.
+        actual = mod.is_enabled()
+        if actual != checked:
+            self._tray_autostart_action.blockSignals(True)
+            self._tray_autostart_action.setChecked(actual)
+            self._tray_autostart_action.blockSignals(False)
+        if ok and getattr(self, "_tray_icon", None) is not None and checked:
+            try:
+                from PyQt6.QtWidgets import QSystemTrayIcon
+                self._tray_icon.showMessage(
+                    "Supervertaler",
+                    "Will start automatically with your computer. "
+                    "Tip: enable 'Start minimized to tray' to skip the window at boot.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            except Exception:
+                pass
+
+    def _tray_quit(self):
+        """Real quit from tray menu — bypasses the close-to-tray hide."""
+        self._really_quit = True
+        self.close()  # Triggers closeEvent which now does cleanup, then accepts
+        QApplication.instance().quit()
+
     def closeEvent(self, event):
         """Handle application close - cleanup hotkey processes"""
+        # Close-to-tray: hide instead of quit, unless the tray menu explicitly
+        # asked for a real quit. Skipped if the tray icon failed to initialise.
+        if (not getattr(self, "_really_quit", False)
+                and getattr(self, "_tray_icon", None) is not None):
+            prefs = self._load_settings_section("ui")
+            if prefs.get("close_to_tray", False):
+                event.ignore()
+                self.hide()
+                if not prefs.get("close_to_tray_hint_shown", False):
+                    try:
+                        from PyQt6.QtWidgets import QSystemTrayIcon
+                        self._tray_icon.showMessage(
+                            "Supervertaler is still running",
+                            "Click the tray icon to bring it back, or right-click "
+                            "for Quit.",
+                            QSystemTrayIcon.MessageIcon.Information,
+                            5000,
+                        )
+                    except Exception:
+                        pass
+                    prefs["close_to_tray_hint_shown"] = True
+                    self._save_settings_section("ui", prefs)
+                return
+
         try:
             if hasattr(self, 'lookup_tab'):
                 # Clean up pynput hotkey manager (cross-platform)
@@ -25709,9 +25884,15 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             print(f"[Superlookup] Error during hotkey cleanup: {e}")
 
-        # Accept the close event
+        # Accept the close event.
         event.accept()
-    
+        # Because _setup_tray_icon flipped setQuitOnLastWindowClosed to False
+        # (so dialogs / hidden windows wouldn't terminate the app), we need
+        # to ask Qt to quit explicitly when close-to-tray is OFF — otherwise
+        # closing the main window would leave a headless process behind.
+        if getattr(self, "_tray_icon", None) is not None:
+            QApplication.instance().quit()
+
     def open_project(self):
         """Open a project file"""
         file_path, _ = fdh.get_open_file_name(
@@ -56724,17 +56905,17 @@ class SuperlookupTab(QWidget):
         if sm:
             sl_shortcut = sm.get_shortcut('global_superlookup').lower().replace('+', '+')
             qt_shortcut = sm.get_shortcut('global_quicktrans').lower().replace('+', '+')
-            qm_shortcut = sm.get_shortcut('global_quicklauncher').lower().replace('+', '+')
+            sk_shortcut = sm.get_shortcut('global_sidekick').lower().replace('+', '+')
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+m'
-            qm_shortcut = 'ctrl+alt+q'
+            sk_shortcut = 'alt+k'
 
         # On macOS, replace 'alt' with 'cmd' in the shortcuts
         if IS_MACOS:
             sl_shortcut = sl_shortcut.replace('alt', 'cmd')
             qt_shortcut = qt_shortcut.replace('alt', 'cmd')
-            qm_shortcut = qm_shortcut.replace('alt', 'cmd')
+            sk_shortcut = sk_shortcut.replace('alt', 'cmd')
 
         # --- Attempt 1: WinAPI / pynput (cross-platform) ---
         import sys as _sys
@@ -56749,8 +56930,8 @@ class SuperlookupTab(QWidget):
             if manager.is_available:
                 manager.register(sl_shortcut, self._on_pynput_superlookup)
                 manager.register(qt_shortcut, self._on_pynput_quicktrans)
-                manager.register(qm_shortcut, self._on_pynput_quicklauncher)
-                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {qm_shortcut}")
+                manager.register(sk_shortcut, self._on_pynput_sidekick)
+                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}")
                 started = manager.start()
                 _log(f"[Global Hotkeys] Started: {started}")
                 if started:
@@ -56761,7 +56942,7 @@ class SuperlookupTab(QWidget):
                     failed = getattr(manager, 'failed_hotkeys', [])
                     if failed:
                         _log(f"\u26A0 [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)")
-                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, qm_shortcut] if k not in failed]
+                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut] if k not in failed]
                     _log(f"\u2328 [Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}")
                     return
                 else:
@@ -56811,18 +56992,19 @@ class SuperlookupTab(QWidget):
         except Exception as e:
             print(f"[QuickTrans] Error signaling main thread: {e}")
 
-    def _on_pynput_quicklauncher(self):
-        """Called from pynput background thread when Ctrl+Alt+Q is pressed.
+    def _on_pynput_sidekick(self):
+        """Called from pynput background thread when the Sidekick global
+        hotkey (default Alt+K) is pressed.
 
         IMPORTANT: Do NO work here -- see _on_pynput_superlookup docstring.
         """
         try:
-            print("[QuickLauncher] Global hotkey Ctrl+Alt+Q fired!")
+            print("[Sidekick] Global hotkey fired!")
             from PyQt6.QtCore import QMetaObject, Qt as QtConst, QTimer
             # Use QTimer.singleShot for more reliable cross-thread dispatch
-            QTimer.singleShot(0, self._handle_quicklauncher_hotkey)
+            QTimer.singleShot(0, self._handle_sidekick_hotkey)
         except Exception as e:
-            print(f"[QuickLauncher] Error signaling main thread: {e}")
+            print(f"[Sidekick] Error signaling main thread: {e}")
 
     def _try_ahk_library_method(self):
         """Try to register hotkey using ahk Python library
@@ -57093,8 +57275,16 @@ class SuperlookupTab(QWidget):
             self.on_ahk_mt_lookup_capture(text)
 
     @pyqtSlot()
-    def _handle_quicklauncher_hotkey(self):
-        """Runs on Qt main thread after the QuickLauncher global hotkey fires."""
+    def _handle_sidekick_hotkey(self):
+        """Runs on Qt main thread after the Sidekick global hotkey fires.
+
+        Captures the foreground window, sends Ctrl+C to copy any selected
+        text from the source app, then dispatches that text to Sidekick
+        (the floating assistant). The downstream method is still called
+        ``show_quicklauncher_external`` because it's also used by the
+        editor's right-click QuickLauncher menu — they share the same
+        "open Sidekick with this text" plumbing.
+        """
         try:
             from modules.platform_helpers import CrossPlatformKeySender, get_foreground_window
             self._quicklauncher_source_window = get_foreground_window()
@@ -57103,16 +57293,16 @@ class SuperlookupTab(QWidget):
             mw = self.main_window or self.window()
             if mw and mw is not self:
                 mw._quicklauncher_source_window = self._quicklauncher_source_window
-            print(f"[QuickLauncher] Captured source window: {self._quicklauncher_source_window}")
+            print(f"[Sidekick] Captured source window: {self._quicklauncher_source_window}")
 
             sender = CrossPlatformKeySender()
             sender.send_copy()
-            QTimer.singleShot(350, self._read_clipboard_for_quicklauncher)
+            QTimer.singleShot(350, self._read_clipboard_for_sidekick)
         except Exception as e:
-            print(f"[QuickLauncher] Error in hotkey handler: {e}")
+            print(f"[Sidekick] Error in hotkey handler: {e}")
 
-    def _read_clipboard_for_quicklauncher(self):
-        """Read clipboard and dispatch to external QuickLauncher (main thread)."""
+    def _read_clipboard_for_sidekick(self):
+        """Read clipboard and dispatch to Sidekick (main thread)."""
         text = pyperclip.paste() or ""
         self.show_quicklauncher_external(text)
 
@@ -58980,11 +59170,99 @@ def _setup_diagnostic_log():
         return None
 
 
+def _install_log_hooks():
+    """Route extra output channels into the (already teed) stdout/stderr.
+
+    Without this, four sources of debug info disappear under pythonw /
+    the built .exe (no console attached):
+
+      * threading.excepthook  — uncaught exceptions in worker threads
+      * Qt message handler    — qWarning / qCritical, layout warnings, GL errors
+      * stdlib logging        — modules/* use ``logging.getLogger(__name__)``
+      * Python warnings       — DeprecationWarning, ResourceWarning, ...
+
+    Everything they emit is written via ``print`` / ``sys.stderr``, which
+    _setup_diagnostic_log has already teed to supervertaler.log. So after
+    this runs, the in-app diagnostic log is a true superset of what the
+    dev terminal would have shown.
+    """
+    import logging
+    import threading
+    import traceback
+
+    # 1. Thread exception hook (Python 3.8+). Without it, a crashing
+    #    worker thread vanishes silently — only the main thread is
+    #    covered by sys.excepthook.
+    def _thread_excepthook(args):
+        if args.exc_type is SystemExit:
+            return
+        thread_name = args.thread.name if args.thread else "<unknown>"
+        try:
+            sys.stderr.write(f"\n[THREAD-EXCEPTION] in thread {thread_name!r}:\n")
+            traceback.print_exception(
+                args.exc_type, args.exc_value, args.exc_traceback,
+                file=sys.stderr,
+            )
+        except Exception:
+            pass
+    try:
+        threading.excepthook = _thread_excepthook
+    except Exception:
+        pass
+
+    # 2. Qt message handler — surface qWarning / qCritical / layout
+    #    warnings that Qt would otherwise print to a console we don't have.
+    try:
+        from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
+        _qt_severity = {
+            QtMsgType.QtDebugMsg:    "QT-DEBUG",
+            QtMsgType.QtInfoMsg:     "QT-INFO",
+            QtMsgType.QtWarningMsg:  "QT-WARN",
+            QtMsgType.QtCriticalMsg: "QT-CRIT",
+            QtMsgType.QtFatalMsg:    "QT-FATAL",
+        }
+        def _qt_message_handler(mode, context, message):
+            tag = _qt_severity.get(mode, "QT-???")
+            try:
+                print(f"[{tag}] {message}")
+            except Exception:
+                pass
+        qInstallMessageHandler(_qt_message_handler)
+    except Exception:
+        pass
+
+    # 3. Stdlib logging → stdout (teed). Modules under modules/* use
+    #    logging.getLogger(__name__); without a configured handler those
+    #    messages are dropped silently. Bump root to INFO only if the
+    #    user/library hasn't already configured something stricter.
+    try:
+        root = logging.getLogger()
+        already_attached = any(
+            isinstance(h, logging.StreamHandler)
+            and getattr(h, "stream", None) is sys.stdout
+            for h in root.handlers
+        )
+        if not already_attached:
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setFormatter(logging.Formatter(
+                "[%(levelname)s] %(name)s: %(message)s"
+            ))
+            root.addHandler(handler)
+        if root.level == logging.WARNING:
+            root.setLevel(logging.INFO)
+        # Route warnings.warn(...) through the logging system too.
+        logging.captureWarnings(True)
+    except Exception:
+        pass
+
+
 def main():
     """Application entry point"""
     # Redirect stdout/stderr to a rolling log file FIRST — so even crashes
     # during QApplication import or QWebEngine init get captured.
     _setup_diagnostic_log()
+    # Then route Qt / threads / stdlib-logging / warnings into the same tee.
+    _install_log_hooks()
 
     # Install global exception handler to catch unhandled exceptions
     import traceback
@@ -59112,9 +59390,39 @@ def main():
         except Exception:
             pass  # Fail silently if not on Windows or ctypes unavailable
 
+    # Suppress Windows' modal "There is no disk in drive X:" / "The system
+    # cannot find the drive specified" pop-ups that appear when *anything*
+    # in-process probes a removed/unmounted drive (recent files, plugin
+    # discovery, file dialogs). They block the UI thread on a system-modal
+    # dialog and there's nothing useful the user can do about them.
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            SEM_FAILCRITICALERRORS = 0x0001
+            SEM_NOGPFAULTERRORBOX  = 0x0002
+            SEM_NOOPENFILEERRORBOX = 0x8000
+            ctypes.windll.kernel32.SetErrorMode(
+                SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX
+            )
+        except Exception:
+            pass
+
     window = SupervertalerQt()
-    window.show()
-    
+
+    # Decide visibility BEFORE creating the tray icon, so the main window
+    # is fully realised on screen first — some Windows configs render a
+    # cold-started QMainWindow incorrectly when a tray icon is installed
+    # ahead of the first show().
+    ui_prefs = window._load_settings_section("ui")
+    start_minimized = bool(ui_prefs.get("start_minimized_to_tray"))
+    if not start_minimized:
+        window.show()
+
+    # System-tray icon + close-to-tray / start-minimized handling.
+    # _setup_tray_icon also flips QApplication.setQuitOnLastWindowClosed(False)
+    # if a tray is available, so hiding the main window won't terminate the app.
+    window._setup_tray_icon()
+
     sys.exit(app.exec())
 
 
