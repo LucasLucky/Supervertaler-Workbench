@@ -407,7 +407,16 @@ class TermbaseEntryEditor(QDialog):
         self.forbidden_check = CheckmarkCheckBox("⚠️ Mark as FORBIDDEN term (do not use)")
         self.forbidden_check.setStyleSheet("font-weight: bold; color: #d32f2f;")
         metadata_layout.addWidget(self.forbidden_check)
-        
+
+        # Non-translatable checkbox — when ticked, the target field is
+        # auto-synced to the source so the term copies through unchanged
+        # at translation time. Highlighted in pastel yellow in TermLens
+        # to match the convention used by the Trados plugin.
+        self.nontranslatable_check = CheckmarkCheckBox("🚫 Mark as NON-TRANSLATABLE (copy source to target unchanged)")
+        self.nontranslatable_check.setStyleSheet("font-weight: bold; color: #b07d00;")
+        self.nontranslatable_check.toggled.connect(self._on_nontranslatable_toggled)
+        metadata_layout.addWidget(self.nontranslatable_check)
+
         metadata_group.setLayout(metadata_layout)
         layout.addWidget(metadata_group)
         
@@ -583,16 +592,30 @@ class TermbaseEntryEditor(QDialog):
         elif action == delete_action:
             list_widget.takeItem(list_widget.row(item))
     
+    def _on_nontranslatable_toggled(self, checked: bool):
+        """When NT is turned on, mirror source into target so the entry
+        renders as a copy-through. Untoggling leaves whatever the user
+        last typed in the target field — they can edit it freely again.
+        """
+        if checked:
+            source_text = self.source_edit.text().strip() if hasattr(self, 'source_edit') else ''
+            if source_text:
+                self.target_edit.setText(source_text)
+
     def load_term_data(self):
         """Load existing term data from database"""
         if not self.db_manager or not self.term_id:
             return
-        
+
         try:
             cursor = self.db_manager.cursor
+            # is_nontranslatable wrapped in COALESCE so legacy databases
+            # that have not yet had the migration run come back as 0
+            # rather than blowing up the SELECT.
             cursor.execute("""
                 SELECT source_term, target_term, domain, definition, forbidden,
-                       notes, project, client
+                       notes, project, client,
+                       COALESCE(is_nontranslatable, 0)
                 FROM termbase_terms
                 WHERE id = ?
             """, (self.term_id,))
@@ -607,7 +630,8 @@ class TermbaseEntryEditor(QDialog):
                     'forbidden': row[4] or False,
                     'note': row[5] or '',
                     'project': row[6] or '',
-                    'client': row[7] or ''
+                    'client': row[7] or '',
+                    'is_nontranslatable': bool(row[8]),
                 }
 
                 # Populate fields
@@ -620,6 +644,12 @@ class TermbaseEntryEditor(QDialog):
                 self.project_edit.setText(self.term_data['project'])
                 self.client_edit.setText(self.term_data['client'])
                 self.forbidden_check.setChecked(self.term_data['forbidden'])
+                # Block the toggled signal on initial load so populating the
+                # checkbox doesn't mirror source into target and overwrite
+                # an intentionally-different target on a legacy NT entry.
+                self.nontranslatable_check.blockSignals(True)
+                self.nontranslatable_check.setChecked(self.term_data['is_nontranslatable'])
+                self.nontranslatable_check.blockSignals(False)
                 
                 # Load synonyms
                 self.load_synonyms()
@@ -748,22 +778,27 @@ class TermbaseEntryEditor(QDialog):
             project = self.project_edit.text().strip()
             client = self.client_edit.text().strip()
             forbidden = self.forbidden_check.isChecked()
+            is_nt = self.nontranslatable_check.isChecked()
 
             if self.term_id:
                 # Update existing term
                 cursor.execute("""
                     UPDATE termbase_terms
                     SET source_term = ?, target_term = ?,
-                        domain = ?, notes = ?, project = ?, client = ?, forbidden = ?
+                        domain = ?, notes = ?, project = ?, client = ?,
+                        forbidden = ?, is_nontranslatable = ?
                     WHERE id = ?
-                """, (source_term, target_term, domain, note, project, client, forbidden, self.term_id))
+                """, (source_term, target_term, domain, note, project, client,
+                      forbidden, 1 if is_nt else 0, self.term_id))
             else:
                 # Insert new term
                 cursor.execute("""
                     INSERT INTO termbase_terms
-                    (termbase_id, source_term, target_term, domain, notes, project, client, forbidden)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (self.termbase_id, source_term, target_term, domain, note, project, client, forbidden))
+                    (termbase_id, source_term, target_term, domain, notes,
+                     project, client, forbidden, is_nontranslatable)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (self.termbase_id, source_term, target_term, domain, note,
+                      project, client, forbidden, 1 if is_nt else 0))
             
             self.db_manager.connection.commit()
             
@@ -826,5 +861,6 @@ class TermbaseEntryEditor(QDialog):
             'note': self.note_edit.toPlainText().strip(),
             'project': self.project_edit.text().strip(),
             'client': self.client_edit.text().strip(),
-            'forbidden': self.forbidden_check.isChecked()
+            'forbidden': self.forbidden_check.isChecked(),
+            'is_nontranslatable': self.nontranslatable_check.isChecked(),
         }

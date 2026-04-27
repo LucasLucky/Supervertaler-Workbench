@@ -412,7 +412,8 @@ class DatabaseManager:
                 domain TEXT,
                 case_sensitive BOOLEAN DEFAULT 0,
                 forbidden BOOLEAN DEFAULT 0,
-                
+                is_nontranslatable BOOLEAN DEFAULT 0,
+
                 -- Link to TM entry (optional)
                 tm_source_id INTEGER,
                 
@@ -466,31 +467,13 @@ class DatabaseManager:
         # ============================================
         # NON-TRANSLATABLES
         # ============================================
-        
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS non_translatables (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pattern TEXT NOT NULL UNIQUE,
-                pattern_type TEXT DEFAULT 'regex',
-                description TEXT,
-                project_id TEXT,
-                enabled BOOLEAN DEFAULT 1,
-                example_text TEXT,
-                category TEXT,
-                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        self.cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_nt_project_id 
-            ON non_translatables(project_id)
-        """)
-        
-        self.cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_nt_category 
-            ON non_translatables(category)
-        """)
-        
+        # The standalone non_translatables table was removed in v1.9.393.
+        # NTs are now flagged on individual termbase entries via the
+        # is_nontranslatable column on termbase_terms — same convention as
+        # the Trados plugin uses, so the two products share storage.
+        # Existing databases that still have the legacy table are left
+        # untouched (it's just an unused table sitting on disk).
+
         # ============================================
         # SEGMENTATION RULES
         # ============================================

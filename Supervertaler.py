@@ -10339,496 +10339,6 @@ class SupervertalerQt(QMainWindow):
         
         return tab
     
-    def create_non_translatables_tab(self) -> QWidget:
-        """Create the Non-Translatables tab - manage non-translatable content"""
-        from modules.non_translatables_manager import NonTranslatablesManager, NonTranslatableList
-        
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Header
-        header = QLabel("🚫 Non-Translatables")
-        header.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 10px;")
-        layout.addWidget(header)
-        
-        # Description
-        desc = QLabel("Manage terms and phrases that should not be translated (brand names, product names, technical identifiers, etc.).\n"
-                      "Non-translatables are highlighted in pastel yellow in the source text and Translation Results panel.")
-        desc.setWordWrap(True)
-        desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 10px;")
-        layout.addWidget(desc)
-        
-        # Initialize NT manager
-        nt_path = self.user_data_path / "resources" / "non_translatables"
-        nt_path.mkdir(parents=True, exist_ok=True)
-        self.nt_manager = NonTranslatablesManager(str(nt_path), self.log)
-        
-        # Try to load existing lists or convert from plain text
-        existing_nt_files = list(nt_path.glob("*.svntl")) + list(nt_path.glob("*.ntl"))
-        if not existing_nt_files:
-            # Check for plain text file to convert
-            txt_file = nt_path / "non-translatables.txt"
-            if txt_file.exists():
-                self.log("📄 Found plain text NT file, converting to .svntl format...")
-                nt_list = self.nt_manager.load_from_plain_text(str(txt_file), "Default Non-Translatables")
-                if nt_list:
-                    self.nt_manager.save_list(nt_list)
-                    self.nt_manager.lists[nt_list.name] = nt_list
-                    self.nt_manager.active_lists.append(nt_list.name)
-        else:
-            self.nt_manager.load_all_lists()
-        
-        # Toolbar
-        toolbar = QHBoxLayout()
-        
-        # List selection combo
-        list_combo = QComboBox()
-        list_combo.setMinimumWidth(200)
-        list_combo.setToolTip("Select a non-translatable list")
-        toolbar.addWidget(QLabel("List:"))
-        toolbar.addWidget(list_combo)
-        
-        # Buttons
-        new_btn = QPushButton("➕ New List")
-        new_btn.setToolTip("Create a new non-translatable list")
-        toolbar.addWidget(new_btn)
-        
-        import_btn = QPushButton("📥 Import")
-        import_btn.setToolTip("Import from file (.svntl, .ntl, .txt, or memoQ .mqres)")
-        toolbar.addWidget(import_btn)
-        
-        export_btn = QPushButton("📤 Export")
-        export_btn.setToolTip("Export selected list")
-        toolbar.addWidget(export_btn)
-        
-        delete_btn = QPushButton("🗑️ Delete")
-        delete_btn.setToolTip("Delete selected list")
-        toolbar.addWidget(delete_btn)
-        
-        toolbar.addStretch()
-        
-        # Active checkbox
-        active_checkbox = CheckmarkCheckBox("Active")
-        active_checkbox.setToolTip("Toggle whether this list is active for matching")
-        toolbar.addWidget(active_checkbox)
-        
-        layout.addLayout(toolbar)
-        
-        # Split view: entry list on left, add/edit on right
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Left: Entry list
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Search box
-        search_box = QLineEdit()
-        search_box.setPlaceholderText("Search entries...")
-        left_layout.addWidget(search_box)
-        
-        # Entry table
-        entry_table = QTableWidget()
-        entry_table.setColumnCount(2)
-        entry_table.setHorizontalHeaderLabels(["Entry", "Category"])
-        entry_table.horizontalHeader().setStretchLastSection(True)
-        entry_table.setColumnWidth(0, 250)
-        entry_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        entry_table.setAlternatingRowColors(True)
-        entry_table.setSortingEnabled(True)  # Enable column sorting
-        entry_table.horizontalHeader().setSortIndicatorShown(True)
-        entry_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)  # Enable right-click menu
-        left_layout.addWidget(entry_table)
-        
-        # Entry count
-        count_label = QLabel("0 entries")
-        count_label.setStyleSheet("color: #666; font-size: 10px;")
-        left_layout.addWidget(count_label)
-        
-        splitter.addWidget(left_widget)
-        
-        # Right: Add/Edit panel
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(10, 0, 0, 0)
-        
-        right_layout.addWidget(QLabel("<b>Add/Edit Entry</b>"))
-        
-        entry_input = QLineEdit()
-        entry_input.setPlaceholderText("Enter non-translatable term...")
-        right_layout.addWidget(entry_input)
-        
-        category_input = QLineEdit()
-        category_input.setPlaceholderText("Category (optional)")
-        right_layout.addWidget(category_input)
-        
-        notes_input = QTextEdit()
-        notes_input.setPlaceholderText("Notes (optional)")
-        notes_input.setMaximumHeight(80)
-        right_layout.addWidget(notes_input)
-        
-        add_btn = QPushButton("➕ Add Entry")
-        right_layout.addWidget(add_btn)
-        
-        remove_btn = QPushButton("🗑️ Remove Selected")
-        right_layout.addWidget(remove_btn)
-        
-        right_layout.addStretch()
-        
-        # Bulk operations
-        bulk_group = QGroupBox("Bulk Import")
-        bulk_layout = QVBoxLayout(bulk_group)
-        
-        bulk_text = QTextEdit()
-        bulk_text.setPlaceholderText("Paste multiple entries (one per line) for bulk import...")
-        bulk_text.setMaximumHeight(100)
-        bulk_layout.addWidget(bulk_text)
-        
-        bulk_btn = QPushButton("Import All")
-        bulk_layout.addWidget(bulk_btn)
-        
-        right_layout.addWidget(bulk_group)
-        
-        splitter.addWidget(right_widget)
-        splitter.setSizes([500, 300])
-        
-        layout.addWidget(splitter, stretch=1)
-        
-        # Store references for callbacks
-        self.nt_list_combo = list_combo
-        self.nt_entry_table = entry_table
-        self.nt_count_label = count_label
-        self.nt_active_checkbox = active_checkbox
-        
-        # Populate list combo
-        def refresh_list_combo():
-            list_combo.clear()
-            for name, nt_list in self.nt_manager.lists.items():
-                active_marker = "✓ " if nt_list.is_active else ""
-                list_combo.addItem(f"{active_marker}{name}", name)
-            
-            if list_combo.count() == 0:
-                list_combo.addItem("(No lists - create or import one)", "")
-        
-        # Populate entry table for selected list
-        def refresh_entry_table():
-            # Disable sorting while populating to avoid performance issues
-            entry_table.setSortingEnabled(False)
-            entry_table.setRowCount(0)
-            current_name = list_combo.currentData()
-            
-            if not current_name or current_name not in self.nt_manager.lists:
-                count_label.setText("0 entries")
-                active_checkbox.setChecked(False)
-                entry_table.setSortingEnabled(True)
-                return
-            
-            nt_list = self.nt_manager.lists[current_name]
-            active_checkbox.blockSignals(True)
-            active_checkbox.setChecked(nt_list.is_active)
-            active_checkbox.blockSignals(False)
-            
-            search_term = search_box.text().lower()
-            
-            filtered = [e for e in nt_list.entries 
-                       if not search_term or search_term in e.text.lower()]
-            
-            entry_table.setRowCount(len(filtered))
-            for row, entry in enumerate(filtered):
-                entry_table.setItem(row, 0, QTableWidgetItem(entry.text))
-                entry_table.setItem(row, 1, QTableWidgetItem(entry.category))
-            
-            # Re-enable sorting after populating
-            entry_table.setSortingEnabled(True)
-            
-            count_label.setText(f"{len(nt_list.entries)} entries ({len(filtered)} shown)")
-        
-        # Connect signals
-        list_combo.currentIndexChanged.connect(refresh_entry_table)
-        search_box.textChanged.connect(refresh_entry_table)
-        
-        # Helper to save NT settings to project
-        def save_nt_settings_to_project():
-            """Save active NT list names to project settings"""
-            if hasattr(self, 'current_project') and self.current_project:
-                active_list_names = [name for name, lst in self.nt_manager.lists.items() if lst.is_active]
-                if not hasattr(self.current_project, 'nt_settings'):
-                    self.current_project.nt_settings = {}
-                self.current_project.nt_settings['active_lists'] = active_list_names
-                self.log(f"💾 Saved NT settings to project: {len(active_list_names)} active list(s)")
-        
-        # Active toggle
-        def on_active_toggle(checked):
-            current_name = list_combo.currentData()
-            if current_name and current_name in self.nt_manager.lists:
-                self.nt_manager.set_list_active(current_name, checked)
-                refresh_list_combo()
-                # Keep selection
-                for i in range(list_combo.count()):
-                    if list_combo.itemData(i) == current_name:
-                        list_combo.setCurrentIndex(i)
-                        break
-                # Save to project settings
-                save_nt_settings_to_project()
-        
-        active_checkbox.toggled.connect(on_active_toggle)
-        
-        # New list
-        def on_new_list():
-            name, ok = QInputDialog.getText(tab, "New Non-Translatable List", "List name:")
-            if ok and name:
-                if name in self.nt_manager.lists:
-                    QMessageBox.warning(tab, "Error", f"List '{name}' already exists.")
-                    return
-                nt_list = self.nt_manager.create_list(name)
-                self.nt_manager.save_list(nt_list)
-                refresh_list_combo()
-                # Select new list
-                for i in range(list_combo.count()):
-                    if list_combo.itemData(i) == name:
-                        list_combo.setCurrentIndex(i)
-                        break
-        
-        new_btn.clicked.connect(on_new_list)
-        
-        # Add entry
-        def on_add_entry():
-            text = entry_input.text().strip()
-            if not text:
-                return
-            
-            current_name = list_combo.currentData()
-            if not current_name:
-                QMessageBox.warning(tab, "Error", "Please select or create a list first.")
-                return
-            
-            self.nt_manager.add_entry(current_name, text, 
-                                      notes_input.toPlainText(), 
-                                      category_input.text())
-            self.nt_manager.save_list(self.nt_manager.lists[current_name])
-            
-            entry_input.clear()
-            notes_input.clear()
-            category_input.clear()
-            refresh_entry_table()
-        
-        add_btn.clicked.connect(on_add_entry)
-        entry_input.returnPressed.connect(on_add_entry)
-        
-        # Remove entry
-        def on_remove_entry():
-            current_name = list_combo.currentData()
-            if not current_name:
-                return
-            
-            selected = entry_table.selectedItems()
-            if not selected:
-                return
-            
-            # Get unique row indices
-            rows = set(item.row() for item in selected)
-            
-            # Get entry texts to remove
-            for row in sorted(rows, reverse=True):
-                text_item = entry_table.item(row, 0)
-                if text_item:
-                    self.nt_manager.remove_entry(current_name, text_item.text())
-            
-            self.nt_manager.save_list(self.nt_manager.lists[current_name])
-            refresh_entry_table()
-        
-        remove_btn.clicked.connect(on_remove_entry)
-        
-        # Right-click context menu for entry table
-        def on_entry_context_menu(pos):
-            selected = entry_table.selectedItems()
-            if not selected:
-                return
-            
-            menu = QMenu(entry_table)
-            
-            # Get selected row count
-            rows = set(item.row() for item in selected)
-            count_text = f"Delete {len(rows)} entr{'ies' if len(rows) > 1 else 'y'}"
-            
-            delete_action = QAction(f"🗑️ {count_text}", menu)
-            delete_action.triggered.connect(on_remove_entry)
-            menu.addAction(delete_action)
-            
-            menu.exec(entry_table.viewport().mapToGlobal(pos))
-        
-        entry_table.customContextMenuRequested.connect(on_entry_context_menu)
-        
-        # Delete key shortcut for entry table
-        def on_entry_key_press(event):
-            if event.key() == Qt.Key.Key_Delete:
-                on_remove_entry()
-            else:
-                QTableWidget.keyPressEvent(entry_table, event)
-        
-        entry_table.keyPressEvent = on_entry_key_press
-        
-        # Bulk import
-        def on_bulk_import():
-            current_name = list_combo.currentData()
-            if not current_name:
-                QMessageBox.warning(tab, "Error", "Please select or create a list first.")
-                return
-            
-            text = bulk_text.toPlainText()
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
-            
-            if not lines:
-                return
-            
-            added = 0
-            for line in lines:
-                if line not in [e.text for e in self.nt_manager.lists[current_name].entries]:
-                    self.nt_manager.add_entry(current_name, line)
-                    added += 1
-            
-            self.nt_manager.save_list(self.nt_manager.lists[current_name])
-            bulk_text.clear()
-            refresh_entry_table()
-            
-            QMessageBox.information(tab, "Bulk Import", f"Added {added} entries ({len(lines) - added} duplicates skipped)")
-        
-        bulk_btn.clicked.connect(on_bulk_import)
-        
-        # Import from file
-        def on_import():
-            filepath, _ = QFileDialog.getOpenFileName(
-                tab, "Import Non-Translatables",
-                str(nt_path),
-                "All Supported (*.svntl *.ntl *.txt *.mqres);;Supervertaler NT List (*.svntl *.ntl);;Plain Text (*.txt);;memoQ Non-Translatables (*.mqres)"
-            )
-            
-            if not filepath:
-                return
-            
-            filepath_lower = filepath.lower()
-            
-            # Load based on file type
-            if filepath_lower.endswith('.mqres'):
-                imported_list = self.nt_manager.import_memoq_mqres(filepath)
-            elif filepath_lower.endswith('.svntl') or filepath_lower.endswith('.ntl'):
-                imported_list = self.nt_manager.load_list(filepath)
-            else:
-                imported_list = self.nt_manager.load_from_plain_text(filepath)
-            
-            if not imported_list:
-                QMessageBox.warning(tab, "Import Error", "Failed to import file. Check the log for details.")
-                return
-            
-            # Ask user whether to create new list or merge
-            current_name = list_combo.currentData()
-            if current_name and current_name in self.nt_manager.lists:
-                # Create custom dialog with clear button labels
-                msg_box = QMessageBox(tab)
-                msg_box.setWindowTitle("Import Options")
-                msg_box.setText(f"Import {len(imported_list.entries)} entries")
-                msg_box.setInformativeText(f"Choose how to import into your non-translatables:")
-                msg_box.setIcon(QMessageBox.Icon.Question)
-                
-                create_btn = msg_box.addButton(f"Create New List", QMessageBox.ButtonRole.YesRole)
-                merge_btn = msg_box.addButton(f"Merge into '{current_name}'", QMessageBox.ButtonRole.NoRole)
-                cancel_btn = msg_box.addButton(QMessageBox.StandardButton.Cancel)
-                
-                msg_box.exec()
-                clicked = msg_box.clickedButton()
-                
-                if clicked == cancel_btn:
-                    return
-                elif clicked == merge_btn:
-                    # Merge into current list
-                    added, skipped = self.nt_manager.merge_into_list(current_name, imported_list)
-                    self.nt_manager.save_list(self.nt_manager.lists[current_name])
-                    refresh_entry_table()
-                    QMessageBox.information(tab, "Import Complete", 
-                                          f"Merged {added} entries into '{current_name}'\n({skipped} duplicates skipped)")
-                    return
-            
-            # Create new list
-            # Check for name collision
-            new_name = imported_list.name
-            counter = 1
-            while new_name in self.nt_manager.lists:
-                new_name = f"{imported_list.name} ({counter})"
-                counter += 1
-            
-            imported_list.name = new_name
-            self.nt_manager.lists[new_name] = imported_list
-            self.nt_manager.active_lists.append(new_name)
-            self.nt_manager.save_list(imported_list)
-            
-            refresh_list_combo()
-            
-            # Select imported list
-            for i in range(list_combo.count()):
-                if list_combo.itemData(i) == new_name:
-                    list_combo.setCurrentIndex(i)
-                    break
-            
-            QMessageBox.information(tab, "Import Complete", 
-                                  f"Created list '{new_name}' with {len(imported_list.entries)} entries")
-        
-        import_btn.clicked.connect(on_import)
-        
-        # Export
-        def on_export():
-            current_name = list_combo.currentData()
-            if not current_name or current_name not in self.nt_manager.lists:
-                QMessageBox.warning(tab, "Error", "Please select a list to export.")
-                return
-            
-            filepath, selected_filter = QFileDialog.getSaveFileName(
-                tab, "Export Non-Translatables",
-                str(nt_path / f"{current_name}.svntl"),
-                "Supervertaler NT List (*.svntl);;Plain Text (*.txt)"
-            )
-            
-            if not filepath:
-                return
-            
-            if "Plain Text" in selected_filter or filepath.lower().endswith('.txt'):
-                success = self.nt_manager.export_to_plain_text(current_name, filepath)
-            else:
-                success = self.nt_manager.export_list(current_name, filepath)
-            
-            if success:
-                QMessageBox.information(tab, "Export Complete", f"Exported to:\n{filepath}")
-            else:
-                QMessageBox.warning(tab, "Export Error", "Failed to export. Check the log for details.")
-        
-        export_btn.clicked.connect(on_export)
-        
-        # Delete list
-        def on_delete():
-            current_name = list_combo.currentData()
-            if not current_name or current_name not in self.nt_manager.lists:
-                return
-            
-            confirm = QMessageBox.question(
-                tab, "Delete List",
-                f"Are you sure you want to delete '{current_name}'?\n\nThis cannot be undone.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if confirm == QMessageBox.StandardButton.Yes:
-                self.nt_manager.delete_list(current_name)
-                refresh_list_combo()
-                refresh_entry_table()
-        
-        delete_btn.clicked.connect(on_delete)
-        
-        # Initial population
-        refresh_list_combo()
-        if list_combo.count() > 0:
-            refresh_entry_table()
-        
-        return tab
-    
     def create_prompt_manager_tab(self) -> QWidget:
         """Create the AI tab (Prompt Manager, Supervertaler Sidekick, Variables)"""
         from modules.unified_prompt_manager_qt import UnifiedPromptManagerQt
@@ -12136,8 +11646,10 @@ class SupervertalerQt(QMainWindow):
         termbase_tab = self.create_termbases_tab()
         resources_tabs.addTab(termbase_tab, "🏷️ Termbases")
 
-        nt_tab = self.create_non_translatables_tab()
-        resources_tabs.addTab(nt_tab, "🚫 Non-Translatables")
+        # The standalone Non-Translatables tab was removed in v1.9.393.
+        # NTs are now flagged on individual termbase entries (the Trados
+        # plugin already worked this way). Mark a term as NT in the term
+        # editor or via the grid right-click "Add to Non-Translatables".
 
         ref_tab = self.create_reference_images_tab()
         resources_tabs.addTab(ref_tab, "🎯 Image Context")
@@ -15153,134 +14665,110 @@ class SupervertalerQt(QMainWindow):
         # Status message already shown by _add_to_dictionary
 
     def add_text_to_non_translatables(self, text: str):
-        """Add selected text to active non-translatable list(s)"""
+        """Add the selected source-cell text as a non-translatable termbase entry.
+
+        Stores the text on a writable activated termbase with
+        ``is_nontranslatable = 1``, mirroring the Trados plugin's
+        approach. Picks the project termbase if one is set; otherwise
+        the first writable activated termbase. Falls back to a clear
+        error message rather than silently doing nothing.
+        """
         if not text or not text.strip():
             QMessageBox.warning(self, "No Text", "Please select text before adding to non-translatables.")
             return
-        
+
         text = text.strip()
-        
-        # Check if NT manager is available
-        if not hasattr(self, 'nt_manager') or not self.nt_manager:
-            QMessageBox.critical(self, "Error", "Non-translatables manager not initialized")
+
+        if not hasattr(self, 'current_project') or not self.current_project:
+            QMessageBox.warning(self, "No project", "Open a project first.")
             return
-        
-        # Get all NT lists
-        nt_lists = self.nt_manager.get_all_lists()
-        
-        if not nt_lists:
-            # No lists exist - offer to create one
-            result = QMessageBox.question(
-                self, 
-                "No Non-Translatables List",
-                "No non-translatables lists exist. Would you like to create one?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if result == QMessageBox.StandardButton.Yes:
-                # Switch to NT tab to create a list
-                if hasattr(self, 'tr_tabs') and self.tr_tabs:
-                    for i in range(self.tr_tabs.count()):
-                        if "Non-Translatable" in self.tr_tabs.tabText(i):
-                            self.tr_tabs.setCurrentIndex(i)
-                            break
+
+        if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
+            QMessageBox.critical(self, "Error", "Termbase manager not initialised.")
             return
-        
-        # Get active lists for current project
-        project_id = None
-        if hasattr(self, 'project_file_path') and self.project_file_path:
-            import hashlib
-            project_id = int(hashlib.md5(self.project_file_path.encode()).hexdigest()[:8], 16)
-        
-        active_lists = [lst for lst in nt_lists if lst.is_active]
-        
-        if not active_lists:
-            # No active lists - show selection dialog
-            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QListWidget, QDialogButtonBox, QListWidgetItem
-            from PyQt6.QtCore import Qt
-            
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Select Non-Translatables List")
-            dialog.setMinimumWidth(350)
-            layout = QVBoxLayout(dialog)
-            
-            layout.addWidget(QLabel(f"Select list(s) to add \"{text}\" to:"))
-            
-            list_widget = QListWidget()
-            for lst in nt_lists:
-                item = QListWidgetItem(f"{lst.name} ({len(lst.entries)} entries)")
-                item.setData(Qt.ItemDataRole.UserRole, lst.id)
-                item.setCheckState(Qt.CheckState.Unchecked)
-                list_widget.addItem(item)
-            layout.addWidget(list_widget)
-            
-            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-            buttons.accepted.connect(dialog.accept)
-            buttons.rejected.connect(dialog.reject)
-            layout.addWidget(buttons)
-            
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return
-            
-            # Get selected lists
-            selected_lists = []
-            for i in range(list_widget.count()):
-                item = list_widget.item(i)
-                if item.checkState() == Qt.CheckState.Checked:
-                    list_id = item.data(Qt.ItemDataRole.UserRole)
-                    for lst in nt_lists:
-                        if lst.id == list_id:
-                            selected_lists.append(lst)
-                            break
-            
-            if not selected_lists:
-                QMessageBox.warning(self, "No List Selected", "Please select at least one list.")
-                return
-            
-            active_lists = selected_lists
-        
-        # Add to all active lists
-        from modules.non_translatables_manager import NonTranslatable
-        success_count = 0
-        duplicate_count = 0
-        
-        for lst in active_lists:
-            # Check if already exists
-            if any(entry.text.lower() == text.lower() for entry in lst.entries):
-                duplicate_count += 1
-                self.log(f"⚠️ '{text}' already exists in NT list '{lst.name}'")
+
+        project_id = self.current_project.id if hasattr(self.current_project, 'id') else None
+        if not project_id:
+            QMessageBox.warning(self, "No project ID", "Save the project before adding non-translatables.")
+            return
+
+        # Pick a target termbase: project termbase first, otherwise first
+        # writable activated termbase.
+        target_termbase = None
+        all_termbases = self.termbase_mgr.get_all_termbases()
+        for tb in all_termbases:
+            if not self.termbase_mgr.is_termbase_active(tb['id'], project_id):
                 continue
-            
-            # Create new entry
-            new_entry = NonTranslatable(
-                text=text,
-                case_sensitive=True,
-                category="",
-                notes=f"Added from grid selection"
+            if tb.get('read_only', True):
+                continue
+            priority = self.termbase_mgr.get_termbase_priority(tb['id'], project_id)
+            if priority == 1:
+                target_termbase = tb
+                break
+        if target_termbase is None:
+            for tb in all_termbases:
+                if not self.termbase_mgr.is_termbase_active(tb['id'], project_id):
+                    continue
+                if not tb.get('read_only', True):
+                    target_termbase = tb
+                    break
+
+        if target_termbase is None:
+            QMessageBox.warning(
+                self,
+                "No writable termbase",
+                "Activate at least one writable termbase for this project "
+                "before marking text as non-translatable.\n\n"
+                "Resources → Termbases → tick the Read and Write boxes."
             )
-            lst.entries.append(new_entry)
-            
-            # Save the list
-            if self.nt_manager.save_list(lst):
-                success_count += 1
-                self.log(f"✅ Added '{text}' to NT list '{lst.name}'")
-            else:
-                self.log(f"❌ Failed to save NT list '{lst.name}'")
-        
-        # Show result
-        if success_count > 0:
-            QMessageBox.information(
-                self, 
-                "Added to Non-Translatables",
-                f"Added \"{text}\" to {success_count} list(s)." + 
-                (f"\n\n{duplicate_count} list(s) already contained this entry." if duplicate_count else "")
+            return
+
+        # Use language codes that match the project so the index can
+        # orient correctly when the termbase is reverse-direction.
+        source_lang = self.current_project.source_lang if self.current_project else None
+        target_lang = self.current_project.target_lang if self.current_project else None
+        source_lang_code = self._convert_language_to_code(source_lang) if source_lang else None
+        target_lang_code = self._convert_language_to_code(target_lang) if target_lang else None
+
+        try:
+            term_id = self.termbase_mgr.add_term(
+                termbase_id=target_termbase['id'],
+                source_term=text,
+                target_term=text,  # NT: target = source (Trados convention)
+                source_lang=source_lang_code,
+                target_lang=target_lang_code,
+                notes="Added as non-translatable from grid",
+                is_nontranslatable=True,
             )
-            
-            # Refresh highlighting for current segment
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add non-translatable: {e}")
+            return
+
+        if term_id is None:
+            self.statusBar().showMessage(
+                f"⚠ '{text}' is already in '{target_termbase['name']}'", 3000
+            )
+            return
+
+        self._play_sound_effect('glossary_term_added') if hasattr(self, '_play_sound_effect') else None
+        self.log(f"🚫 Added non-translatable to '{target_termbase['name']}': {text}")
+        self.statusBar().showMessage(
+            f"🚫 Added non-translatable: '{text}' → {target_termbase['name']}", 3000
+        )
+
+        # Rebuild the in-memory term index so the new NT highlights immediately
+        # in the current segment and onward, rather than waiting for next reload.
+        try:
+            self._build_termbase_index()
+        except Exception as e:
+            self.log(f"⚠ Could not rebuild termbase index: {e}")
+
+        # Refresh highlighting for the current segment.
+        if hasattr(self, 'table') and self.table is not None:
             current_row = self.table.currentRow()
-            if current_row >= 0 and current_row < len(self.current_project.segments):
-                # Clear any NT cache if exists
+            if current_row >= 0 and self.current_project and current_row < len(self.current_project.segments):
                 segment = self.current_project.segments[current_row]
-                
+
                 # Refresh the source cell highlighting
                 source_widget = self.table.cellWidget(current_row, 2)
                 if source_widget and hasattr(source_widget, 'highlight_termbase_matches'):
@@ -15292,15 +14780,7 @@ class SupervertalerQt(QMainWindow):
                 # Trigger panel refresh
                 self._last_selected_row = -1
                 self.on_cell_selected(current_row, self.table.currentColumn(), -1, -1)
-        elif duplicate_count > 0:
-            QMessageBox.information(
-                self,
-                "Already Exists",
-                f"\"{text}\" already exists in all active non-translatables lists."
-            )
-        else:
-            QMessageBox.warning(self, "Error", "Failed to add to any non-translatables list.")
-    
+
     def create_termbases_tab(self):
         """Create the Termbases tab - manage all termbases (global and project-specific)"""
         tab = QWidget()
@@ -26162,35 +25642,12 @@ class SupervertalerQt(QMainWindow):
                         self.termbase_tab_refresh_callback()
                         self.log(f"✓ Refreshed termbase UI with restored activations")
             
-            # Restore activated non-translatables lists for this project
-            if hasattr(self, 'nt_manager') and self.nt_manager and self.current_project:
-                if hasattr(self.current_project, 'nt_settings') and self.current_project.nt_settings:
-                    active_list_names = self.current_project.nt_settings.get('active_lists', [])
-                    
-                    if active_list_names:
-                        # First deactivate all lists
-                        for name in list(self.nt_manager.lists.keys()):
-                            self.nt_manager.set_list_active(name, False)
-                        
-                        # Then activate the saved lists
-                        for list_name in active_list_names:
-                            if list_name in self.nt_manager.lists:
-                                self.nt_manager.set_list_active(list_name, True)
-                                self.log(f"✓ Restored active NT list: {list_name}")
-                            else:
-                                self.log(f"⚠️ Could not find NT list: {list_name}")
-                        
-                        # Refresh NT UI if available
-                        if hasattr(self, 'nt_list_combo') and self.nt_list_combo:
-                            # Trigger refresh by resetting combo selection
-                            current_idx = self.nt_list_combo.currentIndex()
-                            self.nt_list_combo.setCurrentIndex(-1)
-                            self.nt_list_combo.setCurrentIndex(current_idx if current_idx >= 0 else 0)
-                    else:
-                        self.log(f"📋 No active NT lists saved for this project")
-                else:
-                    self.log(f"📋 No NT settings found in project file")
-            
+            # The legacy "active non-translatables lists" project setting
+            # was removed in v1.9.393 along with the standalone NT tab; NTs
+            # now ride on termbase activations and don't need their own
+            # per-project state. Any nt_settings field in older project
+            # files is ignored on load.
+
             # Restore spellcheck settings from project
             if self.current_project.spellcheck_settings:
                 spellcheck_settings = self.current_project.spellcheck_settings
@@ -26350,14 +25807,17 @@ class SupervertalerQt(QMainWindow):
 
         # Query ALL terms from activated termbases in ONE query.
         # Includes tb.source_lang / tb.target_lang so we can detect
-        # reverse-direction termbases and orient them to the project.
+        # reverse-direction termbases and orient them to the project,
+        # and t.is_nontranslatable so NT highlighting can branch off
+        # the same index without a second pass over the database.
         query = """
             SELECT
                 t.id, t.source_term, t.target_term, t.termbase_id,
                 t.domain, t.notes, t.project, t.client, t.forbidden,
                 tb.is_project_termbase, tb.name as termbase_name,
                 tb.source_lang as tb_source_lang, tb.target_lang as tb_target_lang,
-                CASE WHEN COALESCE(ta.priority, 0) = 1 OR tb.is_project_termbase = 1 THEN 1 ELSE 0 END as ranking
+                CASE WHEN COALESCE(ta.priority, 0) = 1 OR tb.is_project_termbase = 1 THEN 1 ELSE 0 END as ranking,
+                COALESCE(t.is_nontranslatable, 0) as is_nontranslatable
             FROM termbase_terms t
             LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
             LEFT JOIN termbase_activation ta ON ta.termbase_id = tb.id
@@ -26421,6 +25881,7 @@ class SupervertalerQt(QMainWindow):
                     'is_project_termbase': row[9],
                     'termbase_name': row[10],
                     'ranking': row[13],
+                    'is_nontranslatable': bool(row[14]),
                     'pattern': pattern,  # Pre-compiled regex
                 })
 
@@ -38752,9 +38213,10 @@ class SupervertalerQt(QMainWindow):
                                 "NonTrans": []  # Non-translatables
                             }
                             
-                            # Add non-translatable matches
-                            if hasattr(self, 'nt_manager') and self.nt_manager:
-                                nt_matches = self.find_nt_matches_in_source(segment.source)
+                            # Add non-translatable matches (now sourced from
+                            # termbase entries flagged is_nontranslatable=1)
+                            nt_matches = self.find_nt_matches_in_source(segment.source)
+                            if nt_matches:
                                 for nt_match in nt_matches:
                                     nt_obj = TranslationMatch(
                                         source=nt_match.get('text', ''),
@@ -38856,9 +38318,9 @@ class SupervertalerQt(QMainWindow):
                             }
                             
                             # Add non-translatable matches even without termbase matches
-                            if hasattr(self, 'nt_manager') and self.nt_manager:
-                                from modules.translation_results_panel import TranslationMatch
-                                nt_matches = self.find_nt_matches_in_source(segment.source)
+                            from modules.translation_results_panel import TranslationMatch
+                            nt_matches = self.find_nt_matches_in_source(segment.source)
+                            if nt_matches:
                                 for nt_match in nt_matches:
                                     nt_obj = TranslationMatch(
                                         source=nt_match.get('text', ''),
@@ -41011,10 +40473,9 @@ class SupervertalerQt(QMainWindow):
                     self.termbase_mgr.deactivate_termbase(tb['id'], project_id)
                     self.termbase_mgr.set_termbase_read_only(tb['id'], True)  # Write OFF
 
-        # Deactivate NT lists (global)
-        if hasattr(self, 'nt_manager') and self.nt_manager:
-            for list_name in list(self.nt_manager.lists.keys()):
-                self.nt_manager.set_list_active(list_name, False)
+        # The legacy "deactivate NT lists" step was removed in v1.9.393
+        # along with the standalone Non-Translatables tab — NTs now live
+        # on termbase entries and follow the termbase activation state.
 
         # Refresh TM and termbase UI to reflect the deactivations
         if hasattr(self, 'tm_tab_refresh_callback') and self.tm_tab_refresh_callback:
@@ -41675,22 +41136,71 @@ class SupervertalerQt(QMainWindow):
 
     def find_nt_matches_in_source(self, source_text: str) -> list:
         """
-        Find non-translatable matches in source text from all active NT lists.
-        
+        Find non-translatable matches in source text.
+
+        NTs are now sourced from termbase entries flagged with
+        ``is_nontranslatable = 1`` (the same convention the Trados plugin
+        uses), rather than from a separate .svntl file system. The
+        termbase index built by ``_build_termbase_index`` already carries
+        the flag plus pre-compiled regex patterns, so this is a single
+        pass with no extra database round-trips.
+
         Args:
             source_text: Source text to search in
-            
+
         Returns:
-            List of match dicts with 'text', 'start', 'end', 'list_name' keys
+            List of match dicts with 'text', 'start', 'end', 'list_name'
+            (kept named ``list_name`` for compatibility with consumers
+            inherited from the old .svntl system; populated with the
+            termbase name).
         """
-        if not hasattr(self, 'nt_manager') or not self.nt_manager:
+        if not source_text:
             return []
-        
+
         try:
-            return self.nt_manager.find_all_matches(source_text)
-        except Exception as e:
-            self.log(f"Error finding NT matches: {e}")
+            with self.termbase_index_lock:
+                if not self.termbase_index:
+                    return []
+                index = self.termbase_index
+        except Exception:
             return []
+
+        source_lower = source_text.lower()
+        matches = []
+        seen_positions = set()
+
+        for term in index:
+            if not term.get('is_nontranslatable'):
+                continue
+
+            term_lower = term.get('source_term_lower') or ''
+            if not term_lower or term_lower not in source_lower:
+                continue
+
+            pattern = term.get('pattern')
+            if pattern:
+                try:
+                    iter_matches = pattern.finditer(source_lower)
+                except Exception:
+                    continue
+                for m in iter_matches:
+                    start, end = m.start(), m.end()
+                    key = (start, end)
+                    if key in seen_positions:
+                        continue
+                    seen_positions.add(key)
+                    matches.append({
+                        'text': source_text[start:end],
+                        'start': start,
+                        'end': end,
+                        'list_name': term.get('termbase_name', ''),
+                        'term_id': term.get('term_id'),
+                        'termbase_id': term.get('termbase_id'),
+                    })
+
+        # Sort by position, then by length (longer matches first for same start)
+        matches.sort(key=lambda m: (m['start'], -(m['end'] - m['start'])))
+        return matches
     
     def highlight_source_with_termbase(self, row: int, source_text: str, termbase_matches: Optional[Dict] = None):
         """
@@ -41719,11 +41229,12 @@ class SupervertalerQt(QMainWindow):
             if termbase_matches:
                 source_widget.highlight_termbase_matches(termbase_matches)
             
-            # Also highlight non-translatables (pastel yellow)
-            if hasattr(self, 'nt_manager') and self.nt_manager:
-                nt_matches = self.find_nt_matches_in_source(source_text)
-                if nt_matches and hasattr(source_widget, 'highlight_non_translatables'):
-                    source_widget.highlight_non_translatables(nt_matches)
+            # Also highlight non-translatables (pastel yellow). NTs now
+            # come from termbase entries flagged is_nontranslatable=1, so
+            # the search is always available — no nt_manager guard needed.
+            nt_matches = self.find_nt_matches_in_source(source_text)
+            if nt_matches and hasattr(source_widget, 'highlight_non_translatables'):
+                source_widget.highlight_non_translatables(nt_matches)
             
         except Exception as e:
             self.log(f"Error highlighting termbase matches: {e}")

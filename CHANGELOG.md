@@ -2,8 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.392 (April 27, 2026)
+**Current Version:** v1.9.393 (April 27, 2026)
 
+
+## v1.9.393 - April 27, 2026
+
+### Changed
+- **Non-translatables unified with the termbase model — standalone NT system removed.** Workbench previously kept non-translatables in standalone `.svntl` files under `user_data/resources/non_translatables/`, surfaced via a dedicated "🚫 Non-Translatables" tab under Resources and matched at runtime by `modules/non_translatables_manager.py`. The Trados plugin had already moved to a different model: NTs are flagged on individual termbase entries via an `is_nontranslatable` column on `termbase_terms`, and that column was sitting unread in the shared SQLite database whenever the two products were pointed at the same termbases. This release deletes the standalone Workbench system in favour of the Trados approach, so a single termbase entry can flag itself as a non-translatable and both products see it.
+  - **Schema:** `is_nontranslatable BOOLEAN DEFAULT 0` added to `termbase_terms` in [`modules/database_manager.py`](modules/database_manager.py); migration auto-runs in [`modules/database_migrations.py`](modules/database_migrations.py) so existing databases get the column on next launch via `ALTER TABLE`. The legacy `non_translatables` SQLite table (regex patterns, never actually used by the runtime — the .svntl Python system was the production path) is no longer created on new databases; old databases that have it just keep an unused table.
+  - **Read path:** [`_build_termbase_index`](Supervertaler.py) now selects the new column and stores it on each in-memory term entry. [`find_nt_matches_in_source`](Supervertaler.py) was rewritten to walk the existing termbase index, filter for `is_nontranslatable=1`, and return positions via the same regex patterns the index already maintains for source-term lookups — no new database round-trips, and the function's return shape is preserved so all 9 call sites work unchanged. NT highlighting in the source cells continues to render in pastel yellow (#FFFDD0).
+  - **Write path:** the grid right-click "🚫 Add to Non-Translatables (Ctrl+Alt+N)" action now adds a termbase entry with `is_nontranslatable=1` (target_term mirrored from source_term, the Trados convention) on the project termbase, falling back to the first writable activated termbase. The in-memory index is rebuilt synchronously after the insert so highlighting updates on the current segment without a project reload.
+  - **Term editor:** [`modules/termbase_entry_editor.py`](modules/termbase_entry_editor.py) gains a "🚫 Mark as NON-TRANSLATABLE (copy source to target unchanged)" checkbox alongside the existing "Mark as FORBIDDEN" toggle. Ticking it auto-mirrors source into target so the entry copies through at translation time. New `set_nontranslatable(term_id, is_nontranslatable)` method on [`modules/termbase_manager.py`](modules/termbase_manager.py) for programmatic toggles.
+  - **Removed:** the entire 489-line `create_non_translatables_tab()` method, the "🚫 Non-Translatables" tab from the Resources tab strip, the `nt_manager` instantiation, all per-project NT save/restore logic (the `nt_settings` Project field is left in place but unused — old projects load fine, new projects just don't populate it), and `modules/non_translatables_manager.py`. The `.svntl` files on disk under `user_data/resources/non_translatables/` are not touched by this release; they are simply orphaned. Anyone who wants the data can re-add the entries through the new termbase NT toggle.
+
+---
 
 ## v1.9.392 - April 27, 2026
 

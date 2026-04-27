@@ -53,6 +53,15 @@ def migrate_termbase_fields(db_manager) -> bool:
         # Add 'notes' column if it doesn't exist (used by termbase entry editor)
         if 'notes' not in columns:
             migrations_needed.append(("notes", "ALTER TABLE termbase_terms ADD COLUMN notes TEXT"))
+
+        # Add 'is_nontranslatable' column if it doesn't exist (v1.9.393).
+        # Mirrors the schema the Trados plugin already maintains, so flags
+        # set in either product are visible to the other against a shared DB.
+        if 'is_nontranslatable' not in columns:
+            migrations_needed.append((
+                "is_nontranslatable",
+                "ALTER TABLE termbase_terms ADD COLUMN is_nontranslatable BOOLEAN DEFAULT 0",
+            ))
         
         # Execute migrations
         for column_name, sql in migrations_needed:

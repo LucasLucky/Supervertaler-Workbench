@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.392 – TermLens now finds matches regardless of how the project's languages and the termbase's languages are named: full English names ("Dutch") and ISO codes ("nl") now compare equal, and termbases whose direction is reversed relative to the project (e.g. an en→nl termbase used in an nl→en project) have their source/target columns swapped at index-build time so lookups work either way. Restart Workbench after upgrading to rebuild the in-memory term index.
+**Latest release:** v1.9.393 – Non-translatables unified with the termbase model. The standalone "🚫 Non-Translatables" tab and `.svntl` file system are gone; NTs are now flagged on individual termbase entries via the `is_nontranslatable` column (the same convention the Trados plugin already uses), so both products share storage when pointed at the same database. Mark a term as NT from the term editor's new checkbox, or from the grid via the existing right-click "Add to Non-Translatables" / Ctrl+Alt+N — both now write to the project (or first writable activated) termbase.
 
 ---
 

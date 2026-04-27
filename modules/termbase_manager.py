@@ -715,6 +715,7 @@ class TermbaseManager:
                  project: str = "", client: str = "",
                  forbidden: bool = False, source_lang: Optional[str] = None,
                  target_lang: Optional[str] = None, term_uuid: Optional[str] = None,
+                 is_nontranslatable: bool = False,
                  **kwargs) -> Optional[int]:
         """
         Add a term to termbase
@@ -731,6 +732,8 @@ class TermbaseManager:
             source_lang: Source language code
             target_lang: Target language code
             term_uuid: Optional UUID for tracking term across imports/exports
+            is_nontranslatable: Whether this term is a non-translatable
+                                (copies through unchanged at translation time)
 
         Returns:
             Term ID or None if failed (returns None if duplicate found)
@@ -738,7 +741,7 @@ class TermbaseManager:
         try:
             import uuid
             cursor = self.db_manager.cursor
-            
+
             # Check for duplicate (case-insensitive check)
             cursor.execute("""
                 SELECT id FROM termbase_terms
@@ -746,31 +749,73 @@ class TermbaseManager:
                 AND LOWER(source_term) = LOWER(?)
                 AND LOWER(target_term) = LOWER(?)
             """, (termbase_id, source_term, target_term))
-            
+
             existing = cursor.fetchone()
             if existing:
                 self.log(f"⚠️ Duplicate term not added: {source_term} → {target_term} (already exists in termbase {termbase_id})")
                 return None
-            
+
             # Generate UUID if not provided
             if not term_uuid:
                 term_uuid = str(uuid.uuid4())
-            
+
             cursor.execute("""
                 INSERT INTO termbase_terms
                 (termbase_id, source_term, target_term, domain, notes,
-                 project, client, forbidden, source_lang, target_lang, term_uuid)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 project, client, forbidden, source_lang, target_lang, term_uuid,
+                 is_nontranslatable)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (termbase_id, source_term, target_term, domain, notes,
-                  project, client, forbidden, source_lang, target_lang, term_uuid))
-            
+                  project, client, forbidden, source_lang, target_lang, term_uuid,
+                  1 if is_nontranslatable else 0))
+
             self.db_manager.connection.commit()
             term_id = cursor.lastrowid
-            self.log(f"✓ Added term to termbase {termbase_id}: {source_term} → {target_term}")
+            tag = " [NT]" if is_nontranslatable else ""
+            self.log(f"✓ Added term to termbase {termbase_id}: {source_term} → {target_term}{tag}")
             return term_id
         except Exception as e:
             self.log(f"✗ Error adding term: {e}")
             return None
+
+    def set_nontranslatable(self, term_id: int, is_nontranslatable: bool) -> bool:
+        """Toggle the non-translatable flag on an existing term.
+
+        When marking a term as non-translatable, target_term is also synced
+        to source_term — that's the convention the Trados plugin uses, and
+        it ensures NT terms surface a visible "translation" (the original)
+        in the TermLens panel.
+
+        Returns True on success.
+        """
+        try:
+            cursor = self.db_manager.cursor
+            if is_nontranslatable:
+                cursor.execute(
+                    """
+                    UPDATE termbase_terms
+                    SET is_nontranslatable = 1,
+                        target_term = source_term,
+                        modified_date = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (term_id,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE termbase_terms
+                    SET is_nontranslatable = 0,
+                        modified_date = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (term_id,),
+                )
+            self.db_manager.connection.commit()
+            return True
+        except Exception as e:
+            self.log(f"✗ Error toggling NT flag on term {term_id}: {e}")
+            return False
     
     def get_terms(self, termbase_id: int) -> List[Dict]:
         """Get all terms in a termbase"""
