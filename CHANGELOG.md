@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.394 (April 27, 2026)
+**Current Version:** v1.9.395 (April 27, 2026)
 
+
+## v1.9.395 - April 27, 2026
+
+### Changed
+- **Image Context moved from Resources to the AI tab.** The 🎯 Image Context pane (per-project figures the AI sees with each segment) was sitting under Resources alongside TMs and Termbases, but unlike those it is not a translation aid – nothing else in Workbench reads those images, only the AI translation pipeline. Resources should be the home for things both classical CAT lookups and AI use; AI-only inputs belong with the AI flow. The "✨ AI" main tab now wraps a `QTabWidget` with two sub-tabs ("✨ Prompt Manager" and "🎯 Image Context"); previously it was a single Prompt Manager widget. The `show_image_extractor_from_tools` navigation helper used by the Tools menu was rewritten to find the AI tab by label and select the Image Context sub-tab inside it, rather than the old Resources → Image Context route.
+
+### Fixed
+- **Clicking an NT pill in TermLens to insert no longer crashes.** Latent bug going back to the original `NTBlock` implementation: `nt_clicked` is a one-arg signal (the NT text), but it was wired straight to `on_term_insert_requested`, which expects two args (source_term, target_term). Every click on an NT pill raised `TypeError: missing 1 required positional argument: 'target_term'` – caught by the global excepthook, so the app didn't actually crash, but the insert never happened. Adapter lambda at the connection site now passes the same string for both arguments (NT entries have target = source by convention).
+
+---
 
 ## v1.9.394 - April 27, 2026
 

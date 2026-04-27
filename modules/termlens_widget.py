@@ -964,7 +964,15 @@ class TermLensWidget(QWidget):
                     term_id=nt_meta.get('term_id'),
                     termbase_id=nt_meta.get('termbase_id'),
                 )
-                nt_block.nt_clicked.connect(self.on_term_insert_requested)
+                # nt_clicked emits a single string (the NT text); the host
+                # insert handler takes (source_term, target_term). For NT
+                # entries those are the same string by convention, so adapt
+                # the signal here. Without this adapter, clicking an NT pill
+                # would crash with a missing-argument TypeError (a latent
+                # bug going back to the original NTBlock implementation).
+                nt_block.nt_clicked.connect(
+                    lambda txt: self.on_term_insert_requested(txt, txt)
+                )
                 # Wire edit/delete to the same host handlers used by TermBlock —
                 # NT entries are termbase rows, so the existing edit dialog
                 # handles them transparently.

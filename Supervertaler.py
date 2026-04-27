@@ -10269,14 +10269,35 @@ class SupervertalerQt(QMainWindow):
         set_help_topic(resources_tab, HelpTopics.TM_BASICS)
         self.main_tabs.addTab(resources_tab, "🗂️ Resources")
         
-        # ===== 3. PROMPT MANAGER TAB =====
-        # Unified prompt system: folder structure = menu hierarchy for in-app + global access
+        # ===== 3. AI TAB =====
+        # Houses everything that exists purely for the AI translation flow:
+        # the Prompt Manager (folder-as-hierarchy prompt library), and Image
+        # Context (figures/diagrams the AI sees with each segment). Image
+        # Context lived under Resources before v1.9.395 — moved here because
+        # it isn't a translation-aid like TMs and termbases; it's an AI input
+        # and only the AI flow ever reads it.
         from modules.unified_prompt_manager_qt import UnifiedPromptManagerQt
+        ai_tab = QWidget()
+        ai_tab_layout = QVBoxLayout(ai_tab)
+        ai_tab_layout.setContentsMargins(0, 0, 0, 0)
+        ai_tab_layout.setSpacing(0)
+
+        self.ai_subtabs = QTabWidget()
+        self.ai_subtabs.setStyleSheet(
+            "QTabBar::tab { outline: 0; } QTabBar::tab:focus { outline: none; }"
+        )
+
         prompt_widget = QWidget()
         self.prompt_manager_qt = UnifiedPromptManagerQt(self, standalone=False)
         self.prompt_manager_qt.create_tab(prompt_widget)
         set_help_topic(prompt_widget, HelpTopics.AI_PROMPT_MANAGER)
-        self.main_tabs.addTab(prompt_widget, "✨ AI")
+        self.ai_subtabs.addTab(prompt_widget, "✨ Prompt Manager")
+
+        image_context_widget = self.create_reference_images_tab()
+        self.ai_subtabs.addTab(image_context_widget, "🎯 Image Context")
+
+        ai_tab_layout.addWidget(self.ai_subtabs)
+        self.main_tabs.addTab(ai_tab, "✨ AI")
 
         # Add AI Assistant to the right panel at position 1 (right after Match Panel)
         if hasattr(self, 'right_tabs') and hasattr(self.prompt_manager_qt, 'assistant_tab'):
@@ -11651,8 +11672,9 @@ class SupervertalerQt(QMainWindow):
         # plugin already worked this way). Mark a term as NT in the term
         # editor or via the grid right-click "Add to Non-Translatables".
 
-        ref_tab = self.create_reference_images_tab()
-        resources_tabs.addTab(ref_tab, "🎯 Image Context")
+        # Image Context moved to the AI tab in v1.9.395 — it isn't a
+        # translation aid (TM / termbase) but an AI input, so it lives
+        # alongside the Prompt Manager now.
 
         layout.addWidget(resources_tabs)
 
@@ -51389,16 +51411,20 @@ class SupervertalerQt(QMainWindow):
                         break
     
     def show_image_extractor_from_tools(self):
-        """Show Image Extractor by switching to the Image Context tab in Project resources"""
-        # Switch to Project resources tab (main_tabs index 1)
-        if hasattr(self, 'main_tabs'):
-            self.main_tabs.setCurrentIndex(1)  # Switch to Project resources tab
-            # Then switch to Image Context sub-tab
-            if hasattr(self, 'resources_tabs'):
-                for i in range(self.resources_tabs.count()):
-                    if "Image Context" in self.resources_tabs.tabText(i):
-                        self.resources_tabs.setCurrentIndex(i)
-                        break
+        """Switch the user to the Image Context pane (now under AI in v1.9.395+)."""
+        if not hasattr(self, 'main_tabs'):
+            return
+        # Find the AI main tab by label and select it.
+        for i in range(self.main_tabs.count()):
+            if "AI" in self.main_tabs.tabText(i):
+                self.main_tabs.setCurrentIndex(i)
+                break
+        # Then select the Image Context sub-tab inside the AI tab.
+        if hasattr(self, 'ai_subtabs'):
+            for i in range(self.ai_subtabs.count()):
+                if "Image Context" in self.ai_subtabs.tabText(i):
+                    self.ai_subtabs.setCurrentIndex(i)
+                    break
     
     def show_scratchpad(self):
         """Show Scratchpad dialog for private translator notes.

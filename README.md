@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.394 – Non-translatables in the TermLens panel now respond to right-click with ✏️ Edit / 🗑️ Delete, matching the affordance regular glossary entries already had. Follow-up to v1.9.393's NT unification — since NTs are termbase rows with `is_nontranslatable=1`, the same term editor (with its NT checkbox pre-ticked) now opens for them transparently.
+**Latest release:** v1.9.395 – Image Context moved from Resources to the AI tab (it's an AI input, not a translation aid like TMs/termbases). The "✨ AI" tab now has two sub-tabs: ✨ Prompt Manager and 🎯 Image Context. Also fixes a latent crash where clicking an NT pill in TermLens to insert raised a TypeError because the signal arity didn't match the host handler.
 
 ---
 
