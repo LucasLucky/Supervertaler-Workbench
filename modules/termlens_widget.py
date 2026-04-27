@@ -445,19 +445,31 @@ class TermBlock(QWidget):
 
 
 class NTBlock(QWidget):
-    """Non-translatable block showing source word with pastel yellow styling"""
-    
+    """Non-translatable block showing source word with pastel yellow styling.
+
+    Since NTs are now backed by termbase entries flagged
+    is_nontranslatable=1, the block carries term_id and termbase_id when
+    they are known and emits edit_requested / delete_requested signals
+    on right-click — same pattern as TermBlock. Entries without an id
+    (e.g. legacy paths that don't propagate them) keep the click-to-
+    insert-only behaviour.
+    """
+
     nt_clicked = pyqtSignal(str)  # Emits NT text to insert as-is
-    
-    def __init__(self, source_text: str, list_name: str = "", parent=None, theme_manager=None, font_size: int = 10, font_family: str = "Segoe UI", font_bold: bool = False):
+    edit_requested = pyqtSignal(int, int)  # term_id, termbase_id
+    delete_requested = pyqtSignal(int, int, str, str)  # term_id, termbase_id, source_term, target_term
+
+    def __init__(self, source_text: str, list_name: str = "", parent=None, theme_manager=None, font_size: int = 10, font_family: str = "Segoe UI", font_bold: bool = False, term_id: Optional[int] = None, termbase_id: Optional[int] = None):
         """
         Args:
             source_text: Non-translatable word/phrase
-            list_name: Name of the NT list it comes from
+            list_name: Name of the termbase the NT entry lives on
             theme_manager: Optional theme manager for dark mode support
             font_size: Base font size in points (default 10)
             font_family: Font family name (default "Segoe UI")
             font_bold: Whether to use bold font (default False)
+            term_id: Termbase entry ID — enables right-click edit/delete
+            termbase_id: Termbase ID containing the entry
         """
         super().__init__(parent)
         self.source_text = source_text
@@ -466,6 +478,8 @@ class NTBlock(QWidget):
         self.font_size = font_size
         self.font_family = font_family
         self.font_bold = font_bold
+        self.term_id = term_id
+        self.termbase_id = termbase_id
         self.init_ui()
         
     def init_ui(self):
@@ -524,15 +538,64 @@ class NTBlock(QWidget):
         """)
         nt_label.setCursor(Qt.CursorShape.PointingHandCursor)
         nt_label.mousePressEvent = lambda e: self.on_nt_clicked()
-        
-        tooltip = f"<b>🚫 Non-Translatable</b><br>{self.source_text}<br><br>From: {self.list_name}<br>(click to insert as-is)"
+
+        tooltip_extra = ""
+        if self.term_id and self.termbase_id:
+            tooltip_extra = "<br>(right-click to edit / delete)"
+        tooltip = f"<b>🚫 Non-Translatable</b><br>{self.source_text}<br><br>From: {self.list_name}<br>(click to insert as-is){tooltip_extra}"
         nt_label.setToolTip(tooltip)
-        
+
         layout.addWidget(nt_label)
-    
+
+        # Right-click context menu — only enabled when we know which
+        # termbase entry to act on. The matching path through
+        # find_nt_matches_in_source populates term_id and termbase_id
+        # for every entry it returns, so this should always be live.
+        if self.term_id and self.termbase_id:
+            self.source_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.source_label.customContextMenuRequested.connect(self._show_context_menu)
+            nt_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            nt_label.customContextMenuRequested.connect(
+                lambda pos, src=nt_label: self._show_context_menu_from(src, pos)
+            )
+
     def on_nt_clicked(self):
         """Handle click on NT to insert source text as-is"""
         self.nt_clicked.emit(self.source_text)
+
+    def _show_context_menu(self, pos: QPoint):
+        """Show edit/delete context menu on the source label."""
+        self._show_context_menu_from(self.source_label, pos)
+
+    def _show_context_menu_from(self, src_widget, pos: QPoint):
+        """Show edit/delete context menu anchored to ``src_widget``."""
+        if not self.term_id or not self.termbase_id:
+            return
+        menu = QMenu(self)
+
+        edit_action = QAction("✏️ Edit Non-Translatable", menu)
+        edit_action.triggered.connect(self._edit_entry)
+        menu.addAction(edit_action)
+
+        delete_action = QAction("🗑️ Delete Non-Translatable", menu)
+        delete_action.triggered.connect(self._delete_entry)
+        menu.addAction(delete_action)
+
+        menu.exec(src_widget.mapToGlobal(pos))
+
+    def _edit_entry(self):
+        """Emit signal so the host widget can open the term editor."""
+        if self.term_id and self.termbase_id:
+            self.edit_requested.emit(self.term_id, self.termbase_id)
+
+    def _delete_entry(self):
+        """Emit signal so the host widget can run the delete confirmation."""
+        if self.term_id and self.termbase_id:
+            # Source == target for NT entries by convention; pass both.
+            self.delete_requested.emit(
+                self.term_id, self.termbase_id,
+                self.source_text, self.source_text,
+            )
 
 
 class TermLensWidget(QWidget):
@@ -835,13 +898,21 @@ class TermLensWidget(QWidget):
                         'is_project_termbase': match.get('is_project_termbase', False)
                     })
         
-        # Convert NT matches to dict: {text.lower(): list_name}
+        # Convert NT matches to dict keyed by lowercase text. Each entry
+        # carries the originating termbase metadata (list_name, term_id,
+        # termbase_id) so the NT block can emit edit/delete signals back
+        # to the host. find_nt_matches_in_source populates term_id and
+        # termbase_id for every match it returns.
         nt_dict = {}
         if nt_matches:
             for match in nt_matches:
                 nt_text = match.get('text', '')
                 if nt_text:
-                    nt_dict[nt_text.lower()] = match.get('list_name', 'Non-Translatables')
+                    nt_dict[nt_text.lower()] = {
+                        'list_name': match.get('list_name', 'Non-Translatables'),
+                        'term_id': match.get('term_id'),
+                        'termbase_id': match.get('termbase_id'),
+                    }
         
         # Combine all known multi-word terms for tokenization
         all_terms_dict = dict(matches_dict)
@@ -883,10 +954,22 @@ class TermLensWidget(QWidget):
 
             # Check if this is a non-translatable
             if lookup_key in nt_dict:
-                nt_block = NTBlock(token, nt_dict[lookup_key], self, theme_manager=self.theme_manager, 
-                                   font_size=self.current_font_size, font_family=self.current_font_family, 
-                                   font_bold=self.current_font_bold)
+                nt_meta = nt_dict[lookup_key]
+                nt_block = NTBlock(
+                    token, nt_meta['list_name'], self,
+                    theme_manager=self.theme_manager,
+                    font_size=self.current_font_size,
+                    font_family=self.current_font_family,
+                    font_bold=self.current_font_bold,
+                    term_id=nt_meta.get('term_id'),
+                    termbase_id=nt_meta.get('termbase_id'),
+                )
                 nt_block.nt_clicked.connect(self.on_term_insert_requested)
+                # Wire edit/delete to the same host handlers used by TermBlock —
+                # NT entries are termbase rows, so the existing edit dialog
+                # handles them transparently.
+                nt_block.edit_requested.connect(self._on_edit_entry_requested)
+                nt_block.delete_requested.connect(self._on_delete_entry_requested)
                 self.terms_layout.addWidget(nt_block)
                 blocks_with_nt += 1
             else:

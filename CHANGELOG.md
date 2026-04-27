@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.393 (April 27, 2026)
+**Current Version:** v1.9.394 (April 27, 2026)
 
+
+## v1.9.394 - April 27, 2026
+
+### Fixed
+- **Non-translatable terms can now be edited and deleted from TermLens.** Follow-up to v1.9.393's NT unification: the `NTBlock` widget that renders the pastel-yellow NT pill in the TermLens panel had no right-click context menu, so a non-translatable added via Ctrl+Alt+N (or marked via the term editor) could be inserted but not edited from the panel — even though `TermBlock`, the regular-glossary cousin, has had Edit / Delete entries since the entry editor was added. Since NTs are now just termbase rows with `is_nontranslatable=1`, the same edit dialog handles them transparently. `NTBlock` now carries `term_id` and `termbase_id` (both threaded through `find_nt_matches_in_source`'s match dicts and the widget's `nt_dict`), exposes `edit_requested` / `delete_requested` signals matching `TermBlock`, and shows ✏️ Edit Non-Translatable / 🗑️ Delete Non-Translatable on right-click. Connections at the instantiation site go straight to the existing `_on_edit_entry_requested` / `_on_delete_entry_requested` host handlers, so the dialog already opens with the NT checkbox pre-ticked (the editor reads `is_nontranslatable` per v1.9.393).
+
+---
 
 ## v1.9.393 - April 27, 2026
 

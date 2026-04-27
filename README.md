@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.393 – Non-translatables unified with the termbase model. The standalone "🚫 Non-Translatables" tab and `.svntl` file system are gone; NTs are now flagged on individual termbase entries via the `is_nontranslatable` column (the same convention the Trados plugin already uses), so both products share storage when pointed at the same database. Mark a term as NT from the term editor's new checkbox, or from the grid via the existing right-click "Add to Non-Translatables" / Ctrl+Alt+N — both now write to the project (or first writable activated) termbase.
+**Latest release:** v1.9.394 – Non-translatables in the TermLens panel now respond to right-click with ✏️ Edit / 🗑️ Delete, matching the affordance regular glossary entries already had. Follow-up to v1.9.393's NT unification — since NTs are termbase rows with `is_nontranslatable=1`, the same term editor (with its NT checkbox pre-ticked) now opens for them transparently.
 
 ---
 
