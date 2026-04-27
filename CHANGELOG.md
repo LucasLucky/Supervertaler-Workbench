@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.397 (April 27, 2026)
+**Current Version:** v1.9.398 (April 27, 2026)
 
+
+## v1.9.398 - April 27, 2026
+
+### Changed
+- **Keyboard Shortcuts settings page laid out in two columns for laptop screens.** The previous single-column stack (header → search → table → action buttons → Import/Export → tip → Global Hotkeys) crammed the shortcuts table into a tiny vertical slice on smaller screens — only ~4 rows visible at a time on a 1080p laptop because everything below was reserving room. Reworked into a horizontal `QSplitter` (default 70/30 split, draggable): the **left column** holds search → table → edit/reset buttons with the table set to absorb all spare vertical height; the **right column** stacks the Import/Export group (now vertical, with Export Cheatsheet promoted to the top since it's the action people actually use) and the Global Hotkeys group. Header and description sit above both columns. The cheatsheet tip moved into the Import/Export group so it doesn't claim its own row.
+
+---
 
 ## v1.9.397 - April 27, 2026
 

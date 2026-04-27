@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QLineEdit, QLabel, QDialog,
     QDialogButtonBox, QMessageBox, QFileDialog, QGroupBox, QCheckBox,
-    QStyleOptionButton
+    QStyleOptionButton, QSplitter
 )
 from PyQt6.QtCore import Qt, QEvent, QPointF, QRect
 from PyQt6.QtGui import QKeySequence, QKeyEvent, QFont, QPainter, QPen, QColor
@@ -265,23 +265,55 @@ class KeyboardShortcutsWidget(QWidget):
         self.load_shortcuts()
     
     def init_ui(self):
-        """Initialize the user interface"""
+        """Initialize the user interface.
+
+        Two-column layout so the page is usable on small / laptop screens:
+
+          ┌──────────────────────────────────────────────────────────┐
+          │ Header + description                                      │
+          ├──────────────────────────────┬───────────────────────────┤
+          │ Search                       │ Import / Export           │
+          │ ┌──────────────────────────┐ │ Global Hotkeys            │
+          │ │                          │ │   • Status                │
+          │ │   Shortcuts table        │ │   • AutoHotkey path       │
+          │ │   (takes all available   │ │   • Restart note          │
+          │ │    vertical space)       │ │                           │
+          │ │                          │ │                           │
+          │ └──────────────────────────┘ │                           │
+          │ [Edit] [Reset] [Reset All]   │                           │
+          └──────────────────────────────┴───────────────────────────┘
+
+        The two columns sit on a horizontal QSplitter so users can drag
+        the boundary if they want even more room for the table.
+        """
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
-        
+        layout.setSpacing(10)
+
         # Header
         header = QLabel("<h2>⌨️ Keyboard Shortcuts</h2>")
         layout.addWidget(header)
-        
+
         # Description
         desc = QLabel(
             "View and customize all keyboard shortcuts. Double-click a shortcut to edit it."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #666; margin-bottom: 10px;")
+        desc.setStyleSheet("color: #666;")
         layout.addWidget(desc)
-        
+
+        # Two-column splitter that holds the rest of the page.
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(6)
+        layout.addWidget(splitter, 1)  # stretch=1 so it absorbs all extra height
+
+        # ─── LEFT COLUMN: search, table, edit/reset buttons ─────────────
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+
         # Search/Filter
         search_layout = QHBoxLayout()
         search_label = QLabel("Search:")
@@ -290,8 +322,8 @@ class KeyboardShortcutsWidget(QWidget):
         self.search_input.textChanged.connect(self.filter_shortcuts)
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_input)
-        layout.addLayout(search_layout)
-        
+        left_layout.addLayout(search_layout)
+
         # Shortcuts table
         self.table = QTableWidget()
         self.table.setColumnCount(5)
@@ -307,7 +339,7 @@ class KeyboardShortcutsWidget(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSortingEnabled(True)  # Enable column sorting
         self.table.doubleClicked.connect(self.edit_selected_shortcut)
-        
+
         # Style the table
         self.table.setStyleSheet("""
             QTableWidget {
@@ -322,53 +354,63 @@ class KeyboardShortcutsWidget(QWidget):
                 color: white;
             }
         """)
-        
-        layout.addWidget(self.table)
-        
-        # Action buttons
+
+        left_layout.addWidget(self.table, 1)  # stretch=1, table eats vertical space
+
+        # Action buttons (under the table)
         button_layout = QHBoxLayout()
-        
+
         edit_btn = QPushButton("✏️ Edit Selected")
         edit_btn.clicked.connect(self.edit_selected_shortcut)
         button_layout.addWidget(edit_btn)
-        
+
         reset_btn = QPushButton("🔄 Reset Selected to Default")
         reset_btn.clicked.connect(self.reset_selected)
         button_layout.addWidget(reset_btn)
-        
+
         reset_all_btn = QPushButton("🔄 Reset All to Defaults")
         reset_all_btn.clicked.connect(self.reset_all)
         button_layout.addWidget(reset_all_btn)
-        
+
         button_layout.addStretch()
-        layout.addLayout(button_layout)
-        
-        # Export/Import buttons
+        left_layout.addLayout(button_layout)
+
+        splitter.addWidget(left_widget)
+
+        # ─── RIGHT COLUMN: Import/Export, Global Hotkeys ────────────────
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(10)
+
+        # Export/Import buttons — stack vertically in the narrower column
+        # so they don't get clipped, with the green "Export Cheatsheet"
+        # button up top since it's the action people actually reach for.
         io_group = QGroupBox("Import/Export")
-        io_layout = QHBoxLayout(io_group)
-        
-        export_json_btn = QPushButton("📤 Export Shortcuts (JSON)")
-        export_json_btn.clicked.connect(self.export_shortcuts)
-        io_layout.addWidget(export_json_btn)
-        
-        import_json_btn = QPushButton("📥 Import Shortcuts (JSON)")
-        import_json_btn.clicked.connect(self.import_shortcuts)
-        io_layout.addWidget(import_json_btn)
-        
+        io_layout = QVBoxLayout(io_group)
+        io_layout.setSpacing(6)
+
         export_html_btn = QPushButton("📄 Export Cheatsheet (HTML)")
         export_html_btn.clicked.connect(self.export_html_cheatsheet)
         export_html_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         io_layout.addWidget(export_html_btn)
-        
-        layout.addWidget(io_group)
-        
-        # Info label
-        info = QLabel(
-            "💡 Tip: Exported HTML cheatsheets can be printed or saved as PDF for reference."
+
+        export_json_btn = QPushButton("📤 Export Shortcuts (JSON)")
+        export_json_btn.clicked.connect(self.export_shortcuts)
+        io_layout.addWidget(export_json_btn)
+
+        import_json_btn = QPushButton("📥 Import Shortcuts (JSON)")
+        import_json_btn.clicked.connect(self.import_shortcuts)
+        io_layout.addWidget(import_json_btn)
+
+        cheatsheet_tip = QLabel(
+            "💡 Exported HTML cheatsheets can be printed or saved as PDF."
         )
-        info.setWordWrap(True)
-        info.setStyleSheet("color: #666; font-style: italic; margin-top: 5px;")
-        layout.addWidget(info)
+        cheatsheet_tip.setWordWrap(True)
+        cheatsheet_tip.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;")
+        io_layout.addWidget(cheatsheet_tip)
+
+        right_layout.addWidget(io_group)
 
         # Global Hotkeys Settings group (cross-platform)
         # Note: && is used so Qt displays a literal ampersand instead of treating
@@ -481,8 +523,20 @@ class KeyboardShortcutsWidget(QWidget):
         hotkey_layout.addWidget(restart_note)
 
         hotkey_group.setLayout(hotkey_layout)
-        layout.addWidget(hotkey_group)
-    
+        right_layout.addWidget(hotkey_group)
+
+        # Push everything in the right column to the top — extra vertical
+        # space goes to the splitter handle area, not into stretched groups.
+        right_layout.addStretch(1)
+
+        splitter.addWidget(right_widget)
+
+        # Initial split: roughly 70/30 in favour of the table. Users can
+        # drag the handle if they want the right column slimmer or wider.
+        splitter.setStretchFactor(0, 7)
+        splitter.setStretchFactor(1, 3)
+        splitter.setSizes([700, 300])
+
     def load_shortcuts(self):
         """Load shortcuts into the table"""
         # CRITICAL: Disable sorting during table modifications to prevent

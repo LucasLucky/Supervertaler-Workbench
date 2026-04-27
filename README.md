@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.397 – Main "📝 Grid" tab renamed to "📝 Editor" — describes what you do there rather than how it's drawn underneath.
+**Latest release:** v1.9.398 – Keyboard Shortcuts settings page redesigned for laptop screens: two-column layout (draggable splitter, default 70/30), with the shortcuts table on the left absorbing all spare vertical height, and Import/Export + Global Hotkeys groups stacked on the right.
 
 ---
 
