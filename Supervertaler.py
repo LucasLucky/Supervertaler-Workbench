@@ -14409,9 +14409,16 @@ class SupervertalerQt(QMainWindow):
             if not active_tb_ids or len(active_tb_ids) == 0:
                 return 'no_termbases_activated'
 
-            # Check if any activated termbases match the project's language pair
-            project_source = (self.current_project.source_lang or '').lower()
-            project_target = (self.current_project.target_lang or '').lower()
+            # Check if any activated termbases match the project's language pair.
+            # Normalise both sides through _convert_language_to_code so that
+            # full names ("Dutch") and ISO codes ("nl") compare equal — the
+            # project stores its languages as full English names by default
+            # (chosen from the Settings dropdown) while imported termbases
+            # tend to carry ISO codes. Without normalisation, "dutch" == "nl"
+            # is false and the UI shows "Glossaries don't match language pair"
+            # even when the langs are in fact the same.
+            project_source = self._convert_language_to_code(self.current_project.source_lang or '') or ''
+            project_target = self._convert_language_to_code(self.current_project.target_lang or '') or ''
 
             # Get all termbases and check language pairs
             all_termbases = self.termbase_mgr.get_all_termbases()
@@ -14419,8 +14426,8 @@ class SupervertalerQt(QMainWindow):
 
             for tb in all_termbases:
                 if tb['id'] in active_tb_ids:
-                    tb_source = (tb.get('source_lang') or '').lower()
-                    tb_target = (tb.get('target_lang') or '').lower()
+                    tb_source = self._convert_language_to_code(tb.get('source_lang') or '') or ''
+                    tb_target = self._convert_language_to_code(tb.get('target_lang') or '') or ''
                     # Match if: no language set, or languages match (bidirectional)
                     if (not tb_source and not tb_target) or \
                        (tb_source == project_source and tb_target == project_target) or \
@@ -26334,13 +26341,22 @@ class SupervertalerQt(QMainWindow):
 
         project_id = self.current_project.id if hasattr(self.current_project, 'id') else None
 
-        # Query ALL terms from activated termbases in ONE query
-        # This replaces ~17,500 individual queries (349 segments × 50 words each)
+        # Project languages, normalised to ISO codes for direction comparison.
+        # Empty string when not set — that disables the swap logic below and
+        # the index is built in its raw (forward) orientation, matching the
+        # historical behaviour for projects without language metadata.
+        project_source_code = self._convert_language_to_code(self.current_project.source_lang or '') or ''
+        project_target_code = self._convert_language_to_code(self.current_project.target_lang or '') or ''
+
+        # Query ALL terms from activated termbases in ONE query.
+        # Includes tb.source_lang / tb.target_lang so we can detect
+        # reverse-direction termbases and orient them to the project.
         query = """
             SELECT
                 t.id, t.source_term, t.target_term, t.termbase_id,
                 t.domain, t.notes, t.project, t.client, t.forbidden,
                 tb.is_project_termbase, tb.name as termbase_name,
+                tb.source_lang as tb_source_lang, tb.target_lang as tb_target_lang,
                 CASE WHEN COALESCE(ta.priority, 0) = 1 OR tb.is_project_termbase = 1 THEN 1 ELSE 0 END as ranking
             FROM termbase_terms t
             LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
@@ -26355,7 +26371,23 @@ class SupervertalerQt(QMainWindow):
             rows = self.db_manager.cursor.fetchall()
 
             for row in rows:
-                source_term = row[1]  # source_term
+                source_term = row[1]
+                target_term = row[2]
+                tb_source_code = self._convert_language_to_code(row[11] or '') or ''
+                tb_target_code = self._convert_language_to_code(row[12] or '') or ''
+
+                # If the termbase runs the opposite direction to the project
+                # (e.g. termbase en→nl in an nl→en project), swap source/target
+                # so the index lookup key is always in the project's source
+                # language. Without this swap, _search_termbase_in_memory
+                # would search Dutch segment text against English source_term
+                # values and find nothing.
+                if (project_source_code and project_target_code
+                        and tb_source_code and tb_target_code
+                        and tb_source_code == project_target_code
+                        and tb_target_code == project_source_code):
+                    source_term, target_term = target_term, source_term
+
                 if not source_term:
                     continue
 
@@ -26379,7 +26411,7 @@ class SupervertalerQt(QMainWindow):
                     'term_id': row[0],
                     'source_term': source_term,
                     'source_term_lower': source_term_lower,
-                    'target_term': row[2],
+                    'target_term': target_term,
                     'termbase_id': row[3],
                     'domain': row[4],
                     'notes': row[5],
@@ -26388,7 +26420,7 @@ class SupervertalerQt(QMainWindow):
                     'forbidden': row[8],
                     'is_project_termbase': row[9],
                     'termbase_name': row[10],
-                    'ranking': row[11],
+                    'ranking': row[13],
                     'pattern': pattern,  # Pre-compiled regex
                 })
 

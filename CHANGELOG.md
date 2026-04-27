@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.391 (April 27, 2026)
+**Current Version:** v1.9.392 (April 27, 2026)
 
+
+## v1.9.392 - April 27, 2026
+
+### Fixed
+- **TermLens now finds matches regardless of language naming or direction.** Two bugs combined to silently break TermLens when projects and termbases used different conventions for the same languages. First, `_get_termbase_status_hint` ([Supervertaler.py:14385](Supervertaler.py)) did a direct string-equal on lowercased lang fields, so a project saved with full English names ("Dutch", "English") would not match a termbase imported with ISO codes ("nl", "en") even though they were the same languages – the UI showed "Glossaries don't match language pair" and no matches at all. Second, `_build_termbase_index` ([Supervertaler.py:26319](Supervertaler.py)) only stored `source_term` as the lookup key, so a project running nl→en against a termbase stored en→nl would never find anything – the Dutch segment text was being searched against the `source_term` column (in English). Both paths now normalise lang strings through the existing `_convert_language_to_code` helper, and the index now swaps `source_term` / `target_term` for termbases whose direction is reversed relative to the project. The swap happens once at index-build time, so the search code itself is unchanged and remains in the fast path. Restart Workbench (or reload the project) to rebuild the in-memory index after upgrading.
+
+---
 
 ## v1.9.391 - April 27, 2026
 

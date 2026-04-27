@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.391 – System tray icon for Workbench (close-to-tray, start-minimized, start-with-computer toggles, cross-platform autostart), Sidekick is now a Tool window (no taskbar/Alt+Tab/tray presence – pure summon-on-demand), default Sidekick global hotkey changed to **Alt+K** with auto-migration from the previous default, and the diagnostic log now captures every channel the dev terminal would (Qt warnings, threading exceptions, stdlib `logging`, Python warnings, okapi-sidecar stdout – plus a fix for a latent ~64 KB pipe-buffer hang in the sidecar).
+**Latest release:** v1.9.392 – TermLens now finds matches regardless of how the project's languages and the termbase's languages are named: full English names ("Dutch") and ISO codes ("nl") now compare equal, and termbases whose direction is reversed relative to the project (e.g. an en→nl termbase used in an nl→en project) have their source/target columns swapped at index-build time so lookups work either way. Restart Workbench after upgrading to rebuild the in-memory term index.
 
 ---
 
