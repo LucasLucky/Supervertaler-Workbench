@@ -10261,7 +10261,7 @@ class SupervertalerQt(QMainWindow):
         # ===== 1. GRID TAB =====
         # Contains the translation grid
         grid_widget = self.create_grid_view_widget_for_home()
-        self.main_tabs.addTab(grid_widget, "📝 Grid")
+        self.main_tabs.addTab(grid_widget, "📝 Editor")
         
         # ===== 2. PROJECT RESOURCES TAB =====
         # Contains TM, Termbases, Non-Translatables

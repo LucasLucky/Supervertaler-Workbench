@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.396 – Cleans up a doubled "Prompt Manager" label in the AI tab introduced in v1.9.395. Image Context is now a fourth peer on the existing inner AI sub-tab strip rather than wrapped in an extra outer strip, so the AI tab reads as: 📋 Prompt Manager / 📝 Variables / 💬 Assistant / 🎯 Image Context.
+**Latest release:** v1.9.397 – Main "📝 Grid" tab renamed to "📝 Editor" — describes what you do there rather than how it's drawn underneath.
 
 ---
 

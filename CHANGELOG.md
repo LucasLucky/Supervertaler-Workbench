@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.396 (April 27, 2026)
+**Current Version:** v1.9.397 (April 27, 2026)
 
+
+## v1.9.397 - April 27, 2026
+
+### Changed
+- **Main "📝 Grid" tab renamed to "📝 Editor".** The tab hosts the segment-by-segment translation editor; "Editor" describes what the user does there more directly than "Grid" (which described the underlying widget). Internal identifiers (`grid_widget`, `_get_grid_visibility_state`, etc.) and a couple of fallback error messages mentioning "Grid view" are left as-is — they're either implementation detail or rarely-surfaced fallbacks, and renaming them would just churn the codebase without changing what users see.
+
+---
 
 ## v1.9.396 - April 27, 2026
 
