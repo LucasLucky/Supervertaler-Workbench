@@ -10271,33 +10271,32 @@ class SupervertalerQt(QMainWindow):
         
         # ===== 3. AI TAB =====
         # Houses everything that exists purely for the AI translation flow:
-        # the Prompt Manager (folder-as-hierarchy prompt library), and Image
-        # Context (figures/diagrams the AI sees with each segment). Image
-        # Context lived under Resources before v1.9.395 — moved here because
-        # it isn't a translation-aid like TMs and termbases; it's an AI input
-        # and only the AI flow ever reads it.
+        # the Prompt Manager, Variables reference, Assistant chat view, and
+        # Image Context (figures the AI sees with each segment). Image
+        # Context lived under Resources before v1.9.395 — moved here in
+        # v1.9.395 because it isn't a translation aid like TMs/termbases;
+        # it's an AI input and only the AI flow ever reads it.
+        # UnifiedPromptManagerQt builds its own inner QTabWidget with
+        # Prompt Manager / Variables / Assistant; rather than wrapping that
+        # in another outer tab strip (which produced an awkward
+        # double-"Prompt Manager" label in v1.9.395), we add the Image
+        # Context pane as a fourth peer tab on the inner strip directly.
         from modules.unified_prompt_manager_qt import UnifiedPromptManagerQt
-        ai_tab = QWidget()
-        ai_tab_layout = QVBoxLayout(ai_tab)
-        ai_tab_layout.setContentsMargins(0, 0, 0, 0)
-        ai_tab_layout.setSpacing(0)
-
-        self.ai_subtabs = QTabWidget()
-        self.ai_subtabs.setStyleSheet(
-            "QTabBar::tab { outline: 0; } QTabBar::tab:focus { outline: none; }"
-        )
-
         prompt_widget = QWidget()
         self.prompt_manager_qt = UnifiedPromptManagerQt(self, standalone=False)
         self.prompt_manager_qt.create_tab(prompt_widget)
         set_help_topic(prompt_widget, HelpTopics.AI_PROMPT_MANAGER)
-        self.ai_subtabs.addTab(prompt_widget, "✨ Prompt Manager")
 
-        image_context_widget = self.create_reference_images_tab()
-        self.ai_subtabs.addTab(image_context_widget, "🎯 Image Context")
+        # Add Image Context as a peer to the existing inner sub-tabs.
+        # Exposed as self.ai_subtabs so navigation helpers can target it.
+        if hasattr(self.prompt_manager_qt, 'sub_tabs'):
+            self.ai_subtabs = self.prompt_manager_qt.sub_tabs
+            image_context_widget = self.create_reference_images_tab()
+            self.ai_subtabs.addTab(image_context_widget, "🎯 Image Context")
+        else:
+            self.ai_subtabs = None
 
-        ai_tab_layout.addWidget(self.ai_subtabs)
-        self.main_tabs.addTab(ai_tab, "✨ AI")
+        self.main_tabs.addTab(prompt_widget, "✨ AI")
 
         # Add AI Assistant to the right panel at position 1 (right after Match Panel)
         if hasattr(self, 'right_tabs') and hasattr(self.prompt_manager_qt, 'assistant_tab'):

@@ -2,8 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.395 (April 27, 2026)
+**Current Version:** v1.9.396 (April 27, 2026)
 
+
+## v1.9.396 - April 27, 2026
+
+### Fixed
+- **AI tab no longer shows two stacked "Prompt Manager" labels.** v1.9.395 wrapped the existing AI tab content (which was a `UnifiedPromptManagerQt` widget exposing its own internal QTabWidget with Prompt Manager / Variables / Assistant) inside an *outer* QTabWidget that added Image Context as a peer to "Prompt Manager". The result: the user saw one "✨ Prompt Manager" tab on the outer strip, and clicking it revealed an inner strip whose first tab was *also* labelled "📋 Prompt Manager" — same label twice in a vertical stack. Reworked to skip the outer wrapper entirely: Image Context is now added as a fourth tab on the existing inner strip (`UnifiedPromptManagerQt.sub_tabs`), so the AI tab strip reads as a single flat row: 📋 Prompt Manager / 📝 Variables / 💬 Assistant / 🎯 Image Context. Navigation helper still works because `self.ai_subtabs` now points at the inner strip directly.
+
+---
 
 ## v1.9.395 - April 27, 2026
 

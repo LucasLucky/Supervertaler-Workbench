@@ -6,7 +6,7 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.395 – Image Context moved from Resources to the AI tab (it's an AI input, not a translation aid like TMs/termbases). The "✨ AI" tab now has two sub-tabs: ✨ Prompt Manager and 🎯 Image Context. Also fixes a latent crash where clicking an NT pill in TermLens to insert raised a TypeError because the signal arity didn't match the host handler.
+**Latest release:** v1.9.396 – Cleans up a doubled "Prompt Manager" label in the AI tab introduced in v1.9.395. Image Context is now a fourth peer on the existing inner AI sub-tab strip rather than wrapped in an extra outer strip, so the AI tab reads as: 📋 Prompt Manager / 📝 Variables / 💬 Assistant / 🎯 Image Context.
 
 ---
 
