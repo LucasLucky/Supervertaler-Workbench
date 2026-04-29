@@ -52,11 +52,14 @@ class _TermRow(QFrame):
     """
 
     def __init__(self, number: int, source: str, target: str, meta: str,
-                 is_nt: bool, parent=None):
+                 is_nt: bool, term_id: int = None, termbase_id: int = None,
+                 parent=None):
         super().__init__(parent)
         self.number = number
         self.insert_text = target
         self.is_nt = is_nt
+        self.term_id = term_id
+        self.termbase_id = termbase_id
         self._selected = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._build_ui(number, source, target, meta, is_nt)
@@ -144,6 +147,7 @@ class TermInsertPopup(QFrame):
     """
 
     term_inserted = pyqtSignal(str)
+    edit_requested = pyqtSignal(int, int)   # term_id, termbase_id — popup closes itself first
 
     MAX_ITEMS = 9
 
@@ -172,6 +176,8 @@ class TermInsertPopup(QFrame):
                 "target": m.get("target_term", ""),
                 "meta":   m.get("termbase_name", ""),
                 "is_nt":  False,
+                "term_id":     m.get("term_id"),
+                "termbase_id": m.get("termbase_id"),
             })
         for nt in nt_matches:
             if len(self._items) >= self.MAX_ITEMS:
@@ -183,6 +189,8 @@ class TermInsertPopup(QFrame):
                 "target": text,
                 "meta":   nt.get("list_name", "NT"),
                 "is_nt":  True,
+                "term_id":     None,
+                "termbase_id": None,
             })
 
     # ── UI ────────────────────────────────────────────────────────────────
@@ -223,6 +231,8 @@ class TermInsertPopup(QFrame):
                     target=item["target"],
                     meta=item["meta"],
                     is_nt=item["is_nt"],
+                    term_id=item["term_id"],
+                    termbase_id=item["termbase_id"],
                     parent=self,
                 )
                 idx = i  # capture for closure
@@ -235,7 +245,7 @@ class TermInsertPopup(QFrame):
                 self._rows[0].set_selected(True)
 
         # footer
-        footer = QLabel("  1–9 insert  ·  ↑↓ navigate  ·  Enter confirm  ·  Esc close")
+        footer = QLabel("  1–9 insert  ·  ↑↓ navigate  ·  Enter confirm  ·  E edit  ·  Esc close")
         footer.setStyleSheet("""
             background: #E6E6E6; color: #999999;
             font-size: 7pt; padding: 3px 8px;
@@ -272,6 +282,17 @@ class TermInsertPopup(QFrame):
             self.term_inserted.emit(self._items[index]["insert"])
             self.close()
 
+    def _edit(self, index: int):
+        """Close the popup and request the edit dialog for this entry."""
+        if not (0 <= index < len(self._items)):
+            return
+        item = self._items[index]
+        if item["is_nt"] or item["term_id"] is None or item["termbase_id"] is None:
+            return
+        # Close FIRST so the edit dialog isn't covered by the popup
+        self.close()
+        self.edit_requested.emit(item["term_id"], item["termbase_id"])
+
     def _move_selection(self, delta: int):
         if not self._rows:
             return
@@ -302,6 +323,11 @@ class TermInsertPopup(QFrame):
 
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._insert(self._selected_idx)
+            event.accept()
+            return
+
+        if key == Qt.Key.Key_E:
+            self._edit(self._selected_idx)
             event.accept()
             return
 

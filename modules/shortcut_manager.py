@@ -577,6 +577,12 @@ class ShortcutManager:
             "action": "open_quicklauncher",
             "context": "grid_editor"
         },
+        "sidekick_open_clipboard": {
+            "category": "Sidekick",
+            "description": "Open Sidekick – Clipboard tab",
+            "default": "Ctrl+Shift+C",
+            "action": "open_clipboard_tab",
+        },
         "editor_show_context_menu_double_shift": {
             "category": "Editor",
             "description": "Show context menu (double-tap Shift)",
@@ -629,6 +635,13 @@ class ShortcutManager:
             "description": "Supervertaler Sidekick (global — works from any app)",
             "default": "Alt+K",
             "action": "global_sidekick",
+            "context": "global"
+        },
+        "global_clipboard": {
+            "category": "Global",
+            "description": "Sidekick – Clipboard tab (global — works from any app)",
+            "default": "Ctrl+Shift+C",
+            "action": "global_clipboard",
             "context": "global"
         },
     }

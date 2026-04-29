@@ -40,7 +40,7 @@ Think of it as a **professional CAT tool** that specializes in AI integration an
 ### Who created Supervertaler?
 
 **Michael Beijer** - Professional translator and language technology enthusiast  
-**Website**: [michaelbeijer.co.uk](https://michaelbeijer.co.uk/)  
+**Website**: [beijer.uk](https://beijer.uk/)  
 **GitHub**: [github.com/michaelbeijer/Supervertaler](https://github.com/michaelbeijer/Supervertaler)
 
 Developed with assistance from **Claude AI** (Anthropic) using collaborative human-AI coding:

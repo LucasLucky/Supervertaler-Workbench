@@ -38,7 +38,7 @@ The sidebar includes (by default):
 - Wikipedia (Source)
 - Wikipedia (Target)
 - Juremy
-- michaelbeijer.co.uk
+- beijer.uk
 - AcronymFinder
 - BabelNet
 - Wiktionary (Source)

@@ -8802,6 +8802,9 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+Q - Open QuickLauncher directly
         create_shortcut("editor_open_quicklauncher", "Ctrl+Q", self.open_quicklauncher)
 
+        # Ctrl+Shift+C - Open Sidekick directly to Clipboard tab
+        create_shortcut("sidekick_open_clipboard", "Ctrl+Shift+C", self.open_clipboard_tab)
+
         # Lone Ctrl tap — Term Insert Popup (memoQ-style glossary + NT insert list).
         # Implemented as an app-level event filter rather than a QShortcut because
         # QShortcut cannot bind to a bare modifier key.
@@ -8829,6 +8832,16 @@ class SupervertalerQt(QMainWindow):
         if hasattr(self, 'bottom_notes_edit'):
             self.bottom_notes_edit.setFocus()
     
+    def open_clipboard_tab(self):
+        """Open the Sidekick directly to the Clipboard tab (Ctrl+Shift+C)."""
+        try:
+            if hasattr(self, '_floating_assistant') and self._floating_assistant:
+                self._floating_assistant._open_to_clipboard()
+            else:
+                self.log("⚠ Floating Assistant not available")
+        except Exception as e:
+            self.log(f"❌ Error opening Clipboard tab: {e}")
+
     def open_quicklauncher(self):
         """Open the Floating Assistant (replaces the old QMenu-based QuickLauncher).
 
@@ -8926,6 +8939,8 @@ class SupervertalerQt(QMainWindow):
                 "target_term":   match.get("translation", ""),
                 "termbase_name": match.get("termbase_name", ""),
                 "ranking":       match.get("ranking", 0),
+                "term_id":       match.get("term_id"),
+                "termbase_id":   match.get("termbase_id"),
             })
         # Sort: project glossary (1) first, then alphabetically
         glossary_matches.sort(key=lambda x: (-x["ranking"], x["source_term"].lower()))
@@ -8946,6 +8961,9 @@ class SupervertalerQt(QMainWindow):
         from modules.term_insert_popup import TermInsertPopup
         popup = TermInsertPopup(glossary_matches, nt_matches, parent=self)
         popup.term_inserted.connect(self.insert_termlens_text)
+        # Edit (E key or right-click) closes the popup itself first, then
+        # asks the main window to open the existing TermLens editor dialog.
+        popup.edit_requested.connect(self._on_termlens_edit_entry)
         popup.show()
         popup.setFocus()
 
@@ -16266,7 +16284,6 @@ class SupervertalerQt(QMainWindow):
         progress_layout.addWidget(header_label)
         
         # File info
-        import os
         file_info = QLabel(f"File: {os.path.basename(filepath)}")
         file_info.setStyleSheet("color: #666; padding: 2px 5px;")
         progress_layout.addWidget(file_info)
@@ -56474,16 +56491,19 @@ class SuperlookupTab(QWidget):
             sl_shortcut = sm.get_shortcut('global_superlookup').lower().replace('+', '+')
             qt_shortcut = sm.get_shortcut('global_quicktrans').lower().replace('+', '+')
             sk_shortcut = sm.get_shortcut('global_sidekick').lower().replace('+', '+')
+            cb_shortcut = sm.get_shortcut('global_clipboard').lower().replace('+', '+')
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+m'
             sk_shortcut = 'alt+k'
+            cb_shortcut = 'ctrl+shift+c'
 
         # On macOS, replace 'alt' with 'cmd' in the shortcuts
         if IS_MACOS:
             sl_shortcut = sl_shortcut.replace('alt', 'cmd')
             qt_shortcut = qt_shortcut.replace('alt', 'cmd')
             sk_shortcut = sk_shortcut.replace('alt', 'cmd')
+            cb_shortcut = cb_shortcut.replace('alt', 'cmd')
 
         # --- Attempt 1: WinAPI / pynput (cross-platform) ---
         import sys as _sys
@@ -56499,7 +56519,8 @@ class SuperlookupTab(QWidget):
                 manager.register(sl_shortcut, self._on_pynput_superlookup)
                 manager.register(qt_shortcut, self._on_pynput_quicktrans)
                 manager.register(sk_shortcut, self._on_pynput_sidekick)
-                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}")
+                manager.register(cb_shortcut, self._on_pynput_clipboard)
+                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}, {cb_shortcut}")
                 started = manager.start()
                 _log(f"[Global Hotkeys] Started: {started}")
                 if started:
@@ -56510,7 +56531,7 @@ class SuperlookupTab(QWidget):
                     failed = getattr(manager, 'failed_hotkeys', [])
                     if failed:
                         _log(f"\u26A0 [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)")
-                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut] if k not in failed]
+                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut, cb_shortcut] if k not in failed]
                     _log(f"\u2328 [Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}")
                     return
                 else:
@@ -56573,6 +56594,34 @@ class SuperlookupTab(QWidget):
             QTimer.singleShot(0, self._handle_sidekick_hotkey)
         except Exception as e:
             print(f"[Sidekick] Error signaling main thread: {e}")
+
+    def _on_pynput_clipboard(self):
+        """Called from pynput background thread when Ctrl+Shift+C is pressed.
+
+        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        """
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._handle_clipboard_hotkey)
+        except Exception as e:
+            print(f"[Clipboard] Error signaling main thread: {e}")
+
+    @pyqtSlot()
+    def _handle_clipboard_hotkey(self):
+        """Runs on Qt main thread — opens Sidekick to the Clipboard tab."""
+        try:
+            from modules.platform_helpers import get_foreground_window
+            source_win = get_foreground_window()
+            mw = self.main_window or self.window()
+            fa = getattr(mw, '_floating_assistant', None)
+            if fa:
+                if mw and mw is not self:
+                    mw._quicklauncher_source_window = source_win
+                fa._open_to_clipboard(source_window=source_win)
+            else:
+                print("[Clipboard] Floating Assistant not available")
+        except Exception as e:
+            print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
 
     def _try_ahk_library_method(self):
         """Try to register hotkey using ahk Python library

@@ -2,8 +2,39 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.398 (April 27, 2026)
+**Current Version:** v1.9.400 (April 29, 2026)
 
+
+## v1.9.400 - April 29, 2026
+
+### Added
+
+- **Clipboard manager added as a third tab in the Sidekick.** Cross-platform via PyQt6's `QClipboard.dataChanged` (Windows / macOS / Linux out of the box, no platform-specific code). Persistent history stored in the existing SQLite database alongside termbases and TMs, with separate per-kind caps (200 text + 50 images) trimmed independently so a flood of one kind cannot push the other out. Each clip's "pasted" state is persisted, so an item that has already been used once stays grey across restarts – inspired by ArsClip's grey-after-paste affordance, which is the standout feature of that Windows-only tool. Click an item to paste it back to the previously-focused application; the dataChanged signal is suppressed for the round-trip so re-capturing the paste itself is impossible.
+
+- **Image clipboard support.** When a raster image is on the clipboard (e.g. a screenshot or a copied figure), it is captured as PNG bytes and stored in a new `image_data` BLOB column on the `clipboard_history` table, with a `kind` discriminator (`'text'` / `'image'`). List items render a 48×48 thumbnail icon and a label such as "🖼 Image 1920×1080 (245 KB)". SHA-1 dedup so re-copying the same image does not insert a second row. Pasting branches on kind: text uses `clipboard.setText` + Ctrl+V, images use `clipboard.setPixmap` + Ctrl+V – most apps that accept clipboard images respond to Ctrl+V identically to text.
+
+- **Ctrl+Shift+C global hotkey opens the Sidekick directly to the Clipboard tab.** Registered through the same pynput `GlobalHotkeyManager` that handles Alt+K and Ctrl+Alt+L, so it fires from any application. Customisable in Settings → Keyboard Shortcuts as `global_clipboard`. Captures the foreground window before opening so paste-and-return correctly returns focus to the source app after a clip is selected.
+
+- **Default-tab preference for the Sidekick.** Right-click any tab on the Sidekick (Chat / SuperLookup / Clipboard) and choose "Open to '…' by default". Persists in `assistant_geometry.json` and applies whenever the Sidekick opens via Alt+K or any other path. Right-clicking the currently-default tab shows a greyed-out checkmark instead. When Clipboard is the default, the list owns focus on activation and arrow keys / Enter work immediately, including in the "already visible" path where Alt+K previously stole focus to the action tree.
+
+- **'E' opens the term editor from the Sidekick's Term Insert Popup (Ctrl+K).** The popup closes itself first, then emits the edit signal, so the editor dialog opens onto a clean screen. Mirrors the keyboard-only edit flow added to the Trados plugin's TermLens popup. Right-click is intentionally not supported – the popup stays 100% keyboard-driven; right-click edit is reserved for the regular TermLens panel on the right.
+
+### Fixed
+
+- **Termbase import silently did nothing after selecting a file.** A redundant `import os` inside `_import_termbase` (at the progress-dialog construction block) shadowed the module-level `os` import. Python treats any name that is assigned or imported anywhere in a function as local throughout that function's scope, so the earlier `os.path.basename(filepath)` call – used to build the Import Options dialog – hit an `UnboundLocalError` before the local import was ever reached. Qt's signal system swallowed the exception, leaving the UI with no feedback. Removed the redundant local import; the module-level `os` is now used throughout. (Originally tagged for v1.9.399 but never released; rolled into this release.)
+
+### Changed
+
+- **Author website references updated from `michaelbeijer.co.uk` to `beijer.uk` across the Supervertaler.com site and bundled help docs.** Touches `docs/index.html`, `docs/privacy/index.html`, `docs/workbench/index.html`, `docs/trados/index.html` (footer "Author's Website" + "Contact" links and the two pricing-section "get in touch" links), `docs/guides/FAQ.md`, `docs/help/supervertaler/reference/faq.md`, and the SuperLookup web-resource lists in `docs/help/supervertaler/superlookup/{overview,web-resources}.md`. michaelbeijer.co.uk redirects to beijer.uk anyway, but having the canonical URL throughout avoids stale Google index entries and unnecessary redirect hops.
+
+---
+
+## v1.9.399 - April 29, 2026
+
+### Fixed
+- **Termbase import silently did nothing after selecting a file.** A redundant `import os` inside `_import_termbase` (at the progress-dialog construction block) shadowed the module-level `os` import. Python treats any name that is assigned or imported anywhere in a function as local throughout that function's scope, so the earlier `os.path.basename(filepath)` call — used to build the Import Options dialog — hit an `UnboundLocalError` before the local import was ever reached. Qt's signal system swallowed the exception, leaving the UI with no feedback. Removed the redundant local import; the module-level `os` is now used throughout.
+
+---
 
 ## v1.9.398 - April 27, 2026
 

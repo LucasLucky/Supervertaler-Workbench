@@ -63,7 +63,7 @@ Quick access to online reference sites:
 - Juremy
 - AcronymFinder
 - BabelNet
-- michaelbeijer.co.uk
+- beijer.uk
 
 ## Search Controls
 

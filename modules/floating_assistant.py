@@ -90,6 +90,7 @@ class FloatingAssistant(QWidget):
         esc_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         esc_shortcut.activated.connect(self._dismiss_to_tray)
 
+
     def _dismiss_to_tray(self):
         """Hide Sidekick completely — Tool-style windows have no taskbar
         slot, so hiding doesn't cause a slot to be deallocated, and the
@@ -181,6 +182,14 @@ class FloatingAssistant(QWidget):
         """)
         self._left_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+        # Right-click on any tab → "Open here by default"
+        self._left_tabs.tabBar().setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._left_tabs.tabBar().customContextMenuRequested.connect(
+            self._on_tabbar_context_menu
+        )
+
         # Chat tab
         self._chat_view = ChatViewWidget(
             self._backend,
@@ -203,6 +212,12 @@ class FloatingAssistant(QWidget):
         # fully wired when the FloatingAssistant is first constructed).
         self._superlookup_widget = None
         self._superlookup_tab_added = False
+
+        # Clipboard tab — widget created eagerly so monitoring starts immediately,
+        # but not added to _left_tabs until _ensure_superlookup_tab() runs (so
+        # the tab order stays Chat → SuperLookup → Clipboard).
+        self._clipboard_widget = self._create_clipboard_tab()
+        self._clipboard_tab_added = False
 
         left_layout.addWidget(self._left_tabs)
         self._splitter.addWidget(left_panel)
@@ -469,6 +484,7 @@ class FloatingAssistant(QWidget):
         # automatically. Leaving only one entry here keeps the menu tidy.
         tools_cat = self._make_category("\U0001F6E0 Workbench Tools", expanded=True)
         self._add_tree_action(tools_cat, "\U0001F50D SuperLookup", self._on_superlookup)
+        self._add_tree_action(tools_cat, "\U0001F4CB Clipboard", self._on_clipboard)
 
         # -- Prompt library items (grouped by folder) --
         self._populate_prompt_library_tree()
@@ -662,6 +678,36 @@ class FloatingAssistant(QWidget):
                 sender.send_paste()
             except Exception as e:
                 print(f"[FloatingAssistant] Paste-and-return error: {e}")
+
+        QTimer.singleShot(100, _do_paste)
+
+    def _paste_pixmap_and_return(self, pixmap):
+        """Like _paste_and_return but for an image (QPixmap).
+
+        Most apps that accept clipboard images respond to Ctrl+V the same way
+        they do for text, so the activate-source + send-paste sequence is
+        identical — only the clipboard payload differs.
+        """
+        from PyQt6.QtCore import QTimer
+
+        QApplication.clipboard().setPixmap(pixmap)
+        self._dismiss_to_tray()
+
+        def _do_paste():
+            try:
+                from modules.platform_helpers import (
+                    activate_foreground_window, CrossPlatformKeySender
+                )
+                if self._source_window:
+                    activate_foreground_window(self._source_window)
+
+                import time
+                time.sleep(0.15)
+
+                sender = CrossPlatformKeySender()
+                sender.send_paste()
+            except Exception as e:
+                print(f"[FloatingAssistant] Paste-pixmap-and-return error: {e}")
 
         QTimer.singleShot(100, _do_paste)
 
@@ -1153,10 +1199,79 @@ class FloatingAssistant(QWidget):
     _TAB_INFO = {
         0: "AI chat assistant – ask questions, get translations, save answers to your memory bank",
         1: "SuperLookup – QuickTrans (Ctrl+Alt+Q), TMs, termbases (Ctrl+Alt+L), and web resources in one place",
+        2: "Clipboard history – click any item to paste it; pasted items are shown in grey",
     }
 
     def _update_info_label(self, index):
         self._info_label.setText(self._TAB_INFO.get(index, ""))
+
+    # ------------------------------------------------------------------
+    # Clipboard tab
+    # ------------------------------------------------------------------
+
+    def _create_clipboard_tab(self) -> QWidget:
+        from modules.clipboard_manager_widget import ClipboardManagerWidget
+        return ClipboardManagerWidget(
+            self._parent_app,
+            paste_text_callback=self._paste_and_return,
+            paste_image_callback=self._paste_pixmap_and_return,
+        )
+
+    def _ensure_clipboard_tab(self):
+        """Add the Clipboard tab to _left_tabs on first call (guarded)."""
+        if self._clipboard_tab_added:
+            return
+        self._clipboard_tab_added = True
+        self._left_tabs.addTab(self._clipboard_widget, "\U0001F4CB Clipboard")
+        # Load persisted history now that db_manager is ready
+        self._clipboard_widget.ensure_db_loaded()
+
+    def _open_to_clipboard(self, source_window=None):
+        """Open the Sidekick directly to the Clipboard tab and focus the list."""
+        from PyQt6.QtCore import QTimer
+        self._ensure_superlookup_tab()
+        self._ensure_clipboard_tab()
+        idx = self._left_tabs.indexOf(self._clipboard_widget)
+        self.show_at_cursor(start_tab=idx if idx >= 0 else None,
+                            source_window=source_window)
+        # Defer focus so the window is fully shown before we steal it
+        QTimer.singleShot(50, self._focus_clipboard_list)
+
+    def _focus_clipboard_list(self):
+        """Give keyboard focus to the clipboard list."""
+        if not (hasattr(self, '_clipboard_widget') and self._clipboard_tab_added):
+            return
+        lst = self._clipboard_widget._list
+        lst.setFocus()
+        if lst.count() > 0 and lst.currentRow() < 0:
+            lst.setCurrentRow(0)
+
+    def _on_clipboard(self):
+        """Action-panel handler: show the Clipboard tab."""
+        self._open_to_clipboard()
+
+    # ------------------------------------------------------------------
+    # Default-tab preference (right-click on tab bar)
+    # ------------------------------------------------------------------
+
+    def _on_tabbar_context_menu(self, pos):
+        from PyQt6.QtWidgets import QMenu
+        tab_idx = self._left_tabs.tabBar().tabAt(pos)
+        if tab_idx < 0:
+            return
+        tab_name = self._left_tabs.tabText(tab_idx).strip()
+        menu = QMenu(self)
+        if self._default_tab == tab_idx:
+            action = menu.addAction(f"✓ ‘{tab_name}’ is the default tab")
+            action.setEnabled(False)
+        else:
+            action = menu.addAction(f"Open to ‘{tab_name}’ by default")
+            action.triggered.connect(lambda: self._set_default_tab(tab_idx))
+        menu.exec(self._left_tabs.tabBar().mapToGlobal(pos))
+
+    def _set_default_tab(self, idx: int):
+        self._default_tab = idx
+        self._save_state()
 
     # ------------------------------------------------------------------
     # Lazy Superlookup tab init
@@ -1210,12 +1325,15 @@ class FloatingAssistant(QWidget):
             if log:
                 log(f"\u26A0 FloatingAssistant: Could not load Superlookup tab: {e}")
 
+        # Clipboard tab always goes after SuperLookup
+        self._ensure_clipboard_tab()
+
     # ------------------------------------------------------------------
     # Show / toggle
     # ------------------------------------------------------------------
 
     def show_at_cursor(self, captured_text=None, focus_actions=False,
-                       source_window=None):
+                       source_window=None, start_tab=None):
         """
         Show the floating assistant.
 
@@ -1228,27 +1346,41 @@ class FloatingAssistant(QWidget):
             focus_actions: If True, focus the action tree for keyboard navigation.
             source_window: Handle of the window that was active before the hotkey
                            (used to return focus after direct actions).
+            start_tab: Tab index to open on. Falls back to self._default_tab,
+                       then 0 (Chat) if not set.
         """
         self._source_window = source_window
 
-        # Always start on the Chat tab (QuickTrans tab is only
-        # selected explicitly by _run_quicktrans)
         self._ensure_superlookup_tab()
-        self._left_tabs.setCurrentIndex(0)
+        tab_to_open = start_tab if start_tab is not None else self._default_tab
+        self._left_tabs.setCurrentIndex(tab_to_open)
 
-        # Always start with a clean input field
-        self._chat_view._chat_input.clear()
+        # Clear the chat input unless we're opening to a non-chat tab
+        if tab_to_open == 0:
+            self._chat_view._chat_input.clear()
         if captured_text:
             self._chat_view.insert_text(captured_text)
 
-        # If already visible, just bring to front.
+        # Detect if the target tab is the clipboard tab — its list should
+        # always own focus when shown, regardless of focus_actions.
+        clipboard_idx = (
+            self._left_tabs.indexOf(self._clipboard_widget)
+            if (hasattr(self, '_clipboard_widget') and self._clipboard_tab_added)
+            else -1
+        )
+        is_clipboard_tab = (clipboard_idx >= 0 and tab_to_open == clipboard_idx)
+
+        # If already visible, just switch tab and bring to front.
         if self.isVisible():
             self.raise_()
             self.activateWindow()
             self._force_foreground_focus()
-            if focus_actions:
+            if is_clipboard_tab:
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(50, self._focus_clipboard_list)
+            elif focus_actions:
                 self._action_tree.setFocus()
-            else:
+            elif tab_to_open == 0:
                 self._chat_view.focus_input()
             return
 
@@ -1300,12 +1432,15 @@ class FloatingAssistant(QWidget):
         # that aggressively reclaim keyboard focus)
         self._force_foreground_focus()
 
-        if focus_actions:
+        if is_clipboard_tab:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(50, self._focus_clipboard_list)
+        elif focus_actions:
             self._action_tree.setFocus()
             first_leaf = self._find_first_leaf(self._action_tree.invisibleRootItem())
             if first_leaf:
                 self._action_tree.setCurrentItem(first_leaf)
-        else:
+        elif tab_to_open == 0:
             self._chat_view.focus_input()
 
     def toggle(self, captured_text=None):
@@ -1429,7 +1564,7 @@ class FloatingAssistant(QWidget):
     # ------------------------------------------------------------------
 
     def _save_state(self):
-        """Save window size, position, and splitter proportions."""
+        """Save window size, position, splitter proportions, and default tab."""
         # Remember position for this session too
         self._saved_x = self.x()
         self._saved_y = self.y()
@@ -1444,6 +1579,7 @@ class FloatingAssistant(QWidget):
                 'x': self.x(),
                 'y': self.y(),
                 'splitter': self._splitter.sizes(),
+                'default_tab': self._default_tab,
             }
             self._state_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self._state_file, 'w', encoding='utf-8') as f:
@@ -1452,8 +1588,9 @@ class FloatingAssistant(QWidget):
             pass
 
     def _restore_state(self):
-        """Restore saved window size, splitter proportions, and position."""
+        """Restore saved window size, splitter proportions, position, and default tab."""
         self._has_saved_position = False
+        self._default_tab = 0
 
         if not self._state_file or not self._state_file.exists():
             return
@@ -1474,6 +1611,8 @@ class FloatingAssistant(QWidget):
                 self._saved_x = state['x']
                 self._saved_y = state['y']
                 self._has_saved_position = True
+
+            self._default_tab = state.get('default_tab', 0)
         except Exception:
             pass
 
