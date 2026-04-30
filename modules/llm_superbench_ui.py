@@ -815,7 +815,7 @@ class LLMLeaderboardUI(QWidget):
 
         if not custom_prompt_template:
             self._benchmark_custom_prompt_name = None
-            self.log("ℹ No custom prompt attached — using default benchmark prompt")
+            self.log("ℹ No custom prompt attached – using default benchmark prompt")
 
         # Start benchmark in background thread
         self.benchmark_thread = BenchmarkThread(
@@ -990,7 +990,7 @@ class LLMLeaderboardUI(QWidget):
                             quality_item = QTableWidgetItem(f"{result.quality_score:.1f}")
                             self.results_table.setItem(row, 5, quality_item)
                         else:
-                            self.results_table.setItem(row, 5, QTableWidgetItem("—"))
+                            self.results_table.setItem(row, 5, QTableWidgetItem("–"))
 
                         row += 1
                     except Exception as row_error:
@@ -1035,7 +1035,7 @@ class LLMLeaderboardUI(QWidget):
                         quality_item = QTableWidgetItem(f"{avg_quality:.1f}")
                         self.summary_table.setItem(row, 2, quality_item)
                     else:
-                        self.summary_table.setItem(row, 2, QTableWidgetItem("—"))
+                        self.summary_table.setItem(row, 2, QTableWidgetItem("–"))
 
                     # Success count
                     success_count = stats.get("success_count", 0)
@@ -1470,7 +1470,7 @@ class LLMLeaderboardUI(QWidget):
 
         assembled_prompt = getattr(self, '_benchmark_assembled_prompt', None)
         if assembled_prompt:
-            # Write the full prompt — split into lines for readability
+            # Write the full prompt – split into lines for readability
             ws_prompt[f'A{prompt_row}'] = assembled_prompt
             ws_prompt[f'A{prompt_row}'].alignment = Alignment(wrap_text=True, vertical="top")
             ws_prompt[f'A{prompt_row}'].font = Font(name="Consolas", size=9)

@@ -1,6 +1,6 @@
 """Shared styled widgets used across Supervertaler.
 
-Currently a single class — :class:`CheckmarkCheckBox` — that previously
+Currently a single class – :class:`CheckmarkCheckBox` – that previously
 existed as nine near-identical copies scattered through the codebase.
 Designed to grow into the home for any other custom-styled widget that
 needs to be reused in three or more places.
@@ -94,7 +94,7 @@ class CheckmarkCheckBox(QCheckBox):
             w -= padding * 2
             h -= padding * 2
 
-            # Two-segment checkmark — start lower-left, dip to bottom,
+            # Two-segment checkmark – start lower-left, dip to bottom,
             # rise to upper-right.
             check_x1 = x + w * 0.10
             check_y1 = y + h * 0.50

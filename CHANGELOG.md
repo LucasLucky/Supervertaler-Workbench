@@ -9,7 +9,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Changed
 
-- **`DOCS_BASE_URL` in `modules/help_system.py` updated to `https://supervertaler.gitbook.io/help`** to match the renamed GitBook site slug (chosen over root publishing because GitBook's free plan requires a non-empty slug). Workbench `Topics` constants are unchanged from v1.9.404 — they still begin with `workbench/`, just appended to the new base. F1 / context-help opens will now land at `…/help/workbench/<topic>`.
+- **`DOCS_BASE_URL` in `modules/help_system.py` updated to `https://supervertaler.gitbook.io/help`** to match the renamed GitBook site slug (chosen over root publishing because GitBook's free plan requires a non-empty slug). Workbench `Topics` constants are unchanged from v1.9.404 – they still begin with `workbench/`, just appended to the new base. F1 / context-help opens will now land at `…/help/workbench/<topic>`.
 
 ---
 
@@ -17,7 +17,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Changed
 
-- **Workbench help docs migrated to the unified Supervertaler GitBook site**, joining the existing Trados-plugin docs in a single space. The previous standalone VitePress site at `help.supervertaler.com` had drifted badly out of sync — the Trados GitBook was up to date and well-maintained, so rather than fix two parallel docs systems, the Workbench content was imported alongside the Trados content under a `workbench/` URL prefix. GitBook's "Parts" feature visually separates the two products' sidebars in a single space (no need for the £250/month Ultimate plan that would have allowed two independent spaces). `modules/help_system.py` updated accordingly: `DOCS_BASE_URL` now `https://supervertaler.gitbook.io`, all `Topics` constants prefixed with `workbench/`. Topic identifiers (`Topics.TRANSLATION_GRID`, `Topics.AI_BATCH`, etc.) are unchanged — call sites continue to work without modification.
+- **Workbench help docs migrated to the unified Supervertaler GitBook site**, joining the existing Trados-plugin docs in a single space. The previous standalone VitePress site at `help.supervertaler.com` had drifted badly out of sync – the Trados GitBook was up to date and well-maintained, so rather than fix two parallel docs systems, the Workbench content was imported alongside the Trados content under a `workbench/` URL prefix. GitBook's "Parts" feature visually separates the two products' sidebars in a single space (no need for the £250/month Ultimate plan that would have allowed two independent spaces). `modules/help_system.py` updated accordingly: `DOCS_BASE_URL` now `https://supervertaler.gitbook.io`, all `Topics` constants prefixed with `workbench/`. Topic identifiers (`Topics.TRANSLATION_GRID`, `Topics.AI_BATCH`, etc.) are unchanged – call sites continue to work without modification.
 - **`Topics.TOOL_VOICE` removed** since the page it pointed to (`tools/voice-commands.md`) was orphaned by the AutoFingers reorganisation in v1.9.401 and is gone from GitBook. Voice/dictation help now lives in the AutoFingers tab inside Sidekick (and in the Workbench Settings → AutoFingers signpost). No callers existed for `TOOL_VOICE`.
 - **Source-of-truth for Workbench docs moved to the `Supervertaler-for-Trados` repo** (the docs side, not the plugin side) since that's the repo GitBook syncs from. The old `Supervertaler/docs/help/supervertaler/` location was deleted to avoid confusion. (The marketing site at `Supervertaler/docs/` is unaffected.)
 
@@ -27,27 +27,27 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Added
 
-- **Sidekick keyboard navigation overhaul.** Sidekick is now fully keyboard-driveable: `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle through the four left-pane tabs (Chat → SuperLookup → Clipboard → AutoFingers, wrapping); `Tab` jumps focus from the active tab content to the right-pane Menu (action tree) and back; `Left` arrow on the Menu returns focus to whatever left-pane widget was previously focused (not just a default — so if you navigated *out of* the clipboard image list with `Right`, `Left` brings you back to the image list specifically). The Tab-pane filter is implemented as an app-level event filter rather than a `QShortcut`, so `Tab` keeps its normal meaning inside text-editing widgets (chat input, search fields, etc.). Sidekick tracks `_last_left_pane_focus` via Qt's `focusChanged` signal, with descendant-walk filtering so action-tree focus events don't pollute the remembered left-pane focus.
+- **Sidekick keyboard navigation overhaul.** Sidekick is now fully keyboard-driveable: `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle through the four left-pane tabs (Chat → SuperLookup → Clipboard → AutoFingers, wrapping); `Tab` jumps focus from the active tab content to the right-pane Menu (action tree) and back; `Left` arrow on the Menu returns focus to whatever left-pane widget was previously focused (not just a default – so if you navigated *out of* the clipboard image list with `Right`, `Left` brings you back to the image list specifically). The Tab-pane filter is implemented as an app-level event filter rather than a `QShortcut`, so `Tab` keeps its normal meaning inside text-editing widgets (chat input, search fields, etc.). Sidekick tracks `_last_left_pane_focus` via Qt's `focusChanged` signal, with descendant-walk filtering so action-tree focus events don't pollute the remembered left-pane focus.
 
 - **Visual focus indicator on region headers.** Every "region" of Sidekick that you can keyboard-navigate to now has a header that lights up when keyboard focus lands inside it: the right-pane "Menu" label, the clipboard "📝 Text snippets" header, and the clipboard "🖼 Images" header. Active styling is `#1976D2` (Material blue) text with a 2px underline; inactive is the previous muted dark-blue / grey. The active tab indicator in the `QTabWidget` already showed *which tab* you're on; this fills in the *which sub-region* gap so you never have to guess where keyboard input will land next.
 
-- **Sortable columns in the AutoFingers voice commands table.** Click any column header (Phrase / Aliases / Type / Action / Category) to sort ascending; click again to flip to descending. Especially useful as your command list grows: sort by Type to group all keystroke commands together, by Category to see all "navigation" or "editing" commands side by side, by Phrase for alphabetical lookup. Sorting is suspended during `_populate_table`'s bulk insert (Qt's "items reshuffle while you're inserting" gotcha) and re-enabled after — so adds, edits, removes, and resets all keep working correctly. Edit / Remove identify the selected command by its phrase rather than by row index, so they're already sort-order-agnostic.
+- **Sortable columns in the AutoFingers voice commands table.** Click any column header (Phrase / Aliases / Type / Action / Category) to sort ascending; click again to flip to descending. Especially useful as your command list grows: sort by Type to group all keystroke commands together, by Category to see all "navigation" or "editing" commands side by side, by Phrase for alphabetical lookup. Sorting is suspended during `_populate_table`'s bulk insert (Qt's "items reshuffle while you're inserting" gotcha) and re-enabled after – so adds, edits, removes, and resets all keep working correctly. Edit / Remove identify the selected command by its phrase rather than by row index, so they're already sort-order-agnostic.
 
 ### Changed
 
-- **Clipboard tab split into two side-by-side columns: text snippets and images.** Replaces the previous single mixed list. A horizontal `QSplitter` (default 60/40 favouring text — text snippets are typically more numerous, images are fewer but visual) lets users rebalance to taste. Each column has its own header showing the per-kind count ("📝 Text snippets (N)" / "🖼 Images (N)"); the title bar still shows the total. When a column is empty, a centred italic placeholder ("No text snippets yet — copy any text to start" / "No images yet — copy any image to start") appears via a `QStackedLayout` in-place of the empty list, so the layout doesn't jump when the first item arrives. Default focus on opening the Clipboard tab is the text list (where most clips go); `Right` switches to the image list, `Right` again jumps out to the right-pane Menu (matching the Tab pane-switch convention); `Left` reverses through the same path; `Up` / `Down` move within a column and stop at the edges; `Enter` pastes the selected item. Internally the `ClipboardManagerWidget`'s lists, trim cap enforcement, dedup, and per-column "pasted = grey" state are split per-list, but the existing per-kind cap behaviour (200 text + 50 images) is preserved.
+- **Clipboard tab split into two side-by-side columns: text snippets and images.** Replaces the previous single mixed list. A horizontal `QSplitter` (default 60/40 favouring text – text snippets are typically more numerous, images are fewer but visual) lets users rebalance to taste. Each column has its own header showing the per-kind count ("📝 Text snippets (N)" / "🖼 Images (N)"); the title bar still shows the total. When a column is empty, a centred italic placeholder ("No text snippets yet – copy any text to start" / "No images yet – copy any image to start") appears via a `QStackedLayout` in-place of the empty list, so the layout doesn't jump when the first item arrives. Default focus on opening the Clipboard tab is the text list (where most clips go); `Right` switches to the image list, `Right` again jumps out to the right-pane Menu (matching the Tab pane-switch convention); `Left` reverses through the same path; `Up` / `Down` move within a column and stop at the edges; `Enter` pastes the selected item. Internally the `ClipboardManagerWidget`'s lists, trim cap enforcement, dedup, and per-column "pasted = grey" state are split per-list, but the existing per-kind cap behaviour (200 text + 50 images) is preserved.
 
 - **Right-pane Menu's "Workbench Tools" section heading renamed to "Tools".** Inside Sidekick, the "Workbench" qualifier was redundant (every Sidekick tool is a Workbench tool). Shorter heading, cleaner panel.
 
-- **Hotkey changes apply immediately, no restart required** *(originally v1.9.402 — strengthened in this release with the Sidekick keyboard work above).*
+- **Hotkey changes apply immediately, no restart required** *(originally v1.9.402 – strengthened in this release with the Sidekick keyboard work above).*
 
 ### Fixed
 
-- *(none — this release is all additive UX work; no defects fixed.)*
+- *(none – this release is all additive UX work; no defects fixed.)*
 
 ### Refactor
 
-- **Consolidated nine duplicate `CheckmarkCheckBox` class definitions into one** at `modules/styled_widgets.py` *(landed in v1.9.402; rolled forward here as a stability check — no callers broke).*
+- **Consolidated nine duplicate `CheckmarkCheckBox` class definitions into one** at `modules/styled_widgets.py` *(landed in v1.9.402; rolled forward here as a stability check – no callers broke).*
 
 ---
 
@@ -55,17 +55,17 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Added
 
-- **`Ctrl+Alt+A` global hotkey toggles AutoFingers Always-On listening from any application.** Sibling to `Ctrl+Alt+D` (push-to-talk for one-shot dictation), but where Ctrl+Alt+D records a single utterance and stops, Ctrl+Alt+A flips Always-On into continuous-listening mode and back off. Registered through the same `GlobalHotkeyManager` as the other global shortcuts, with handlers that marshal off the pynput thread via `QTimer.singleShot(0, ...)` exactly like the existing patterns. Customisable in Settings → Keyboard Shortcuts → Global as `global_alwayson_toggle`. The previous wiring of Ctrl+Alt+D had been ambiguously documented as "AutoFingers push-to-talk" — users reasonably read that as the Always-On toggle and were confused when it didn't behave that way; this change clarifies the split (Ctrl+Alt+D = single utterance, Ctrl+Alt+A = listening-mode toggle) and gives each its own hotkey.
+- **`Ctrl+Alt+A` global hotkey toggles AutoFingers Always-On listening from any application.** Sibling to `Ctrl+Alt+D` (push-to-talk for one-shot dictation), but where Ctrl+Alt+D records a single utterance and stops, Ctrl+Alt+A flips Always-On into continuous-listening mode and back off. Registered through the same `GlobalHotkeyManager` as the other global shortcuts, with handlers that marshal off the pynput thread via `QTimer.singleShot(0, ...)` exactly like the existing patterns. Customisable in Settings → Keyboard Shortcuts → Global as `global_alwayson_toggle`. The previous wiring of Ctrl+Alt+D had been ambiguously documented as "AutoFingers push-to-talk" – users reasonably read that as the Always-On toggle and were confused when it didn't behave that way; this change clarifies the split (Ctrl+Alt+D = single utterance, Ctrl+Alt+A = listening-mode toggle) and gives each its own hotkey.
 
-- **Hotkey rebindings now apply immediately, no restart required.** Previously the OS-level global hotkey listeners (pynput / WinAPI / AHK fallback) were registered once at app startup, and changing a `global_*` shortcut in Settings → Keyboard Shortcuts only took effect on the next launch — so a user could remap and then discover their new key did nothing. `register_global_hotkey` is now idempotent: it stops any previously-running manager before registering a fresh set, so it's safe to call repeatedly. A new `reload_global_hotkeys` method on the Workbench delegates to that registration, and `KeyboardShortcutsWidget` calls it after every save path (the edit dialog, single-shortcut reset, reset-all, and import). The "Changes will take effect when you restart" copy in those success dialogs has been replaced with "applied immediately" / "applied immediately to the OS-level hotkey listeners".
+- **Hotkey rebindings now apply immediately, no restart required.** Previously the OS-level global hotkey listeners (pynput / WinAPI / AHK fallback) were registered once at app startup, and changing a `global_*` shortcut in Settings → Keyboard Shortcuts only took effect on the next launch – so a user could remap and then discover their new key did nothing. `register_global_hotkey` is now idempotent: it stops any previously-running manager before registering a fresh set, so it's safe to call repeatedly. A new `reload_global_hotkeys` method on the Workbench delegates to that registration, and `KeyboardShortcutsWidget` calls it after every save path (the edit dialog, single-shortcut reset, reset-all, and import). The "Changes will take effect when you restart" copy in those success dialogs has been replaced with "applied immediately" / "applied immediately to the OS-level hotkey listeners".
 
-- **System tray icon for Always-On state.** A small microphone glyph drawn programmatically (no extra asset bundled) appears in the system tray whenever Workbench is running. Grey when Always-On is off, red (`#C62828`) when actively listening — convention follows OBS / Zoom / Discord / Microsoft Teams (grey = off, red = live). The icon stays permanently allocated rather than appearing on activation: that avoids the visible "bounce" of neighbouring tray icons that would otherwise occur every time the tray slot is allocated/deallocated. Single-click toggles Always-On; right-click shows a small menu with the same toggle (label adapts: "▶ Start" / "⏹ Stop") plus an "Open AutoFingers in Sidekick" shortcut. Tooltip changes between states ("Always-On is OFF. Click to start." / "Always-On listening." / "recording speech." / "processing speech."). Icon is created once at the end of Workbench `__init__`, so the tray slot is allocated as part of normal app startup instead of on the first Always-On toggle.
+- **System tray icon for Always-On state.** A small microphone glyph drawn programmatically (no extra asset bundled) appears in the system tray whenever Workbench is running. Grey when Always-On is off, red (`#C62828`) when actively listening – convention follows OBS / Zoom / Discord / Microsoft Teams (grey = off, red = live). The icon stays permanently allocated rather than appearing on activation: that avoids the visible "bounce" of neighbouring tray icons that would otherwise occur every time the tray slot is allocated/deallocated. Single-click toggles Always-On; right-click shows a small menu with the same toggle (label adapts: "▶ Start" / "⏹ Stop") plus an "Open AutoFingers in Sidekick" shortcut. Tooltip changes between states ("Always-On is OFF. Click to start." / "Always-On listening." / "recording speech." / "processing speech."). Icon is created once at the end of Workbench `__init__`, so the tray slot is allocated as part of normal app startup instead of on the first Always-On toggle.
 
-- **Always-On "commands-only" mode toggle in the AutoFingers tab.** A new green-checkmark checkbox, *"Listen for commands only — don't type unmatched speech as dictation"*, sits inside the Always-On Listening section. When unchecked (default, current behaviour) Always-On still does both: matches voice commands first, falls back to typing unmatched speech as dictation. When checked, Always-On only fires voice commands — anything spoken that doesn't match a command is logged (so you can see what was heard, useful for debugging "why didn't my command fire?") but never typed anywhere. Pairs nicely with the focus-doesn't-matter behaviour: with commands-only on, Always-On can run all day and any random speech / mumbling / colleague-conversation passes through harmlessly instead of getting injected into whatever window happens to have focus. For dictation, the explicit Ctrl+Alt+D / F9 push-to-talk paths still work normally. Persists under `dictation_settings.alwayson_commands_only`; the in-Workbench `_on_alwayson_dictation` handler reads the flag on every utterance, so the change applies immediately without toggling Always-On off and on.
+- **Always-On "commands-only" mode toggle in the AutoFingers tab.** A new green-checkmark checkbox, *"Listen for commands only – don't type unmatched speech as dictation"*, sits inside the Always-On Listening section. When unchecked (default, current behaviour) Always-On still does both: matches voice commands first, falls back to typing unmatched speech as dictation. When checked, Always-On only fires voice commands – anything spoken that doesn't match a command is logged (so you can see what was heard, useful for debugging "why didn't my command fire?") but never typed anywhere. Pairs nicely with the focus-doesn't-matter behaviour: with commands-only on, Always-On can run all day and any random speech / mumbling / colleague-conversation passes through harmlessly instead of getting injected into whatever window happens to have focus. For dictation, the explicit Ctrl+Alt+D / F9 push-to-talk paths still work normally. Persists under `dictation_settings.alwayson_commands_only`; the in-Workbench `_on_alwayson_dictation` handler reads the flag on every utterance, so the change applies immediately without toggling Always-On off and on.
 
 ### Changed
 
-- **Consolidated nine duplicate `CheckmarkCheckBox` class definitions into one** at `modules/styled_widgets.py`. Each of `Supervertaler.py`, `keyboard_shortcuts_widget.py`, `llm_superbench_ui.py`, `model_update_dialog.py`, `pdf_rescue_Qt.py`, `termbase_entry_editor.py`, `tmx_editor_qt.py`, and `unified_prompt_manager_qt.py` previously carried its own copy of this widget — sometimes near-identical, sometimes with subtle drift (16×16 vs 18×18 indicators, slightly different checkmark proportions, some missing the painter `try/finally` cleanup, one using `QPolygonF + drawPolyline` while others used two `drawLine` calls). Net change: −706 lines (the local copies) / +94 lines (the canonical class), so about 612 lines lighter. All callers now import `CheckmarkCheckBox` from `modules.styled_widgets`. The dominant 16×16 + canonical-checkmark variant was kept as the standard; the small visual drift in the three files that used 18×18 indicators is resolved in favour of consistency. Style tweaks in future will propagate everywhere automatically. `superdocs_viewer_qt.py`, which is a deprecated shim, had its orphan copy of the class deleted outright since nothing in that module uses it.
+- **Consolidated nine duplicate `CheckmarkCheckBox` class definitions into one** at `modules/styled_widgets.py`. Each of `Supervertaler.py`, `keyboard_shortcuts_widget.py`, `llm_superbench_ui.py`, `model_update_dialog.py`, `pdf_rescue_Qt.py`, `termbase_entry_editor.py`, `tmx_editor_qt.py`, and `unified_prompt_manager_qt.py` previously carried its own copy of this widget – sometimes near-identical, sometimes with subtle drift (16×16 vs 18×18 indicators, slightly different checkmark proportions, some missing the painter `try/finally` cleanup, one using `QPolygonF + drawPolyline` while others used two `drawLine` calls). Net change: −706 lines (the local copies) / +94 lines (the canonical class), so about 612 lines lighter. All callers now import `CheckmarkCheckBox` from `modules.styled_widgets`. The dominant 16×16 + canonical-checkmark variant was kept as the standard; the small visual drift in the three files that used 18×18 indicators is resolved in favour of consistency. Style tweaks in future will propagate everywhere automatically. `superdocs_viewer_qt.py`, which is a deprecated shim, had its orphan copy of the class deleted outright since nothing in that module uses it.
 
 - **AutoFingers "commands-only" checkbox uses the standard Supervertaler `CheckmarkCheckBox`** (green fill with white tick when checked) instead of the default platform `QCheckBox`, matching every other settings checkbox in the app.
 
@@ -73,7 +73,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Fixed
 
-- **F9 hold-to-talk no longer produces Whisper hallucinations** ("MBC 뉴스 이덕영입니다", "you you", and similar Whisper-on-silence artefacts). Root cause: Qt's `QShortcut` defaults to `setAutoRepeat(True)`, so holding F9 fired the `activated()` signal repeatedly while the key was held — and since each fire called `start_voice_dictation()`, which is a *toggle*, holding F9 oscillated between recording and not-recording, producing fragmented near-empty audio buffers. Fixed by calling `setAutoRepeat(False)` on the `voice_dictate` QShortcut. Toggle mode unaffected; hold mode now records the full press duration and transcribes cleanly on release. (The hold-to-talk infrastructure itself shipped in v1.9.401; this is a follow-up correctness fix on the same code path.)
+- **F9 hold-to-talk no longer produces Whisper hallucinations** ("MBC 뉴스 이덕영입니다", "you you", and similar Whisper-on-silence artefacts). Root cause: Qt's `QShortcut` defaults to `setAutoRepeat(True)`, so holding F9 fired the `activated()` signal repeatedly while the key was held – and since each fire called `start_voice_dictation()`, which is a *toggle*, holding F9 oscillated between recording and not-recording, producing fragmented near-empty audio buffers. Fixed by calling `setAutoRepeat(False)` on the `voice_dictate` QShortcut. Toggle mode unaffected; hold mode now records the full press duration and transcribes cleanly on release. (The hold-to-talk infrastructure itself shipped in v1.9.401; this is a follow-up correctness fix on the same code path.)
 
 ---
 
@@ -81,43 +81,43 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Added
 
-- **AutoFingers — Supervertaler's voice command and dictation system — now has its own dedicated tab in Sidekick**, replacing the previous Tools → Supervoice page in Workbench. The new tab (`modules/autofingers_tab.py`, lazy-loaded as the 4th Sidekick tab and listed under Workbench Tools in the right-hand action menu) hosts the Always-On listening toggle, Recognition Engine selector, mic sensitivity, the full voice-commands table with Add/Edit/Remove/Reset, the Whisper model + max-duration + language settings, and the AutoHotkey integration card. The layout is restructured for Sidekick's narrower window: everything stacks vertically inside a `QScrollArea` instead of the old two-column layout, and section grouping was kept consistent with the rest of Sidekick (rounded info banners, GroupBoxes per concern). State sync between Always-On status and the AutoFingers tab uses the existing `_update_alwayson_ui` hook, which now also pushes status updates into `_floating_assistant._autofingers_widget` whenever it exists.
+- **AutoFingers – Supervertaler's voice command and dictation system – now has its own dedicated tab in Sidekick**, replacing the previous Tools → Supervoice page in Workbench. The new tab (`modules/autofingers_tab.py`, lazy-loaded as the 4th Sidekick tab and listed under Workbench Tools in the right-hand action menu) hosts the Always-On listening toggle, Recognition Engine selector, mic sensitivity, the full voice-commands table with Add/Edit/Remove/Reset, the Whisper model + max-duration + language settings, and the AutoHotkey integration card. The layout is restructured for Sidekick's narrower window: everything stacks vertically inside a `QScrollArea` instead of the old two-column layout, and section grouping was kept consistent with the rest of Sidekick (rounded info banners, GroupBoxes per concern). State sync between Always-On status and the AutoFingers tab uses the existing `_update_alwayson_ui` hook, which now also pushes status updates into `_floating_assistant._autofingers_widget` whenever it exists.
 
-- **Global push-to-talk hotkey: `Ctrl+Alt+D` triggers dictation from any application on your computer.** Registered through the same `GlobalHotkeyManager` used for Ctrl+Alt+L (Superlookup), Ctrl+Alt+Q (QuickTrans), Alt+K (Sidekick) and Ctrl+Shift+C (Clipboard), so it inherits the WinAPI / pynput / AHK fallback chain. Customisable in Settings → Keyboard Shortcuts → Global as `global_pushtotalk`. The hotkey re-uses Workbench's existing `start_voice_dictation` path — same recording, same transcription, same voice-command matching — but the dictated text is now routed through a shared insertion helper (`_insert_dictated_text`) that types into whichever app currently has focus rather than only Supervertaler's grid editor.
+- **Global push-to-talk hotkey: `Ctrl+Alt+D` triggers dictation from any application on your computer.** Registered through the same `GlobalHotkeyManager` used for Ctrl+Alt+L (Superlookup), Ctrl+Alt+Q (QuickTrans), Alt+K (Sidekick) and Ctrl+Shift+C (Clipboard), so it inherits the WinAPI / pynput / AHK fallback chain. Customisable in Settings → Keyboard Shortcuts → Global as `global_pushtotalk`. The hotkey re-uses Workbench's existing `start_voice_dictation` path – same recording, same transcription, same voice-command matching – but the dictated text is now routed through a shared insertion helper (`_insert_dictated_text`) that types into whichever app currently has focus rather than only Supervertaler's grid editor.
 
-- **Hold-to-talk mode for F9 push-to-talk dictation.** Configurable in Sidekick → AutoFingers → Push-to-Talk Mode. *Toggle* (default) keeps the existing press-to-start, press-again-to-stop behaviour; *Hold-to-talk* turns F9 into a walkie-talkie key — recording starts when you press, transcription fires the moment you release. Implemented via a new app-level event filter (`_F9HoldReleaseFilter`) that watches for genuine F9 KeyRelease events (autorepeat releases ignored) and calls `dictation_thread.stop_recording()` directly. Press handling stays on the existing `voice_dictate` QShortcut so toggle mode is unchanged. The global Ctrl+Alt+D hotkey stays toggle-only because chord shortcuts don't lend themselves to hold semantics.
+- **Hold-to-talk mode for F9 push-to-talk dictation.** Configurable in Sidekick → AutoFingers → Push-to-Talk Mode. *Toggle* (default) keeps the existing press-to-start, press-again-to-stop behaviour; *Hold-to-talk* turns F9 into a walkie-talkie key – recording starts when you press, transcription fires the moment you release. Implemented via a new app-level event filter (`_F9HoldReleaseFilter`) that watches for genuine F9 KeyRelease events (autorepeat releases ignored) and calls `dictation_thread.stop_recording()` directly. Press handling stays on the existing `voice_dictate` QShortcut so toggle mode is unchanged. The global Ctrl+Alt+D hotkey stays toggle-only because chord shortcuts don't lend themselves to hold semantics.
 
-- **Cross-app dictation typing path.** A new `CrossPlatformKeySender.type_text(str)` method types arbitrary text character-by-character into the foreground window: AHK `SendText` on Windows, `osascript`'s `keystroke` on macOS, `pynput.Controller.type` on Linux. Both F9 push-to-talk and Always-On dictation now use this when focus is outside Supervertaler's grid editor — so dictation works in Word, Trados, memoQ, Outlook, browsers, and crucially also in Windows Terminal / cmd / VSCode terminals which don't bind Ctrl+V the standard way. The clipboard remains as a last-resort fallback if typing fails. Translators don't need any extra setup — AHK is already a project dependency.
+- **Cross-app dictation typing path.** A new `CrossPlatformKeySender.type_text(str)` method types arbitrary text character-by-character into the foreground window: AHK `SendText` on Windows, `osascript`'s `keystroke` on macOS, `pynput.Controller.type` on Linux. Both F9 push-to-talk and Always-On dictation now use this when focus is outside Supervertaler's grid editor – so dictation works in Word, Trados, memoQ, Outlook, browsers, and crucially also in Windows Terminal / cmd / VSCode terminals which don't bind Ctrl+V the standard way. The clipboard remains as a last-resort fallback if typing fails. Translators don't need any extra setup – AHK is already a project dependency.
 
 - **Settings → AutoFingers signpost tab in Workbench Settings.** New entry (right after AI Models in the Settings sidebar) with a brief explanation of why AutoFingers lives in Sidekick rather than Workbench, a green "Open AutoFingers in Sidekick" button that one-clicks into Sidekick's AutoFingers tab via `_open_to_autofingers`, and a quick-reference card listing F9 / Ctrl+Alt+D / Always-On / voice commands plus a pointer to Settings → Keyboard Shortcuts → Global for rebinding. Discoverable for users who don't yet know about Sidekick.
 
-- **"Type" column in the voice commands table.** The data (`action_type`: internal/keystroke/ahk_inline/ahk_script) was always there but the table only showed Phrase / Aliases / Action / Category — so users couldn't see at a glance whether a command was a built-in action, a keystroke, or an AHK script. Now displayed with humanised labels: "Command" / "Keystroke" / "AHK Script" / "AHK Inline".
+- **"Type" column in the voice commands table.** The data (`action_type`: internal/keystroke/ahk_inline/ahk_script) was always there but the table only showed Phrase / Aliases / Action / Category – so users couldn't see at a glance whether a command was a built-in action, a keystroke, or an AHK script. Now displayed with humanised labels: "Command" / "Keystroke" / "AHK Script" / "AHK Inline".
 
 ### Changed
 
-- **Voice product renamed from Supervoice → AutoFingers**, including the file rename `modules/dicta_tab.py` → `modules/autofingers_tab.py` (a brief intermediate "Dicta" name never shipped publicly), the class rename `DictaTab` → `AutoFingersTab`, and Sidekick's symbol renames (`_dicta_widget` → `_autofingers_widget`, `_ensure_dicta_tab` → `_ensure_autofingers_tab`, and so on). User-facing copy across the tab header banner, the "Save Settings" button label, the `QMessageBox` titles, the right-hand menu entry, the tab info-bar tip, and a handful of log/status messages all switched from "Supervoice" to "AutoFingers". Verb forms (e.g. "🎤 Dictate (F9)" button, "Dictation:" log lines) were left as-is — they describe the action, not the brand. The naming evolution: Supervoice was generic-and-functional; the player-piano metaphor of AutoFingers (voice in → keystrokes out) carries a clearer concept and matches Supervertaler's slightly cheeky brand register, while still standing on its own if the product ever ships standalone.
+- **Voice product renamed from Supervoice → AutoFingers**, including the file rename `modules/dicta_tab.py` → `modules/autofingers_tab.py` (a brief intermediate "Dicta" name never shipped publicly), the class rename `DictaTab` → `AutoFingersTab`, and Sidekick's symbol renames (`_dicta_widget` → `_autofingers_widget`, `_ensure_dicta_tab` → `_ensure_autofingers_tab`, and so on). User-facing copy across the tab header banner, the "Save Settings" button label, the `QMessageBox` titles, the right-hand menu entry, the tab info-bar tip, and a handful of log/status messages all switched from "Supervoice" to "AutoFingers". Verb forms (e.g. "🎤 Dictate (F9)" button, "Dictation:" log lines) were left as-is – they describe the action, not the brand. The naming evolution: Supervoice was generic-and-functional; the player-piano metaphor of AutoFingers (voice in → keystrokes out) carries a clearer concept and matches Supervertaler's slightly cheeky brand register, while still standing on its own if the product ever ships standalone.
 
-- **Translation-grid button labels clarified.** "Voice Commands OFF/ON" → "Always-On: OFF/ON" (the OFF/ON read as an instruction rather than a state, and the label conflated "voice commands" with the broader thing the toggle actually controls — a continuous listener that does both commands and dictation). The grid's push-to-talk button gained a consistent F9 affordance: the initial label was sometimes "🎤 Dictation" and sometimes "🎤 Dictation (F9)"; both have been normalised to "🎤 Dictate (F9)" in idle state, "⏹️ Stop (F9)" in recording state. Tooltips updated alongside.
+- **Translation-grid button labels clarified.** "Voice Commands OFF/ON" → "Always-On: OFF/ON" (the OFF/ON read as an instruction rather than a state, and the label conflated "voice commands" with the broader thing the toggle actually controls – a continuous listener that does both commands and dictation). The grid's push-to-talk button gained a consistent F9 affordance: the initial label was sometimes "🎤 Dictation" and sometimes "🎤 Dictation (F9)"; both have been normalised to "🎤 Dictate (F9)" in idle state, "⏹️ Stop (F9)" in recording state. Tooltips updated alongside.
 
-- **Out-of-date error-message paths corrected.** Several user-facing error messages told users to "switch to OpenAI Whisper API in Settings → Supervoice" — but that path didn't exist. The correct legacy path was Tools → Supervoice; with this release the canonical path is Sidekick → AutoFingers. All four locations (`voice_commands.py`, `voice_dictation.py`, `voice_dictation_lite.py`, `Supervertaler.py`) now point to the right place, and the AutoFingers tab itself surfaces the same routing in its in-tab tip so users don't need to chase paths.
+- **Out-of-date error-message paths corrected.** Several user-facing error messages told users to "switch to OpenAI Whisper API in Settings → Supervoice" – but that path didn't exist. The correct legacy path was Tools → Supervoice; with this release the canonical path is Sidekick → AutoFingers. All four locations (`voice_commands.py`, `voice_dictation.py`, `voice_dictation_lite.py`, `Supervertaler.py`) now point to the right place, and the AutoFingers tab itself surfaces the same routing in its in-tab tip so users don't need to chase paths.
 
 ### Fixed
 
-- **Local Whisper error message in the Windows EXE no longer suggests `pip install supervertaler[local-whisper]`.** That instruction is meaningless inside the portable EXE — extras can't be installed into a frozen build at runtime. The error now detects `sys.frozen` and shows a build-aware message directing the user to switch to OpenAI Whisper API mode (which works in the EXE since the `openai` client is bundled). All four error-message paths updated: the synchronous voice command toggle path in `voice_commands.py`, the lite dictation path in `voice_dictation_lite.py`, the full dictation path in `voice_dictation.py`, and the API-key-missing dialog in `Supervertaler.py`. Reported by erixx11 in Workbench issue #186 — the same EXE Whisper hallucination that prompted the cross-app dictation work below.
+- **Local Whisper error message in the Windows EXE no longer suggests `pip install supervertaler[local-whisper]`.** That instruction is meaningless inside the portable EXE – extras can't be installed into a frozen build at runtime. The error now detects `sys.frozen` and shows a build-aware message directing the user to switch to OpenAI Whisper API mode (which works in the EXE since the `openai` client is bundled). All four error-message paths updated: the synchronous voice command toggle path in `voice_commands.py`, the lite dictation path in `voice_dictation_lite.py`, the full dictation path in `voice_dictation.py`, and the API-key-missing dialog in `Supervertaler.py`. Reported by erixx11 in Workbench issue #186 – the same EXE Whisper hallucination that prompted the cross-app dictation work below.
 
-- **F9 hold-to-talk produced Whisper hallucinations ("MBC 뉴스 이덕영입니다", "you you").** Root cause: Qt's `QShortcut` defaults to `setAutoRepeat(True)`, so holding F9 fires the `activated()` signal repeatedly while the key is held. Each fire called `start_voice_dictation()`, which is a *toggle* — so holding F9 oscillated between recording and not-recording, producing fragmented near-empty audio buffers that Whisper hallucinated over (those two strings are well-known Whisper artefacts on silence). Fixed by calling `setAutoRepeat(False)` on the `voice_dictate` QShortcut. Toggle mode unaffected; hold mode now records the full duration of the press and transcribes cleanly on release.
+- **F9 hold-to-talk produced Whisper hallucinations ("MBC 뉴스 이덕영입니다", "you you").** Root cause: Qt's `QShortcut` defaults to `setAutoRepeat(True)`, so holding F9 fires the `activated()` signal repeatedly while the key is held. Each fire called `start_voice_dictation()`, which is a *toggle* – so holding F9 oscillated between recording and not-recording, producing fragmented near-empty audio buffers that Whisper hallucinated over (those two strings are well-known Whisper artefacts on silence). Fixed by calling `setAutoRepeat(False)` on the `voice_dictate` QShortcut. Toggle mode unaffected; hold mode now records the full duration of the press and transcribes cleanly on release.
 
-- **Dictation outside the translation grid actually goes somewhere.** Both `on_dictation_complete` (F9 / Ctrl+Alt+D) and `_on_alwayson_dictation` (continuous listener) used to hard-check for `EditableGridTextEditor` focus and *silently drop the text* otherwise — a long-standing bug that effectively limited dictation to Supervertaler's own editor. Both now route through a shared `_insert_dictated_text` helper: if the grid editor is focused, direct insert (preserves cursor handling); otherwise, type the text via `CrossPlatformKeySender.type_text` into whichever app holds keyboard focus; if typing isn't available, drop the text on the clipboard so it isn't silently lost.
+- **Dictation outside the translation grid actually goes somewhere.** Both `on_dictation_complete` (F9 / Ctrl+Alt+D) and `_on_alwayson_dictation` (continuous listener) used to hard-check for `EditableGridTextEditor` focus and *silently drop the text* otherwise – a long-standing bug that effectively limited dictation to Supervertaler's own editor. Both now route through a shared `_insert_dictated_text` helper: if the grid editor is focused, direct insert (preserves cursor handling); otherwise, type the text via `CrossPlatformKeySender.type_text` into whichever app holds keyboard focus; if typing isn't available, drop the text on the clipboard so it isn't silently lost.
 
-- **Always-On Listening sensitivity now persists across restarts.** Previously, sensitivity was only saved when the user clicked "Save" on the now-removed Tools → Supervoice tab — which read directly from `self.sensitivity_combo`, a widget on that tab. Settings written from anywhere else were lost. AutoFingers persists the value via a `_set_dictation_keys` helper directly on the unified settings JSON, and `_toggle_alwayson_listening` now reads `alwayson_sensitivity` from the persisted settings rather than from a UI widget that may not exist.
+- **Always-On Listening sensitivity now persists across restarts.** Previously, sensitivity was only saved when the user clicked "Save" on the now-removed Tools → Supervoice tab – which read directly from `self.sensitivity_combo`, a widget on that tab. Settings written from anywhere else were lost. AutoFingers persists the value via a `_set_dictation_keys` helper directly on the unified settings JSON, and `_toggle_alwayson_listening` now reads `alwayson_sensitivity` from the persisted settings rather than from a UI widget that may not exist.
 
 ### Removed
 
-- **Old "AutoFingers" (memoQ TMX auto-typer) removed completely** — about 1,700 lines deleted across `modules/autofingers_engine.py` (entire file, ~466 lines), the `AutoFingersWidget` class in `Supervertaler.py` (~784 lines), the Tools menu action, the tab registration in modules_tabs, the `show_autofingers` handler, voice-command dispatch wiring (`_call_autofingers` plus its three command bindings in `voice_commands.py`), the `FeatureModule` entry in `feature_manager.py`, the `tools_autofingers` entry in `ShortcutManager`, the `TOOL_AUTOFINGERS` member in `HelpTopics`, the quick-access sidebar button in `quick_access_sidebar.py`, and the help doc at `docs/help/supervertaler/tools/autofingers.md` along with its `SUMMARY.md` TOC entry. The dependencies it pulled in — `keyboard>=0.13.5` and `pyautogui>=0.9.54` — were removed from `requirements.txt` and `pyproject.toml` after verifying nothing else imported them; `ahk>=1.0.0` stays because Superlookup's hotkey-fallback path uses it. The original AutoHotkey script that inspired the tool still works for anyone who actually wants it. Freeing the AutoFingers name was a prerequisite for the voice-product rename above.
+- **Old "AutoFingers" (memoQ TMX auto-typer) removed completely** – about 1,700 lines deleted across `modules/autofingers_engine.py` (entire file, ~466 lines), the `AutoFingersWidget` class in `Supervertaler.py` (~784 lines), the Tools menu action, the tab registration in modules_tabs, the `show_autofingers` handler, voice-command dispatch wiring (`_call_autofingers` plus its three command bindings in `voice_commands.py`), the `FeatureModule` entry in `feature_manager.py`, the `tools_autofingers` entry in `ShortcutManager`, the `TOOL_AUTOFINGERS` member in `HelpTopics`, the quick-access sidebar button in `quick_access_sidebar.py`, and the help doc at `docs/help/supervertaler/tools/autofingers.md` along with its `SUMMARY.md` TOC entry. The dependencies it pulled in – `keyboard>=0.13.5` and `pyautogui>=0.9.54` – were removed from `requirements.txt` and `pyproject.toml` after verifying nothing else imported them; `ahk>=1.0.0` stays because Superlookup's hotkey-fallback path uses it. The original AutoHotkey script that inspired the tool still works for anyone who actually wants it. Freeing the AutoFingers name was a prerequisite for the voice-product rename above.
 
 - **`modules/tag_cleaner.py` removed.** ~260 lines of dead code with no remaining callers after the old AutoFingers was deleted.
 
-- **Tools → Supervoice tab removed from Workbench Settings.** AutoFingers in Sidekick replaces it. The supporting `_create_voice_dictation_settings_tab` method (~295 lines), the `_save_voice_settings` settings persister (~37 lines, now unreachable), and the voice-command CRUD methods `_add_voice_command` / `_edit_voice_command` / `_remove_voice_command` (~75 lines, now unreachable — AutoFingers has its own internal CRUD that talks to the shared `voice_command_manager`) all deleted. The tab registration in modules_tabs and the corresponding entry in the Tools menu were removed alongside.
+- **Tools → Supervoice tab removed from Workbench Settings.** AutoFingers in Sidekick replaces it. The supporting `_create_voice_dictation_settings_tab` method (~295 lines), the `_save_voice_settings` settings persister (~37 lines, now unreachable), and the voice-command CRUD methods `_add_voice_command` / `_edit_voice_command` / `_remove_voice_command` (~75 lines, now unreachable – AutoFingers has its own internal CRUD that talks to the shared `voice_command_manager`) all deleted. The tab registration in modules_tabs and the corresponding entry in the Tools menu were removed alongside.
 
 ---
 
@@ -148,28 +148,28 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.399 - April 29, 2026
 
 ### Fixed
-- **Termbase import silently did nothing after selecting a file.** A redundant `import os` inside `_import_termbase` (at the progress-dialog construction block) shadowed the module-level `os` import. Python treats any name that is assigned or imported anywhere in a function as local throughout that function's scope, so the earlier `os.path.basename(filepath)` call — used to build the Import Options dialog — hit an `UnboundLocalError` before the local import was ever reached. Qt's signal system swallowed the exception, leaving the UI with no feedback. Removed the redundant local import; the module-level `os` is now used throughout.
+- **Termbase import silently did nothing after selecting a file.** A redundant `import os` inside `_import_termbase` (at the progress-dialog construction block) shadowed the module-level `os` import. Python treats any name that is assigned or imported anywhere in a function as local throughout that function's scope, so the earlier `os.path.basename(filepath)` call – used to build the Import Options dialog – hit an `UnboundLocalError` before the local import was ever reached. Qt's signal system swallowed the exception, leaving the UI with no feedback. Removed the redundant local import; the module-level `os` is now used throughout.
 
 ---
 
 ## v1.9.398 - April 27, 2026
 
 ### Changed
-- **Keyboard Shortcuts settings page laid out in two columns for laptop screens.** The previous single-column stack (header → search → table → action buttons → Import/Export → tip → Global Hotkeys) crammed the shortcuts table into a tiny vertical slice on smaller screens — only ~4 rows visible at a time on a 1080p laptop because everything below was reserving room. Reworked into a horizontal `QSplitter` (default 70/30 split, draggable): the **left column** holds search → table → edit/reset buttons with the table set to absorb all spare vertical height; the **right column** stacks the Import/Export group (now vertical, with Export Cheatsheet promoted to the top since it's the action people actually use) and the Global Hotkeys group. Header and description sit above both columns. The cheatsheet tip moved into the Import/Export group so it doesn't claim its own row.
+- **Keyboard Shortcuts settings page laid out in two columns for laptop screens.** The previous single-column stack (header → search → table → action buttons → Import/Export → tip → Global Hotkeys) crammed the shortcuts table into a tiny vertical slice on smaller screens – only ~4 rows visible at a time on a 1080p laptop because everything below was reserving room. Reworked into a horizontal `QSplitter` (default 70/30 split, draggable): the **left column** holds search → table → edit/reset buttons with the table set to absorb all spare vertical height; the **right column** stacks the Import/Export group (now vertical, with Export Cheatsheet promoted to the top since it's the action people actually use) and the Global Hotkeys group. Header and description sit above both columns. The cheatsheet tip moved into the Import/Export group so it doesn't claim its own row.
 
 ---
 
 ## v1.9.397 - April 27, 2026
 
 ### Changed
-- **Main "📝 Grid" tab renamed to "📝 Editor".** The tab hosts the segment-by-segment translation editor; "Editor" describes what the user does there more directly than "Grid" (which described the underlying widget). Internal identifiers (`grid_widget`, `_get_grid_visibility_state`, etc.) and a couple of fallback error messages mentioning "Grid view" are left as-is — they're either implementation detail or rarely-surfaced fallbacks, and renaming them would just churn the codebase without changing what users see.
+- **Main "📝 Grid" tab renamed to "📝 Editor".** The tab hosts the segment-by-segment translation editor; "Editor" describes what the user does there more directly than "Grid" (which described the underlying widget). Internal identifiers (`grid_widget`, `_get_grid_visibility_state`, etc.) and a couple of fallback error messages mentioning "Grid view" are left as-is – they're either implementation detail or rarely-surfaced fallbacks, and renaming them would just churn the codebase without changing what users see.
 
 ---
 
 ## v1.9.396 - April 27, 2026
 
 ### Fixed
-- **AI tab no longer shows two stacked "Prompt Manager" labels.** v1.9.395 wrapped the existing AI tab content (which was a `UnifiedPromptManagerQt` widget exposing its own internal QTabWidget with Prompt Manager / Variables / Assistant) inside an *outer* QTabWidget that added Image Context as a peer to "Prompt Manager". The result: the user saw one "✨ Prompt Manager" tab on the outer strip, and clicking it revealed an inner strip whose first tab was *also* labelled "📋 Prompt Manager" — same label twice in a vertical stack. Reworked to skip the outer wrapper entirely: Image Context is now added as a fourth tab on the existing inner strip (`UnifiedPromptManagerQt.sub_tabs`), so the AI tab strip reads as a single flat row: 📋 Prompt Manager / 📝 Variables / 💬 Assistant / 🎯 Image Context. Navigation helper still works because `self.ai_subtabs` now points at the inner strip directly.
+- **AI tab no longer shows two stacked "Prompt Manager" labels.** v1.9.395 wrapped the existing AI tab content (which was a `UnifiedPromptManagerQt` widget exposing its own internal QTabWidget with Prompt Manager / Variables / Assistant) inside an *outer* QTabWidget that added Image Context as a peer to "Prompt Manager". The result: the user saw one "✨ Prompt Manager" tab on the outer strip, and clicking it revealed an inner strip whose first tab was *also* labelled "📋 Prompt Manager" – same label twice in a vertical stack. Reworked to skip the outer wrapper entirely: Image Context is now added as a fourth tab on the existing inner strip (`UnifiedPromptManagerQt.sub_tabs`), so the AI tab strip reads as a single flat row: 📋 Prompt Manager / 📝 Variables / 💬 Assistant / 🎯 Image Context. Navigation helper still works because `self.ai_subtabs` now points at the inner strip directly.
 
 ---
 
@@ -186,19 +186,19 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.394 - April 27, 2026
 
 ### Fixed
-- **Non-translatable terms can now be edited and deleted from TermLens.** Follow-up to v1.9.393's NT unification: the `NTBlock` widget that renders the pastel-yellow NT pill in the TermLens panel had no right-click context menu, so a non-translatable added via Ctrl+Alt+N (or marked via the term editor) could be inserted but not edited from the panel — even though `TermBlock`, the regular-glossary cousin, has had Edit / Delete entries since the entry editor was added. Since NTs are now just termbase rows with `is_nontranslatable=1`, the same edit dialog handles them transparently. `NTBlock` now carries `term_id` and `termbase_id` (both threaded through `find_nt_matches_in_source`'s match dicts and the widget's `nt_dict`), exposes `edit_requested` / `delete_requested` signals matching `TermBlock`, and shows ✏️ Edit Non-Translatable / 🗑️ Delete Non-Translatable on right-click. Connections at the instantiation site go straight to the existing `_on_edit_entry_requested` / `_on_delete_entry_requested` host handlers, so the dialog already opens with the NT checkbox pre-ticked (the editor reads `is_nontranslatable` per v1.9.393).
+- **Non-translatable terms can now be edited and deleted from TermLens.** Follow-up to v1.9.393's NT unification: the `NTBlock` widget that renders the pastel-yellow NT pill in the TermLens panel had no right-click context menu, so a non-translatable added via Ctrl+Alt+N (or marked via the term editor) could be inserted but not edited from the panel – even though `TermBlock`, the regular-glossary cousin, has had Edit / Delete entries since the entry editor was added. Since NTs are now just termbase rows with `is_nontranslatable=1`, the same edit dialog handles them transparently. `NTBlock` now carries `term_id` and `termbase_id` (both threaded through `find_nt_matches_in_source`'s match dicts and the widget's `nt_dict`), exposes `edit_requested` / `delete_requested` signals matching `TermBlock`, and shows ✏️ Edit Non-Translatable / 🗑️ Delete Non-Translatable on right-click. Connections at the instantiation site go straight to the existing `_on_edit_entry_requested` / `_on_delete_entry_requested` host handlers, so the dialog already opens with the NT checkbox pre-ticked (the editor reads `is_nontranslatable` per v1.9.393).
 
 ---
 
 ## v1.9.393 - April 27, 2026
 
 ### Changed
-- **Non-translatables unified with the termbase model — standalone NT system removed.** Workbench previously kept non-translatables in standalone `.svntl` files under `user_data/resources/non_translatables/`, surfaced via a dedicated "🚫 Non-Translatables" tab under Resources and matched at runtime by `modules/non_translatables_manager.py`. The Trados plugin had already moved to a different model: NTs are flagged on individual termbase entries via an `is_nontranslatable` column on `termbase_terms`, and that column was sitting unread in the shared SQLite database whenever the two products were pointed at the same termbases. This release deletes the standalone Workbench system in favour of the Trados approach, so a single termbase entry can flag itself as a non-translatable and both products see it.
-  - **Schema:** `is_nontranslatable BOOLEAN DEFAULT 0` added to `termbase_terms` in [`modules/database_manager.py`](modules/database_manager.py); migration auto-runs in [`modules/database_migrations.py`](modules/database_migrations.py) so existing databases get the column on next launch via `ALTER TABLE`. The legacy `non_translatables` SQLite table (regex patterns, never actually used by the runtime — the .svntl Python system was the production path) is no longer created on new databases; old databases that have it just keep an unused table.
-  - **Read path:** [`_build_termbase_index`](Supervertaler.py) now selects the new column and stores it on each in-memory term entry. [`find_nt_matches_in_source`](Supervertaler.py) was rewritten to walk the existing termbase index, filter for `is_nontranslatable=1`, and return positions via the same regex patterns the index already maintains for source-term lookups — no new database round-trips, and the function's return shape is preserved so all 9 call sites work unchanged. NT highlighting in the source cells continues to render in pastel yellow (#FFFDD0).
+- **Non-translatables unified with the termbase model – standalone NT system removed.** Workbench previously kept non-translatables in standalone `.svntl` files under `user_data/resources/non_translatables/`, surfaced via a dedicated "🚫 Non-Translatables" tab under Resources and matched at runtime by `modules/non_translatables_manager.py`. The Trados plugin had already moved to a different model: NTs are flagged on individual termbase entries via an `is_nontranslatable` column on `termbase_terms`, and that column was sitting unread in the shared SQLite database whenever the two products were pointed at the same termbases. This release deletes the standalone Workbench system in favour of the Trados approach, so a single termbase entry can flag itself as a non-translatable and both products see it.
+  - **Schema:** `is_nontranslatable BOOLEAN DEFAULT 0` added to `termbase_terms` in [`modules/database_manager.py`](modules/database_manager.py); migration auto-runs in [`modules/database_migrations.py`](modules/database_migrations.py) so existing databases get the column on next launch via `ALTER TABLE`. The legacy `non_translatables` SQLite table (regex patterns, never actually used by the runtime – the .svntl Python system was the production path) is no longer created on new databases; old databases that have it just keep an unused table.
+  - **Read path:** [`_build_termbase_index`](Supervertaler.py) now selects the new column and stores it on each in-memory term entry. [`find_nt_matches_in_source`](Supervertaler.py) was rewritten to walk the existing termbase index, filter for `is_nontranslatable=1`, and return positions via the same regex patterns the index already maintains for source-term lookups – no new database round-trips, and the function's return shape is preserved so all 9 call sites work unchanged. NT highlighting in the source cells continues to render in pastel yellow (#FFFDD0).
   - **Write path:** the grid right-click "🚫 Add to Non-Translatables (Ctrl+Alt+N)" action now adds a termbase entry with `is_nontranslatable=1` (target_term mirrored from source_term, the Trados convention) on the project termbase, falling back to the first writable activated termbase. The in-memory index is rebuilt synchronously after the insert so highlighting updates on the current segment without a project reload.
   - **Term editor:** [`modules/termbase_entry_editor.py`](modules/termbase_entry_editor.py) gains a "🚫 Mark as NON-TRANSLATABLE (copy source to target unchanged)" checkbox alongside the existing "Mark as FORBIDDEN" toggle. Ticking it auto-mirrors source into target so the entry copies through at translation time. New `set_nontranslatable(term_id, is_nontranslatable)` method on [`modules/termbase_manager.py`](modules/termbase_manager.py) for programmatic toggles.
-  - **Removed:** the entire 489-line `create_non_translatables_tab()` method, the "🚫 Non-Translatables" tab from the Resources tab strip, the `nt_manager` instantiation, all per-project NT save/restore logic (the `nt_settings` Project field is left in place but unused — old projects load fine, new projects just don't populate it), and `modules/non_translatables_manager.py`. The `.svntl` files on disk under `user_data/resources/non_translatables/` are not touched by this release; they are simply orphaned. Anyone who wants the data can re-add the entries through the new termbase NT toggle.
+  - **Removed:** the entire 489-line `create_non_translatables_tab()` method, the "🚫 Non-Translatables" tab from the Resources tab strip, the `nt_manager` instantiation, all per-project NT save/restore logic (the `nt_settings` Project field is left in place but unused – old projects load fine, new projects just don't populate it), and `modules/non_translatables_manager.py`. The `.svntl` files on disk under `user_data/resources/non_translatables/` are not touched by this release; they are simply orphaned. Anyone who wants the data can re-add the entries through the new termbase NT toggle.
 
 ---
 
@@ -231,7 +231,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.390 - April 27, 2026
 
 ### Changed
-- **Tools tab sub-tabs are horizontal again.** v1.9.x had switched the Tools sub-tab strip (AutoFingers / Superconverter / PDF Rescue / Superbench / Supervoice / Text Encoding Repair / TMX Editor) to a vertical sidebar borrowed from the Settings tab. Reverted to a horizontal `QTabWidget` to match every other tab strip in the Workbench. The sidebar-only theming and font-scaling helpers (`_update_tools_sidebar_theme`, `_update_main_tabs_fonts`) already isinstance-check for the sidebar widget, so they cleanly no-op against the standard tab widget — no other code touched.
+- **Tools tab sub-tabs are horizontal again.** v1.9.x had switched the Tools sub-tab strip (AutoFingers / Superconverter / PDF Rescue / Superbench / Supervoice / Text Encoding Repair / TMX Editor) to a vertical sidebar borrowed from the Settings tab. Reverted to a horizontal `QTabWidget` to match every other tab strip in the Workbench. The sidebar-only theming and font-scaling helpers (`_update_tools_sidebar_theme`, `_update_main_tabs_fonts`) already isinstance-check for the sidebar widget, so they cleanly no-op against the standard tab widget – no other code touched.
 - **TMs section streamlined: Statistics and Maintenance sub-tabs folded into TM List.** The TMs section had four sibling sub-tabs (TM List, Browse All, Statistics, Maintenance); two of them were essentially noise (Statistics duplicated information already shown in the TM List entries column; Maintenance was two buttons living on a permanently-visible tab). Now TM List shows a live "📊 N translation units across M TMs" summary line at the top, and the bottom toolbar gets two new buttons – **🧹 Maintenance…** opens a focused cleanup dialog (the underlying `TMManagerDialog` instance has its other tabs hidden via `setTabVisible(False)`, so the user lands on cleanup actions with no surrounding noise), and **📊 Copy stats** copies a markdown TM statistics report (totals, averages, per-TM breakdown sorted by entry count, ISO datetimes, share percentages) to the clipboard for pasting into reports / notes.
 - **Superlookup menu and right-click actions now correctly land in Sidekick.** When Superlookup moved from a Tools sub-tab to a Sidekick pane, the navigation method `_go_to_superlookup()` was left trying to switch to a sub-tab that no longer exists – the for-loop fell through silently. Edit menu's Superlookup item, Tools menu's Superlookup item (Ctrl+K), and the source-cell / target-cell right-click "Search in SuperLookup" actions all funneled through this dead method. `_go_to_superlookup()` now routes through the FloatingAssistant, calling `assistant.show_superlookup()` to bring Sidekick to the foreground and select its SuperLookup pane, then optionally invokes `search_with_query()` on the Sidekick's widget when a query is provided.
 
@@ -252,21 +252,21 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.388 - April 25, 2026
 
 ### Changed
-- **Supervertaler Sidekick now uses the canonical Sv brand icon.** The floating assistant window previously had no window icon at all (so it fell back to Qt's generic default in the taskbar and alt-tab switcher) and its custom title bar showed only the "Supervertaler Sidekick" text. Now it sets `setWindowIcon(assets/icon.ico)` — the same file the main Workbench window uses — and the title bar leads with a 24×24 render of `assets/icon_24.png` before the title text. Title bar height bumped 36→40 px so the 24×24 icon (and the equally-sized window buttons) sit on an 8 px top/bottom margin rather than hugging the edges. The route to getting this looking right ran through five commits to untangle a Qt stylesheet cascade — the final fix was an explicit `border-radius: 0` override on the icon QLabel to stop the parent bar's `border-top-*-radius` rule from triggering Qt's styled-background painter on the label (which was shifting the pixmap a pixel down and making the circle look clipped at the bottom).
+- **Supervertaler Sidekick now uses the canonical Sv brand icon.** The floating assistant window previously had no window icon at all (so it fell back to Qt's generic default in the taskbar and alt-tab switcher) and its custom title bar showed only the "Supervertaler Sidekick" text. Now it sets `setWindowIcon(assets/icon.ico)` – the same file the main Workbench window uses – and the title bar leads with a 24×24 render of `assets/icon_24.png` before the title text. Title bar height bumped 36→40 px so the 24×24 icon (and the equally-sized window buttons) sit on an 8 px top/bottom margin rather than hugging the edges. The route to getting this looking right ran through five commits to untangle a Qt stylesheet cascade – the final fix was an explicit `border-radius: 0` override on the icon QLabel to stop the parent bar's `border-top-*-radius` rule from triggering Qt's styled-background painter on the label (which was shifting the pixmap a pixel down and making the circle look clipped at the bottom).
 
 ---
 
 ## v1.9.387 - April 24, 2026
 
 ### Changed
-- **Sidekick "Special Characters" and "Personal Snippets" are now file-backed and user-editable.** Each entry lives as its own `.md` file under `user_data/snippet_library/`, with folder structure mapping to tree categories in the Sidekick menu (e.g. `snippet_library/Special Characters/Arrows.md` appears under "Special Characters → Arrows"). File format mirrors the prompt library's `.md` + YAML-ish front matter convention (`type: snippet`, `name`, `category`, `default: true`, `read_only: true`) so the two libraries can be unified behind a single editor in a later release without a data migration. Default snippets are seeded on first launch and re-seeded only when absent — user edits, renames, and deletions are preserved. Users can already customise today by editing or adding .md files directly under `snippet_library/`; an in-app editor will follow in a subsequent release. "Text Conversions" remains hardcoded for now — those are logic entries (casing, wrap-in-X, strip-U+00AD), not static payloads, and don't fit the file-backed model.
-- **Removed a hardcoded real phone number (`07475771720`) that was shipping in the default Personal Snippets.** The category now seeds with a single "Example snippet" placeholder that explains how to add your own entries. Anyone who has already installed a previous release will still have the old hardcoded entry in their Sidekick menu — deleting the in-memory hardcoded version is immediate with this release; the new .md-file example will appear on next launch. No one should have typed that number into an email from inside their CAT tool, but here we are, so: fixed.
+- **Sidekick "Special Characters" and "Personal Snippets" are now file-backed and user-editable.** Each entry lives as its own `.md` file under `user_data/snippet_library/`, with folder structure mapping to tree categories in the Sidekick menu (e.g. `snippet_library/Special Characters/Arrows.md` appears under "Special Characters → Arrows"). File format mirrors the prompt library's `.md` + YAML-ish front matter convention (`type: snippet`, `name`, `category`, `default: true`, `read_only: true`) so the two libraries can be unified behind a single editor in a later release without a data migration. Default snippets are seeded on first launch and re-seeded only when absent – user edits, renames, and deletions are preserved. Users can already customise today by editing or adding .md files directly under `snippet_library/`; an in-app editor will follow in a subsequent release. "Text Conversions" remains hardcoded for now – those are logic entries (casing, wrap-in-X, strip-U+00AD), not static payloads, and don't fit the file-backed model.
+- **Removed a hardcoded real phone number (`07475771720`) that was shipping in the default Personal Snippets.** The category now seeds with a single "Example snippet" placeholder that explains how to add your own entries. Anyone who has already installed a previous release will still have the old hardcoded entry in their Sidekick menu – deleting the in-memory hardcoded version is immediate with this release; the new .md-file example will appear on next launch. No one should have typed that number into an email from inside their CAT tool, but here we are, so: fixed.
 
 ### Added
-- **`modules/snippet_library.py` — new minimal loader class `SnippetLibrary`.** Mirrors `UnifiedPromptLibrary` in shape (recursive `rglob("*.md")` walk, YAML-ish front-matter parsing, `ensure_defaults()` for idempotent first-run seeding) but without the prompt-specific metadata (no variables, no system/user distinction, no model binding, no quicklauncher flags). Default snippet definitions live in the module-level `DEFAULT_SNIPPETS` constant, migrated verbatim from the pre-v1.9.387 hardcoded entries in `floating_assistant.py` (minus the phone number, minus the two placeholder one-character snippets that looked like ad-hoc test entries).
+- **`modules/snippet_library.py` – new minimal loader class `SnippetLibrary`.** Mirrors `UnifiedPromptLibrary` in shape (recursive `rglob("*.md")` walk, YAML-ish front-matter parsing, `ensure_defaults()` for idempotent first-run seeding) but without the prompt-specific metadata (no variables, no system/user distinction, no model binding, no quicklauncher flags). Default snippet definitions live in the module-level `DEFAULT_SNIPPETS` constant, migrated verbatim from the pre-v1.9.387 hardcoded entries in `floating_assistant.py` (minus the phone number, minus the two placeholder one-character snippets that looked like ad-hoc test entries).
 
 ### Changed (follow-up, same day)
-- **Default snippet labels now show the actual characters in the Sidekick menu.** The front-matter `name:` field (already supported — `label = meta.get('name') or md.stem` on the load side) was previously set identical to the filename in the bundled defaults, which wasted its purpose. `DEFAULT_SNIPPETS` now supplies both `filename` (ASCII-safe, stays stable across Windows/macOS/Linux and cloud sync) and `name` (unicode glyph preview shown in the menu), and `ensure_defaults()` reads `filename` explicitly rather than sanitising `name`. So the Arrows entry, for example, is `Arrows.md` on disk but `← → ↑ ↓ ⇄ ↔` in the menu. Users who already had v1.9.387's original snippet files will still see the plain labels — delete the `user_data/snippet_library/Special Characters/` folder (or any individual file) and relaunch to pick up the new labels; user-added and user-edited files are unaffected.
+- **Default snippet labels now show the actual characters in the Sidekick menu.** The front-matter `name:` field (already supported – `label = meta.get('name') or md.stem` on the load side) was previously set identical to the filename in the bundled defaults, which wasted its purpose. `DEFAULT_SNIPPETS` now supplies both `filename` (ASCII-safe, stays stable across Windows/macOS/Linux and cloud sync) and `name` (unicode glyph preview shown in the menu), and `ensure_defaults()` reads `filename` explicitly rather than sanitising `name`. So the Arrows entry, for example, is `Arrows.md` on disk but `← → ↑ ↓ ⇄ ↔` in the menu. Users who already had v1.9.387's original snippet files will still see the plain labels – delete the `user_data/snippet_library/Special Characters/` folder (or any individual file) and relaunch to pick up the new labels; user-added and user-edited files are unaffected.
 
 ---
 
@@ -290,7 +290,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.384 - April 24, 2026
 
 ### Changed
-- **Floating panel renamed from "Supervertaler Assistant" to "Supervertaler Sidekick".** The new name disambiguates the Workbench's floating panel (Chat + SuperLookup tabs + Workbench Tools / Prompts / Special Characters / Personal Snippets / Text Conversions menu) from the "Supervertaler Assistant" panel inside Supervertaler for Trados, which keeps that name. The two products are commonly installed together by the same user and were sharing a title, which was getting confusing. Renamed across user-facing strings in the Workbench codebase (`Supervertaler.py`, `modules/floating_assistant.py`, `modules/chat_message_delegate.py`, `modules/unified_prompt_manager_qt.py`, `modules/shortcut_manager.py`), help docs under `docs/help/supervertaler/`, and `README.md`. Internal Python identifiers (file names like `floating_assistant.py`, any `Assistant`-named classes) are kept as-is — they are not user-facing. Historical CHANGELOG entries from before this rename keep the old name for accuracy.
+- **Floating panel renamed from "Supervertaler Assistant" to "Supervertaler Sidekick".** The new name disambiguates the Workbench's floating panel (Chat + SuperLookup tabs + Workbench Tools / Prompts / Special Characters / Personal Snippets / Text Conversions menu) from the "Supervertaler Assistant" panel inside Supervertaler for Trados, which keeps that name. The two products are commonly installed together by the same user and were sharing a title, which was getting confusing. Renamed across user-facing strings in the Workbench codebase (`Supervertaler.py`, `modules/floating_assistant.py`, `modules/chat_message_delegate.py`, `modules/unified_prompt_manager_qt.py`, `modules/shortcut_manager.py`), help docs under `docs/help/supervertaler/`, and `README.md`. Internal Python identifiers (file names like `floating_assistant.py`, any `Assistant`-named classes) are kept as-is – they are not user-facing. Historical CHANGELOG entries from before this rename keep the old name for accuracy.
 
 ---
 
@@ -302,8 +302,8 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ### Changed
 - **Trados package (SDLPPX) import now shows progress throughout and is cancellable.** Large packages (hundreds of SDLXLIFFs, 200k+ words) used to look frozen for the entire import. Now there is per-stage progress feedback and a Cancel button:
   - **Extraction:** "Extracting package.sdlppx..." while the zip is unpacked.
-  - **SDLXLIFF parsing:** "Parsing SDLXLIFF: file.sdlxliff (N / total)" — the biggest time sink for large packages, previously completely silent before the info dialog appeared.
-  - **Segment build:** "Building segments: file.sdlxliff (N / total)" — the post-dialog loop that maps parsed segments into Workbench's internal format.
+  - **SDLXLIFF parsing:** "Parsing SDLXLIFF: file.sdlxliff (N / total)" – the biggest time sink for large packages, previously completely silent before the info dialog appeared.
+  - **Segment build:** "Building segments: file.sdlxliff (N / total)" – the post-dialog loop that maps parsed segments into Workbench's internal format.
   - Cancel at any stage cleans up the temp extraction directory and returns to the project you had open. ([#185](https://github.com/Supervertaler/Supervertaler-Workbench/issues/185))
 
 ---
@@ -311,10 +311,10 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.382 - April 17, 2026
 
 ### Added
-- **Claude Opus 4.7 support.** Anthropic's new flagship model (released 2026-04-16) is now selectable in Settings → LLM Models under the Claude provider and in the OpenRouter model list (`anthropic/claude-opus-4.7`). Opus 4.7 has a 1M-token context window, 128k max output, and is Anthropic's most capable generally available model. Pricing is $5 / input MTok, $25 / output MTok — the same as Opus 4.6. Sonnet 4.6 remains the recommended default for most translation work; reach for Opus 4.7 when you need top-tier reasoning or long-context jobs. See [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7) for details.
+- **Claude Opus 4.7 support.** Anthropic's new flagship model (released 2026-04-16) is now selectable in Settings → LLM Models under the Claude provider and in the OpenRouter model list (`anthropic/claude-opus-4.7`). Opus 4.7 has a 1M-token context window, 128k max output, and is Anthropic's most capable generally available model. Pricing is $5 / input MTok, $25 / output MTok – the same as Opus 4.6. Sonnet 4.6 remains the recommended default for most translation work; reach for Opus 4.7 when you need top-tier reasoning or long-context jobs. See [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7) for details.
 
 ### Fixed (cost estimates)
-- **Corrected stale pricing for Claude Opus 4.6 and Haiku 4.5.** The internal pricing table in `llm_pricing.py` and the `CLAUDE_MODELS` metadata in `llm_clients.py` had Opus 4.6 at the pre-4.6 rate of $15 / $75 per MTok — Anthropic dropped Opus pricing to $5 / $25 with the 4.6 release. Haiku 4.5 was listed at $0.80 / $4.00, corrected to the current $1.00 / $5.00. Cost estimates in the LLM Leaderboard and Reports panels were over-stating Opus usage and under-stating Haiku usage — now accurate.
+- **Corrected stale pricing for Claude Opus 4.6 and Haiku 4.5.** The internal pricing table in `llm_pricing.py` and the `CLAUDE_MODELS` metadata in `llm_clients.py` had Opus 4.6 at the pre-4.6 rate of $15 / $75 per MTok – Anthropic dropped Opus pricing to $5 / $25 with the 4.6 release. Haiku 4.5 was listed at $0.80 / $4.00, corrected to the current $1.00 / $5.00. Cost estimates in the LLM Leaderboard and Reports panels were over-stating Opus usage and under-stating Haiku usage – now accurate.
 
 ### Note on Opus 4.7 tokenizer
 - Claude Opus 4.7 uses a new tokenizer that can use **~1.0×–1.35× more tokens** for the same text compared to earlier models. Cost estimates based on output-token counts are accurate; estimates based on the `chars / 4` heuristic for unsent text will under-estimate Opus 4.7 costs by a similar margin. Actual billing is based on Anthropic's token counts.
@@ -324,23 +324,23 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.381 - April 17, 2026
 
 ### Added
-- **Silent launch — no more terminal window next to the app.**
+- **Silent launch – no more terminal window next to the app.**
   - Pip users: running `supervertaler` no longer opens a black console window alongside the Qt UI. The command is now registered under `[project.gui-scripts]` (Windows GUI subsystem). A new `supervertaler-debug` command runs the same app but keeps a terminal attached for live stdout/stderr.
   - Source users: new `run-silent.cmd` sits next to `run.cmd`. Double-click the silent one for a clean launch; `run.cmd` stays for live debugging.
-  - The production `Supervertaler.exe` and Start Menu shortcut were already console-less — unchanged.
-- **Diagnostic log file** — every launch (silent or not) now tees stdout and stderr into a rolling log at `<user_data>/workbench/logs/supervertaler.log`. Rotates once past ~2 MB to `supervertaler-previous.log`. The log captures all `[LOG]` lines, diagnostic prints, and full tracebacks on unhandled exceptions. Works even under pythonw where there's no console at all — crashes now leave a paper trail instead of disappearing silently. Implementation guards against pythonw's detached std handles so silent mode can't break logging. ([Supervertaler.py: `_setup_diagnostic_log`](Supervertaler.py)).
-- **Help menu entries: 📄 Open Diagnostic Log and 📁 Open Log Folder** — one-click access to the log file (opens in the OS default editor) or the folder (opens in Explorer/Finder) for users reporting issues.
+  - The production `Supervertaler.exe` and Start Menu shortcut were already console-less – unchanged.
+- **Diagnostic log file** – every launch (silent or not) now tees stdout and stderr into a rolling log at `<user_data>/workbench/logs/supervertaler.log`. Rotates once past ~2 MB to `supervertaler-previous.log`. The log captures all `[LOG]` lines, diagnostic prints, and full tracebacks on unhandled exceptions. Works even under pythonw where there's no console at all – crashes now leave a paper trail instead of disappearing silently. Implementation guards against pythonw's detached std handles so silent mode can't break logging. ([Supervertaler.py: `_setup_diagnostic_log`](Supervertaler.py)).
+- **Help menu entries: 📄 Open Diagnostic Log and 📁 Open Log Folder** – one-click access to the log file (opens in the OS default editor) or the folder (opens in Explorer/Finder) for users reporting issues.
 - **Help → 📋 Copy Version Info** now also includes the diagnostic-log path, so a copy-paste into an email or GitHub issue always tells support exactly which file to ask for.
-- **QuickTrans is now the first sub-tab of SuperLookup.** Clicking 🔍 SuperLookup with selected text auto-fires QuickTrans (same behaviour as Ctrl+Alt+Q) and lands on the populated QuickTrans results — no Translate-button click needed. TMs and Termbases populate in parallel on the other sub-tabs.
+- **QuickTrans is now the first sub-tab of SuperLookup.** Clicking 🔍 SuperLookup with selected text auto-fires QuickTrans (same behaviour as Ctrl+Alt+Q) and lands on the populated QuickTrans results – no Translate-button click needed. TMs and Termbases populate in parallel on the other sub-tabs.
 
 ### Changed
 - **Removed the separate "⚡ QuickTrans" action from the right-hand Workbench Tools menu.** Clicking "🔍 SuperLookup" with selected text now does everything QuickTrans used to do (opens SuperLookup, switches to the QuickTrans sub-tab, fires MT across all enabled providers), so the dedicated entry was redundant.
-- **QuickTrans moved from a top-level outer tab into a SuperLookup sub-tab** (at position 0, before TMs). Outer tabs are now just **Chat** and **SuperLookup** — one click less to reach the translation tools, and the three result types (TMs, Termbases, QuickTrans) sit next to each other.
+- **QuickTrans moved from a top-level outer tab into a SuperLookup sub-tab** (at position 0, before TMs). Outer tabs are now just **Chat** and **SuperLookup** – one click less to reach the translation tools, and the three result types (TMs, Termbases, QuickTrans) sit next to each other.
 - **First-pass rename: Superlookup → SuperLookup** in user-visible strings. Tab labels, menu actions, dialog titles, header labels, and tooltips now consistently use the camel-cased spelling. Internal class names, module filenames, and debug prints are scheduled for later passes (explicit "slowly" scope).
 
 ### Fixed
 - **Web resource searches (IATE, Linguee, ProZ.com, BabelNet) fired with the wrong language pair when the From/To filters were "Any".** The URL builder hard-coded a fallback of English → Dutch. Now falls back to the current project's language pair (and the saved default pair when no project is loaded), matching what QuickTrans already uses. Same source of truth throughout the app.
-- **Linguee URLs use a canonical slug order** (English is always first in any English↔X pair; `source=auto` handles the query direction). Our URL builder was sending `dutch-english` when the project direction called for it, which Linguee redirects and QWebEngine renders as a blank page. Now we put English first when it's present, or fall back to alphabetical for non-English pairs — matches Linguee's actual URL scheme. Direction of results is unaffected (the query word is auto-detected).
+- **Linguee URLs use a canonical slug order** (English is always first in any English↔X pair; `source=auto` handles the query direction). Our URL builder was sending `dutch-english` when the project direction called for it, which Linguee redirects and QWebEngine renders as a blank page. Now we put English first when it's present, or fall back to alphabetical for non-English pairs – matches Linguee's actual URL scheme. Direction of results is unaffected (the query word is auto-detected).
 - **Maximise button on a secondary monitor** no longer sends the window flying to the primary monitor. Was calling `QApplication.primaryScreen()` unconditionally; now uses `self.screen()` (the window's current monitor) with a `screenAt(frameCenter)` fallback.
 
 ---
@@ -348,20 +348,20 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.380 - April 16, 2026
 
 ### Added
-- **Language pair now persists across restarts — automatically.** Changing the Source or Target language in Settings → Language Pair auto-saves to disk on each change; no more clicking "💾 Save Language Settings". The button is kept for users who want a visible confirmation dialog. This fixes the long-standing complaint that the defaults reverted to English → Dutch on every restart.
+- **Language pair now persists across restarts – automatically.** Changing the Source or Target language in Settings → Language Pair auto-saves to disk on each change; no more clicking "💾 Save Language Settings". The button is kept for users who want a visible confirmation dialog. This fixes the long-standing complaint that the defaults reverted to English → Dutch on every restart.
 - **Dynamic base-language column headers in Superlookup.** The TMs and Termbases result tables now show the project's actual base source/target language names (e.g. "Dutch | English | TM") instead of the generic "Source | Target". Region variants like `nl-NL` or "English (US)" are stripped to just "Dutch" / "English" to keep headers compact.
 - **Base-language column headers in the Termbases terms table** (Resources → Termbases). When you select a termbase, the "Source Term" / "Target Term" columns now show the termbase's actual languages.
 
 ### Changed
 - **Renamed Resources tab "Glossaries" to "Termbases"** for consistency with the Trados plugin and the rest of the product. The section header, description, search placeholder, help panel, and error messages inside this tab now all say "Termbases" / "termbase".
 - **Removed the three "Enable … search in Superlookup" master checkboxes** from the Superlookup Settings sub-tabs (TMs, Termbases, Web Resources). Replaced with a simpler model: **everything starts checked; uncheck items you don't want; uncheck every item of a type to disable that type entirely.** The master checkboxes were confusing (they looked washed out because of a stylesheet conflict with CheckmarkCheckBox) and redundant with the per-item lists.
-- **TM and Termbase resource lists now auto-populate when Superlookup first opens** — users no longer have to click "🔄 Refresh List" before seeing anything. Resolves a disconnect where searches were running (and returning results via the "empty = search all" fallback) but the Settings panel looked empty.
-- **Superlookup tables: headers bold, body cells non-bold** — proper visual hierarchy. Enforced via `QHeaderView::section { font-weight: bold; }` stylesheet on top of `setFont` so Qt themes can't strip the bold.
+- **TM and Termbase resource lists now auto-populate when Superlookup first opens** – users no longer have to click "🔄 Refresh List" before seeing anything. Resolves a disconnect where searches were running (and returning results via the "empty = search all" fallback) but the Settings panel looked empty.
+- **Superlookup tables: headers bold, body cells non-bold** – proper visual hierarchy. Enforced via `QHeaderView::section { font-weight: bold; }` stylesheet on top of `setFont` so Qt themes can't strip the bold.
 
 ### Fixed
 - **Web Resources tab was blank after every search.** `display_mt_results()` referenced `mt_results_table`, which no longer exists (MT was moved to QuickTrans). The resulting `AttributeError` aborted `perform_lookup()` before the web search could run, so views were created but never got their URLs set. Same fix guards `on_results_tab_changed()` against a missing `supermemory_engine`.
-- **Stale Settings-tab index in `on_results_tab_changed`** — was hard-coded to `index == 5` (the position before MT and Supermemory tabs were removed). Now looks up the Settings tab by its title, so adding/removing tabs in the future won't break the refresh trigger.
-- **Language pair load race condition** — `load_language_settings()` ran *after* the Language Pair combo boxes were built, so the UI showed the hard-coded defaults (English/Dutch) while `self.source_language` / `self.target_language` held the correct loaded values in memory. The next dropdown change then wrote a half-stale value back to disk. Split the load into an early `_load_language_pair_from_disk()` (called before UI construction) and a later spellcheck-only pass.
+- **Stale Settings-tab index in `on_results_tab_changed`** – was hard-coded to `index == 5` (the position before MT and Supermemory tabs were removed). Now looks up the Settings tab by its title, so adding/removing tabs in the future won't break the refresh trigger.
+- **Language pair load race condition** – `load_language_settings()` ran *after* the Language Pair combo boxes were built, so the UI showed the hard-coded defaults (English/Dutch) while `self.source_language` / `self.target_language` held the correct loaded values in memory. The next dropdown change then wrote a half-stale value back to disk. Split the load into an early `_load_language_pair_from_disk()` (called before UI construction) and a later spellcheck-only pass.
 - **Bare `except: pass` in `load_language_settings`** silently swallowed any error (including spellcheck failures) and reverted the in-memory language pair to hard-coded defaults. Now uses explicit try blocks with diagnostic logging.
 
 ---
@@ -369,18 +369,18 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.379 - April 14, 2026
 
 ### Added
-- **Native text selection and copy in Superlookup tables.** Source and target cells in both the TMs and Termbases tables now use read-only `QTextEdit` widgets with a proper `QSyntaxHighlighter` (same pattern as the main grid). You can click-and-drag to select individual words, double-click to select a word, right-click → Copy, and use Ctrl+C — all while keeping the yellow search-term highlighting intact. This replaces the earlier QLabel-based approach from v1.9.378, which did not support text selection inside cells.
-- **Settings (gear) button in the Supervertaler Assistant title bar.** Opens the main Workbench Settings tab directly from the floating assistant — brings the Workbench window to the foreground.
-- **Right-click "Open in TM browser"** on TM results — opens the TM Manager's Concordance tab pre-filled with the source text and auto-runs the search, jumping straight to the matching segment for editing. The Workbench window is brought to the foreground.
-- **Multi-monitor positioning fix** — the floating assistant now remembers which monitor it was on and reopens there, and clamps its size to the available screen if the saved geometry would push it off-screen.
+- **Native text selection and copy in Superlookup tables.** Source and target cells in both the TMs and Termbases tables now use read-only `QTextEdit` widgets with a proper `QSyntaxHighlighter` (same pattern as the main grid). You can click-and-drag to select individual words, double-click to select a word, right-click → Copy, and use Ctrl+C – all while keeping the yellow search-term highlighting intact. This replaces the earlier QLabel-based approach from v1.9.378, which did not support text selection inside cells.
+- **Settings (gear) button in the Supervertaler Assistant title bar.** Opens the main Workbench Settings tab directly from the floating assistant – brings the Workbench window to the foreground.
+- **Right-click "Open in TM browser"** on TM results – opens the TM Manager's Concordance tab pre-filled with the source text and auto-runs the search, jumping straight to the matching segment for editing. The Workbench window is brought to the foreground.
+- **Multi-monitor positioning fix** – the floating assistant now remembers which monitor it was on and reopens there, and clamps its size to the available screen if the saved geometry would push it off-screen.
 
 ### Changed
 - **Default global hotkey for launching the assistant** changed from `Ctrl+Alt+A` to `Ctrl+Shift+A` (clashes less with memoQ and other CAT tools). User custom bindings are preserved.
-- **Supervertaler Assistant is no longer always-on-top** — it now behaves like a normal window; clicking another program brings that program forward. Bring the assistant back via `Ctrl+Shift+A`, `Ctrl+Q`, or its taskbar icon.
+- **Supervertaler Assistant is no longer always-on-top** – it now behaves like a normal window; clicking another program brings that program forward. Bring the assistant back via `Ctrl+Shift+A`, `Ctrl+Q`, or its taskbar icon.
 - **Source and target cells are now bold** in the Termbases and TMs tables for better readability.
-- **Removed the "Match %" column** from the TM results table — every concordance match was always 100%, making the column pointless. Table is now 3 columns (Source, Target, TM).
-- **Removed "Type: concordance"** from the vertical TM results view — redundant noise.
-- **Row heights in results tables** now correctly measure the actual rendered widget content — short entries get compact rows, long entries expand only as much as they need.
+- **Removed the "Match %" column** from the TM results table – every concordance match was always 100%, making the column pointless. Table is now 3 columns (Source, Target, TM).
+- **Removed "Type: concordance"** from the vertical TM results view – redundant noise.
+- **Row heights in results tables** now correctly measure the actual rendered widget content – short entries get compact rows, long entries expand only as much as they need.
 - **"Edit in Termbase" right-click action** on Termbase results now brings the Workbench window to the foreground before navigating to the termbase entry (previously just navigated in the background). Also renamed from "Edit in Glossary".
 - **Renamed Superlookup "Settings" tab** to "Superlookup Settings" to distinguish it from the general Workbench settings.
 
@@ -389,21 +389,21 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.378 - April 14, 2026
 
 ### Added
-- **Right-click "Copy source → target"** action on TM results — copies both source and target tab-separated, convenient for pasting into spreadsheets or glossaries. Alongside existing Copy Source / Copy Target items.
-- **Context-aware status bar** at the bottom right of the floating assistant — shows a short tip describing what the active tab (Chat / QuickTrans / Superlookup) does.
-- **Superlookup search syncs to QuickTrans** — when a search runs in Superlookup, the search text is automatically copied to the QuickTrans input field so you can switch tabs and run the same query with MT/AI engines without retyping.
+- **Right-click "Copy source → target"** action on TM results – copies both source and target tab-separated, convenient for pasting into spreadsheets or glossaries. Alongside existing Copy Source / Copy Target items.
+- **Context-aware status bar** at the bottom right of the floating assistant – shows a short tip describing what the active tab (Chat / QuickTrans / Superlookup) does.
+- **Superlookup search syncs to QuickTrans** – when a search runs in Superlookup, the search text is automatically copied to the QuickTrans input field so you can switch tabs and run the same query with MT/AI engines without retyping.
 
 ### Changed
 - **Removed the embedded Superlookup tab from the main Workbench Tools section.** Superlookup is now only accessible via the floating Supervertaler Assistant (third tab) and the Ctrl+Alt+L global hotkey. The `SuperlookupTab` instance is still created in the background to register the global hotkey, but it no longer occupies a slot in the Tools sidebar.
 - **Removed the "Superlookup" header and info text** inside the floating assistant to save vertical space. The active tab label and the context-aware status bar at the bottom identify the feature.
-- **Removed Machine Translation tab from Superlookup** — MT is already handled by QuickTrans; having it in both places was redundant. The Web Resources tab is kept.
-- **Removed Type column from TM results horizontal table** — every Superlookup result is a concordance match by definition; the column just repeated "concordance" for every row.
+- **Removed Machine Translation tab from Superlookup** – MT is already handled by QuickTrans; having it in both places was redundant. The Web Resources tab is kept.
+- **Removed Type column from TM results horizontal table** – every Superlookup result is a concordance match by definition; the column just repeated "concordance" for every row.
 - **Renamed Glossaries tab to Termbases** in Superlookup results for consistency with the rest of the product.
 
 ### Fixed
-- **Superlookup table rendering (first pass)** — source and target columns in TMs and Termbases tabs switched to lightweight QLabel cell widgets with `WA_TransparentForMouseEvents`, fixing the UI freeze that occurred when switching tabs or clicking results. Search term highlighting (yellow) is preserved. *Note: this was superseded in v1.9.379 by a proper `QTextEdit` + `QSyntaxHighlighter` approach that also supports individual-word text selection.*
-- **Superlookup Ctrl+Alt+L hotkey** — now correctly opens the floating Supervertaler Assistant with the Superlookup tab active instead of bringing the main Workbench window to the foreground.
-- **Screen artifact on main window** — the hidden SuperlookupTab (kept for global hotkey registration) was rendering as a child widget on top of the main window; now explicitly hidden.
+- **Superlookup table rendering (first pass)** – source and target columns in TMs and Termbases tabs switched to lightweight QLabel cell widgets with `WA_TransparentForMouseEvents`, fixing the UI freeze that occurred when switching tabs or clicking results. Search term highlighting (yellow) is preserved. *Note: this was superseded in v1.9.379 by a proper `QTextEdit` + `QSyntaxHighlighter` approach that also supports individual-word text selection.*
+- **Superlookup Ctrl+Alt+L hotkey** – now correctly opens the floating Supervertaler Assistant with the Superlookup tab active instead of bringing the main Workbench window to the foreground.
+- **Screen artifact on main window** – the hidden SuperlookupTab (kept for global hotkey registration) was rendering as a child widget on top of the main window; now explicitly hidden.
 
 ---
 
@@ -565,64 +565,64 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ## v1.9.363 - March 25, 2026
 
 ### Changed
-- **Feature renamed: AutoPrompt** — "Analyze Project & Generate Prompts" button and all references renamed to **AutoPrompt**
+- **Feature renamed: AutoPrompt** – "Analyze Project & Generate Prompts" button and all references renamed to **AutoPrompt**
 
 ---
 
 ## v1.9.362 - March 24, 2026
 
 ### Added
-- **Unified prompt library schema** — prompts now use a consistent YAML frontmatter format (`category`, `app`) shared between Supervertaler Workbench and Supervertaler for Trados
-- **App-specific prompt filtering** — prompts tagged `app: "trados"` are hidden in Workbench; prompts tagged `app: "workbench"` are hidden in Trados; `app: "both"` (default) shows everywhere
-- **App dropdown in prompt editor** — new "App" field lets you choose whether a prompt is for Both, Workbench only, or Trados only
+- **Unified prompt library schema** – prompts now use a consistent YAML frontmatter format (`category`, `app`) shared between Supervertaler Workbench and Supervertaler for Trados
+- **App-specific prompt filtering** – prompts tagged `app: "trados"` are hidden in Workbench; prompts tagged `app: "workbench"` are hidden in Trados; `app: "both"` (default) shows everywhere
+- **App dropdown in prompt editor** – new "App" field lets you choose whether a prompt is for Both, Workbench only, or Trados only
 
 ### Changed
-- **User data folder restructured** — Workbench files now live under `workbench/` subfolder; shared resources (prompt_library, resources) remain at root; auto-migrated on first startup
-- **Prompt YAML keys standardised** — `domain` → `category`, `sv_quickmenu`/`quick_run` → `quickmenu`; legacy keys are still accepted for backward compatibility
-- **Prompt library cleaned up** — removed empty placeholder folders, fixed YAML frontmatter, standardised variable names
-- **Default folder seeding updated** — startup now only creates `Translate/`, `Proofread/`, `QuickLauncher/` (removed legacy empty folders)
+- **User data folder restructured** – Workbench files now live under `workbench/` subfolder; shared resources (prompt_library, resources) remain at root; auto-migrated on first startup
+- **Prompt YAML keys standardised** – `domain` → `category`, `sv_quickmenu`/`quick_run` → `quickmenu`; legacy keys are still accepted for backward compatibility
+- **Prompt library cleaned up** – removed empty placeholder folders, fixed YAML frontmatter, standardised variable names
+- **Default folder seeding updated** – startup now only creates `Translate/`, `Proofread/`, `QuickLauncher/` (removed legacy empty folders)
 
 ---
 
 ## v1.9.361 - March 24, 2026
 
 ### Changed
-- **User data folder restructured** — all Workbench-specific files now live under `~/Supervertaler/workbench/` (with `settings/`, `dictionaries/`, `voice_scripts/`, `ai_assistant/`, `superbrowser_profiles/`, `web_cache/`, `projects/` subfolders); shared resources (`prompt_library/`, `resources/`) remain at the root; auto-migrated on first run
-- **Website updates** — trial period updated to 14 days, live Lemon Squeezy checkout links, reduced pricing note added to Trados pricing section
+- **User data folder restructured** – all Workbench-specific files now live under `~/Supervertaler/workbench/` (with `settings/`, `dictionaries/`, `voice_scripts/`, `ai_assistant/`, `superbrowser_profiles/`, `web_cache/`, `projects/` subfolders); shared resources (`prompt_library/`, `resources/`) remain at the root; auto-migrated on first run
+- **Website updates** – trial period updated to 14 days, live Lemon Squeezy checkout links, reduced pricing note added to Trados pricing section
 
 ---
 
 ## v1.9.360 - March 23, 2026
 
 ### New Features
-- **Superlookup in QuickLauncher** — the system-wide QuickLauncher menu (Ctrl+Alt+K) now includes a Superlookup link that searches your TMs and termbases for the selected text
+- **Superlookup in QuickLauncher** – the system-wide QuickLauncher menu (Ctrl+Alt+K) now includes a Superlookup link that searches your TMs and termbases for the selected text
 
 ### Fixed
-- **QuickLauncher window activation** — launching Superlookup or other actions from the QuickLauncher now correctly brings the Supervertaler Workbench window to the foreground instead of the terminal; uses cross-platform approach (Win32 API on Windows, Qt raise/activate on macOS and Linux)
+- **QuickLauncher window activation** – launching Superlookup or other actions from the QuickLauncher now correctly brings the Supervertaler Workbench window to the foreground instead of the terminal; uses cross-platform approach (Win32 API on Windows, Qt raise/activate on macOS and Linux)
 
 ---
 
 ## v1.9.359 - March 23, 2026
 
 ### New Features
-- **Delete prompt folders** — right-click any folder in the prompt library and select "Delete Folder" to remove it and all prompts inside (with confirmation dialog)
+- **Delete prompt folders** – right-click any folder in the prompt library and select "Delete Folder" to remove it and all prompts inside (with confirmation dialog)
 
 ### Changed
-- **Dev mode uses standard user data path** — developer mode now uses `~/Supervertaler/` (same as regular users) instead of a separate `user_data_private/` folder, enabling testing of the shared data folder experience with Supervertaler for Trados
+- **Dev mode uses standard user data path** – developer mode now uses `~/Supervertaler/` (same as regular users) instead of a separate `user_data_private/` folder, enabling testing of the shared data folder experience with Supervertaler for Trados
 
 ---
 
 ## v1.9.358 - March 19, 2026
 
 ### New Features
-- **Opt-in anonymous usage statistics** — on first launch, a dialog asks if you'd like to share anonymous usage data (app version, OS, Python version, locale) to help improve Supervertaler. A single lightweight ping is sent once per session. No personal data, translation content, or termbase info is ever collected. You can change your preference at any time in Settings > General > Privacy. See [Usage Statistics](https://help.supervertaler.com/settings/usage-statistics) for full details.
+- **Opt-in anonymous usage statistics** – on first launch, a dialog asks if you'd like to share anonymous usage data (app version, OS, Python version, locale) to help improve Supervertaler. A single lightweight ping is sent once per session. No personal data, translation content, or termbase info is ever collected. You can change your preference at any time in Settings > General > Privacy. See [Usage Statistics](https://help.supervertaler.com/settings/usage-statistics) for full details.
 
 ---
 
 ## v1.9.357 - March 18, 2026
 
 ### Changed
-- **Style Guides folder removed from default prompt library** — the Style Guides folder is no longer created on first run; existing installs are unaffected
+- **Style Guides folder removed from default prompt library** – the Style Guides folder is no longer created on first run; existing installs are unaffected
 
 ---
 
@@ -630,9 +630,9 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **QuickLauncher folder detection** — prompts placed in a folder named `QuickLauncher` inside the prompt library are now automatically treated as QuickLauncher items without needing `sv_quickmenu: true` in their YAML frontmatter, matching the behaviour of Supervertaler for Trados
-- **`category: QuickLauncher` support** — setting `category: QuickLauncher` in a `.svprompt` file's YAML frontmatter now marks it as a QuickLauncher prompt, consistent with the Trados plugin
-- **`quicklauncher_label` YAML field** — the optional short label for the QuickLauncher menu can now be set with `quicklauncher_label:` (preferred) or the legacy `quickmenu_label:` (still supported)
+- **QuickLauncher folder detection** – prompts placed in a folder named `QuickLauncher` inside the prompt library are now automatically treated as QuickLauncher items without needing `sv_quickmenu: true` in their YAML frontmatter, matching the behaviour of Supervertaler for Trados
+- **`category: QuickLauncher` support** – setting `category: QuickLauncher` in a `.svprompt` file's YAML frontmatter now marks it as a QuickLauncher prompt, consistent with the Trados plugin
+- **`quicklauncher_label` YAML field** – the optional short label for the QuickLauncher menu can now be set with `quicklauncher_label:` (preferred) or the legacy `quickmenu_label:` (still supported)
 
 ---
 
@@ -640,11 +640,11 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Features
 
-- **Optional Status column position** — New checkbox in View Settings > Grid Display Options: "Show Status column before Target column". When enabled, the Status column appears between Source and Target instead of after Target. Uses Qt's visual column reorder so all existing code continues to work unchanged.
+- **Optional Status column position** – New checkbox in View Settings > Grid Display Options: "Show Status column before Target column". When enabled, the Status column appears between Source and Target instead of after Target. Uses Qt's visual column reorder so all existing code continues to work unchanged.
 
 ### Performance
 
-- **Save View Settings is now instant** — Previously, clicking "Save View Settings" could freeze the UI for 30+ seconds. Root cause: `apply_theme()` was called on every save regardless of whether the UI scale changed, forcing Qt to restyle every widget in the application. Now only runs when the scale actually changes. Additionally, five expensive grid loops (invisible char color, focus border, tag colors, alternating row colors, source column refresh) now use change-detection guards and only run when their respective setting was modified.
+- **Save View Settings is now instant** – Previously, clicking "Save View Settings" could freeze the UI for 30+ seconds. Root cause: `apply_theme()` was called on every save regardless of whether the UI scale changed, forcing Qt to restyle every widget in the application. Now only runs when the scale actually changes. Additionally, five expensive grid loops (invisible char color, focus border, tag colors, alternating row colors, source column refresh) now use change-detection guards and only run when their respective setting was modified.
 
 ---
 
@@ -652,7 +652,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Features
 
-- **Auto-confirm 100% TM matches ([#138](https://github.com/Supervertaler/Supervertaler-Workbench/issues/138))** — New checkbox in the batch pre-translation dialog: "Auto-confirm 100% TM matches". When enabled, segments with exact TM matches are automatically set to Confirmed status instead of TM 100%, so you can skip manual review of trusted TM content. The option is only available when TM is selected as the translation provider. The completion log and dialog show how many segments were auto-confirmed.
+- **Auto-confirm 100% TM matches ([#138](https://github.com/Supervertaler/Supervertaler-Workbench/issues/138))** – New checkbox in the batch pre-translation dialog: "Auto-confirm 100% TM matches". When enabled, segments with exact TM matches are automatically set to Confirmed status instead of TM 100%, so you can skip manual review of trusted TM content. The option is only available when TM is selected as the translation provider. The completion log and dialog show how many segments were auto-confirmed.
 
 ---
 
@@ -660,7 +660,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **AI Assistant moved to the right panel** — The Supervertaler Assistant is now available as a tab in the right-side panel (next to Match Panel), so you can chat with the AI while working in the translation grid. Previously it was tucked away under the AI tab, requiring a full tab switch. The Prompt Manager and Variables tabs remain under the AI tab.
+- **AI Assistant moved to the right panel** – The Supervertaler Assistant is now available as a tab in the right-side panel (next to Match Panel), so you can chat with the AI while working in the translation grid. Previously it was tucked away under the AI tab, requiring a full tab switch. The Prompt Manager and Variables tabs remain under the AI tab.
 
 ---
 
@@ -668,7 +668,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Bug Fixes
 
-- **Fixed Ollama timeout for AI Assistant and large prompts ([#177](https://github.com/michaelbeijer/Supervertaler/issues/177))** — The AI Assistant's "Analyze Project & Generate Prompts" feature timed out when using Ollama because: (1) model size detection used hardcoded strings that missed models like `translategemma:12b`, giving them the minimum 180-second timeout instead of 300s; (2) the AI Assistant sends a ~14K character prompt expecting an ~18K character response, which needs far more time than a simple segment translation. Fixed with regex-based model size detection, automatic timeout boost for large prompts (≥600s), and streaming support for Ollama — tokens now arrive incrementally instead of waiting for the complete response, eliminating timeout issues for large requests entirely.
+- **Fixed Ollama timeout for AI Assistant and large prompts ([#177](https://github.com/michaelbeijer/Supervertaler/issues/177))** – The AI Assistant's "Analyze Project & Generate Prompts" feature timed out when using Ollama because: (1) model size detection used hardcoded strings that missed models like `translategemma:12b`, giving them the minimum 180-second timeout instead of 300s; (2) the AI Assistant sends a ~14K character prompt expecting an ~18K character response, which needs far more time than a simple segment translation. Fixed with regex-based model size detection, automatic timeout boost for large prompts (≥600s), and streaming support for Ollama – tokens now arrive incrementally instead of waiting for the complete response, eliminating timeout issues for large requests entirely.
 
 ---
 
@@ -676,11 +676,11 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Bug Fixes
 
-- **Fixed HTTP proxy not applied to most LLM calls** — The HTTP proxy setting (Settings > HTTP Proxy) was only wired through the centralized `create_llm_client()` helper, leaving 13 other direct `LLMClient` instantiations (batch pre-translation, proofreading, real-time LLM matches, concordance search, QuickLauncher, Quick prompt dialog, Superbench, and AI Assistant) bypassing the proxy entirely. All LLM call sites now correctly pass `http_proxy`.
+- **Fixed HTTP proxy not applied to most LLM calls** – The HTTP proxy setting (Settings > HTTP Proxy) was only wired through the centralized `create_llm_client()` helper, leaving 13 other direct `LLMClient` instantiations (batch pre-translation, proofreading, real-time LLM matches, concordance search, QuickLauncher, Quick prompt dialog, Superbench, and AI Assistant) bypassing the proxy entirely. All LLM call sites now correctly pass `http_proxy`.
 
 ### Improvements
 
-- **Auto-generated prompts saved to dedicated folder** — "Analyze Project & Generate Prompts" now saves generated prompts to a new "Supervertaler Assistant Prompts" folder instead of the generic "Project Prompts" folder.
+- **Auto-generated prompts saved to dedicated folder** – "Analyze Project & Generate Prompts" now saves generated prompts to a new "Supervertaler Assistant Prompts" folder instead of the generic "Project Prompts" folder.
 
 ---
 
@@ -688,9 +688,9 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Bug Fixes
 
-- **Fixed "Ollama is not running" false alarm (issue #177)** — When users configured their Ollama endpoint with a trailing `/api` or `/v1` suffix (e.g. `http://localhost:11434/api`), the status check constructed double-path URLs like `/api/api/tags`, causing a 404. All Ollama endpoint usages now sanitize the URL by stripping trailing `/`, `/api`, and `/v1` suffixes. Affects status checks, translation calls, model downloads, connection tests, and the keep-warm ping.
-- **Fixed keep-warm ping ignoring custom Ollama endpoint** — The Ollama keep-warm ping was hardcoded to `http://localhost:11434` instead of using the user's configured endpoint.
-- **Improved Ollama error messages** — When Ollama is reachable but the API path returns an error, the message now explains the likely cause (misconfigured endpoint URL) instead of the misleading "Ollama is not running".
+- **Fixed "Ollama is not running" false alarm (issue #177)** – When users configured their Ollama endpoint with a trailing `/api` or `/v1` suffix (e.g. `http://localhost:11434/api`), the status check constructed double-path URLs like `/api/api/tags`, causing a 404. All Ollama endpoint usages now sanitize the URL by stripping trailing `/`, `/api`, and `/v1` suffixes. Affects status checks, translation calls, model downloads, connection tests, and the keep-warm ping.
+- **Fixed keep-warm ping ignoring custom Ollama endpoint** – The Ollama keep-warm ping was hardcoded to `http://localhost:11434` instead of using the user's configured endpoint.
+- **Improved Ollama error messages** – When Ollama is reachable but the API path returns an error, the message now explains the likely cause (misconfigured endpoint URL) instead of the misleading "Ollama is not running".
 
 ---
 
@@ -698,14 +698,14 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Bug Fixes
 
-- **Fixed AI prompt generation stripping its own content** — The `_clean_translation_response()` post-processor aggressively removed lines containing translation-related keywords like "professional translation", "Your task is to", etc. When generating a *prompt about translation*, this stripped ~95% of the content, leaving only 2-3 lines. Fixed by centralizing the cleaning in `translate()` with a new `skip_cleaning` parameter, bypassed for prompt generation requests.
+- **Fixed AI prompt generation stripping its own content** – The `_clean_translation_response()` post-processor aggressively removed lines containing translation-related keywords like "professional translation", "Your task is to", etc. When generating a *prompt about translation*, this stripped ~95% of the content, leaving only 2-3 lines. Fixed by centralizing the cleaning in `translate()` with a new `skip_cleaning` parameter, bypassed for prompt generation requests.
 
 ### Improvements
 
-- **Multi-file support for standalone SDLXLIFF import** — Importing 2+ standalone `.sdlxliff` files now activates the full multi-file system: file boundary banners in the grid, file filter dropdown, and Manage Views dialog. Previously only SDLPPX packages and folder imports supported this. Each segment now tracks its `file_id` and `file_name`.
-- **File-aware AI prompt generation** — "Analyze Project & Generate Prompts" now detects multi-file projects and runs per-file domain/tone analysis using `DocumentAnalyzer`. The generated prompt includes a multi-file guidance section listing each file with its detected domain, tone, formality, and word count, instructing the AI to adapt register and terminology when translating different files.
-- **File-structured project context** — For multi-file projects, the document content sent to the AI for prompt generation is now organized by file with headers, instead of a flat segment list.
-- **Improved "Current Document" display** — The Supervertaler Assistant context panel now shows file count for multi-file projects and segment count as fallback, instead of the misleading "No document" label.
+- **Multi-file support for standalone SDLXLIFF import** – Importing 2+ standalone `.sdlxliff` files now activates the full multi-file system: file boundary banners in the grid, file filter dropdown, and Manage Views dialog. Previously only SDLPPX packages and folder imports supported this. Each segment now tracks its `file_id` and `file_name`.
+- **File-aware AI prompt generation** – "Analyze Project & Generate Prompts" now detects multi-file projects and runs per-file domain/tone analysis using `DocumentAnalyzer`. The generated prompt includes a multi-file guidance section listing each file with its detected domain, tone, formality, and word count, instructing the AI to adapt register and terminology when translating different files.
+- **File-structured project context** – For multi-file projects, the document content sent to the AI for prompt generation is now organized by file with headers, instead of a flat segment list.
+- **Improved "Current Document" display** – The Supervertaler Assistant context panel now shows file count for multi-file projects and segment count as fallback, instead of the misleading "No document" label.
 
 ---
 
@@ -713,8 +713,8 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Bug Fixes
 
-- **Fixed AI prompt generation failure** — The "Analyze project and generate prompts" feature was failing because the LLM had to produce thousands of words of prompt content inside a JSON string, requiring perfect escaping of all quotes and newlines. Switched from fragile ACTION JSON format to delimiter-based output (`===PROMPT_START===` / `===PROMPT_END===`), with the prompt created programmatically from the extracted content. Includes ACTION block fallback for robustness.
-- **Fixed chat line break rendering** — Phase status lines in the AI assistant chat now display on separate lines instead of running together.
+- **Fixed AI prompt generation failure** – The "Analyze project and generate prompts" feature was failing because the LLM had to produce thousands of words of prompt content inside a JSON string, requiring perfect escaping of all quotes and newlines. Switched from fragile ACTION JSON format to delimiter-based output (`===PROMPT_START===` / `===PROMPT_END===`), with the prompt created programmatically from the extracted content. Includes ACTION block fallback for robustness.
+- **Fixed chat line break rendering** – Phase status lines in the AI assistant chat now display on separate lines instead of running together.
 
 ---
 
@@ -722,7 +722,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **Expert-level AI prompt generation** — The "Analyze project and generate prompts" feature now produces dramatically better translation prompts. The system pre-analyzes documents with `DocumentAnalyzer` to detect domain (patent, legal, medical, technical, financial, marketing), then selects a domain-specific template with tailored rules, mandatory sections, and constraint language. Generated prompts now include: translation mandate (NON-NEGOTIABLE), anti-hallucination/anti-truncation controls, terminology consistency hierarchy, preflight self-check, post-translation integrity assertion, project context summaries, and strong constraint language (LOCKED, ABSOLUTE). Termbase extraction upgraded from 20-50 terms to all terms (up to 500). TM reference pairs upgraded from 10 truncated entries to 30 full-text style anchors.
+- **Expert-level AI prompt generation** – The "Analyze project and generate prompts" feature now produces dramatically better translation prompts. The system pre-analyzes documents with `DocumentAnalyzer` to detect domain (patent, legal, medical, technical, financial, marketing), then selects a domain-specific template with tailored rules, mandatory sections, and constraint language. Generated prompts now include: translation mandate (NON-NEGOTIABLE), anti-hallucination/anti-truncation controls, terminology consistency hierarchy, preflight self-check, post-translation integrity assertion, project context summaries, and strong constraint language (LOCKED, ABSOLUTE). Termbase extraction upgraded from 20-50 terms to all terms (up to 500). TM reference pairs upgraded from 10 truncated entries to 30 full-text style anchors.
 
 ---
 
@@ -730,7 +730,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **Removed per-term priority column** — Completed the glossary simplification started in v1.9.343 by fully removing the per-term priority system. The Priority column is no longer exported to TSV, displayed in the termbase editor, shown in tooltips, or stored in match metadata. Priority is now determined solely at the glossary level (Project vs Background). The database column is retained for backward compatibility but is no longer read or written.
+- **Removed per-term priority column** – Completed the glossary simplification started in v1.9.343 by fully removing the per-term priority system. The Priority column is no longer exported to TSV, displayed in the termbase editor, shown in tooltips, or stored in match metadata. Priority is now determined solely at the glossary level (Project vs Background). The database column is retained for backward compatibility but is no longer read or written.
 
 ---
 
@@ -738,7 +738,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **Horizontal tabs for Resources** — The Resources tab (TMs, Glossaries, Non-Translatables, Image Context) now uses horizontal tabs instead of a vertical sidebar, saving screen space for only 4 items.
+- **Horizontal tabs for Resources** – The Resources tab (TMs, Glossaries, Non-Translatables, Image Context) now uses horizontal tabs instead of a vertical sidebar, saving screen space for only 4 items.
 
 ---
 
@@ -746,7 +746,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Bug Fixes
 
-- **Fixed Alt+Up/Down quick-add shortcuts** — The quick-add to Project/Background glossary shortcuts (Alt+Up, Alt+Down, Ctrl+Shift+1, Ctrl+Shift+2) were broken because background glossaries with `priority=NULL` were indistinguishable from non-activated glossaries. Now uses explicit activation check before reading priority.
+- **Fixed Alt+Up/Down quick-add shortcuts** – The quick-add to Project/Background glossary shortcuts (Alt+Up, Alt+Down, Ctrl+Shift+1, Ctrl+Shift+2) were broken because background glossaries with `priority=NULL` were indistinguishable from non-activated glossaries. Now uses explicit activation check before reading priority.
 
 ---
 
@@ -754,11 +754,11 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **Simplified glossary priority system** — Replaced the multi-level numeric priority system (Priority #1, #2, #3...) with a simple on/off "Project glossary" checkbox. One glossary can be designated as the Project glossary (pink, highest priority) per project; all other active glossaries are Background (blue). The Priority column in the glossary settings pane is now a checkbox labeled "Project", and only one glossary can be checked at a time (exclusive).
-- **Removed per-term priority** — The Priority column has been removed from the glossary terms panel (right side). Individual term entries no longer carry priority levels — priority is now determined solely at the glossary level.
-- **Fixed glossary deduplication in fast path** — When the same term existed in both a Project and Background glossary, the in-memory fast-path search was not deduplicating, causing the background (blue) match to sometimes display instead of the project (pink) match. Both the fast path and fallback path now correctly deduplicate, keeping the Project glossary match.
-- **Instant cache update on quick-add** — When adding a term to the Project glossary via Ctrl+Shift+1 or Alt+Up that already exists in a Background glossary, the old entry is replaced immediately in the cache so the pink match appears without needing F5.
-- **Updated quick-add labels** — Context menu items renamed from "Quick Add to Priority 1/2 Glossary" to "Quick Add to Project/Background Glossary" for clarity.
+- **Simplified glossary priority system** – Replaced the multi-level numeric priority system (Priority #1, #2, #3...) with a simple on/off "Project glossary" checkbox. One glossary can be designated as the Project glossary (pink, highest priority) per project; all other active glossaries are Background (blue). The Priority column in the glossary settings pane is now a checkbox labeled "Project", and only one glossary can be checked at a time (exclusive).
+- **Removed per-term priority** – The Priority column has been removed from the glossary terms panel (right side). Individual term entries no longer carry priority levels – priority is now determined solely at the glossary level.
+- **Fixed glossary deduplication in fast path** – When the same term existed in both a Project and Background glossary, the in-memory fast-path search was not deduplicating, causing the background (blue) match to sometimes display instead of the project (pink) match. Both the fast path and fallback path now correctly deduplicate, keeping the Project glossary match.
+- **Instant cache update on quick-add** – When adding a term to the Project glossary via Ctrl+Shift+1 or Alt+Up that already exists in a Background glossary, the old entry is replaced immediately in the cache so the pink match appears without needing F5.
+- **Updated quick-add labels** – Context menu items renamed from "Quick Add to Priority 1/2 Glossary" to "Quick Add to Project/Background Glossary" for clarity.
 
 ---
 
@@ -766,15 +766,15 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Features
 
-- **Okapi Framework sidecar integration** — Supervertaler now includes a built-in Okapi Framework sidecar, a lightweight Java microservice that runs in the background and provides industry-standard file filters for document import and export. The Okapi Framework is a battle-tested open-source localization toolkit that shares its origins with the SDL/Trados ecosystem and is available as a plugin for OmegaT, making it the closest thing the industry has to a universal standard for file filter technology. Currently supports DOCX with full round-trip fidelity — the exported translation is an exact replica of the original document in terms of formatting, layout, colors, fonts, and styles.
-- **Semantic inline formatting tags** — The Okapi import now produces human-readable formatting tags (`<b>` for bold, `<i>` for italic, `<u>` for underline, `<s>` for strikethrough, `<sup>`/`<sub>`, and `<cf color="...">` for colored text) instead of opaque internal codes. Translators can see and preserve formatting at a glance.
-- **Faithful format preservation on export** — The Okapi merge engine reconstructs original inline codes from the semantic display tags in your translations, preserving bold, italic, colors, fonts, and all other formatting in the exported document. No manual formatting cleanup needed.
+- **Okapi Framework sidecar integration** – Supervertaler now includes a built-in Okapi Framework sidecar, a lightweight Java microservice that runs in the background and provides industry-standard file filters for document import and export. The Okapi Framework is a battle-tested open-source localization toolkit that shares its origins with the SDL/Trados ecosystem and is available as a plugin for OmegaT, making it the closest thing the industry has to a universal standard for file filter technology. Currently supports DOCX with full round-trip fidelity – the exported translation is an exact replica of the original document in terms of formatting, layout, colors, fonts, and styles.
+- **Semantic inline formatting tags** – The Okapi import now produces human-readable formatting tags (`<b>` for bold, `<i>` for italic, `<u>` for underline, `<s>` for strikethrough, `<sup>`/`<sub>`, and `<cf color="...">` for colored text) instead of opaque internal codes. Translators can see and preserve formatting at a glance.
+- **Faithful format preservation on export** – The Okapi merge engine reconstructs original inline codes from the semantic display tags in your translations, preserving bold, italic, colors, fonts, and all other formatting in the exported document. No manual formatting cleanup needed.
 
 ### Improvements
 
-- **Import engine selection dialog** — When importing a DOCX file, a dialog lets you choose between the standard Python-based engine and the Okapi Framework engine. The dialog text now accurately describes the capabilities of each engine.
-- **Okapi formatting detection via Code.getType()** — The Java sidecar now reads formatting properties from Okapi's code type descriptors (e.g., `x-bold;fonts:Arial;`) in addition to raw OOXML data, enabling correct detection of style-based formatting in all DOCX documents.
-- **Improved subDocument filtering** — Okapi extraction now correctly filters header/footer content while preserving all body text, fixing an issue where segments from the main document body were incorrectly skipped.
+- **Import engine selection dialog** – When importing a DOCX file, a dialog lets you choose between the standard Python-based engine and the Okapi Framework engine. The dialog text now accurately describes the capabilities of each engine.
+- **Okapi formatting detection via Code.getType()** – The Java sidecar now reads formatting properties from Okapi's code type descriptors (e.g., `x-bold;fonts:Arial;`) in addition to raw OOXML data, enabling correct detection of style-based formatting in all DOCX documents.
+- **Improved subDocument filtering** – Okapi extraction now correctly filters header/footer content while preserving all body text, fixing an issue where segments from the main document body were incorrectly skipped.
 
 ---
 
@@ -782,20 +782,20 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Features
 
-- **Proofreading cancel button** — The proofreading operation (Edit > Bulk Operations > Proofread Translation) now runs in a background thread, keeping the UI fully responsive. A cancel button lets you stop proofreading at any time instead of waiting for all batches to complete.
-- **Prompt Library integration for proofreading** — The proofreading dialog now has a prompt dropdown that loads prompts from the `Bulk Operations/Proofreading` folder in the Prompt Library. Create custom proofreading prompts in this folder and they appear in the dropdown automatically.
-- **Read-only prompts** — Prompts can now be marked as read-only via a checkbox in the Prompt Editor. Read-only prompts cannot be edited or overwritten, protecting built-in and curated prompts from accidental changes.
-- **Default Bulk Operations folder** — A new `Bulk Operations/Proofreading` folder is created by default in the Prompt Library, containing a built-in (read-only) default proofreading prompt.
+- **Proofreading cancel button** – The proofreading operation (Edit > Bulk Operations > Proofread Translation) now runs in a background thread, keeping the UI fully responsive. A cancel button lets you stop proofreading at any time instead of waiting for all batches to complete.
+- **Prompt Library integration for proofreading** – The proofreading dialog now has a prompt dropdown that loads prompts from the `Bulk Operations/Proofreading` folder in the Prompt Library. Create custom proofreading prompts in this folder and they appear in the dropdown automatically.
+- **Read-only prompts** – Prompts can now be marked as read-only via a checkbox in the Prompt Editor. Read-only prompts cannot be edited or overwritten, protecting built-in and curated prompts from accidental changes.
+- **Default Bulk Operations folder** – A new `Bulk Operations/Proofreading` folder is created by default in the Prompt Library, containing a built-in (read-only) default proofreading prompt.
 
 ### Improvements
 
-- **QuickLauncher checkboxes take effect immediately** — Toggling "Show in QuickLauncher (in-app)" or "Show in QuickLauncher (global)" and saving now updates the QuickLauncher menus immediately, without requiring a restart.
-- **Default folders for new users** — New installations now get a useful starting set of Prompt Library folders: Domain Expertise, Project Prompts, Proofreading, Style Guides, Translation Help, and Bulk Operations/Proofreading.
-- **Prompt Library tree header renamed** — The folder tree header now reads "Prompt Library" to distinguish it from the "Prompt Manager" tab name.
+- **QuickLauncher checkboxes take effect immediately** – Toggling "Show in QuickLauncher (in-app)" or "Show in QuickLauncher (global)" and saving now updates the QuickLauncher menus immediately, without requiring a restart.
+- **Default folders for new users** – New installations now get a useful starting set of Prompt Library folders: Domain Expertise, Project Prompts, Proofreading, Style Guides, Translation Help, and Bulk Operations/Proofreading.
+- **Prompt Library tree header renamed** – The folder tree header now reads "Prompt Library" to distinguish it from the "Prompt Manager" tab name.
 
 ### Bug Fixes
 
-- **Fixed custom_openai provider for proofreading** — The proofreading operation previously crashed with a NameError when using a custom OpenAI provider due to an undefined `settings` variable. Now properly resolved.
+- **Fixed custom_openai provider for proofreading** – The proofreading operation previously crashed with a NameError when using a custom OpenAI provider due to an undefined `settings` variable. Now properly resolved.
 
 ---
 
@@ -803,20 +803,20 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Features
 
-- **Supervertaler Assistant** — Access the AI Assistant directly from any QuickLauncher menu. Selected text is inserted into the chat input for conversational follow-up. Press Escape to return to the Grid, or back to the external app you launched from via Ctrl+Alt+K.
-- **Escape-to-return from Assistant** — Pressing Escape in the Supervertaler Assistant returns you to where you came from: back to the Grid when launched in-app (Alt+K or right-click), or back to the external application (e.g. Notepad, Word, browser) when launched via the Ctrl+Alt+K global hotkey.
-- **QuickLauncher menu heading** — All QuickLauncher menus now display a bold "Supervertaler QuickLauncher" heading at the top, making it immediately clear what the menu is.
+- **Supervertaler Assistant** – Access the AI Assistant directly from any QuickLauncher menu. Selected text is inserted into the chat input for conversational follow-up. Press Escape to return to the Grid, or back to the external app you launched from via Ctrl+Alt+K.
+- **Escape-to-return from Assistant** – Pressing Escape in the Supervertaler Assistant returns you to where you came from: back to the Grid when launched in-app (Alt+K or right-click), or back to the external application (e.g. Notepad, Word, browser) when launched via the Ctrl+Alt+K global hotkey.
+- **QuickLauncher menu heading** – All QuickLauncher menus now display a bold "Supervertaler QuickLauncher" heading at the top, making it immediately clear what the menu is.
 
 ### UI Renames
 
-- **Main tab: "Prompt Manager" → "AI"** — The main tab is now simply called "✨ AI", which is cleaner and more inviting for translators exploring AI features.
-- **Sub-tab: "Prompt Library" → "Prompt Manager"** — The prompt management sub-tab has been renamed to better reflect its full capabilities (creating, organizing, and running prompts).
-- **Sub-tab: "Placeholders" → "Variables"** — Renamed to avoid confusion with the CAT tool concept of placeholders (inline formatting tags). All internal labels, column headers, and tips text updated accordingly.
+- **Main tab: "Prompt Manager" → "AI"** – The main tab is now simply called "✨ AI", which is cleaner and more inviting for translators exploring AI features.
+- **Sub-tab: "Prompt Library" → "Prompt Manager"** – The prompt management sub-tab has been renamed to better reflect its full capabilities (creating, organizing, and running prompts).
+- **Sub-tab: "Placeholders" → "Variables"** – Renamed to avoid confusion with the CAT tool concept of placeholders (inline formatting tags). All internal labels, column headers, and tips text updated accordingly.
 
 ### Documentation
 
-- **New QuickLauncher help page** — Added a comprehensive help page for the QuickLauncher feature covering all access methods, QuickTrans, Supervertaler Assistant, custom prompts, context variables, and hotkey customization.
-- **Help docs updated for new naming** — Updated all references across the help system: Prompt Library → Prompt Manager, AI Assistant → Supervertaler Assistant, Prompt Manager tab → AI tab (27 renames across 6 files).
+- **New QuickLauncher help page** – Added a comprehensive help page for the QuickLauncher feature covering all access methods, QuickTrans, Supervertaler Assistant, custom prompts, context variables, and hotkey customization.
+- **Help docs updated for new naming** – Updated all references across the help system: Prompt Library → Prompt Manager, AI Assistant → Supervertaler Assistant, Prompt Manager tab → AI tab (27 renames across 6 files).
 
 ---
 
@@ -824,14 +824,14 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Features
 
-- **Global QuickLauncher hotkey (Ctrl+Alt+K)** — Launch the QuickLauncher from any application on your computer. Select text in any app, press Ctrl+Alt+K, and a floating menu appears with QuickTrans, the Supervertaler Assistant, and all your QuickLauncher prompts. Choose "Run (show response)" to view the result, or "Run and paste into app" to insert the LLM response directly into the external application.
-- **QuickTrans consolidated into QuickLauncher** — QuickTrans is now the first item inside the QuickLauncher submenu (both in the right-click context menu and the Alt+K hotkey menu), streamlining the menu structure.
-- **Customizable global hotkeys** — All three global hotkeys (Superlookup, QuickTrans, QuickLauncher) can now be customized in Settings → Keyboard Shortcuts under the "Global" category.
-- **Renamed QuickMenu → QuickLauncher** — The QuickMenu feature has been renamed to QuickLauncher across the entire application for better clarity.
+- **Global QuickLauncher hotkey (Ctrl+Alt+K)** – Launch the QuickLauncher from any application on your computer. Select text in any app, press Ctrl+Alt+K, and a floating menu appears with QuickTrans, the Supervertaler Assistant, and all your QuickLauncher prompts. Choose "Run (show response)" to view the result, or "Run and paste into app" to insert the LLM response directly into the external application.
+- **QuickTrans consolidated into QuickLauncher** – QuickTrans is now the first item inside the QuickLauncher submenu (both in the right-click context menu and the Alt+K hotkey menu), streamlining the menu structure.
+- **Customizable global hotkeys** – All three global hotkeys (Superlookup, QuickTrans, QuickLauncher) can now be customized in Settings → Keyboard Shortcuts under the "Global" category.
+- **Renamed QuickMenu → QuickLauncher** – The QuickMenu feature has been renamed to QuickLauncher across the entire application for better clarity.
 
 ### Improvements
 
-- **QuickLauncher response dialog now renders Markdown** — The "Run (show response)" dialog now displays formatted Markdown (headings, bold, italic, lists, code blocks) instead of raw plain text.
+- **QuickLauncher response dialog now renders Markdown** – The "Run (show response)" dialog now displays formatted Markdown (headings, bold, italic, lists, code blocks) instead of raw plain text.
 - **Improved clipboard timing** for the global QuickLauncher hotkey, ensuring reliable text capture in slower applications like emEditor.
 
 ---
@@ -840,7 +840,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **Lock/Unlock segments from right-click menu** — You can now right-click selected segments in the grid to lock or unlock them. Segments imported as locked from Trados (`translate="no"`) can now be unlocked directly in Supervertaler without going back to Trados. The context menu adapts to show the appropriate action based on the current lock state of the selection.
+- **Lock/Unlock segments from right-click menu** – You can now right-click selected segments in the grid to lock or unlock them. Segments imported as locked from Trados (`translate="no"`) can now be unlocked directly in Supervertaler without going back to Trados. The context menu adapts to show the appropriate action based on the current lock state of the selection.
 - **Website: renamed "Docs" to "Help"** in the navigation bar for clarity.
 
 ---
@@ -849,14 +849,14 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Major Improvements
 
-- **SDLXLIFF confirmation status now imported correctly** — Segments confirmed in Trados Studio (`conf="Translated"`) are now recognized as Confirmed in Supervertaler instead of being silently ignored. Approved and rejected statuses are also preserved on import.
-- **Renamed "Translated" status to "Draft"** — The status for segments that have content but are not yet confirmed is now called "Draft", which better reflects its meaning and avoids confusion with Trados Studio's "Translated" (which means confirmed). Existing projects are automatically migrated.
-- **Removed "TR Confirmed" status** — This status had no equivalent in Trados or memoQ and has been merged into "Confirmed", giving a clean 1:1 mapping: Confirmed = Trados "Translated" / memoQ "Confirmed", Proofread = Trados "Translation Approved" / memoQ "Reviewer 1 confirmed", Approved = Trados "Sign-off Approved" / memoQ "Reviewer 2 confirmed".
-- **Fixed SDLXLIFF export losing approved status** — Segments with "Approved" status were incorrectly exported as Trados `conf="Translated"` instead of `conf="ApprovedTranslation"`. Both export paths (text-based and XML-based) now preserve the full status hierarchy.
+- **SDLXLIFF confirmation status now imported correctly** – Segments confirmed in Trados Studio (`conf="Translated"`) are now recognized as Confirmed in Supervertaler instead of being silently ignored. Approved and rejected statuses are also preserved on import.
+- **Renamed "Translated" status to "Draft"** – The status for segments that have content but are not yet confirmed is now called "Draft", which better reflects its meaning and avoids confusion with Trados Studio's "Translated" (which means confirmed). Existing projects are automatically migrated.
+- **Removed "TR Confirmed" status** – This status had no equivalent in Trados or memoQ and has been merged into "Confirmed", giving a clean 1:1 mapping: Confirmed = Trados "Translated" / memoQ "Confirmed", Proofread = Trados "Translation Approved" / memoQ "Reviewer 1 confirmed", Approved = Trados "Sign-off Approved" / memoQ "Reviewer 2 confirmed".
+- **Fixed SDLXLIFF export losing approved status** – Segments with "Approved" status were incorrectly exported as Trados `conf="Translated"` instead of `conf="ApprovedTranslation"`. Both export paths (text-based and XML-based) now preserve the full status hierarchy.
 
 ### Documentation
 
-- **New help page: Segment Statuses** — Added a comprehensive reference page to the online help explaining match origins, workflow statuses, and how they map to Trados Studio and memoQ.
+- **New help page: Segment Statuses** – Added a comprehensive reference page to the online help explaining match origins, workflow statuses, and how they map to Trados Studio and memoQ.
 
 ---
 
@@ -864,8 +864,8 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Improvements
 
-- **Locked segments now show a 🔒 lock icon** — Locked segments in the grid now display a lock icon in the Status column instead of the regular status icon, making them immediately identifiable at a glance.
-- **Locked segment background color more visible** — The background color for locked rows has been changed from a subtle grey (`#E0DDD8`) to a warmer peach (`#F0D9C8`) that stands out clearly against the normal alternating row colors.
+- **Locked segments now show a 🔒 lock icon** – Locked segments in the grid now display a lock icon in the Status column instead of the regular status icon, making them immediately identifiable at a glance.
+- **Locked segment background color more visible** – The background color for locked rows has been changed from a subtle grey (`#E0DDD8`) to a warmer peach (`#F0D9C8`) that stands out clearly against the normal alternating row colors.
 
 ---
 
@@ -873,22 +873,22 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### New Feature: SDLXLIFF Comment Round-Trip
 
-Supervertaler now fully supports **Trados Studio comments** in SDLXLIFF files — both import and export.
+Supervertaler now fully supports **Trados Studio comments** in SDLXLIFF files – both import and export.
 
-- **Comment import** — Existing Trados Studio comments (`<cmt-def>` / `<mrk mtype="x-sdl-comment">`) are parsed during SDLXLIFF import and displayed in the Notes panel, prefixed with the original author name (e.g. `[mbeijer] comment text`).
-- **Comment export** — Any text entered in the Notes field is written back as a standard Trados Studio comment when exporting to SDLXLIFF or SDLRPX. Comments appear correctly in Trados Studio's Comments pane with proper author attribution, timestamp, and severity metadata.
-- **Full round-trip** — Import → edit/add comments → export → re-import preserves all comments. Double round-trips also work correctly.
+- **Comment import** – Existing Trados Studio comments (`<cmt-def>` / `<mrk mtype="x-sdl-comment">`) are parsed during SDLXLIFF import and displayed in the Notes panel, prefixed with the original author name (e.g. `[mbeijer] comment text`).
+- **Comment export** – Any text entered in the Notes field is written back as a standard Trados Studio comment when exporting to SDLXLIFF or SDLRPX. Comments appear correctly in Trados Studio's Comments pane with proper author attribution, timestamp, and severity metadata.
+- **Full round-trip** – Import → edit/add comments → export → re-import preserves all comments. Double round-trips also work correctly.
 
 ### New Feature: User Identity Settings
 
 A new **👤 User Identity** tab in Settings lets you configure the translator name that appears in exported files.
 
-- **Translator name** — Set your preferred name or alias. This is used as the author in SDLXLIFF comments, the `PackageCreatedBy` field in Trados return packages (SDLRPX), and the default creator ID when creating new TMX files.
-- **Privacy-friendly fallback** — If left empty, falls back to your system username. The app name is never stamped into exported files.
+- **Translator name** – Set your preferred name or alias. This is used as the author in SDLXLIFF comments, the `PackageCreatedBy` field in Trados return packages (SDLRPX), and the default creator ID when creating new TMX files.
+- **Privacy-friendly fallback** – If left empty, falls back to your system username. The app name is never stamped into exported files.
 
 ### Improvements
 
-- **SDLXLIFF segment ID robustness** — Segment IDs for SDLXLIFF round-trip export are now stored in a dedicated internal field (`sdl_segment_id`) instead of being embedded in user-editable notes. This prevents accidental breakage if users edit or clear the notes field. Old projects with metadata-in-notes are still supported via a fallback parser.
+- **SDLXLIFF segment ID robustness** – Segment IDs for SDLXLIFF round-trip export are now stored in a dedicated internal field (`sdl_segment_id`) instead of being embedded in user-editable notes. This prevents accidental breakage if users edit or clear the notes field. Old projects with metadata-in-notes are still supported via a fallback parser.
 
 ---
 
@@ -896,20 +896,20 @@ A new **👤 User Identity** tab in Settings lets you configure the translator n
 
 ### New Feature: Okapi Framework Integration (Experimental)
 
-Supervertaler now ships with an **Okapi Framework sidecar** — an industry-standard, open-source file filter engine used by professional translation tools worldwide. This lays the foundation for significantly improved document import fidelity and support for additional file formats in future releases.
+Supervertaler now ships with an **Okapi Framework sidecar** – an industry-standard, open-source file filter engine used by professional translation tools worldwide. This lays the foundation for significantly improved document import fidelity and support for additional file formats in future releases.
 
-- **Okapi sidecar architecture** — A lightweight Java-based REST service (`okapi-sidecar.jar`) runs locally on `127.0.0.1:8090` as a background process alongside Supervertaler. All document processing happens on the user's machine — no files are sent over the internet. The sidecar starts automatically (with a 1.5s deferred launch) and shuts down cleanly when Supervertaler exits.
-- **Bundled minimal JRE** — The sidecar includes a custom 44 MB Java runtime (built with `jlink`) so users do not need to install Java separately. PyInstaller specs are updated to include the sidecar JAR + JRE in Windows and macOS builds.
-- **Optional DOCX import engine** — When importing a DOCX, users are now presented with a choice dialog:
-  - **Standard (recommended)** — the existing built-in python-docx handler with full formatting tag support
-  - **Okapi Framework (experimental)** — industrial-strength extraction via the Okapi sidecar with SRX sentence segmentation
+- **Okapi sidecar architecture** – A lightweight Java-based REST service (`okapi-sidecar.jar`) runs locally on `127.0.0.1:8090` as a background process alongside Supervertaler. All document processing happens on the user's machine – no files are sent over the internet. The sidecar starts automatically (with a 1.5s deferred launch) and shuts down cleanly when Supervertaler exits.
+- **Bundled minimal JRE** – The sidecar includes a custom 44 MB Java runtime (built with `jlink`) so users do not need to install Java separately. PyInstaller specs are updated to include the sidecar JAR + JRE in Windows and macOS builds.
+- **Optional DOCX import engine** – When importing a DOCX, users are now presented with a choice dialog:
+  - **Standard (recommended)** – the existing built-in python-docx handler with full formatting tag support
+  - **Okapi Framework (experimental)** – industrial-strength extraction via the Okapi sidecar with SRX sentence segmentation
 
   The dialog only appears if the sidecar is running; otherwise the standard engine is used silently.
-- **Intelligent segment filtering** — The Okapi extraction path filters out non-body content (headers, footers, textbox names) using sub-document tracking, keeping the segment grid clean.
-- **Formatting tag extraction** — The sidecar detects inline formatting from OOXML run properties and converts them to Supervertaler's `<b>`, `<i>`, `<u>`, `<sup>`, `<sub>`, `<s>` tag system.
-- **SRX segmentation** — The Okapi engine uses industry-standard SRX rules for sentence segmentation, correctly handling abbreviations (Dr., Mr., etc.), decimal numbers, and other tricky boundaries.
-- **Seven REST endpoints** — The sidecar exposes: `/health`, `/filters`, `/extract`, `/merge`, `/tmx/read`, `/tmx/validate`, `/segment` — designed for future integration beyond DOCX import.
-- **Graceful degradation** — If the sidecar JAR or Java runtime is not present, Supervertaler functions exactly as before with no errors or warnings.
+- **Intelligent segment filtering** – The Okapi extraction path filters out non-body content (headers, footers, textbox names) using sub-document tracking, keeping the segment grid clean.
+- **Formatting tag extraction** – The sidecar detects inline formatting from OOXML run properties and converts them to Supervertaler's `<b>`, `<i>`, `<u>`, `<sup>`, `<sub>`, `<s>` tag system.
+- **SRX segmentation** – The Okapi engine uses industry-standard SRX rules for sentence segmentation, correctly handling abbreviations (Dr., Mr., etc.), decimal numbers, and other tricky boundaries.
+- **Seven REST endpoints** – The sidecar exposes: `/health`, `/filters`, `/extract`, `/merge`, `/tmx/read`, `/tmx/validate`, `/segment` – designed for future integration beyond DOCX import.
+- **Graceful degradation** – If the sidecar JAR or Java runtime is not present, Supervertaler functions exactly as before with no errors or warnings.
 
 > **Note:** The Okapi import engine is marked experimental. The standard import engine remains the recommended choice for production work. The Okapi path will be refined in upcoming releases with improved formatting fidelity and broader file format support.
 
@@ -919,17 +919,17 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Critical Bug Fixes
 
-- **Fix DOCX import silently dropping paragraphs** — The DOCX import filter used Python `id()` values to distinguish body paragraphs from table cell paragraphs. Because Python reuses memory addresses after garbage collection, body paragraphs could be falsely identified as table cells and silently skipped. The number of dropped paragraphs varied per run (non-deterministic), making this especially hard to notice. Fixed by building a stable element→Paragraph mapping once and removing the fragile `id()`-based table check entirely — body-level `<w:p>` elements can never be table paragraphs by definition.
+- **Fix DOCX import silently dropping paragraphs** – The DOCX import filter used Python `id()` values to distinguish body paragraphs from table cell paragraphs. Because Python reuses memory addresses after garbage collection, body paragraphs could be falsely identified as table cells and silently skipped. The number of dropped paragraphs varied per run (non-deterministic), making this especially hard to notice. Fixed by building a stable element→Paragraph mapping once and removing the fragile `id()`-based table check entirely – body-level `<w:p>` elements can never be table paragraphs by definition.
 
 ### Improvements
 
-- **Word count verification on DOCX import** — After importing a DOCX, Supervertaler now compares the raw XML word count against the imported segments. If the difference exceeds 5%, a warning dialog alerts the user that text may have been lost during import. This serves as a safety net against future import bugs.
-- **TMX export now uses standard `<bpt>`/`<ept>` pairs** — Exported TMX files now convert inline formatting tags (`<b>`, `<i>`, `<u>`, etc.) to proper TMX 1.4 `<bpt>`/`<ept>` paired elements instead of escaping them as literal text. This ensures compatibility with Trados Studio, memoQ, and other CAT tools.
+- **Word count verification on DOCX import** – After importing a DOCX, Supervertaler now compares the raw XML word count against the imported segments. If the difference exceeds 5%, a warning dialog alerts the user that text may have been lost during import. This serves as a safety net against future import bugs.
+- **TMX export now uses standard `<bpt>`/`<ept>` pairs** – Exported TMX files now convert inline formatting tags (`<b>`, `<i>`, `<u>`, etc.) to proper TMX 1.4 `<bpt>`/`<ept>` paired elements instead of escaping them as literal text. This ensures compatibility with Trados Studio, memoQ, and other CAT tools.
 
 ### Bug Fixes
 
-- **Fix `<b>`/`<i>` tags not hidden by "hide outer wrapping tags"** — When a formatting tag like `<b>` wrapped the entire segment, the "hide outer wrapping tags in grid" option did not strip it. Formatting tags are now included in the strippable set alongside structural tags.
-- **Fix false `<li-o>` tags on non-list paragraphs** — Paragraphs with `numId=0` in the OOXML (Word's explicit "no numbering" override) were incorrectly treated as list items. Also tightened the fallback list detection to require a proper digit+delimiter pattern (e.g. "1. " or "2) ") rather than just a leading digit.
+- **Fix `<b>`/`<i>` tags not hidden by "hide outer wrapping tags"** – When a formatting tag like `<b>` wrapped the entire segment, the "hide outer wrapping tags in grid" option did not strip it. Formatting tags are now included in the strippable set alongside structural tags.
+- **Fix false `<li-o>` tags on non-list paragraphs** – Paragraphs with `numId=0` in the OOXML (Word's explicit "no numbering" override) were incorrectly treated as list items. Also tightened the fallback list detection to require a proper digit+delimiter pattern (e.g. "1. " or "2) ") rather than just a leading digit.
 
 ---
 
@@ -937,13 +937,13 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **AI prompt generation: full language names** — The "Analyze project and generate prompts" feature in the AI Assistant now always uses full language names (e.g. "Dutch → English") instead of ISO codes (e.g. "nl → en") in generated prompts, for better LLM comprehension and consistency.
-- **AI prompt generation: no-space currency rule** — Generated translation prompts now instruct the LLM to write currency symbols directly against the number with no space (e.g. €4,255 not € 4,255).
+- **AI prompt generation: full language names** – The "Analyze project and generate prompts" feature in the AI Assistant now always uses full language names (e.g. "Dutch → English") instead of ISO codes (e.g. "nl → en") in generated prompts, for better LLM comprehension and consistency.
+- **AI prompt generation: no-space currency rule** – Generated translation prompts now instruct the LLM to write currency symbols directly against the number with no space (e.g. €4,255 not € 4,255).
 
 ### Bug Fixes
 
-- **Fix TM and glossary activation leaking between projects** — When importing a new document or creating a new project, TMs and glossaries from a previous project could still appear with "Write" checked, because the read-only flag was stored globally rather than being reset per project. Both Read and Write states are now fully cleared on every new project.
-- **Fix SuperLookup TM/glossary checkboxes defaulting to checked** — The SuperLookup panel's TM and glossary lists hardcoded all checkboxes to checked on every refresh. They now start unchecked, matching the "clean slate" design.
+- **Fix TM and glossary activation leaking between projects** – When importing a new document or creating a new project, TMs and glossaries from a previous project could still appear with "Write" checked, because the read-only flag was stored globally rather than being reset per project. Both Read and Write states are now fully cleared on every new project.
+- **Fix SuperLookup TM/glossary checkboxes defaulting to checked** – The SuperLookup panel's TM and glossary lists hardcoded all checkboxes to checked on every refresh. They now start unchecked, matching the "clean slate" design.
 
 ---
 
@@ -951,8 +951,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix SDLRPX export overwriting TM metadata on pre-translated segments** — When exporting a return package, Supervertaler previously set `origin="interactive"` and stripped `percent` and `text-match` attributes on *all* segments with target text, including segments that were already translated by the TM when the package was loaded. Now only segments the user actually translated in the current session have their metadata updated; TM-matched segments retain their original `origin="tm"`, `percent="100"`, and `text-match` attributes. A new `modified` flag on `SDLSegment` tracks whether a segment was edited by the user.
-- **Fix return package .sdlproj filename** — The `.sdlproj` file inside the SDLRPX return package included the target language code suffix (e.g. `_nl-NL`), which Trados Studio does not produce. The suffix is now stripped to match the Trados naming convention.
+- **Fix SDLRPX export overwriting TM metadata on pre-translated segments** – When exporting a return package, Supervertaler previously set `origin="interactive"` and stripped `percent` and `text-match` attributes on *all* segments with target text, including segments that were already translated by the TM when the package was loaded. Now only segments the user actually translated in the current session have their metadata updated; TM-matched segments retain their original `origin="tm"`, `percent="100"`, and `text-match` attributes. A new `modified` flag on `SDLSegment` tracks whether a segment was edited by the user.
+- **Fix return package .sdlproj filename** – The `.sdlproj` file inside the SDLRPX return package included the target language code suffix (e.g. `_nl-NL`), which Trados Studio does not produce. The suffix is now stripped to match the Trados naming convention.
 
 ---
 
@@ -960,11 +960,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Term & NT insert popup (Ctrl tap)** — Pressing the Ctrl key alone (a lone tap, not a chord) now opens a memoQ-style floating popup listing all glossary matches and non-translatables for the current segment, numbered 1–9 for instant keyboard insertion. Glossary items show source → target; NT items are highlighted in yellow with a 🚫 icon. Navigate with ↑↓, insert with 1–9 or Enter, dismiss with Esc. The popup is smart: if there is exactly one NT and no glossary terms, it inserts immediately without showing the popup. If the active segment has nothing to offer, Ctrl tap is silently ignored.
+- **Term & NT insert popup (Ctrl tap)** – Pressing the Ctrl key alone (a lone tap, not a chord) now opens a memoQ-style floating popup listing all glossary matches and non-translatables for the current segment, numbered 1–9 for instant keyboard insertion. Glossary items show source → target; NT items are highlighted in yellow with a 🚫 icon. Navigate with ↑↓, insert with 1–9 or Enter, dismiss with Esc. The popup is smart: if there is exactly one NT and no glossary terms, it inserts immediately without showing the popup. If the active segment has nothing to offer, Ctrl tap is silently ignored.
 
 ### Bug Fixes
 
-- **Fix RuntimeError flood on app close** — The lone-Ctrl event filter (installed on `QApplication`) kept firing events after the main window's C++ object was deleted during shutdown, causing a flood of `RuntimeError: wrapped C/C++ object has been deleted` errors in the terminal and making the app jump/flicker. The filter now catches `RuntimeError`, self-uninstalls from `QApplication`, and goes silent for the rest of the shutdown sequence.
+- **Fix RuntimeError flood on app close** – The lone-Ctrl event filter (installed on `QApplication`) kept firing events after the main window's C++ object was deleted during shutdown, causing a flood of `RuntimeError: wrapped C/C++ object has been deleted` errors in the terminal and making the app jump/flicker. The filter now catches `RuntimeError`, self-uninstalls from `QApplication`, and goes silent for the rest of the shutdown sequence.
 
 ---
 
@@ -972,13 +972,13 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **QuickTrans: full provider names in result badges** — QuickTrans result badges now show the full provider name ("Google Translate", "Claude", "Gemini", "OpenAI", etc.) instead of short codes (GT, CL, GEM, GPT). Badge width is now content-driven.
-- **QuickTrans: updated and expanded LLM model lists** — OpenAI list now includes GPT-5, o3, o3-mini; Gemini list now includes 2.5 Flash Lite, 3.1 Pro, 3 Pro, 2.0 Flash. Lists are filtered by the new AI Models settings.
-- **QuickTrans: Ollama support** — Ollama is now available as an LLM provider in QuickTrans. Enable it in Settings > QuickTrans; model name is a free-text field (no API key required).
-- **New Settings tab: AI Models** — A new "AI Models" tab (directly below AI Settings in the sidebar) lets you check/uncheck individual models per provider to control which appear in QuickTrans dropdowns. Includes OpenAI, Claude, Gemini, and Ollama model lists.
-- **Model discovery dialog now works** — The "New Models Found" dialog's "Add Selected Models" button previously did nothing. Selected models are now saved to AI Models settings and appear in QuickTrans dropdowns after reopening Settings.
-- **Fix: Gemini grayed out in QuickTrans settings** — QuickTrans only checked for the key name `gemini`, but many users stored it as `google`. Both are now checked.
-- **Fix: Google/Gemini API key naming standardized** — The canonical key name is now `gemini` everywhere (Settings UI label, `api_keys.example.txt`, internal key lookup). Keys stored as `google` are migrated automatically on load. The confusing bidirectional sync that kept both `google` and `gemini` alive simultaneously is replaced with a clean one-way migration.
+- **QuickTrans: full provider names in result badges** – QuickTrans result badges now show the full provider name ("Google Translate", "Claude", "Gemini", "OpenAI", etc.) instead of short codes (GT, CL, GEM, GPT). Badge width is now content-driven.
+- **QuickTrans: updated and expanded LLM model lists** – OpenAI list now includes GPT-5, o3, o3-mini; Gemini list now includes 2.5 Flash Lite, 3.1 Pro, 3 Pro, 2.0 Flash. Lists are filtered by the new AI Models settings.
+- **QuickTrans: Ollama support** – Ollama is now available as an LLM provider in QuickTrans. Enable it in Settings > QuickTrans; model name is a free-text field (no API key required).
+- **New Settings tab: AI Models** – A new "AI Models" tab (directly below AI Settings in the sidebar) lets you check/uncheck individual models per provider to control which appear in QuickTrans dropdowns. Includes OpenAI, Claude, Gemini, and Ollama model lists.
+- **Model discovery dialog now works** – The "New Models Found" dialog's "Add Selected Models" button previously did nothing. Selected models are now saved to AI Models settings and appear in QuickTrans dropdowns after reopening Settings.
+- **Fix: Gemini grayed out in QuickTrans settings** – QuickTrans only checked for the key name `gemini`, but many users stored it as `google`. Both are now checked.
+- **Fix: Google/Gemini API key naming standardized** – The canonical key name is now `gemini` everywhere (Settings UI label, `api_keys.example.txt`, internal key lookup). Keys stored as `google` are migrated automatically on load. The confusing bidirectional sync that kept both `google` and `gemini` alive simultaneously is replaced with a clean one-way migration.
 
 ---
 
@@ -986,7 +986,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Bulk Operation: Copy Source to Target (No Letters)** — New bulk operation under Edit > Bulk Operations that copies source to target for segments containing no alphabetic characters (numbers, codes, punctuation, symbols). Only acts on empty targets. Segments are marked as Translated. Inspired by CafeTran's "Transfer segments with no letters to target". The underlying transform function is designed as an extension point for future locale-aware number conversion (e.g. decimal comma ↔ period).
+- **Bulk Operation: Copy Source to Target (No Letters)** – New bulk operation under Edit > Bulk Operations that copies source to target for segments containing no alphabetic characters (numbers, codes, punctuation, symbols). Only acts on empty targets. Segments are marked as Translated. Inspired by CafeTran's "Transfer segments with no letters to target". The underlying transform function is designed as an extension point for future locale-aware number conversion (e.g. decimal comma ↔ period).
 
 ---
 
@@ -994,14 +994,14 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix system prompt edits lost between sessions** — User-saved system prompts (via Settings > System Prompts) were written to `system_prompts_layer1.json` but never loaded back on startup, causing all edits to revert to defaults. The load order now correctly prioritises user-saved prompts over legacy files and hardcoded defaults.
-- **Fix "System Prompts" button navigating to wrong tab** — The button in Prompt Manager > Prompt Library was opening the wrong Settings sub-tab (View Settings instead of System Prompts) due to stale hardcoded tab indices. Now searches by tab label text for robustness.
-- **Fix "Reset to Default" system prompt button** — The reset handler referenced a non-existent attribute (`unified_prompt_manager`), preventing the reset from working. Now correctly uses `prompt_manager_qt`.
+- **Fix system prompt edits lost between sessions** – User-saved system prompts (via Settings > System Prompts) were written to `system_prompts_layer1.json` but never loaded back on startup, causing all edits to revert to defaults. The load order now correctly prioritises user-saved prompts over legacy files and hardcoded defaults.
+- **Fix "System Prompts" button navigating to wrong tab** – The button in Prompt Manager > Prompt Library was opening the wrong Settings sub-tab (View Settings instead of System Prompts) due to stale hardcoded tab indices. Now searches by tab label text for robustness.
+- **Fix "Reset to Default" system prompt button** – The reset handler referenced a non-existent attribute (`unified_prompt_manager`), preventing the reset from working. Now correctly uses `prompt_manager_qt`.
 
 ### Improvements
 
-- **"Edit in Settings" button on View System Prompt dialog** — The system prompt preview dialog (Prompt Manager > View System Prompt) now includes an "Edit in Settings" button that navigates directly to Settings > System Prompts for editing.
-- **Soften default system prompt language** — Replaced domain-specific "technical/medical translation as a licensed service for a commercial translation company" with generic "professional translation work" that covers all domains. The safety context is retained to prevent LLMs from refusing specialised content.
+- **"Edit in Settings" button on View System Prompt dialog** – The system prompt preview dialog (Prompt Manager > View System Prompt) now includes an "Edit in Settings" button that navigates directly to Settings > System Prompts for editing.
+- **Soften default system prompt language** – Replaced domain-specific "technical/medical translation as a licensed service for a commercial translation company" with generic "professional translation work" that covers all domains. The safety context is retained to prevent LLMs from refusing specialised content.
 
 ---
 
@@ -1009,10 +1009,10 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Advanced Filters: match rate up to 102%** — Match Rate spinboxes now go up to 102% so you can filter for CM (101%) and PM (102%) segments from imported SDLXLIFF files.
-- **Advanced Filters: match origin status checkboxes** — Added PM (102%), CM (101%), TM 100%, TM Fuzzy, Repetition, and MT checkboxes under a new "Match Origin" section in the Row Status group.
-- **Bulk Operations act on filtered segments** — Confirm Segments, Change Status, Clear Translations, and Copy Source to Target now all fall back to filtered (visible) segments when no rows are manually selected. A confirmation dialog warns before acting on filtered segments.
-- **Bulk Operations menu shows filter state** — The Edit > Bulk Operations menu dynamically shows the count of filtered segments (e.g. "Bulk Operations (380 filtered)") when filters are active.
+- **Advanced Filters: match rate up to 102%** – Match Rate spinboxes now go up to 102% so you can filter for CM (101%) and PM (102%) segments from imported SDLXLIFF files.
+- **Advanced Filters: match origin status checkboxes** – Added PM (102%), CM (101%), TM 100%, TM Fuzzy, Repetition, and MT checkboxes under a new "Match Origin" section in the Row Status group.
+- **Bulk Operations act on filtered segments** – Confirm Segments, Change Status, Clear Translations, and Copy Source to Target now all fall back to filtered (visible) segments when no rows are manually selected. A confirmation dialog warns before acting on filtered segments.
+- **Bulk Operations menu shows filter state** – The Edit > Bulk Operations menu dynamically shows the count of filtered segments (e.g. "Bulk Operations (380 filtered)") when filters are active.
 
 ---
 
@@ -1020,14 +1020,14 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix Claude empty response crash** — Added safety check in `_call_claude()` for when the Claude API returns an empty content list, preventing an `IndexError` crash. Now raises a clear error message instead.
+- **Fix Claude empty response crash** – Added safety check in `_call_claude()` for when the Claude API returns an empty content list, preventing an `IndexError` crash. Now raises a clear error message instead.
 
 ### Improvements
 
-- **SuperBench: tighter segment filter** — Raised minimum benchmarkable segment thresholds from 3→10 word characters and 5→15 total characters. Filters out trivial segments like "V (m/s)", "Tabel 1", etc. that waste API calls without testing real translation quality.
-- **SuperBench: two-column layout** — Moved the log window from the bottom into the right-side column below Model Selection, making better use of screen space.
-- **SuperBench: default to Current Project** — The "Current Project" dataset source is now pre-selected when opening SuperBench instead of "Pre-defined Datasets".
-- **SuperBench: sync model dropdowns with AI Settings** — Model dropdowns now initialize to whatever models are currently selected in Settings > AI Settings > Model Selection.
+- **SuperBench: tighter segment filter** – Raised minimum benchmarkable segment thresholds from 3→10 word characters and 5→15 total characters. Filters out trivial segments like "V (m/s)", "Tabel 1", etc. that waste API calls without testing real translation quality.
+- **SuperBench: two-column layout** – Moved the log window from the bottom into the right-side column below Model Selection, making better use of screen space.
+- **SuperBench: default to Current Project** – The "Current Project" dataset source is now pre-selected when opening SuperBench instead of "Pre-defined Datasets".
+- **SuperBench: sync model dropdowns with AI Settings** – Model dropdowns now initialize to whatever models are currently selected in Settings > AI Settings > Model Selection.
 
 ---
 
@@ -1035,14 +1035,14 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix Combined Prompt Preview showing raw JSON** — The "Preview Combined" dialog in the Prompt Manager now correctly renders custom prompt content as readable text instead of displaying the raw JSON structure of `.svprompt` files. Fixed both library-loaded and externally-loaded prompts.
+- **Fix Combined Prompt Preview showing raw JSON** – The "Preview Combined" dialog in the Prompt Manager now correctly renders custom prompt content as readable text instead of displaying the raw JSON structure of `.svprompt` files. Fixed both library-loaded and externally-loaded prompts.
 
 ### Improvements
 
-- **SuperBench: use project's custom prompt for benchmarking** — SuperBench now uses the custom prompt attached in the Prompt Manager (if any) instead of a generic built-in prompt. This means benchmark results reflect your actual translation workflow. The log indicates which prompt is being used.
-- **SuperBench: custom prompt in exported reports** — The exported Excel report now includes the custom prompt name on the About sheet and a new "Prompt" sheet containing the full assembled prompt that was sent to the AI. JSON exports also include prompt information.
-- **SuperBench: dynamic model labels** — The model selection checkboxes now dynamically update to show the currently selected model (e.g. "OpenAI (GPT-5)" instead of the static "OpenAI (GPT-4o)"), matching the same pattern recently added to AI Settings.
-- **SuperBench: rename exported report file** — Export filename changed from `LLM_Leaderboard_...` to `Superbench_Translation_Quality_Report_...` for clarity.
+- **SuperBench: use project's custom prompt for benchmarking** – SuperBench now uses the custom prompt attached in the Prompt Manager (if any) instead of a generic built-in prompt. This means benchmark results reflect your actual translation workflow. The log indicates which prompt is being used.
+- **SuperBench: custom prompt in exported reports** – The exported Excel report now includes the custom prompt name on the About sheet and a new "Prompt" sheet containing the full assembled prompt that was sent to the AI. JSON exports also include prompt information.
+- **SuperBench: dynamic model labels** – The model selection checkboxes now dynamically update to show the currently selected model (e.g. "OpenAI (GPT-5)" instead of the static "OpenAI (GPT-4o)"), matching the same pattern recently added to AI Settings.
+- **SuperBench: rename exported report file** – Export filename changed from `LLM_Leaderboard_...` to `Superbench_Translation_Quality_Report_...` for clarity.
 
 ### Housekeeping
 
@@ -1054,7 +1054,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Resources tab: vertical sidebar navigation** — The Resources tab (TMs, Glossaries, Non-Translatables, Image Context) now uses the same vertical sidebar layout as the Tools and Settings tabs, replacing the old horizontal tab bar for a more consistent and spacious UI.
+- **Resources tab: vertical sidebar navigation** – The Resources tab (TMs, Glossaries, Non-Translatables, Image Context) now uses the same vertical sidebar layout as the Tools and Settings tabs, replacing the old horizontal tab bar for a more consistent and spacious UI.
 
 ---
 
@@ -1062,8 +1062,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **SuperBench: Filter non-text segments from datasets** — The dataset creation now automatically skips segments that contain only numbers, very short fragments, or text with fewer than 3 letters. This ensures benchmarks test actual translation quality rather than trivial numeric segments. The log and info dialog report how many segments were skipped.
-- **SuperBench: Add Clear Dataset button** — After creating a dataset, a "Clear" button now appears next to the confirmation label, allowing you to reset and create a new dataset with different settings.
+- **SuperBench: Filter non-text segments from datasets** – The dataset creation now automatically skips segments that contain only numbers, very short fragments, or text with fewer than 3 letters. This ensures benchmarks test actual translation quality rather than trivial numeric segments. The log and info dialog report how many segments were skipped.
+- **SuperBench: Add Clear Dataset button** – After creating a dataset, a "Clear" button now appears next to the confirmation label, allowing you to reset and create a new dataset with different settings.
 
 ---
 
@@ -1071,7 +1071,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Dynamic provider labels in AI Settings** — The LLM Provider Selection radio buttons now show the currently selected model in brackets (e.g. "Google Gemini (Gemini 3.1 Pro)") instead of hardcoded generic model names. The label updates automatically when you change the model in the Model Selection dropdowns below.
+- **Dynamic provider labels in AI Settings** – The LLM Provider Selection radio buttons now show the currently selected model in brackets (e.g. "Google Gemini (Gemini 3.1 Pro)") instead of hardcoded generic model names. The label updates automatically when you change the model in the Model Selection dropdowns below.
 
 ---
 
@@ -1079,7 +1079,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Update Superbench model lists** — Added latest models to LLM Superbench dropdowns for all three providers:
+- **Update Superbench model lists** – Added latest models to LLM Superbench dropdowns for all three providers:
   - **OpenAI:** Added `o3-mini` reasoning model
   - **Claude:** Added `claude-sonnet-4-6` (latest Sonnet) and `claude-opus-4-6` (was missing from legacy UI)
   - **Gemini:** Added `gemini-3.1-pro-preview` and `gemini-3-pro-preview`
@@ -1091,11 +1091,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix "Check for New Models" not detecting any models** — The model version checker was looking up API keys using incorrect names (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) instead of the actual key names returned by `load_api_keys()` (`openai`, `claude`, `google`/`gemini`). All three provider checks silently returned "No API key" and no new models were ever found. Fixed the key name mapping so the checker now correctly authenticates with all configured providers.
+- **Fix "Check for New Models" not detecting any models** – The model version checker was looking up API keys using incorrect names (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) instead of the actual key names returned by `load_api_keys()` (`openai`, `claude`, `google`/`gemini`). All three provider checks silently returned "No API key" and no new models were ever found. Fixed the key name mapping so the checker now correctly authenticates with all configured providers.
 
 ### New Features
 
-- **Add Gemini 3.1 Pro Preview model** — Added Google's latest `gemini-3.1-pro-preview` model to the Settings model dropdown, known models list, and vision models registry. Described as the smartest Gemini model for complex tasks.
+- **Add Gemini 3.1 Pro Preview model** – Added Google's latest `gemini-3.1-pro-preview` model to the Settings model dropdown, known models list, and vision models registry. Described as the smartest Gemini model for complex tasks.
 
 ---
 
@@ -1103,7 +1103,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix non-breaking space imported as literal `\~` from memoQ RTF (GitHub #171)** — Non-breaking spaces (`\~`), optional hyphens (`\-`), and non-breaking hyphens (`\_`) in memoQ bilingual RTF files were imported as literal text instead of being converted to the correct Unicode characters (U+00A0, U+00AD, U+2011). These RTF control symbols are now properly decoded during import. The same fix was applied to the Déjà Vu RTF handler.
+- **Fix non-breaking space imported as literal `\~` from memoQ RTF (GitHub #171)** – Non-breaking spaces (`\~`), optional hyphens (`\-`), and non-breaking hyphens (`\_`) in memoQ bilingual RTF files were imported as literal text instead of being converted to the correct Unicode characters (U+00A0, U+00AD, U+2011). These RTF control symbols are now properly decoded during import. The same fix was applied to the Déjà Vu RTF handler.
 
 ---
 
@@ -1111,7 +1111,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fix memoQ "Edited" status mapping (GitHub #139 follow-up)** — memoQ "Edited" segments (indicating the translator actively edited the segment) were incorrectly mapped: "Edited (101%)" was displayed as CM (context match), and other "Edited" variants like "Edited (98%)" or "Edited (68%)" fell through to "Pre-translated". All "Edited" segments now correctly map to "Translated" status with their match percentage preserved. Also fixed the status matching order so that specific equivalents like "Pre-translated (101%)" are matched before generic ones like "Pre-translated", ensuring CM/PM/TM 100% statuses are correctly distinguished from generic pre-translated.
+- **Fix memoQ "Edited" status mapping (GitHub #139 follow-up)** – memoQ "Edited" segments (indicating the translator actively edited the segment) were incorrectly mapped: "Edited (101%)" was displayed as CM (context match), and other "Edited" variants like "Edited (98%)" or "Edited (68%)" fell through to "Pre-translated". All "Edited" segments now correctly map to "Translated" status with their match percentage preserved. Also fixed the status matching order so that specific equivalents like "Pre-translated (101%)" are matched before generic ones like "Pre-translated", ensuring CM/PM/TM 100% statuses are correctly distinguished from generic pre-translated.
 
 ---
 
@@ -1119,11 +1119,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **TM match rate display for all import formats (GitHub #139)** — When importing bilingual files that contain TM match information, the match percentage is now shown in the status column with color-coded display (green for 100%+, blue for 90–99%, dark blue for fuzzy). Match rates can also be used for filtering and sorting. Previously this data was present in the source files but not carried through to the UI.
-  - **SDLXLIFF / SDLPPX (Trados)** — Match percentages from the SDL `percent` attribute are now displayed: TM matches show their actual percentage, Context Matches show 101%, Perfect Matches show 102%.
-  - **memoQ bilingual DOCX** — Match percentages are extracted from the status column text (e.g. "Pre-translated (97%)") and the proper memoQ status is now mapped to Supervertaler's status hierarchy.
-  - **memoQ bilingual RTF** — Same as DOCX: match percentages from the status column are now parsed and displayed.
-  - **memoQ XLIFF (.mqxliff)** — Match percentages are extracted from the `mq:percent` attribute on trans-units when available.
+- **TM match rate display for all import formats (GitHub #139)** – When importing bilingual files that contain TM match information, the match percentage is now shown in the status column with color-coded display (green for 100%+, blue for 90–99%, dark blue for fuzzy). Match rates can also be used for filtering and sorting. Previously this data was present in the source files but not carried through to the UI.
+  - **SDLXLIFF / SDLPPX (Trados)** – Match percentages from the SDL `percent` attribute are now displayed: TM matches show their actual percentage, Context Matches show 101%, Perfect Matches show 102%.
+  - **memoQ bilingual DOCX** – Match percentages are extracted from the status column text (e.g. "Pre-translated (97%)") and the proper memoQ status is now mapped to Supervertaler's status hierarchy.
+  - **memoQ bilingual RTF** – Same as DOCX: match percentages from the status column are now parsed and displayed.
+  - **memoQ XLIFF (.mqxliff)** – Match percentages are extracted from the `mq:percent` attribute on trans-units when available.
 
 ---
 
@@ -1131,7 +1131,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Show correct keyboard shortcuts on Mac/Linux (GitHub #167)** — Fixed remaining hardcoded "Ctrl+" references in user-visible text that weren't using the platform-aware `format_shortcut_for_display()` function. On macOS, shortcuts now correctly display with ⌘/⌥/⇧ symbols instead of Ctrl/Alt/Shift. Fixes: glossary quick-add dialog ("Ctrl+E" → "⌘E" on Mac), and the HTML keyboard shortcuts cheatsheet export (both shortcut column and description text now formatted for the current platform).
+- **Show correct keyboard shortcuts on Mac/Linux (GitHub #167)** – Fixed remaining hardcoded "Ctrl+" references in user-visible text that weren't using the platform-aware `format_shortcut_for_display()` function. On macOS, shortcuts now correctly display with ⌘/⌥/⇧ symbols instead of Ctrl/Alt/Shift. Fixes: glossary quick-add dialog ("Ctrl+E" → "⌘E" on Mac), and the HTML keyboard shortcuts cheatsheet export (both shortcut column and description text now formatted for the current platform).
 
 ---
 
@@ -1139,8 +1139,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Optional locked segment loading for all Trados imports** — When importing SDLPPX packages, standalone SDLXLIFF files, or SDLXLIFF folders that contain locked/non-translatable segments, users are now asked whether to include them in the grid for context. For SDLPPX packages, a checkbox appears in the info dialog showing the locked count (e.g. "Include locked/non-translatable segments for context (40,300 segments)"). For standalone and folder imports, a Yes/No confirmation dialog appears when locked segments are detected. Default is to exclude them (fast). Lock TU structural containers are always excluded regardless.
-- **Locked row visual distinction** — When locked segments are included, they display with a muted tan/grey background (`#E0DDD8` light, `#3a3a3a` dark) and their target cells are read-only, so they're clearly distinguishable from translatable segments. The existing Advanced Filters "Locked Status" filter also works to show/hide them post-import.
+- **Optional locked segment loading for all Trados imports** – When importing SDLPPX packages, standalone SDLXLIFF files, or SDLXLIFF folders that contain locked/non-translatable segments, users are now asked whether to include them in the grid for context. For SDLPPX packages, a checkbox appears in the info dialog showing the locked count (e.g. "Include locked/non-translatable segments for context (40,300 segments)"). For standalone and folder imports, a Yes/No confirmation dialog appears when locked segments are detected. Default is to exclude them (fast). Lock TU structural containers are always excluded regardless.
+- **Locked row visual distinction** – When locked segments are included, they display with a muted tan/grey background (`#E0DDD8` light, `#3a3a3a` dark) and their target cells are read-only, so they're clearly distinguishable from translatable segments. The existing Advanced Filters "Locked Status" filter also works to show/hide them post-import.
 
 ---
 
@@ -1148,19 +1148,19 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **SDLPPX multi-file views** — When importing a Trados Studio package (SDLPPX) containing multiple SDLXLIFF files, the multi-file views system now activates automatically. Each file appears in the file filter dropdown, letting you select individual files to work on or create custom views — just like the existing multi-file folder import. Previously, all files were lumped together with no way to filter by file.
+- **SDLPPX multi-file views** – When importing a Trados Studio package (SDLPPX) containing multiple SDLXLIFF files, the multi-file views system now activates automatically. Each file appears in the file filter dropdown, letting you select individual files to work on or create custom views – just like the existing multi-file folder import. Previously, all files were lumped together with no way to filter by file.
 
 ### Improvements
 
-- **memoQ submenu in Import/Export menus** — The three memoQ import formats (Bilingual Table DOCX, Bilingual Table RTF, XLIFF .mqxliff) and their corresponding exports are now grouped under a "memoQ" submenu, matching the existing Trados Studio submenu pattern. Declutters the Import and Export menus.
-- **SDLPPX import performance** — Locked and non-translatable segments (lock TUs, `translate="no"` structural segments) are now filtered out before loading into the UI grid. A package with ~42,000 total segments but only ~1,700 translatable ones now loads in seconds instead of 5–10 minutes.
+- **memoQ submenu in Import/Export menus** – The three memoQ import formats (Bilingual Table DOCX, Bilingual Table RTF, XLIFF .mqxliff) and their corresponding exports are now grouped under a "memoQ" submenu, matching the existing Trados Studio submenu pattern. Declutters the Import and Export menus.
+- **SDLPPX import performance** – Locked and non-translatable segments (lock TUs, `translate="no"` structural segments) are now filtered out before loading into the UI grid. A package with ~42,000 total segments but only ~1,700 translatable ones now loads in seconds instead of 5–10 minutes.
 
 ### Bug Fixes
 
-- **SDLPPX import: fix "Total segments: 0"** — SDLXLIFF files inside Trados packages are stored in subdirectories (e.g. `nl-NL/import/...`), but the loader used non-recursive `.glob('*.sdlxliff')` which only searched the top level. Changed to `.rglob('*.sdlxliff')` so files in nested folders are found correctly.
-- **SDLXLIFF export: lock TU handling for partial-lock segments** — When exporting translations for segments containing inline lock elements (`<x id="lockedN" xid="lockTU_UUID"/>`), each target context now gets its own unique lock TU with a fresh UUID-based xid. Previously, new targets either lost their lock xids entirely or reused the seg-source xids, which could cause Trados Studio to reject the file. Already-translated segments preserve their existing target lock xids.
-- **SDLXLIFF export: fix self-closing mrk regex cross-matching** — The mrk regex `[^>]*>` could match through the `/>` of a self-closing `<mrk ... />` and grab the next `</mrk>` as its closing tag, causing incorrect content substitution in TUs with mixed self-closing and regular mrk elements. Fixed with a negative lookbehind `(?<!/)` before `>`.
-- **Unicode crash on Windows console** — A `→` (Unicode arrow) character in a log message caused `UnicodeEncodeError` on Windows cp1252 consoles, crashing `load_package()`. Replaced with ASCII `->`.
+- **SDLPPX import: fix "Total segments: 0"** – SDLXLIFF files inside Trados packages are stored in subdirectories (e.g. `nl-NL/import/...`), but the loader used non-recursive `.glob('*.sdlxliff')` which only searched the top level. Changed to `.rglob('*.sdlxliff')` so files in nested folders are found correctly.
+- **SDLXLIFF export: lock TU handling for partial-lock segments** – When exporting translations for segments containing inline lock elements (`<x id="lockedN" xid="lockTU_UUID"/>`), each target context now gets its own unique lock TU with a fresh UUID-based xid. Previously, new targets either lost their lock xids entirely or reused the seg-source xids, which could cause Trados Studio to reject the file. Already-translated segments preserve their existing target lock xids.
+- **SDLXLIFF export: fix self-closing mrk regex cross-matching** – The mrk regex `[^>]*>` could match through the `/>` of a self-closing `<mrk ... />` and grab the next `</mrk>` as its closing tag, causing incorrect content substitution in TUs with mixed self-closing and regular mrk elements. Fixed with a negative lookbehind `(?<!/)` before `>`.
+- **Unicode crash on Windows console** – A `→` (Unicode arrow) character in a log message caused `UnicodeEncodeError` on Windows cp1252 consoles, crashing `load_package()`. Replaced with ASCII `->`.
 
 ---
 
@@ -1168,7 +1168,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **SDLXLIFF export: fix missing translations for self-closing mrk segments** — When Trados SDLXLIFF files contained self-closing `<mrk mtype="seg" mid="N" />` tags in the `<target>` element (used for empty/untranslated segments), Supervertaler's export would silently skip them because the regex only matched the `<mrk ...>content</mrk>` open+close form. This caused translated segments to appear empty when re-opened in Trados Studio. The export now handles both forms correctly via a second replacement pass for self-closing tags.
+- **SDLXLIFF export: fix missing translations for self-closing mrk segments** – When Trados SDLXLIFF files contained self-closing `<mrk mtype="seg" mid="N" />` tags in the `<target>` element (used for empty/untranslated segments), Supervertaler's export would silently skip them because the regex only matched the `<mrk ...>content</mrk>` open+close form. This caused translated segments to appear empty when re-opened in Trados Studio. The export now handles both forms correctly via a second replacement pass for self-closing tags.
 
 ---
 
@@ -1176,7 +1176,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Tools tabs converted to vertical sidebar** — The 11 tool modules (AutoFingers, Superconverter, PDF Rescue, Superbench, Superbrowser, Supercleaner, Superlookup, Supervoice, Text Encoding Repair, TMX Editor, Tracked Changes) now use the same vertical sidebar navigation as the Settings tab instead of horizontal tabs. This saves vertical space, looks cleaner, and works much better on smaller screens. Dark mode and font scaling are fully supported.
+- **Tools tabs converted to vertical sidebar** – The 11 tool modules (AutoFingers, Superconverter, PDF Rescue, Superbench, Superbrowser, Supercleaner, Superlookup, Supervoice, Text Encoding Repair, TMX Editor, Tracked Changes) now use the same vertical sidebar navigation as the Settings tab instead of horizontal tabs. This saves vertical space, looks cleaner, and works much better on smaller screens. Dark mode and font scaling are fully supported.
 
 ---
 
@@ -1184,8 +1184,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Web Resources sidebar is now scrollable** — The resource list in the Superlookup Web Resources tab is now wrapped in a scroll area, so all resources remain accessible on smaller screens or when the panel height is limited. Button padding was also tightened to fit more items in view.
-- **Updated Beijerterm search URL** — The Beijerterm web resource now uses the MediaWiki full-text search URL (`/w/index.php?search=…`) instead of the old homepage query parameter. Settings label updated from "michaelbeijer.co.uk" to "Beijerterm".
+- **Web Resources sidebar is now scrollable** – The resource list in the Superlookup Web Resources tab is now wrapped in a scroll area, so all resources remain accessible on smaller screens or when the panel height is limited. Button padding was also tightened to fit more items in view.
+- **Updated Beijerterm search URL** – The Beijerterm web resource now uses the MediaWiki full-text search URL (`/w/index.php?search=…`) instead of the old homepage query parameter. Settings label updated from "michaelbeijer.co.uk" to "Beijerterm".
 
 ---
 
@@ -1193,7 +1193,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Termview respects line breaks from source text** — When the source segment contains line breaks (e.g. multi-line content), the Termview flow layout now starts a new row at each `\n`, matching the visual structure of the source grid cell instead of flowing all words into a single continuous block.
+- **Termview respects line breaks from source text** – When the source segment contains line breaks (e.g. multi-line content), the Termview flow layout now starts a new row at each `\n`, matching the visual structure of the source grid cell instead of flowing all words into a single continuous block.
 
 ---
 
@@ -1201,7 +1201,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Toggle TM Source / TM Target layout: horizontal ↔ vertical** — Right-click on the TM Source or TM Target pane in the Match Panel and select "↕ Stack TM Source / Target Vertically" to switch from side-by-side to vertically stacked layout (giving each pane the full width). Also available via View > Match Panel > "Stack TM Panes Vertically". The preference is persisted across sessions.
+- **Toggle TM Source / TM Target layout: horizontal ↔ vertical** – Right-click on the TM Source or TM Target pane in the Match Panel and select "↕ Stack TM Source / Target Vertically" to switch from side-by-side to vertically stacked layout (giving each pane the full width). Also available via View > Match Panel > "Stack TM Panes Vertically". The preference is persisted across sessions.
 
 ---
 
@@ -1209,12 +1209,12 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: glossary/termbase matching broken when Show Invisibles is active** — Multi-word glossary terms like "hinge load" failed to match when invisible space markers (`·\u200B`) were active, because several code paths passed display text (containing markers) instead of clean `segment.source` to the matching functions. Added defensive `reverse_invisible_replacements()` guards in `find_termbase_matches_in_source()` and `_update_both_termviews()` to ensure the termbase search and Termview tokenizer always receive clean text regardless of the source.
-- **Fixed: Ctrl+Shift+F filter searches for marker-containing text** — When selecting text in the grid with Show Invisibles active (e.g. "Wall·soffits") and pressing Ctrl+Shift+F, the filter searched for the marker-containing text instead of "Wall soffits". Added `reverse_invisible_replacements()` to strip markers before using selected text as filter criteria.
-- **Fixed: source cell termbase highlighting with invisible markers** — The `highlight_termbase_matches()` method in `ReadOnlyGridTextEditor` searched for clean glossary terms in display text containing invisible markers. Rewrote to build a clean-text-to-display-text position mapping so term positions are found in clean text and then mapped back to display positions for cursor highlighting.
-- **Fixed: Copy Source to Target wrote invisible markers into segment data** — The "Copy Source to Target" functions (both menu and Ctrl+Shift+S keyboard shortcut) read from `source_widget.toPlainText()` which included invisible character markers (·, →, °, ↵, \u200B), corrupting `segment.target`. Fixed to use clean `segment.source` instead.
-- **Fixed: QuickTrans (Ctrl+M) sent invisible markers to MT providers** — The QuickTrans fallback path read source text from the widget display instead of clean segment data. Fixed to use `segment.source` and strip any markers from selected text before sending to translation APIs.
-- **Fixed: various toPlainText() data contamination paths** — Several code paths that saved widget display text back to segment data or export files could include invisible markers. Added `reverse_invisible_replacements()` guards to match insertion, term extraction, and Trados bilingual export paths.
+- **Fixed: glossary/termbase matching broken when Show Invisibles is active** – Multi-word glossary terms like "hinge load" failed to match when invisible space markers (`·\u200B`) were active, because several code paths passed display text (containing markers) instead of clean `segment.source` to the matching functions. Added defensive `reverse_invisible_replacements()` guards in `find_termbase_matches_in_source()` and `_update_both_termviews()` to ensure the termbase search and Termview tokenizer always receive clean text regardless of the source.
+- **Fixed: Ctrl+Shift+F filter searches for marker-containing text** – When selecting text in the grid with Show Invisibles active (e.g. "Wall·soffits") and pressing Ctrl+Shift+F, the filter searched for the marker-containing text instead of "Wall soffits". Added `reverse_invisible_replacements()` to strip markers before using selected text as filter criteria.
+- **Fixed: source cell termbase highlighting with invisible markers** – The `highlight_termbase_matches()` method in `ReadOnlyGridTextEditor` searched for clean glossary terms in display text containing invisible markers. Rewrote to build a clean-text-to-display-text position mapping so term positions are found in clean text and then mapped back to display positions for cursor highlighting.
+- **Fixed: Copy Source to Target wrote invisible markers into segment data** – The "Copy Source to Target" functions (both menu and Ctrl+Shift+S keyboard shortcut) read from `source_widget.toPlainText()` which included invisible character markers (·, →, °, ↵, \u200B), corrupting `segment.target`. Fixed to use clean `segment.source` instead.
+- **Fixed: QuickTrans (Ctrl+M) sent invisible markers to MT providers** – The QuickTrans fallback path read source text from the widget display instead of clean segment data. Fixed to use `segment.source` and strip any markers from selected text before sending to translation APIs.
+- **Fixed: various toPlainText() data contamination paths** – Several code paths that saved widget display text back to segment data or export files could include invisible markers. Added `reverse_invisible_replacements()` guards to match insertion, term extraction, and Trados bilingual export paths.
 
 ---
 
@@ -1222,8 +1222,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: ↵ line break markers not showing in grid cells** — After loading a project, `_refresh_grid_display_mode()` (for WYSIWYG/Tags toggle) overwrote the grid cell text with raw `segment.source`/`segment.target` that had no invisible-character markers applied. The ↵ markers set during `load_segments_to_grid()` were immediately lost. Fixed by applying `apply_invisible_replacements()` in `_refresh_grid_display_mode()` before calling `update_display_mode()` on each cell.
-- **Fixed: double ↵↵ markers in TM Target pane** — When a TM entry had been saved with stale invisible markers (e.g. `↵\n` already baked into the stored target text), `apply_invisible_replacements()` would convert the surviving `\n` into another `↵\n`, producing `↵↵\n`. Fixed by calling `reverse_invisible_replacements()` on all TM text before re-applying the current display settings, and by stripping markers in `save_segment_to_activated_tms()` to prevent marker leakage into the TM in the first place.
+- **Fixed: ↵ line break markers not showing in grid cells** – After loading a project, `_refresh_grid_display_mode()` (for WYSIWYG/Tags toggle) overwrote the grid cell text with raw `segment.source`/`segment.target` that had no invisible-character markers applied. The ↵ markers set during `load_segments_to_grid()` were immediately lost. Fixed by applying `apply_invisible_replacements()` in `_refresh_grid_display_mode()` before calling `update_display_mode()` on each cell.
+- **Fixed: double ↵↵ markers in TM Target pane** – When a TM entry had been saved with stale invisible markers (e.g. `↵\n` already baked into the stored target text), `apply_invisible_replacements()` would convert the surviving `\n` into another `↵\n`, producing `↵↵\n`. Fixed by calling `reverse_invisible_replacements()` on all TM text before re-applying the current display settings, and by stripping markers in `save_segment_to_activated_tms()` to prevent marker leakage into the TM in the first place.
 
 ---
 
@@ -1231,7 +1231,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: line breaks not visible in TM Source / TM Target panes** — When a TM entry contained line breaks (`\n`), the Match Panel's TM Source pane collapsed them into spaces because the diff-highlighting tokeniser used `.split()` which strips newlines, then `.join(' ')` which replaced them with spaces. Rewrote the tokeniser with `re.split(r'(\n)', text)` to preserve `\n` as explicit tokens; the renderer now calls `cursor.insertBlock()` for newline tokens and optionally shows the ↵ marker when Show Invisibles line breaks are enabled. The TM Target pane and all fallback paths now also apply `apply_invisible_replacements()` so ↵ markers are shown consistently. Toggling Show Invisibles now also refreshes the Match Panel TM display in real time.
+- **Fixed: line breaks not visible in TM Source / TM Target panes** – When a TM entry contained line breaks (`\n`), the Match Panel's TM Source pane collapsed them into spaces because the diff-highlighting tokeniser used `.split()` which strips newlines, then `.join(' ')` which replaced them with spaces. Rewrote the tokeniser with `re.split(r'(\n)', text)` to preserve `\n` as explicit tokens; the renderer now calls `cursor.insertBlock()` for newline tokens and optionally shows the ↵ marker when Show Invisibles line breaks are enabled. The TM Target pane and all fallback paths now also apply `apply_invisible_replacements()` so ↵ markers are shown consistently. Toggling Show Invisibles now also refreshes the Match Panel TM display in real time.
 
 ---
 
@@ -1239,7 +1239,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: double-clicking in target box selects entire segment instead of individual word** — Changing the Show Invisibles defaults (tabs, non-breaking spaces, line breaks ON) activated the custom double-click handler in `EditableGridTextEditor`, but its word-delimiter set was missing the regular space character (`' '`). When spaces weren't displayed as markers, the scan found no delimiters and selected the entire segment text. Fixed by adding `' '` to the `DELIMITERS` set in both `EditableGridTextEditor` and `ReadOnlyGridTextEditor`. Also rewrote `ReadOnlyGridTextEditor.mouseDoubleClickEvent()` to match the improved pattern (checks `any(invisible_display_settings.values())` instead of only spaces).
+- **Fixed: double-clicking in target box selects entire segment instead of individual word** – Changing the Show Invisibles defaults (tabs, non-breaking spaces, line breaks ON) activated the custom double-click handler in `EditableGridTextEditor`, but its word-delimiter set was missing the regular space character (`' '`). When spaces weren't displayed as markers, the scan found no delimiters and selected the entire segment text. Fixed by adding `' '` to the `DELIMITERS` set in both `EditableGridTextEditor` and `ReadOnlyGridTextEditor`. Also rewrote `ReadOnlyGridTextEditor.mouseDoubleClickEvent()` to match the improved pattern (checks `any(invisible_display_settings.values())` instead of only spaces).
 
 ---
 
@@ -1247,17 +1247,17 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Right-click Edit / Delete TM entries from the Match Panel** — Right-clicking the TM Source or TM Target pane in the Match Panel now shows "Edit TM Entry" and "Delete TM Entry" options alongside the standard Copy / Select All actions. Edit opens a dialog with the source (read-only) and an editable target field; changes are written to the database immediately and reflected live in the panel. Delete removes the entry after a confirmation prompt. Both actions work on all TM types (project TM, imported TMs, etc.).
+- **Right-click Edit / Delete TM entries from the Match Panel** – Right-clicking the TM Source or TM Target pane in the Match Panel now shows "Edit TM Entry" and "Delete TM Entry" options alongside the standard Copy / Select All actions. Edit opens a dialog with the source (read-only) and an editable target field; changes are written to the database immediately and reflected live in the panel. Delete removes the entry after a confirmation prompt. Both actions work on all TM types (project TM, imported TMs, etc.).
 
 ### Improvements
 
-- **Show Invisibles: better defaults** — Tabs, non-breaking spaces, and line breaks are now visible by default for new users. Spaces remain hidden. Users can still change any combination via the Show Invisibles dropdown.
-- **Segment number column auto-sizes to fit content** — The # column in the grid no longer caps at 55 px; it now grows to accommodate any number of digits, so projects with hundreds or thousands of segments display the full segment number.
+- **Show Invisibles: better defaults** – Tabs, non-breaking spaces, and line breaks are now visible by default for new users. Spaces remain hidden. Users can still change any combination via the Show Invisibles dropdown.
+- **Segment number column auto-sizes to fit content** – The # column in the grid no longer caps at 55 px; it now grows to accommodate any number of digits, so projects with hundreds or thousands of segments display the full segment number.
 
 ### Bug Fixes
 
-- **Fixed: TM Source pane in Match Panel lost line breaks** — When a TM entry contained line endings (e.g. multi-line segments from Trados Studio), the TM Source pane in the Match Panel collapsed them into spaces because the diff-highlighting tokeniser used `.split()` which eats newlines. Fixed by tokenising with a regex that preserves `\n` as explicit tokens and emitting `insertBlock()` in the QTextEdit cursor when a newline token is encountered.
-- **Fixed: blurry right-click context menu on TM Source / TM Target panes** — The QTextEdit widgets use `background-color: transparent` for seamless rendering inside their coloured container, but this style leaked into the context menu, causing fuzzy text on high-DPI displays. The context menu now gets an explicit opaque palette-based stylesheet.
+- **Fixed: TM Source pane in Match Panel lost line breaks** – When a TM entry contained line endings (e.g. multi-line segments from Trados Studio), the TM Source pane in the Match Panel collapsed them into spaces because the diff-highlighting tokeniser used `.split()` which eats newlines. Fixed by tokenising with a regex that preserves `\n` as explicit tokens and emitting `insertBlock()` in the QTextEdit cursor when a newline token is encountered.
+- **Fixed: blurry right-click context menu on TM Source / TM Target panes** – The QTextEdit widgets use `background-color: transparent` for seamless rendering inside their coloured container, but this style leaked into the context menu, causing fuzzy text on high-DPI displays. The context menu now gets an explicit opaque palette-based stylesheet.
 
 ---
 
@@ -1265,12 +1265,12 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Ollama model list audited and updated for February 2026** — Replaced the recommended local LLM list with the best currently available models. Key changes:
-  - **Added TranslateGemma** (4B / 12B / 27B) — Google's purpose-built translation model (Jan 2026), fine-tuned on Gemma 3 with reinforcement learning. Supports 55 languages including Dutch. The 12B model outperforms the general-purpose Gemma 3 27B on translation benchmarks. Now the recommended default Ollama model.
-  - **Upgraded Qwen 2.5 → Qwen 3** (4B / 8B / 14B / 32B) — Alibaba's latest generation with 100+ language support and improved quality across the board.
-  - **Upgraded Gemma 2 → Gemma 3 12B** — Google's latest general-purpose model with 140+ languages and multimodal support.
-  - **Kept Aya Expanse 8B** — Still the best Dutch-specialist model at its size, no newer version available.
-  - **Removed 12 outdated models**: Qwen 2.5 3B/14B/32B/72B, Llama 3.2 3B, Llama 3.1 8B, Mistral 7B, Gemma 2 9B, Mixtral 8x7B, Command R 35B, OpenEuroLLM Dutch, GEITje 7B Ultra, StableLM 2 12B — all surpassed by newer alternatives.
+- **Ollama model list audited and updated for February 2026** – Replaced the recommended local LLM list with the best currently available models. Key changes:
+  - **Added TranslateGemma** (4B / 12B / 27B) – Google's purpose-built translation model (Jan 2026), fine-tuned on Gemma 3 with reinforcement learning. Supports 55 languages including Dutch. The 12B model outperforms the general-purpose Gemma 3 27B on translation benchmarks. Now the recommended default Ollama model.
+  - **Upgraded Qwen 2.5 → Qwen 3** (4B / 8B / 14B / 32B) – Alibaba's latest generation with 100+ language support and improved quality across the board.
+  - **Upgraded Gemma 2 → Gemma 3 12B** – Google's latest general-purpose model with 140+ languages and multimodal support.
+  - **Kept Aya Expanse 8B** – Still the best Dutch-specialist model at its size, no newer version available.
+  - **Removed 12 outdated models**: Qwen 2.5 3B/14B/32B/72B, Llama 3.2 3B, Llama 3.1 8B, Mistral 7B, Gemma 2 9B, Mixtral 8x7B, Command R 35B, OpenEuroLLM Dutch, GEITje 7B Ultra, StableLM 2 12B – all surpassed by newer alternatives.
 
 ---
 
@@ -1278,7 +1278,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: TM/MT/LLM matches not appearing when grid filters are active** — When a Source or Target text filter was applied, navigating to a segment would skip all Translation Memory, MT, and LLM lookups as a performance optimisation. This meant the Match Panel and Translation Results panel stayed empty, even when pressing F5 (Force Refresh). Fixed by replacing the hard skip with a longer debounce timer (250ms vs 10ms in normal mode): rapid navigation through filtered results stays snappy, but settling on a segment now triggers the full TM/MT/LLM lookup pipeline as expected. Glossary/TermView updates from cache still happen immediately.
+- **Fixed: TM/MT/LLM matches not appearing when grid filters are active** – When a Source or Target text filter was applied, navigating to a segment would skip all Translation Memory, MT, and LLM lookups as a performance optimisation. This meant the Match Panel and Translation Results panel stayed empty, even when pressing F5 (Force Refresh). Fixed by replacing the hard skip with a longer debounce timer (250ms vs 10ms in normal mode): rapid navigation through filtered results stays snappy, but settling on a segment now triggers the full TM/MT/LLM lookup pipeline as expected. Glossary/TermView updates from cache still happen immediately.
 
 ---
 
@@ -1286,7 +1286,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: TM fuzzy matching misses segments that differ only by an inline line break** — Trados Studio and memoQ sometimes embed a heading or label as a line break within a segment (e.g. `"Door stops↵\nIf it is necessary to use a door stop…"`). When this multi-line segment was compared against the single-line body text stored in the TM (`"If it is necessary…"`), `SequenceMatcher` treated the `\n` characters as literal content differences, significantly lowering the similarity score and causing matches to fall below the 75% threshold. Fixed by normalising line breaks to spaces in `calculate_similarity()` before computing the ratio, consistent with the existing behaviour of `_normalize_for_matching()` used for exact matching.
+- **Fixed: TM fuzzy matching misses segments that differ only by an inline line break** – Trados Studio and memoQ sometimes embed a heading or label as a line break within a segment (e.g. `"Door stops↵\nIf it is necessary to use a door stop…"`). When this multi-line segment was compared against the single-line body text stored in the TM (`"If it is necessary…"`), `SequenceMatcher` treated the `\n` characters as literal content differences, significantly lowering the similarity score and causing matches to fall below the 75% threshold. Fixed by normalising line breaks to spaces in `calculate_similarity()` before computing the ratio, consistent with the existing behaviour of `_normalize_for_matching()` used for exact matching.
 
 ---
 
@@ -1294,7 +1294,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Glossaries terms table: all columns now resizable** — Columns Priority, Domain, Notes, Project, Client, and Forbidden were fixed-width and could not be resized by dragging the column header dividers. Changed their resize mode from Fixed to Interactive so all columns except the delete button (col 8) can be resized. Source and Target columns retain their Stretch behaviour and share the remaining space.
+- **Glossaries terms table: all columns now resizable** – Columns Priority, Domain, Notes, Project, Client, and Forbidden were fixed-width and could not be resized by dragging the column header dividers. Changed their resize mode from Fixed to Interactive so all columns except the delete button (col 8) can be resized. Source and Target columns retain their Stretch behaviour and share the remaining space.
 
 ---
 
@@ -1302,7 +1302,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: invisible markers saved into glossary terms when Show Invisibles is active** — When "Show Invisibles" was enabled (e.g. Spaces showing as `·`), selecting text to add to the termbase would include the display markers in the saved term (e.g. `Door·closers` instead of `Door closers`). The marker-containing term would not match the clean segment text during lookup, so the term appeared to be missing from TermView. Fixed by applying `strip_invisible_markers()` (or `reverse_invisible_replacements()`) to all `selectedText()` calls in the six add-to-glossary code paths: `_handle_add_to_termbase` (Ctrl+E), `_handle_quick_add_to_termbase` (Ctrl+Q / Alt+Left) on both `GridTextEditor` and `EditableGridTextEditor`, and `_quick_add_term_with_priority` (Alt+Up/Down).
+- **Fixed: invisible markers saved into glossary terms when Show Invisibles is active** – When "Show Invisibles" was enabled (e.g. Spaces showing as `·`), selecting text to add to the termbase would include the display markers in the saved term (e.g. `Door·closers` instead of `Door closers`). The marker-containing term would not match the clean segment text during lookup, so the term appeared to be missing from TermView. Fixed by applying `strip_invisible_markers()` (or `reverse_invisible_replacements()`) to all `selectedText()` calls in the six add-to-glossary code paths: `_handle_add_to_termbase` (Ctrl+E), `_handle_quick_add_to_termbase` (Ctrl+Q / Alt+Left) on both `GridTextEditor` and `EditableGridTextEditor`, and `_quick_add_term_with_priority` (Alt+Up/Down).
 
 ---
 
@@ -1310,7 +1310,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Show Invisibles: line break marker changed from ¶ to ↵** — The pilcrow (¶) conventionally denotes a paragraph end; the correct symbol for a soft return / inline line break (as used by Trados Studio, Word, and most CAT tools) is ↵ (U+21B5). Updated the display marker, menu label ("Line Breaks (↵)"), highlighter, word-delimiter sets, and all reverse-stripping logic. Legacy ¶ markers are still stripped on load for backwards compatibility with any files saved by earlier versions.
+- **Show Invisibles: line break marker changed from ¶ to ↵** – The pilcrow (¶) conventionally denotes a paragraph end; the correct symbol for a soft return / inline line break (as used by Trados Studio, Word, and most CAT tools) is ↵ (U+21B5). Updated the display marker, menu label ("Line Breaks (↵)"), highlighter, word-delimiter sets, and all reverse-stripping logic. Legacy ¶ markers are still stripped on load for backwards compatibility with any files saved by earlier versions.
 
 ---
 
@@ -1318,8 +1318,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: Batch translation drops line breaks in multi-line segments** — When Trados Studio (or memoQ) stores multiple lines within a single segment (e.g. a list of door specs), the batch translator was silently discarding all lines after the first. Root cause: the response parser split the LLM output on `\n` and only kept lines matching `^\d+\.` — continuation lines without a leading number were thrown away. Fixed with a state-machine parser that appends un-numbered lines to the translation of the most recently matched numbered segment, preserving all internal line breaks. The batch prompt instructions were also updated to explicitly tell the LLM to preserve source line breaks (previously the instructions said "do NOT split into multiple lines", which discouraged preservation of legitimate breaks).
-- **Fixed: Show Invisibles pilcrow (¶) not shown immediately after Shift+Enter** — Pressing Shift+Enter to insert a line break while "Line Breaks (¶)" was active in Show Invisibles would insert a raw `\n` into the cell without the pilcrow marker. The marker only appeared after toggling Show Invisibles off and back on. Fixed: `on_target_text_changed` now re-applies invisible markers to the widget display whenever the markers-applied form differs from the current widget text, preserving cursor position by mapping through the clean (marker-free) text.
+- **Fixed: Batch translation drops line breaks in multi-line segments** – When Trados Studio (or memoQ) stores multiple lines within a single segment (e.g. a list of door specs), the batch translator was silently discarding all lines after the first. Root cause: the response parser split the LLM output on `\n` and only kept lines matching `^\d+\.` – continuation lines without a leading number were thrown away. Fixed with a state-machine parser that appends un-numbered lines to the translation of the most recently matched numbered segment, preserving all internal line breaks. The batch prompt instructions were also updated to explicitly tell the LLM to preserve source line breaks (previously the instructions said "do NOT split into multiple lines", which discouraged preservation of legitimate breaks).
+- **Fixed: Show Invisibles pilcrow (¶) not shown immediately after Shift+Enter** – Pressing Shift+Enter to insert a line break while "Line Breaks (¶)" was active in Show Invisibles would insert a raw `\n` into the cell without the pilcrow marker. The marker only appeared after toggling Show Invisibles off and back on. Fixed: `on_target_text_changed` now re-applies invisible markers to the widget display whenever the markers-applied form differs from the current widget text, preserving cursor position by mapping through the clean (marker-free) text.
 
 ---
 
@@ -1327,7 +1327,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: Show Invisibles markers permanently saved into .svproj files** — The root cause of invisible-character markers (·, →, ¶, U+200B) appearing permanently in certain segments even after toggling Show Invisibles off was that the markers had been written into the `.svproj` JSON file on disk as part of `segment.target`. Once saved, every subsequent project load would populate `segment.target` with the corrupted text, making the markers reappear regardless of display settings. Fixed with a three-layer defence: (1) a new module-level `strip_invisible_markers()` function is called inside `Segment.from_dict()` on every project load — any markers in existing saved files are stripped immediately on load; (2) `save_project_to_file()` now sanitises all `segment.target` values through the same function just before writing the JSON, so markers can never reach disk even if one slipped through the editor pipeline; (3) the `.svproj` file for the active LANDEXX project was cleaned directly to immediately fix the three affected segments (3, 4, 5).
+- **Fixed: Show Invisibles markers permanently saved into .svproj files** – The root cause of invisible-character markers (·, →, ¶, U+200B) appearing permanently in certain segments even after toggling Show Invisibles off was that the markers had been written into the `.svproj` JSON file on disk as part of `segment.target`. Once saved, every subsequent project load would populate `segment.target` with the corrupted text, making the markers reappear regardless of display settings. Fixed with a three-layer defence: (1) a new module-level `strip_invisible_markers()` function is called inside `Segment.from_dict()` on every project load – any markers in existing saved files are stripped immediately on load; (2) `save_project_to_file()` now sanitises all `segment.target` values through the same function just before writing the JSON, so markers can never reach disk even if one slipped through the editor pipeline; (3) the `.svproj` file for the active LANDEXX project was cleaned directly to immediately fix the three affected segments (3, 4, 5).
 
 ---
 
@@ -1335,8 +1335,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: invisible-character markers stick in target cells after toggling off** — After disabling "Show Invisibles", the middle-dot space markers (·), tab arrows (→), etc. remained visible in target cells that had been previously edited. Three root causes fixed: (1) `reverse_invisible_replacements()` was gated on whether each setting was currently *on*, so it couldn't strip markers from a cell when the setting was toggled off — it now always strips all marker types unconditionally; (2) `refresh_grid_invisibles()` was calling `blockSignals(False)` after each `setPlainText()`, which caused Qt to deliver a queued `textChanged` event that wrote the stale marker text back into `segment.target` — fixed by raising `_suppress_target_change_handlers` during the refresh and resetting `_initial_load_complete` per widget so the queued event is discarded; (3) `refresh_grid_invisibles()` now always reads from `segment.target` (the canonical clean text) rather than from the widget's current display text, so edited segments are not corrupted.
-- **Fixed: double-click word selection broken when Show Invisibles is active** — Double-clicking to select a word for glossary lookup would select only a fragment of the word because the zero-width space (U+200B) that is inserted alongside each `·` space-marker was listed as a word delimiter. Removed U+200B from the delimiter set in `mouseDoubleClickEvent`; it is now treated as a transparent word-wrap hint. Also generalized the override to activate whenever *any* invisible setting is on, not only when "Spaces" is on.
+- **Fixed: invisible-character markers stick in target cells after toggling off** – After disabling "Show Invisibles", the middle-dot space markers (·), tab arrows (→), etc. remained visible in target cells that had been previously edited. Three root causes fixed: (1) `reverse_invisible_replacements()` was gated on whether each setting was currently *on*, so it couldn't strip markers from a cell when the setting was toggled off – it now always strips all marker types unconditionally; (2) `refresh_grid_invisibles()` was calling `blockSignals(False)` after each `setPlainText()`, which caused Qt to deliver a queued `textChanged` event that wrote the stale marker text back into `segment.target` – fixed by raising `_suppress_target_change_handlers` during the refresh and resetting `_initial_load_complete` per widget so the queued event is discarded; (3) `refresh_grid_invisibles()` now always reads from `segment.target` (the canonical clean text) rather than from the widget's current display text, so edited segments are not corrupted.
+- **Fixed: double-click word selection broken when Show Invisibles is active** – Double-clicking to select a word for glossary lookup would select only a fragment of the word because the zero-width space (U+200B) that is inserted alongside each `·` space-marker was listed as a word delimiter. Removed U+200B from the delimiter set in `mouseDoubleClickEvent`; it is now treated as a transparent word-wrap hint. Also generalized the override to activate whenever *any* invisible setting is on, not only when "Spaces" is on.
 
 ---
 
@@ -1344,7 +1344,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: Show Invisibles toggle causes invisibles to immediately disappear** — Toggling any "Show Invisibles" option (Spaces, Tabs, Non-breaking Spaces, Line Breaks, or Toggle All) would briefly render the invisible-character markers, which then vanished within a few seconds. Root cause: `refresh_grid_invisibles()` was calling `load_segments_to_grid()` — a full grid rebuild that overwrote the rendered markers. Fixed by rewriting `refresh_grid_invisibles()` to update cell widgets **in-place** (iterating existing `QTextEdit` widgets and calling `setPlainText()` with signals blocked) instead of triggering a full grid reload. Additionally fixed a cascade bug in "Toggle All" where `setChecked()` on the four menu actions was firing the `triggered` signal for each, causing up to 4 extra full grid reloads and incorrect toggle state. Signals on those actions are now blocked during the checkbox update.
+- **Fixed: Show Invisibles toggle causes invisibles to immediately disappear** – Toggling any "Show Invisibles" option (Spaces, Tabs, Non-breaking Spaces, Line Breaks, or Toggle All) would briefly render the invisible-character markers, which then vanished within a few seconds. Root cause: `refresh_grid_invisibles()` was calling `load_segments_to_grid()` – a full grid rebuild that overwrote the rendered markers. Fixed by rewriting `refresh_grid_invisibles()` to update cell widgets **in-place** (iterating existing `QTextEdit` widgets and calling `setPlainText()` with signals blocked) instead of triggering a full grid reload. Additionally fixed a cascade bug in "Toggle All" where `setChecked()` on the four menu actions was firing the `triggered` signal for each, causing up to 4 extra full grid reloads and incorrect toggle state. Signals on those actions are now blocked during the checkbox update.
 
 ---
 
@@ -1352,7 +1352,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: resource bleed between projects (TMs, glossaries, NT lists)** — When starting a new project via **Import → Phrase Bilingual**, **Import → Déjà Vu Bilingual**, **Import → Trados Studio → SDLPPX Package**, or **Import (Multi-file)**, previously activated translation memories, glossaries, and NT lists from an earlier project were not being cleared. This could cause lookups against stray resources that belong to a completely different project. Fixed by calling `_deactivate_all_resources_for_new_project()` at the start of each of these import paths, consistent with the behaviour already in place for DOCX, plain-text, memoQ bilingual, and SDLXLIFF imports.
+- **Fixed: resource bleed between projects (TMs, glossaries, NT lists)** – When starting a new project via **Import → Phrase Bilingual**, **Import → Déjà Vu Bilingual**, **Import → Trados Studio → SDLPPX Package**, or **Import (Multi-file)**, previously activated translation memories, glossaries, and NT lists from an earlier project were not being cleared. This could cause lookups against stray resources that belong to a completely different project. Fixed by calling `_deactivate_all_resources_for_new_project()` at the start of each of these import paths, consistent with the behaviour already in place for DOCX, plain-text, memoQ bilingual, and SDLXLIFF imports.
 
 ---
 
@@ -1360,7 +1360,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Status column short labels** — The status column now shows a compact text abbreviation to the right of the status icon for statuses where it adds clarity: `CM` (context match), `PM` (perfect match), `MT` (machine translated), `Rep` (repetition), `Pre` (pre-translated), `Fuz` (fuzzy), `100%` (exact TM match), `TRC` (TR confirmed), `PR` (proofread), `Rej` (rejected), `App` (approved). When a numeric match percentage is already shown (e.g. `101%` from a TM lookup), the short label is suppressed to avoid redundancy. The label is styled in small bold text and has the same tooltip as the icon.
+- **Status column short labels** – The status column now shows a compact text abbreviation to the right of the status icon for statuses where it adds clarity: `CM` (context match), `PM` (perfect match), `MT` (machine translated), `Rep` (repetition), `Pre` (pre-translated), `Fuz` (fuzzy), `100%` (exact TM match), `TRC` (TR confirmed), `PR` (proofread), `Rej` (rejected), `App` (approved). When a numeric match percentage is already shown (e.g. `101%` from a TM lookup), the short label is suppressed to avoid redundancy. The label is styled in small bold text and has the same tooltip as the icon.
 
 ---
 
@@ -1368,7 +1368,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: file boundary banner overlapping the last segment of the previous file** — The extra 20px row height added for banner spacing was incorrectly added to the first row of the *new* file instead of the last row of the *previous* file. The banner (positioned at the top of the new file's row) therefore sat on top of segment content rather than in the empty gap below it. Fixed by adding the padding to the correct row.
+- **Fixed: file boundary banner overlapping the last segment of the previous file** – The extra 20px row height added for banner spacing was incorrectly added to the first row of the *new* file instead of the last row of the *previous* file. The banner (positioned at the top of the new file's row) therefore sat on top of segment content rather than in the empty gap below it. Fixed by adding the padding to the correct row.
 
 ---
 
@@ -1376,7 +1376,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **File boundary banner labels in multi-file projects** — In multi-file projects (SDLXLIFF folder import, DOCX folder import, etc.), a dark blue full-width banner now appears above the first segment of each new file in the segment grid, showing the filename (e.g. `📄 Belastungswerttabellen_SW_20260217_afb.xlsx.sdlxliff`). The banners are floating overlays on the table viewport — they scroll with the grid, reposition on column resize, and disappear automatically when a file is filtered out using the file filter dropdown. The old subtle 2px blue border line between files is replaced by this more prominent and descriptive header.
+- **File boundary banner labels in multi-file projects** – In multi-file projects (SDLXLIFF folder import, DOCX folder import, etc.), a dark blue full-width banner now appears above the first segment of each new file in the segment grid, showing the filename (e.g. `📄 Belastungswerttabellen_SW_20260217_afb.xlsx.sdlxliff`). The banners are floating overlays on the table viewport – they scroll with the grid, reposition on column resize, and disappear automatically when a file is filtered out using the file filter dropdown. The old subtle 2px blue border line between files is replaced by this more prominent and descriptive header.
 
 ---
 
@@ -1384,7 +1384,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: file filter dropdown not appearing after SDLXLIFF folder import** — The file filter dropdown (and Views system) was correctly built in v1.9.286 but never made visible because `_update_file_filter_combo()` was not being called at the end of `import_sdlxliff_folder()`. One missing call added; the dropdown now appears immediately after import.
+- **Fixed: file filter dropdown not appearing after SDLXLIFF folder import** – The file filter dropdown (and Views system) was correctly built in v1.9.286 but never made visible because `_update_file_filter_combo()` was not being called at the end of `import_sdlxliff_folder()`. One missing call added; the dropdown now appears immediately after import.
 
 ---
 
@@ -1392,7 +1392,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Multi-file UI for SDLXLIFF folder imports** — When importing a folder of `.sdlxliff` files via **Import → Trados Studio → Bilingual XLIFF Folder**, the project is now correctly treated as a multi-file project. Each file gets its own `file_id`, so the full multi-file UI activates automatically: a **blue separator line** appears in the segment grid at each file boundary, the **file filter dropdown** in the toolbar lets you show only segments from a specific file, and the **Views system** (Manage Views…) is available for grouping files into custom views. Previously all segments were imported into a flat single-file project with no visual distinction between files.
+- **Multi-file UI for SDLXLIFF folder imports** – When importing a folder of `.sdlxliff` files via **Import → Trados Studio → Bilingual XLIFF Folder**, the project is now correctly treated as a multi-file project. Each file gets its own `file_id`, so the full multi-file UI activates automatically: a **blue separator line** appears in the segment grid at each file boundary, the **file filter dropdown** in the toolbar lets you show only segments from a specific file, and the **Views system** (Manage Views…) is available for grouping files into custom views. Previously all segments were imported into a flat single-file project with no visual distinction between files.
 
 ---
 
@@ -1400,7 +1400,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Import folder of SDLXLIFF files** (GitHub issue #80) — A new **Import → Trados Studio → Bilingual XLIFF Folder (.sdlxliff)...** menu item lets you point Supervertaler at a folder and automatically import all `.sdlxliff` files found inside it, including those in subfolders. This covers workflows where clients send a directory of SDLXLIFF files instead of a packaged `.sdlppx`. After translating, export all files back via the existing **Export → Trados Studio → Bilingual XLIFF - Translated (.sdlxliff)...** menu.
+- **Import folder of SDLXLIFF files** (GitHub issue #80) – A new **Import → Trados Studio → Bilingual XLIFF Folder (.sdlxliff)...** menu item lets you point Supervertaler at a folder and automatically import all `.sdlxliff` files found inside it, including those in subfolders. This covers workflows where clients send a directory of SDLXLIFF files instead of a packaged `.sdlppx`. After translating, export all files back via the existing **Export → Trados Studio → Bilingual XLIFF - Translated (.sdlxliff)...** menu.
 
 ---
 
@@ -1408,11 +1408,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Subscript and superscript formatting support** — `<sub>` and `<sup>` tags are now fully supported end-to-end alongside the existing `<b>`, `<i>`, `<u>` inline formatting. Subscript/superscript text is correctly imported from memoQ bilingual RTF (`{\sub V}` brace groups), memoQ bilingual DOCX, and monolingual DOCX files. Tags render visually in WYSIWYG grid mode and the Preview panel, round-trip cleanly to RTF and DOCX on export, and are properly handled by all utility functions (tag detection, stripping, and run parsing).
+- **Subscript and superscript formatting support** – `<sub>` and `<sup>` tags are now fully supported end-to-end alongside the existing `<b>`, `<i>`, `<u>` inline formatting. Subscript/superscript text is correctly imported from memoQ bilingual RTF (`{\sub V}` brace groups), memoQ bilingual DOCX, and monolingual DOCX files. Tags render visually in WYSIWYG grid mode and the Preview panel, round-trip cleanly to RTF and DOCX on export, and are properly handled by all utility functions (tag detection, stripping, and run parsing).
 
 ### Bug Fixes
 
-- **Fixed: memoQ bilingual RTF subscript/superscript rendered as `{V}` instead of `V`** — RTF brace-scoped formatting groups like `{\sub V}` were not handled, leaving stray braces in the extracted text (e.g. `C{V}` instead of `CV`). These groups are now parsed and converted to `<sub>`/`<sup>` tags.
+- **Fixed: memoQ bilingual RTF subscript/superscript rendered as `{V}` instead of `V`** – RTF brace-scoped formatting groups like `{\sub V}` were not handled, leaving stray braces in the extracted text (e.g. `C{V}` instead of `CV`). These groups are now parsed and converted to `<sub>`/`<sup>` tags.
 
 ---
 
@@ -1420,17 +1420,17 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Alt+Up / Alt+Down — Quick-add term pair to Priority 1 / Priority 2 glossary** — Two new keyboard shortcuts (also available in the right-click context menu of source and target cells) let you instantly add the selected source+target text as a term pair to your highest- or second-priority glossary without any dialog. Works identically to the existing Alt+Left "Quick Add to last-used glossary" shortcut. These are handled via an application-level event filter to bypass Qt's `QAbstractItemView` arrow-key interception.
-- **Ctrl+Up / Ctrl+Down — Navigate to previous / next segment** — Segment navigation has been reassigned from Alt+Up/Down (which never worked reliably due to Qt table arrow-key interception) to Ctrl+Up/Down. Navigation is now handled via the same app-level event filter for consistent, reliable behaviour regardless of which cell has focus.
+- **Alt+Up / Alt+Down – Quick-add term pair to Priority 1 / Priority 2 glossary** – Two new keyboard shortcuts (also available in the right-click context menu of source and target cells) let you instantly add the selected source+target text as a term pair to your highest- or second-priority glossary without any dialog. Works identically to the existing Alt+Left "Quick Add to last-used glossary" shortcut. These are handled via an application-level event filter to bypass Qt's `QAbstractItemView` arrow-key interception.
+- **Ctrl+Up / Ctrl+Down – Navigate to previous / next segment** – Segment navigation has been reassigned from Alt+Up/Down (which never worked reliably due to Qt table arrow-key interception) to Ctrl+Up/Down. Navigation is now handled via the same app-level event filter for consistent, reliable behaviour regardless of which cell has focus.
 
 ### Bug Fixes
 
-- **Fixed: Glossary highlights and TermView not updating in filtered mode** — When navigating between segments while a text filter was active, glossary matches were not highlighted in the source cell and the TermView pane was not updated (requiring F5 to refresh). Root cause: the filtered-mode early exit in `on_cell_selected` skipped all termbase/glossary processing. Fixed by adding `_on_cell_selected_glossary_only()` which runs the cheap, cache-based termbase highlighting and TermView update even in filtered mode, while still skipping the expensive TM/MT/LLM lookups.
-- **Fixed: Legacy match-cycling shortcuts (Ctrl+Up/Down) causing silent shortcut conflicts** — The old Translation Results panel (now removed) had registered Ctrl+Up/Down as QShortcuts for cycling through matches. These were never cleaned up and caused Qt's "ambiguous shortcut" behaviour, silently disabling any other shortcut registered with the same key. Cleared the legacy defaults and removed the duplicate QShortcut registrations.
+- **Fixed: Glossary highlights and TermView not updating in filtered mode** – When navigating between segments while a text filter was active, glossary matches were not highlighted in the source cell and the TermView pane was not updated (requiring F5 to refresh). Root cause: the filtered-mode early exit in `on_cell_selected` skipped all termbase/glossary processing. Fixed by adding `_on_cell_selected_glossary_only()` which runs the cheap, cache-based termbase highlighting and TermView update even in filtered mode, while still skipping the expensive TM/MT/LLM lookups.
+- **Fixed: Legacy match-cycling shortcuts (Ctrl+Up/Down) causing silent shortcut conflicts** – The old Translation Results panel (now removed) had registered Ctrl+Up/Down as QShortcuts for cycling through matches. These were never cleaned up and caused Qt's "ambiguous shortcut" behaviour, silently disabling any other shortcut registered with the same key. Cleared the legacy defaults and removed the duplicate QShortcut registrations.
 
 ### UI/UX
 
-- **Renamed "termbase" → "glossary" in shortcuts settings** — The Keyboard Shortcuts settings dialog now reads "Add selected term pair to glossary (with dialogue)" and "Quick add term pair to the last used glossary" instead of the old "termbase" wording.
+- **Renamed "termbase" → "glossary" in shortcuts settings** – The Keyboard Shortcuts settings dialog now reads "Add selected term pair to glossary (with dialogue)" and "Quick add term pair to the last used glossary" instead of the old "termbase" wording.
 
 ---
 
@@ -1438,12 +1438,12 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Match Panel Font Settings in View Settings** — A new "📊 Match Panel Font Settings" section has been added to the View Settings tab (alongside the existing Termview Font Settings). Users can now configure Font Family, Font Size (6–18 pt), and Bold for the TM Source and TM Target boxes in the Match Panel. Settings persist across restarts. The font size spinner here is equivalent to the View → Match Panel zoom shortcuts.
+- **Match Panel Font Settings in View Settings** – A new "📊 Match Panel Font Settings" section has been added to the View Settings tab (alongside the existing Termview Font Settings). Users can now configure Font Family, Font Size (6–18 pt), and Bold for the TM Source and TM Target boxes in the Match Panel. Settings persist across restarts. The font size spinner here is equivalent to the View → Match Panel zoom shortcuts.
 
 ### Bug Fixes
 
-- **Fixed: Match Panel font zoom truly not persisting across restarts** — The v1.9.280 fix was incomplete. While the QTextEdit stylesheet was updated correctly, TM Source content rendered via `QTextCursor.insertText()` (the diff-highlighted view) ignores the stylesheet and uses the document's internal default font instead. Fixed by also calling `text_edit.document().setDefaultFont()` in `_apply_match_panel_font_size()`, and by setting the document default font during widget creation in `_create_compare_panel_box()`. This ensures that both plain-text and rich-text (diff-highlighted) content render at the correct size.
-- **Fixed: Glossary highlights missing in source cell on cache-hit navigation** — When navigating to a segment that was already in `translation_matches_cache` (cache hit), glossary highlights were sometimes not applied to the source cell even though the TermView showed the correct matches. Root cause: the grid highlighting code read exclusively from `termbase_cache`, which could be empty if the prefetch worker populated `translation_matches_cache` before the batch termbase worker had processed that segment, or after a cache clear. Fixed by falling back to the TB matches already present in `cached_matches["Termbases"]` when `termbase_cache` is empty, and backfilling `termbase_cache` so future navigations are instant. Previously required pressing F5 to force-refresh highlighting.
+- **Fixed: Match Panel font zoom truly not persisting across restarts** – The v1.9.280 fix was incomplete. While the QTextEdit stylesheet was updated correctly, TM Source content rendered via `QTextCursor.insertText()` (the diff-highlighted view) ignores the stylesheet and uses the document's internal default font instead. Fixed by also calling `text_edit.document().setDefaultFont()` in `_apply_match_panel_font_size()`, and by setting the document default font during widget creation in `_create_compare_panel_box()`. This ensures that both plain-text and rich-text (diff-highlighted) content render at the correct size.
+- **Fixed: Glossary highlights missing in source cell on cache-hit navigation** – When navigating to a segment that was already in `translation_matches_cache` (cache hit), glossary highlights were sometimes not applied to the source cell even though the TermView showed the correct matches. Root cause: the grid highlighting code read exclusively from `termbase_cache`, which could be empty if the prefetch worker populated `translation_matches_cache` before the batch termbase worker had processed that segment, or after a cache clear. Fixed by falling back to the TB matches already present in `cached_matches["Termbases"]` when `termbase_cache` is empty, and backfilling `termbase_cache` so future navigations are instant. Previously required pressing F5 to force-refresh highlighting.
 
 ---
 
@@ -1451,7 +1451,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **HTTP proxy support for all AI and MT service connections** (GitHub issue #168) — A new "🌐 HTTP Proxy Settings" section has been added to the AI Settings tab. Users can enter a proxy host, port, and optional username/password. When enabled, all outbound API requests are routed through the configured proxy:
+- **HTTP proxy support for all AI and MT service connections** (GitHub issue #168) – A new "🌐 HTTP Proxy Settings" section has been added to the AI Settings tab. Users can enter a proxy host, port, and optional username/password. When enabled, all outbound API requests are routed through the configured proxy:
   - **OpenAI & Claude**: custom `httpx.Client(proxy=...)` passed to each SDK constructor
   - **Ollama**: `proxies=` dict passed to `requests.post()`
   - **Gemini**: `HTTPS_PROXY` / `HTTP_PROXY` environment variables set at startup and on every settings save (the Gemini SDK does not support per-client proxy configuration)
@@ -1465,7 +1465,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: Match Panel zoom level not remembered across restarts** — The zoom level (set via View → Match Panel → Zoom In/Out, or Ctrl+Alt+=/−) was correctly saved to `general_settings.json`, but lost on restart. Root cause: the right-panel UI was constructed with `font-size: 10px` hardcoded in the QTextEdit stylesheet, before the saved font size was loaded from disk. The later `_apply_match_panel_font_size()` call (which patches the stylesheet via regex) was a fragile fallback that could silently fail. Fixed by: (1) pre-loading the saved `match_panel_font_size` from preferences *before* `_create_match_panel()` runs, so the stylesheet is baked with the correct size from the start; (2) making the stylesheet use the live `SupervertalerQt.match_panel_font_size` class variable instead of a hardcoded `10`.
+- **Fixed: Match Panel zoom level not remembered across restarts** – The zoom level (set via View → Match Panel → Zoom In/Out, or Ctrl+Alt+=/−) was correctly saved to `general_settings.json`, but lost on restart. Root cause: the right-panel UI was constructed with `font-size: 10px` hardcoded in the QTextEdit stylesheet, before the saved font size was loaded from disk. The later `_apply_match_panel_font_size()` call (which patches the stylesheet via regex) was a fragile fallback that could silently fail. Fixed by: (1) pre-loading the saved `match_panel_font_size` from preferences *before* `_create_match_panel()` runs, so the stylesheet is baked with the correct size from the start; (2) making the stylesheet use the live `SupervertalerQt.match_panel_font_size` class variable instead of a hardcoded `10`.
 
 ---
 
@@ -1473,7 +1473,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Find & Replace: Auto-adjust case option** — Added an "Auto-adjust case" checkbox to the Find & Replace dialog. When enabled (and "Case sensitive" is off), the replacement text is automatically adjusted to match the case pattern of each matched string: ALL CAPS → uppercased, all lowercase → lowercased, Title Case → title-cased, Sentence case → first letter uppercased. Works in "Replace this", "Replace all", and F&R Sets batch operations. The case pattern is stored per-operation in saved F&R Sets for full round-trip fidelity.
+- **Find & Replace: Auto-adjust case option** – Added an "Auto-adjust case" checkbox to the Find & Replace dialog. When enabled (and "Case sensitive" is off), the replacement text is automatically adjusted to match the case pattern of each matched string: ALL CAPS → uppercased, all lowercase → lowercased, Title Case → title-cased, Sentence case → first letter uppercased. Works in "Replace this", "Replace all", and F&R Sets batch operations. The case pattern is stored per-operation in saved F&R Sets for full round-trip fidelity.
 
 ---
 
@@ -1481,11 +1481,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed: shorter glossary terms inside longer phrases now always show in TermView and source highlighting** — When a long project-glossary phrase (e.g. "de gekarakteriseerde luchttoevoerkleppen en de gekarakteriseerde luchtafvoerkleppen") matched first, its character positions were claimed and shorter individual terms sharing those characters (e.g. "gekarakteriseerde") were silently suppressed in both the TermView and the source-cell highlighting. Root cause: both the TermView tokenizer and the source highlighter sorted terms longest-first and then skipped any shorter term whose positions were already claimed — ignoring the "Hide shorter glossary matches" setting entirely. Fixed by wiring the `termbase_hide_shorter_matches` setting to both code paths: when the checkbox is **off** (default), individual glossary words always appear even inside a longer matched phrase; when **on**, the overlap suppression is applied as intended.
+- **Fixed: shorter glossary terms inside longer phrases now always show in TermView and source highlighting** – When a long project-glossary phrase (e.g. "de gekarakteriseerde luchttoevoerkleppen en de gekarakteriseerde luchtafvoerkleppen") matched first, its character positions were claimed and shorter individual terms sharing those characters (e.g. "gekarakteriseerde") were silently suppressed in both the TermView and the source-cell highlighting. Root cause: both the TermView tokenizer and the source highlighter sorted terms longest-first and then skipped any shorter term whose positions were already claimed – ignoring the "Hide shorter glossary matches" setting entirely. Fixed by wiring the `termbase_hide_shorter_matches` setting to both code paths: when the checkbox is **off** (default), individual glossary words always appear even inside a longer matched phrase; when **on**, the overlap suppression is applied as intended.
 
 ### Removed
 
-- **Removed "Glossary match display order" setting** — The dropdown (Order of appearance / Alphabetical / By length) was only ever wired to the now-defunct Translation Results Panel and had no effect on the TermView. The TermView's design principle is to mirror the source text left-to-right, so order-of-appearance is always correct and the setting was meaningless. Removed from Settings UI, all save/load paths, project settings, and the dead panel code.
+- **Removed "Glossary match display order" setting** – The dropdown (Order of appearance / Alphabetical / By length) was only ever wired to the now-defunct Translation Results Panel and had no effect on the TermView. The TermView's design principle is to mirror the source text left-to-right, so order-of-appearance is always correct and the setting was meaningless. Removed from Settings UI, all save/load paths, project settings, and the dead panel code.
 
 ---
 
@@ -1493,11 +1493,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Added Claude Sonnet 4.6 support** — Claude Sonnet 4.6 (`claude-sonnet-4-6`) is now available across all model selectors and is set as the new default Claude model. Pricing is identical to Sonnet 4.5 ($3/$15 per million tokens). The model version checker's known-models list has been updated so it won't flag Sonnet 4.6 as a "new model" on next check.
+- **Added Claude Sonnet 4.6 support** – Claude Sonnet 4.6 (`claude-sonnet-4-6`) is now available across all model selectors and is set as the new default Claude model. Pricing is identical to Sonnet 4.5 ($3/$15 per million tokens). The model version checker's known-models list has been updated so it won't flag Sonnet 4.6 as a "new model" on next check.
 
 ### Improvements
 
-- **Updated startup banner** — Terminal launch message now reads "Supervertaler - AI-enhanced CAT tool" instead of "AI Translation Tool".
+- **Updated startup banner** – Terminal launch message now reads "Supervertaler - AI-enhanced CAT tool" instead of "AI Translation Tool".
 
 ---
 
@@ -1505,8 +1505,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed SQLite "database is locked" errors during termbase operations** — Activating, deactivating, or changing read-only status of termbases would intermittently fail with `sqlite3.OperationalError: database is locked`. Root cause: multiple SQLite connections to the same database file (main thread, TM search threads, prefetch worker, pre-translation worker) competing for locks under the default DELETE journal mode, which blocks all readers while a writer is active. Fixed by enabling WAL (Write-Ahead Logging) journal mode and setting a 15-second busy timeout on all connections. Also added rollback on error in termbase manager to release locks after failed commits.
-- **Removed leftover debug file writes that crashed macOS Finder launch** — `theme_debug.txt` and `superlookup_debug.txt` were being written to the current working directory, which is `/` (read-only) when launched from Finder, causing an immediate `OSError: [Errno 30] Read-only file system` crash.
+- **Fixed SQLite "database is locked" errors during termbase operations** – Activating, deactivating, or changing read-only status of termbases would intermittently fail with `sqlite3.OperationalError: database is locked`. Root cause: multiple SQLite connections to the same database file (main thread, TM search threads, prefetch worker, pre-translation worker) competing for locks under the default DELETE journal mode, which blocks all readers while a writer is active. Fixed by enabling WAL (Write-Ahead Logging) journal mode and setting a 15-second busy timeout on all connections. Also added rollback on error in termbase manager to release locks after failed commits.
+- **Removed leftover debug file writes that crashed macOS Finder launch** – `theme_debug.txt` and `superlookup_debug.txt` were being written to the current working directory, which is `/` (read-only) when launched from Finder, causing an immediate `OSError: [Errno 30] Read-only file system` crash.
 
 ---
 
@@ -1514,8 +1514,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **macOS: app now launches when double-clicked from Finder** — PyInstaller-built  bundles would bounce in the dock and close when launched via Finder (double-click or right-click > Open), while working perfectly from Terminal. Root cause: macOS Finder launches apps with a minimal environment where  and  are not set, causing locale-dependent code to fail silently. Fixed by adding  to the  in  to ensure UTF-8 locale is always available. Also added diagnostic crash logging to  for frozen macOS builds, since Finder-launched apps have no stdout/stderr.
-- **macOS build: added ad-hoc code signing instructions** — Updated  with a free ad-hoc  step that helps macOS treat the app as legitimate without requiring a paid Apple Developer account.
+- **macOS: app now launches when double-clicked from Finder** – PyInstaller-built  bundles would bounce in the dock and close when launched via Finder (double-click or right-click > Open), while working perfectly from Terminal. Root cause: macOS Finder launches apps with a minimal environment where  and  are not set, causing locale-dependent code to fail silently. Fixed by adding  to the  in  to ensure UTF-8 locale is always available. Also added diagnostic crash logging to  for frozen macOS builds, since Finder-launched apps have no stdout/stderr.
+- **macOS build: added ad-hoc code signing instructions** – Updated  with a free ad-hoc  step that helps macOS treat the app as legitimate without requiring a paid Apple Developer account.
 
 ---
 
@@ -1523,8 +1523,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Find & Replace: uppercase history no longer overwrites lowercase input** — The `HistoryComboBox` in the F&R dialog had an auto-created `QCompleter` with case-insensitive matching, which forced previously searched uppercase terms (e.g. "COMMISSIONING") over lowercase input. Disabled the completer; the dropdown history is still accessible via the arrow button. Resolves [#163](https://github.com/michaelbeijer/Supervertaler/issues/163).
-- **Standalone builds now show the correct version number** — PyInstaller `.exe` builds always displayed "v1.9.227" because `pyproject.toml` was not bundled, causing `_read_version()` to fall back to a hardcoded string. Fixed by: (1) adding `pyproject.toml` to the `datas` list in both Windows and macOS `.spec` files, (2) adding an `importlib.metadata` fallback for `pip install` users, (3) fixing `create_release_zip.py` to read the version from `pyproject.toml` instead of regex-parsing `Supervertaler.py`, and (4) making the macOS `.spec` read `CFBundleVersion` dynamically from `pyproject.toml` instead of a hardcoded stale value. Resolves [#165](https://github.com/michaelbeijer/Supervertaler/issues/165).
+- **Find & Replace: uppercase history no longer overwrites lowercase input** – The `HistoryComboBox` in the F&R dialog had an auto-created `QCompleter` with case-insensitive matching, which forced previously searched uppercase terms (e.g. "COMMISSIONING") over lowercase input. Disabled the completer; the dropdown history is still accessible via the arrow button. Resolves [#163](https://github.com/michaelbeijer/Supervertaler/issues/163).
+- **Standalone builds now show the correct version number** – PyInstaller `.exe` builds always displayed "v1.9.227" because `pyproject.toml` was not bundled, causing `_read_version()` to fall back to a hardcoded string. Fixed by: (1) adding `pyproject.toml` to the `datas` list in both Windows and macOS `.spec` files, (2) adding an `importlib.metadata` fallback for `pip install` users, (3) fixing `create_release_zip.py` to read the version from `pyproject.toml` instead of regex-parsing `Supervertaler.py`, and (4) making the macOS `.spec` read `CFBundleVersion` dynamically from `pyproject.toml` instead of a hardcoded stale value. Resolves [#165](https://github.com/michaelbeijer/Supervertaler/issues/165).
 
 ---
 
@@ -1532,7 +1532,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **TM matches now shown consistently when revisiting segments** — When navigating back to a previously visited segment, the Match Panel (TM Source/Target comparison boxes) showed no TM hits despite the matches being cached. Root cause: on first visit, TM results were fetched on-demand (prefetch skips TM for thread-safety) and cached; on revisit, the cache-hit path updated the Translation Results panel but never called `set_compare_panel_matches()` to update the Match Panel. The cache-hit path now converts cached `TranslationMatch` objects to the Match Panel format and displays them immediately. Resolves [#164](https://github.com/michaelbeijer/Supervertaler/issues/164).
+- **TM matches now shown consistently when revisiting segments** – When navigating back to a previously visited segment, the Match Panel (TM Source/Target comparison boxes) showed no TM hits despite the matches being cached. Root cause: on first visit, TM results were fetched on-demand (prefetch skips TM for thread-safety) and cached; on revisit, the cache-hit path updated the Translation Results panel but never called `set_compare_panel_matches()` to update the Match Panel. The cache-hit path now converts cached `TranslationMatch` objects to the Match Panel format and displays them immediately. Resolves [#164](https://github.com/michaelbeijer/Supervertaler/issues/164).
 
 ---
 
@@ -1540,14 +1540,14 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed Trados return package with missing `<target>` elements** — Trados Studio 2024 creates SDLXLIFF files where untranslated segments have no `<target>` element at all (not even an empty one). The export engine now detects this and creates `<target>` by cloning the `<seg-source>` structure with translations inserted into each `<mrk>` marker. Also handles the case where `<target>` exists but contains no `<mrk>` tags. Resolves [#161](https://github.com/michaelbeijer/Supervertaler/issues/161).
-- **Fixed XML entity escaping in SDLXLIFF export** — Source text containing `&`, `<`, or `>` characters (e.g. "AT&T", "A<B") was written unescaped into the XML output, causing Trados Studio to reject the return package with "An error occurred while parsing EntityName". The `_markers_to_xml()` function now properly escapes XML entities in text content while preserving marker tags.
-- **`conf="Translated"` attribute now added when missing** — The `<sdl:seg>` element in Trados SDLXLIFF sometimes lacks a `conf` attribute entirely (not just an empty value). Previously only existing `conf` values were updated; now the attribute is added if absent, ensuring Trados Studio recognizes segments as translated.
-- **Grid-to-segment sync now reverses invisible characters** — The `_sync_grid_targets_to_segments()` function now calls `reverse_invisible_replacements()` before export, converting display characters (middle dots, arrows) back to actual whitespace. Also restores stripped outer wrapping tags when `hide_outer_wrapping_tags` is enabled.
+- **Fixed Trados return package with missing `<target>` elements** – Trados Studio 2024 creates SDLXLIFF files where untranslated segments have no `<target>` element at all (not even an empty one). The export engine now detects this and creates `<target>` by cloning the `<seg-source>` structure with translations inserted into each `<mrk>` marker. Also handles the case where `<target>` exists but contains no `<mrk>` tags. Resolves [#161](https://github.com/michaelbeijer/Supervertaler/issues/161).
+- **Fixed XML entity escaping in SDLXLIFF export** – Source text containing `&`, `<`, or `>` characters (e.g. "AT&T", "A<B") was written unescaped into the XML output, causing Trados Studio to reject the return package with "An error occurred while parsing EntityName". The `_markers_to_xml()` function now properly escapes XML entities in text content while preserving marker tags.
+- **`conf="Translated"` attribute now added when missing** – The `<sdl:seg>` element in Trados SDLXLIFF sometimes lacks a `conf` attribute entirely (not just an empty value). Previously only existing `conf` values were updated; now the attribute is added if absent, ensuring Trados Studio recognizes segments as translated.
+- **Grid-to-segment sync now reverses invisible characters** – The `_sync_grid_targets_to_segments()` function now calls `reverse_invisible_replacements()` before export, converting display characters (middle dots, arrows) back to actual whitespace. Also restores stripped outer wrapping tags when `hide_outer_wrapping_tags` is enabled.
 
 ### Improvements
 
-- **Enhanced Trados export diagnostics** — The export pipeline now logs segment counts, translation counts, and warns when file content is unchanged after replacement (indicating translations may not have been inserted).
+- **Enhanced Trados export diagnostics** – The export pipeline now logs segment counts, translation counts, and warns when file content is unchanged after replacement (indicating translations may not have been inserted).
 
 ---
 
@@ -1555,9 +1555,9 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Termbase highlighting now appears immediately on segment navigation** — When navigating to a segment with cached termbase matches (the common path after the background batch processor runs), the source cell was not highlighted with glossary term formatting. The TermView panel showed the matches correctly, but the bold/colored highlighting in the source column was missing until an F5 refresh. Root cause: the cache-hit code path updated the TermView and Match Panel but skipped the `highlight_source_with_termbase()` call that the cache-miss path had.
-- **Termbase highlighting now refreshes immediately after adding a term** — After adding a glossary term (Ctrl+E or Ctrl+Q quick-add), the source cell highlighting was not updated because the re-highlight code was commented out as a performance optimization. Replaced the expensive `rehighlight()` call with the lightweight `highlight_source_with_termbase()` which only applies termbase + NT formatting without re-running spellcheck or tag detection.
-- **Green checkmark icons sized to match red X icons** — The confirmed-status checkmark (✔) was noticeably smaller than the not-started emoji (❌) because it used the archaic `<font size="2">` HTML attribute. Replaced with CSS `font-size:14px` and `line-height:1`, zeroed out vertical margins and label padding to prevent clipping on single-line rows.
+- **Termbase highlighting now appears immediately on segment navigation** – When navigating to a segment with cached termbase matches (the common path after the background batch processor runs), the source cell was not highlighted with glossary term formatting. The TermView panel showed the matches correctly, but the bold/colored highlighting in the source column was missing until an F5 refresh. Root cause: the cache-hit code path updated the TermView and Match Panel but skipped the `highlight_source_with_termbase()` call that the cache-miss path had.
+- **Termbase highlighting now refreshes immediately after adding a term** – After adding a glossary term (Ctrl+E or Ctrl+Q quick-add), the source cell highlighting was not updated because the re-highlight code was commented out as a performance optimization. Replaced the expensive `rehighlight()` call with the lightweight `highlight_source_with_termbase()` which only applies termbase + NT formatting without re-running spellcheck or tag detection.
+- **Green checkmark icons sized to match red X icons** – The confirmed-status checkmark (✔) was noticeably smaller than the not-started emoji (❌) because it used the archaic `<font size="2">` HTML attribute. Replaced with CSS `font-size:14px` and `line-height:1`, zeroed out vertical margins and label padding to prevent clipping on single-line rows.
 
 ---
 
@@ -1565,7 +1565,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Vertical sidebar navigation for Settings panel** — The 13 Settings sub-tabs are now displayed as a vertical sidebar list instead of horizontal tabs. Tab labels are no longer truncated on smaller screens or at larger font scales. The sidebar supports light/dark theme switching, hover/selected states, and respects the global UI font scale. All existing keyboard shortcut and programmatic navigation to Settings tabs continues to work unchanged. Resolves [#144](https://github.com/michaelbeijer/Supervertaler/issues/144).
+- **Vertical sidebar navigation for Settings panel** – The 13 Settings sub-tabs are now displayed as a vertical sidebar list instead of horizontal tabs. Tab labels are no longer truncated on smaller screens or at larger font scales. The sidebar supports light/dark theme switching, hover/selected states, and respects the global UI font scale. All existing keyboard shortcut and programmatic navigation to Settings tabs continues to work unchanged. Resolves [#144](https://github.com/michaelbeijer/Supervertaler/issues/144).
 
 ---
 
@@ -1573,13 +1573,13 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed Trados return package exporting empty SDLXLIFF** — The regex-based SDLXLIFF save engine assumed a fixed XML attribute order (`mtype` before `mid`) on `<mrk>` segment markers. If Trados Studio produced attributes in a different order, translations were silently dropped during export. The regex now uses lookaheads to match both `mtype="seg"` and `mid="N"` in any attribute position. Also fixed `<sdl:seg>` attribute matching for the same issue. Resolves [#161](https://github.com/michaelbeijer/Supervertaler/issues/161).
-- **Unsegmented trans-unit support in SDLXLIFF export** — Trans-units without `<seg-source>` / `<mrk>` elements (rare but valid) now have their `<target>` content correctly replaced during export.
-- **More robust segment ID extraction** — The SDLRPX export now iterates through all pipe-separated note fields to find the `Segment:` part, instead of assuming it's always at index 1. Matches the approach already used by standalone SDLXLIFF export.
+- **Fixed Trados return package exporting empty SDLXLIFF** – The regex-based SDLXLIFF save engine assumed a fixed XML attribute order (`mtype` before `mid`) on `<mrk>` segment markers. If Trados Studio produced attributes in a different order, translations were silently dropped during export. The regex now uses lookaheads to match both `mtype="seg"` and `mid="N"` in any attribute position. Also fixed `<sdl:seg>` attribute matching for the same issue. Resolves [#161](https://github.com/michaelbeijer/Supervertaler/issues/161).
+- **Unsegmented trans-unit support in SDLXLIFF export** – Trans-units without `<seg-source>` / `<mrk>` elements (rare but valid) now have their `<target>` content correctly replaced during export.
+- **More robust segment ID extraction** – The SDLRPX export now iterates through all pipe-separated note fields to find the `Segment:` part, instead of assuming it's always at index 1. Matches the approach already used by standalone SDLXLIFF export.
 
 ### Improvements
 
-- **Diagnostic logging for Trados export** — The SDLRPX export pipeline now logs translation dict size, handler match counts, and per-file segment/translation counts. When zero matches occur, sample segment IDs are logged for diagnosis.
+- **Diagnostic logging for Trados export** – The SDLRPX export pipeline now logs translation dict size, handler match counts, and per-file segment/translation counts. When zero matches occur, sample segment IDs are logged for diagnosis.
 
 ---
 
@@ -1587,10 +1587,10 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Performance
 
-- **Threaded TM fuzzy search** — TM fuzzy matching (SequenceMatcher on up to 500 FTS5 candidates) now runs in a background QThread instead of blocking the main UI thread. Eliminates beachball/freeze when navigating segments with very large TMs (1M+ entries). Previous searches are automatically cancelled when moving to a new segment.
-- **Streaming TMX import** — Replaced `ET.parse()` (loads entire file into memory) with `ET.iterparse()` for streaming XML processing. Multi-GB TMX files now import without excessive memory usage. Processed elements are freed immediately.
-- **Batch SQLite commits for TMX import** — New `add_translation_units_batch()` method commits chunks of 5,000 entries at once instead of one `commit()` per row. Dramatically reduces disk I/O for large imports.
-- **Streaming language detection** — `detect_tmx_languages()` now uses `iterparse` and stops after 100 TUs instead of loading the entire TMX file just to find language codes.
+- **Threaded TM fuzzy search** – TM fuzzy matching (SequenceMatcher on up to 500 FTS5 candidates) now runs in a background QThread instead of blocking the main UI thread. Eliminates beachball/freeze when navigating segments with very large TMs (1M+ entries). Previous searches are automatically cancelled when moving to a new segment.
+- **Streaming TMX import** – Replaced `ET.parse()` (loads entire file into memory) with `ET.iterparse()` for streaming XML processing. Multi-GB TMX files now import without excessive memory usage. Processed elements are freed immediately.
+- **Batch SQLite commits for TMX import** – New `add_translation_units_batch()` method commits chunks of 5,000 entries at once instead of one `commit()` per row. Dramatically reduces disk I/O for large imports.
+- **Streaming language detection** – `detect_tmx_languages()` now uses `iterparse` and stops after 100 TUs instead of loading the entire TMX file just to find language codes.
 
 ---
 
@@ -1598,12 +1598,12 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Standalone SDLXLIFF import/export** — Translators can now import `.sdlxliff` files directly, without needing a Trados package (`.sdlppx`). Supports multi-file selection, full SDL status mapping (PM, CM, 100%, fuzzy, MT, repetitions), and round-trip export with BOM-preserving text-based replacement. Menu items added under File > Import/Export > Trados Studio. Resolves the most requested bilingual format gap.
+- **Standalone SDLXLIFF import/export** – Translators can now import `.sdlxliff` files directly, without needing a Trados package (`.sdlppx`). Supports multi-file selection, full SDL status mapping (PM, CM, 100%, fuzzy, MT, repetitions), and round-trip export with BOM-preserving text-based replacement. Menu items added under File > Import/Export > Trados Studio. Resolves the most requested bilingual format gap.
 
 ### Improvements
 
-- **Shared SDLXLIFF status mapping** — Extracted the 13-level SDL segment status mapper (`_map_sdlxliff_segment()`) into a reusable helper, shared by both SDLPPX package import and standalone SDLXLIFF import. Eliminates 50 lines of code duplication.
-- **Refactored SDLXLIFF save engine** — The core save functions (`_markers_to_xml`, `_replace_target_content`, `_replace_seg_attributes`) are now module-level functions in `sdlppx_handler.py`, reusable by both the package handler and the new standalone handler.
+- **Shared SDLXLIFF status mapping** – Extracted the 13-level SDL segment status mapper (`_map_sdlxliff_segment()`) into a reusable helper, shared by both SDLPPX package import and standalone SDLXLIFF import. Eliminates 50 lines of code duplication.
+- **Refactored SDLXLIFF save engine** – The core save functions (`_markers_to_xml`, `_replace_target_content`, `_replace_seg_attributes`) are now module-level functions in `sdlppx_handler.py`, reusable by both the package handler and the new standalone handler.
 
 ---
 
@@ -1611,7 +1611,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed empty segments still showing in grid** — Empty structural segments (from blank lines in TXT/MD imports) were appearing in the translation grid despite being marked as hidden. The root cause was that `_apply_pagination_to_grid()` overrode the hiding on every page change, filter, or grid reload. Empty segments are now consistently hidden across all visibility control paths: pagination, text filters, file filters, find/replace, empty targets filter, and advanced filters.
+- **Fixed empty segments still showing in grid** – Empty structural segments (from blank lines in TXT/MD imports) were appearing in the translation grid despite being marked as hidden. The root cause was that `_apply_pagination_to_grid()` overrode the hiding on every page change, filter, or grid reload. Empty segments are now consistently hidden across all visibility control paths: pagination, text filters, file filters, find/replace, empty targets filter, and advanced filters.
 
 ---
 
@@ -1619,15 +1619,15 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Sentence segmentation for TXT/MD imports** — New "Split lines into sentences" checkbox in both single-file and multi-file import dialogs. When enabled, long lines are split into individual sentences for easier translation, and automatically rejoined on export. Setting is persisted between imports. Partially addresses [#149](https://github.com/michaelbeijer/Supervertaler/issues/149).
-- **Markdown-aware sentence segmenter** — When importing `.md` files with sentence segmentation enabled, a specialized `MarkdownSegmenter` protects markdown constructs (links, images, code spans, bare URLs, HTML tags) from being incorrectly split. A subtle note in the import dialog informs users about this.
+- **Sentence segmentation for TXT/MD imports** – New "Split lines into sentences" checkbox in both single-file and multi-file import dialogs. When enabled, long lines are split into individual sentences for easier translation, and automatically rejoined on export. Setting is persisted between imports. Partially addresses [#149](https://github.com/michaelbeijer/Supervertaler/issues/149).
+- **Markdown-aware sentence segmenter** – When importing `.md` files with sentence segmentation enabled, a specialized `MarkdownSegmenter` protects markdown constructs (links, images, code spans, bare URLs, HTML tags) from being incorrectly split. A subtle note in the import dialog informs users about this.
 
 ### Bug Fixes
 
-- **Empty lines now always preserved in TXT/MD imports** — Removed the "Skip empty lines" checkbox. Empty lines are now always imported as structural segments (preserving file structure for export fidelity) but hidden from the translation grid. Previously, the multi-file import always stripped empty lines with no option — this is now fixed. Resolves [#149](https://github.com/michaelbeijer/Supervertaler/issues/149).
-- **Navigation skips hidden rows** — Alt+Up/Down now correctly skips over hidden rows (empty structural segments, filtered rows) instead of landing on invisible segments.
-- **Pre-translation skips empty segments** — Batch translation no longer wastes API calls on empty structural segments.
-- **Multi-file TXT import now tracks line metadata** — `paragraph_id` and `document_position` are now set for TXT/MD files in multi-file imports, matching single-file import behavior.
+- **Empty lines now always preserved in TXT/MD imports** – Removed the "Skip empty lines" checkbox. Empty lines are now always imported as structural segments (preserving file structure for export fidelity) but hidden from the translation grid. Previously, the multi-file import always stripped empty lines with no option – this is now fixed. Resolves [#149](https://github.com/michaelbeijer/Supervertaler/issues/149).
+- **Navigation skips hidden rows** – Alt+Up/Down now correctly skips over hidden rows (empty structural segments, filtered rows) instead of landing on invisible segments.
+- **Pre-translation skips empty segments** – Batch translation no longer wastes API calls on empty structural segments.
+- **Multi-file TXT import now tracks line metadata** – `paragraph_id` and `document_position` are now set for TXT/MD files in multi-file imports, matching single-file import behavior.
 
 ---
 
@@ -1635,7 +1635,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Direct Markdown (.md) export support** — When exporting a project that was imported from a `.md` file, the save dialog now defaults to Markdown format with the correct `.md` extension. Both `.md` and `.txt` are available as export options for all text-based projects. Resolves [#150](https://github.com/michaelbeijer/Supervertaler/issues/150).
+- **Direct Markdown (.md) export support** – When exporting a project that was imported from a `.md` file, the save dialog now defaults to Markdown format with the correct `.md` extension. Both `.md` and `.txt` are available as export options for all text-based projects. Resolves [#150](https://github.com/michaelbeijer/Supervertaler/issues/150).
 
 ---
 
@@ -1643,9 +1643,9 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Fixed voice command keystroke sending on Windows** — The `CrossPlatformKeySender.send_keystroke()` method had no Windows implementation (only Linux/pynput), so all voice commands of type "keystroke" silently did nothing. It now routes to AHK on Windows, matching the proven pattern used by `send_copy()`/`send_paste()`.
-- **Fixed AHK v1/v2 syntax mismatch in voice commands** — All inline AHK voice commands (memoQ confirm, glossary, tag next, Trados confirm) used AHK v1 syntax (`Send, ^{Enter}`) but the script runner wrapped them in `#Requires AutoHotkey v2.0`, causing silent failures. Updated all defaults and saved commands to AHK v2 syntax (`Send "^{Enter}"`). Added a v1→v2 auto-converter as a safety net for user-created commands.
-- **Added AutoFingers voice command support** — The "fingers" voice command now directly calls AutoFingers' `process_single_safe()` method as an internal handler, instead of trying to simulate the `Ctrl+Alt+P` hotkey via AHK (which was intercepted by Supervertaler's own global hotkey registration). Also registered `autofingers_loop` and `autofingers_stop` internal handlers.
+- **Fixed voice command keystroke sending on Windows** – The `CrossPlatformKeySender.send_keystroke()` method had no Windows implementation (only Linux/pynput), so all voice commands of type "keystroke" silently did nothing. It now routes to AHK on Windows, matching the proven pattern used by `send_copy()`/`send_paste()`.
+- **Fixed AHK v1/v2 syntax mismatch in voice commands** – All inline AHK voice commands (memoQ confirm, glossary, tag next, Trados confirm) used AHK v1 syntax (`Send, ^{Enter}`) but the script runner wrapped them in `#Requires AutoHotkey v2.0`, causing silent failures. Updated all defaults and saved commands to AHK v2 syntax (`Send "^{Enter}"`). Added a v1→v2 auto-converter as a safety net for user-created commands.
+- **Added AutoFingers voice command support** – The "fingers" voice command now directly calls AutoFingers' `process_single_safe()` method as an internal handler, instead of trying to simulate the `Ctrl+Alt+P` hotkey via AHK (which was intercepted by Supervertaler's own global hotkey registration). Also registered `autofingers_loop` and `autofingers_stop` internal handlers.
 
 ---
 
@@ -1653,13 +1653,13 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Model version checker now uses Anthropic's /v1/models API** — The "Check for New Models" feature previously used a hardcoded probe approach that tried guessing model names, which is why it never found anything new. It now uses the official Anthropic Models API endpoint (`/v1/models`) to dynamically discover all available models. Falls back to the old probe method if the SDK is too old.
-- **Added Claude Opus 4.6** — Claude Opus 4.6 (released February 4, 2026) is now available as a model option in all model selection dropdowns, the Superbench benchmarking system, and the vision-capable models list.
-- **Updated known Claude models list** — Added Claude Sonnet 4, Claude Opus 4, and Claude 3.5 Haiku to the known models list so the version checker correctly identifies them as existing models.
+- **Model version checker now uses Anthropic's /v1/models API** – The "Check for New Models" feature previously used a hardcoded probe approach that tried guessing model names, which is why it never found anything new. It now uses the official Anthropic Models API endpoint (`/v1/models`) to dynamically discover all available models. Falls back to the old probe method if the SDK is too old.
+- **Added Claude Opus 4.6** – Claude Opus 4.6 (released February 4, 2026) is now available as a model option in all model selection dropdowns, the Superbench benchmarking system, and the vision-capable models list.
+- **Updated known Claude models list** – Added Claude Sonnet 4, Claude Opus 4, and Claude 3.5 Haiku to the known models list so the version checker correctly identifies them as existing models.
 
 ### Bug Fixes
 
-- **Fixed incorrect Claude Opus 4.1 model ID** — The MTQL provider configuration had `claude-opus-4-1-20250924` (wrong date) instead of the correct `claude-opus-4-1-20250805`.
+- **Fixed incorrect Claude Opus 4.1 model ID** – The MTQL provider configuration had `claude-opus-4-1-20250924` (wrong date) instead of the correct `claude-opus-4-1-20250805`.
 
 ---
 
@@ -1667,18 +1667,18 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Performance
 
-- **TM fuzzy matching completely rewritten for massive speedup** — Fuzzy matching during batch pre-translation now loads all TM candidates into memory with a single SQL query instead of running individual FTS5 queries per segment. A three-tier pre-filter cascade (length ratio → word overlap → `quick_ratio()`) eliminates most candidates before the expensive `SequenceMatcher.ratio()` is called. Result: fuzzy matching that previously took 5–7 minutes now completes in seconds.
-- **Progress feedback during fuzzy matching** — Added `progress_callback` throughout the fuzzy matching pipeline (`database_manager` → `translation_memory` → main UI) with `processEvents()` every 10 segments, preventing "Not Responding" dialogs during large batch operations.
+- **TM fuzzy matching completely rewritten for massive speedup** – Fuzzy matching during batch pre-translation now loads all TM candidates into memory with a single SQL query instead of running individual FTS5 queries per segment. A three-tier pre-filter cascade (length ratio → word overlap → `quick_ratio()`) eliminates most candidates before the expensive `SequenceMatcher.ratio()` is called. Result: fuzzy matching that previously took 5–7 minutes now completes in seconds.
+- **Progress feedback during fuzzy matching** – Added `progress_callback` throughout the fuzzy matching pipeline (`database_manager` → `translation_memory` → main UI) with `processEvents()` every 10 segments, preventing "Not Responding" dialogs during large batch operations.
 
 ### Improvements
 
-- **TM match status icons in grid** — After batch pre-translation, segments now show proper status icons: ✅ for exact TM matches (100%) and 🔶 for fuzzy TM matches (<100%), with the match percentage displayed next to the icon. Previously all pre-translated segments showed ❌ (not started).
-- **Match Panel shows batch TM results** — Clicking a pre-translated segment now immediately displays the TM source/target match in the Match Panel. The batch match data is stored on each segment and displayed without waiting for a background TM lookup.
-- **Compact status column layout** — Reduced spacing between status icon and match percentage for a cleaner, less distracting grid appearance.
+- **TM match status icons in grid** – After batch pre-translation, segments now show proper status icons: ✅ for exact TM matches (100%) and 🔶 for fuzzy TM matches (<100%), with the match percentage displayed next to the icon. Previously all pre-translated segments showed ❌ (not started).
+- **Match Panel shows batch TM results** – Clicking a pre-translated segment now immediately displays the TM source/target match in the Match Panel. The batch match data is stored on each segment and displayed without waiting for a background TM lookup.
+- **Compact status column layout** – Reduced spacing between status icon and match percentage for a cleaner, less distracting grid appearance.
 
 ### Bug Fixes
 
-- **Match Panel no longer overwrites batch TM data** — Fixed an issue where the background TM lookup (`_schedule_mt_and_llm_matches`) would overwrite the Match Panel's batch match data with empty results. Segments with batch TM match data now skip the redundant background lookup.
+- **Match Panel no longer overwrites batch TM data** – Fixed an issue where the background TM lookup (`_schedule_mt_and_llm_matches`) would overwrite the Match Panel's batch match data with empty results. Segments with batch TM match data now skip the redundant background lookup.
 
 ---
 
@@ -1686,17 +1686,17 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Performance
 
-- **TM batch pre-translation is up to 30× faster** — Batch pre-translation from Translation Memory has been completely rewritten to use batch SQL queries instead of per-segment lookups. A 912-segment document that previously took ~2 minutes now completes in ~4 seconds (exact match mode) or ~12 seconds (fuzzy matching mode). Key optimizations:
-  - **Batch exact matching** — All source-text hashes are pre-computed and looked up in a single SQL query with `IN` clause, replacing 900+ individual queries. Language variant filters are computed once instead of per segment.
-  - **Single commit** — Usage-count updates are batched into a single `COMMIT` instead of one per match, eliminating fsync overhead.
-  - **Source deduplication** — Repeated segments (headers, footers, boilerplate) are looked up only once and the result is applied to all duplicates.
-  - **Batch fuzzy matching** — Exact matches are found first (via batch), then only unmatched segments go through fuzzy matching with pre-computed language filters and pre-compiled tag-stripping regex.
-  - **Reduced UI overhead** — `QApplication.processEvents()` is now called every 20 segments instead of every segment; grid updates are deferred until the batch completes.
+- **TM batch pre-translation is up to 30× faster** – Batch pre-translation from Translation Memory has been completely rewritten to use batch SQL queries instead of per-segment lookups. A 912-segment document that previously took ~2 minutes now completes in ~4 seconds (exact match mode) or ~12 seconds (fuzzy matching mode). Key optimizations:
+  - **Batch exact matching** – All source-text hashes are pre-computed and looked up in a single SQL query with `IN` clause, replacing 900+ individual queries. Language variant filters are computed once instead of per segment.
+  - **Single commit** – Usage-count updates are batched into a single `COMMIT` instead of one per match, eliminating fsync overhead.
+  - **Source deduplication** – Repeated segments (headers, footers, boilerplate) are looked up only once and the result is applied to all duplicates.
+  - **Batch fuzzy matching** – Exact matches are found first (via batch), then only unmatched segments go through fuzzy matching with pre-computed language filters and pre-compiled tag-stripping regex.
+  - **Reduced UI overhead** – `QApplication.processEvents()` is now called every 20 segments instead of every segment; grid updates are deferred until the batch completes.
   - All three TM code paths optimized: primary batch dialog, TM pre-check before API calls, and secondary TM-only path.
 
 ### Improvements
 
-- **Batch translate dialog labels clarified** — The TM checkbox now reads "Pre-translate from activated TMs (exact + fuzzy ≥75%)" and the exact-only sub-option reads "Exact matches only (100% matches only — fastest)" to make the distinction between fuzzy and exact matching modes clearer.
+- **Batch translate dialog labels clarified** – The TM checkbox now reads "Pre-translate from activated TMs (exact + fuzzy ≥75%)" and the exact-only sub-option reads "Exact matches only (100% matches only – fastest)" to make the distinction between fuzzy and exact matching modes clearer.
 
 ---
 
@@ -1704,10 +1704,10 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Editing confirmed segments now always resets status** — Fixed a bug where certain edits to a confirmed (or T&R confirmed / proofread / approved) segment did not reset the status back to "translated". Two sub-issues were resolved:
+- **Editing confirmed segments now always resets status** – Fixed a bug where certain edits to a confirmed (or T&R confirmed / proofread / approved) segment did not reset the status back to "translated". Two sub-issues were resolved:
   - **Copy Source to Target** (Ctrl+Shift+S, bulk menu, and grid context button) now correctly resets confirmed-like statuses. Previously, these code paths used `blockSignals()` or set the segment data before the widget update, both of which bypassed the change-detection handler. ([#154](https://github.com/michaelbeijer/Supervertaler/issues/154))
-  - **All confirmed-like statuses covered** — The status-reset check now covers `confirmed`, `tr_confirmed`, `proofread`, and `approved` (previously only `confirmed` was checked), so edits to segments in any of these higher statuses are properly detected. ([#154](https://github.com/michaelbeijer/Supervertaler/issues/154))
-- **Fixed `.strip()` mismatch between confirm and edit paths** — The Ctrl+Enter confirm handler and bulk-confirm sync previously applied `.strip()` to the target text before storing it, while the text-change handler compared against the unstripped widget text. This could cause false status resets or missed resets. Both paths now store the text consistently without stripping.
+  - **All confirmed-like statuses covered** – The status-reset check now covers `confirmed`, `tr_confirmed`, `proofread`, and `approved` (previously only `confirmed` was checked), so edits to segments in any of these higher statuses are properly detected. ([#154](https://github.com/michaelbeijer/Supervertaler/issues/154))
+- **Fixed `.strip()` mismatch between confirm and edit paths** – The Ctrl+Enter confirm handler and bulk-confirm sync previously applied `.strip()` to the target text before storing it, while the text-change handler compared against the unstripped widget text. This could cause false status resets or missed resets. Both paths now store the text consistently without stripping.
 
 ---
 
@@ -1715,7 +1715,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Title bar now shows correct version when installed via pip** — Fixed the version display showing a stale "v1.9.227" in the title bar (and About dialog) when running a pip-installed copy. The version reader now falls back to `importlib.metadata` when `pyproject.toml` is not present (i.e. pip installs), so the title bar correctly reflects the installed package version. ([#157](https://github.com/michaelbeijer/Supervertaler/issues/157))
+- **Title bar now shows correct version when installed via pip** – Fixed the version display showing a stale "v1.9.227" in the title bar (and About dialog) when running a pip-installed copy. The version reader now falls back to `importlib.metadata` when `pyproject.toml` is not present (i.e. pip installs), so the title bar correctly reflects the installed package version. ([#157](https://github.com/michaelbeijer/Supervertaler/issues/157))
 
 ---
 
@@ -1723,7 +1723,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Batch translation with Custom OpenAI provider now works** — Fixed a bug where batch pre-translation (Translate All / Translate Empty) failed with *"Please configure your Custom_Openai API key in Settings"* even though the API key was correctly configured in the custom profile. Single-segment translation (Ctrl+T / Cmd+T) was not affected. The batch code path now correctly reads the API key from the active custom endpoint profile instead of requiring a top-level `api_keys.txt` entry. ([#157](https://github.com/michaelbeijer/Supervertaler/issues/157))
+- **Batch translation with Custom OpenAI provider now works** – Fixed a bug where batch pre-translation (Translate All / Translate Empty) failed with *"Please configure your Custom_Openai API key in Settings"* even though the API key was correctly configured in the custom profile. Single-segment translation (Ctrl+T / Cmd+T) was not affected. The batch code path now correctly reads the API key from the active custom endpoint profile instead of requiring a top-level `api_keys.txt` entry. ([#157](https://github.com/michaelbeijer/Supervertaler/issues/157))
 
 ---
 
@@ -1731,7 +1731,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **`{{TARGET_TEXT}}` placeholder in Prompt Manager** — A new placeholder is now available in the Placeholders tab. Use `{{TARGET_TEXT}}` in your prompts to reference the current segment's existing translation. Ideal for review/proofreading prompts, e.g. *"Review this translation: {{SOURCE_TEXT}} → {{TARGET_TEXT}}"*. Works in system prompts, library prompts, and QuickMenu custom prompts. Empty string if the segment has no translation yet.
+- **`{{TARGET_TEXT}}` placeholder in Prompt Manager** – A new placeholder is now available in the Placeholders tab. Use `{{TARGET_TEXT}}` in your prompts to reference the current segment's existing translation. Ideal for review/proofreading prompts, e.g. *"Review this translation: {{SOURCE_TEXT}} → {{TARGET_TEXT}}"*. Works in system prompts, library prompts, and QuickMenu custom prompts. Empty string if the segment has no translation yet.
 
 ---
 
@@ -1739,7 +1739,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Copy Source to Target now works on selected segments** — The Ctrl+Shift+S shortcut (Cmd+Shift+S on macOS) now supports multi-segment selection. Select multiple segments (Ctrl+Click or Shift+Click), press the shortcut, and source text is copied to target for all selected segments at once. Single-segment behavior is unchanged. ([#141](https://github.com/michaelbeijer/Supervertaler/issues/141))
+- **Copy Source to Target now works on selected segments** – The Ctrl+Shift+S shortcut (Cmd+Shift+S on macOS) now supports multi-segment selection. Select multiple segments (Ctrl+Click or Shift+Click), press the shortcut, and source text is copied to target for all selected segments at once. Single-segment behavior is unchanged. ([#141](https://github.com/michaelbeijer/Supervertaler/issues/141))
 
 ---
 
@@ -1747,7 +1747,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Settings: macOS global hotkey labels corrected** — The Keyboard Shortcuts settings tab and QuickTrans settings now display the correct ⌃⌘L / ⌃⌘M (Ctrl+Cmd) instead of the old ⌘⌥L / ⌘⌥M (Cmd+Option) on macOS.
+- **Settings: macOS global hotkey labels corrected** – The Keyboard Shortcuts settings tab and QuickTrans settings now display the correct ⌃⌘L / ⌃⌘M (Ctrl+Cmd) instead of the old ⌘⌥L / ⌘⌥M (Cmd+Option) on macOS.
 
 ---
 
@@ -1755,9 +1755,9 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **macOS global hotkeys: Ctrl+Cmd+L / Ctrl+Cmd+M** — Global hotkeys for Superlookup and QuickTrans now use ⌃⌘L and ⌃⌘M on macOS (previously tried to register Ctrl+Alt which didn't work). Uses pynput with the correct key mapping. The in-app Superlookup shortcut also updated to ⌃⌘L on Mac.
-- **macOS Accessibility permission guidance** — When global hotkeys fail to register on macOS, Supervertaler now prints a clear message directing users to grant Accessibility permission in System Settings → Privacy & Security → Accessibility.
-- **Fixed Meta symbol display on macOS** — The `Meta` modifier now correctly displays as ⌃ (Control) instead of ⌘ (Command) in shortcut labels.
+- **macOS global hotkeys: Ctrl+Cmd+L / Ctrl+Cmd+M** – Global hotkeys for Superlookup and QuickTrans now use ⌃⌘L and ⌃⌘M on macOS (previously tried to register Ctrl+Alt which didn't work). Uses pynput with the correct key mapping. The in-app Superlookup shortcut also updated to ⌃⌘L on Mac.
+- **macOS Accessibility permission guidance** – When global hotkeys fail to register on macOS, Supervertaler now prints a clear message directing users to grant Accessibility permission in System Settings → Privacy & Security → Accessibility.
+- **Fixed Meta symbol display on macOS** – The `Meta` modifier now correctly displays as ⌃ (Control) instead of ⌘ (Command) in shortcut labels.
 
 ---
 
@@ -1765,13 +1765,13 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **QuickTrans (Ctrl+Alt+M) now pastes translation at cursor** — When invoking QuickTrans from an external app (browser, Trados, text editor, etc.) and selecting a translation (1-9 or Enter), the selected translation is now copied to the clipboard AND pasted at the cursor position in the original app, replacing the selected text. Works cross-platform: AHK/PowerShell on Windows, osascript on macOS, pynput on Linux.
+- **QuickTrans (Ctrl+Alt+M) now pastes translation at cursor** – When invoking QuickTrans from an external app (browser, Trados, text editor, etc.) and selecting a translation (1-9 or Enter), the selected translation is now copied to the clipboard AND pasted at the cursor position in the original app, replacing the selected text. Works cross-platform: AHK/PowerShell on Windows, osascript on macOS, pynput on Linux.
 
 ### Bug Fixes
 
-- **QuickTrans no longer flashes taskbar icon** — The QuickTrans popup now uses a Tool window type when invoked via the global hotkey, preventing the Supervertaler taskbar icon from flashing on Windows.
-- **Trados bilingual review: self-closing tags now exported correctly** — Self-closing tags like `<255/>` (standalone elements such as page breaks) were written as plain text instead of with the Tag character style when exporting to Trados bilingual DOCX. Trados flagged these as tag errors on re-import. The tag regex now matches all three tag forms: opening (`<11>`), closing (`</11>`), and self-closing (`<255/>`).
-- **Superlookup (Ctrl+Alt+L) now brings window to foreground** — When pressing Ctrl+Alt+L from another application (e.g. Trados Studio), the Supervertaler window now reliably comes to the foreground instead of just flashing in the taskbar. Uses platform-native window activation: `AttachThreadInput` + `SetForegroundWindow` on Windows, `osascript` on macOS, `wmctrl`/`xdotool` on Linux.
+- **QuickTrans no longer flashes taskbar icon** – The QuickTrans popup now uses a Tool window type when invoked via the global hotkey, preventing the Supervertaler taskbar icon from flashing on Windows.
+- **Trados bilingual review: self-closing tags now exported correctly** – Self-closing tags like `<255/>` (standalone elements such as page breaks) were written as plain text instead of with the Tag character style when exporting to Trados bilingual DOCX. Trados flagged these as tag errors on re-import. The tag regex now matches all three tag forms: opening (`<11>`), closing (`</11>`), and self-closing (`<255/>`).
+- **Superlookup (Ctrl+Alt+L) now brings window to foreground** – When pressing Ctrl+Alt+L from another application (e.g. Trados Studio), the Supervertaler window now reliably comes to the foreground instead of just flashing in the taskbar. Uses platform-native window activation: `AttachThreadInput` + `SetForegroundWindow` on Windows, `osascript` on macOS, `wmctrl`/`xdotool` on Linux.
 
 ---
 
@@ -1779,11 +1779,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **TM and Glossary preselection fixed for new projects** — When creating a new project (via any import method, including Trados bilingual DOCX), TMs and glossaries from the previous project were still shown as selected in the UI. The database was correctly deactivated but the TM/Glossary tab checkboxes were not refreshed. Now properly refreshes both panels after deactivation.
+- **TM and Glossary preselection fixed for new projects** – When creating a new project (via any import method, including Trados bilingual DOCX), TMs and glossaries from the previous project were still shown as selected in the UI. The database was correctly deactivated but the TM/Glossary tab checkboxes were not refreshed. Now properly refreshes both panels after deactivation.
 
 ### Improvements
 
-- **Trados Bilingual Review dialog updated** — Improved preparation instructions: replaced incorrect Ctrl+A shortcut (which doesn't work in Trados) with proper segment selection method (click first segment number, Shift+click last). Added new step explaining that Supervertaler's exported file must be renamed to match the original Trados export name for re-import.
+- **Trados Bilingual Review dialog updated** – Improved preparation instructions: replaced incorrect Ctrl+A shortcut (which doesn't work in Trados) with proper segment selection method (click first segment number, Shift+click last). Added new step explaining that Supervertaler's exported file must be renamed to match the original Trados export name for re-import.
 
 ---
 
@@ -1791,11 +1791,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Improvements
 
-- **Trados return package now matches Studio output** — Compared against a genuine Trados Studio return package and aligned Supervertaler's output:
-  - **Byte-perfect SDLXLIFF preservation** — Switched from ElementTree round-trip to text-based regex replacement. Preserves UTF-8 BOM, double-quote XML declaration, original namespace prefixes, and all whitespace exactly as in the original file. Only `<target>` content and `sdl:seg` attributes are modified.
-  - **Source language SDLXLIFF included** — Return package now includes the `en-gb/` source SDLXLIFF (unchanged) alongside the translated `nl-nl/` target, matching Studio's structure.
-  - **CreatedBy scoped correctly** — `PackageCreatedBy` is updated without clobbering `ManualTask.CreatedBy`, `FileVersion.CreatedBy`, and other unrelated `CreatedBy` attributes in the `.sdlproj`.
-  - **AutomaticTask and TermbaseConfiguration stripped** — Removed from `.sdlproj` as Studio does, keeping return packages lean.
+- **Trados return package now matches Studio output** – Compared against a genuine Trados Studio return package and aligned Supervertaler's output:
+  - **Byte-perfect SDLXLIFF preservation** – Switched from ElementTree round-trip to text-based regex replacement. Preserves UTF-8 BOM, double-quote XML declaration, original namespace prefixes, and all whitespace exactly as in the original file. Only `<target>` content and `sdl:seg` attributes are modified.
+  - **Source language SDLXLIFF included** – Return package now includes the `en-gb/` source SDLXLIFF (unchanged) alongside the translated `nl-nl/` target, matching Studio's structure.
+  - **CreatedBy scoped correctly** – `PackageCreatedBy` is updated without clobbering `ManualTask.CreatedBy`, `FileVersion.CreatedBy`, and other unrelated `CreatedBy` attributes in the `.sdlproj`.
+  - **AutomaticTask and TermbaseConfiguration stripped** – Removed from `.sdlproj` as Studio does, keeping return packages lean.
 
 ---
 
@@ -1803,11 +1803,11 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Trados return package (SDLRPX) overhaul** — Fixed four issues with return package generation:
-  - **Inline tags corrupted on export** — `<g>` formatting tags (e.g. superscript ¹⁷⁷Lu) were escaped as literal text (`&lt;14&gt;177&lt;/14&gt;`) instead of proper XML elements. Tags are now correctly reconstructed, including alphanumeric IDs like `qSuperscript`.
-  - **PackageType wrong** — `.sdlproj` was copied verbatim with `PackageType="ProjectPackage"` instead of `"ReturnPackage"`. Now correctly sets ReturnPackage, updates timestamps, CreatedBy, ConfirmationStatistics (Draft→Translated), and marks the ManualTask as Completed.
-  - **Extra files in package** — Source language folder (`en-gb/`) and `Reports/` were included. Return packages now only contain `.sdlproj` + target language SDLXLIFF.
-  - **Segment origin not updated** — Translated segments now get `origin="interactive"` with stale TM/MT attributes removed.
+- **Trados return package (SDLRPX) overhaul** – Fixed four issues with return package generation:
+  - **Inline tags corrupted on export** – `<g>` formatting tags (e.g. superscript ¹⁷⁷Lu) were escaped as literal text (`&lt;14&gt;177&lt;/14&gt;`) instead of proper XML elements. Tags are now correctly reconstructed, including alphanumeric IDs like `qSuperscript`.
+  - **PackageType wrong** – `.sdlproj` was copied verbatim with `PackageType="ProjectPackage"` instead of `"ReturnPackage"`. Now correctly sets ReturnPackage, updates timestamps, CreatedBy, ConfirmationStatistics (Draft→Translated), and marks the ManualTask as Completed.
+  - **Extra files in package** – Source language folder (`en-gb/`) and `Reports/` were included. Return packages now only contain `.sdlproj` + target language SDLXLIFF.
+  - **Segment origin not updated** – Translated segments now get `origin="interactive"` with stale TM/MT attributes removed.
 
 ---
 
@@ -1815,7 +1815,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **Trados/SDLXLIFF tag insertion (Ctrl+,) fixed** — The "Insert next tag" shortcut now recognizes Trados Studio numeric tags (`<92>`, `</92>`, etc.) from imported SDLXLIFF packages. Previously the tag extraction regexes only matched letter-starting tags (`<b>`, `</i>`) and silently ignored numeric tags. Wrapping selected text with Trados tag pairs also works now.
+- **Trados/SDLXLIFF tag insertion (Ctrl+,) fixed** – The "Insert next tag" shortcut now recognizes Trados Studio numeric tags (`<92>`, `</92>`, etc.) from imported SDLXLIFF packages. Previously the tag extraction regexes only matched letter-starting tags (`<b>`, `</i>`) and silently ignored numeric tags. Wrapping selected text with Trados tag pairs also works now.
 
 ---
 
@@ -1823,8 +1823,8 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### Bug Fixes
 
-- **memoQ bilingual RTF: missing segments fixed** — Segments containing mqInternal inline tags (e.g. `[1]`, `[1}...{2]` paired tags) were silently dropped during import. The row-matching regex now uses brace-aware matching to handle nested RTF brace groups. Previously 11 of 155 segments were lost in affected files.
-- **memoQ bilingual RTF: formatting preserved on export** — Bold, italic, and underline formatting is now correctly converted back to RTF control words (`\b`, `\i`, `\ul`) when exporting translations. Previously these appeared as literal `<b>`, `<i>`, `<u>` text when re-imported into memoQ.
+- **memoQ bilingual RTF: missing segments fixed** – Segments containing mqInternal inline tags (e.g. `[1]`, `[1}...{2]` paired tags) were silently dropped during import. The row-matching regex now uses brace-aware matching to handle nested RTF brace groups. Previously 11 of 155 segments were lost in affected files.
+- **memoQ bilingual RTF: formatting preserved on export** – Bold, italic, and underline formatting is now correctly converted back to RTF control words (`\b`, `\i`, `\ul`) when exporting translations. Previously these appeared as literal `<b>`, `<i>`, `<u>` text when re-imported into memoQ.
 
 ---
 
@@ -1833,7 +1833,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 ### New Features
 
 - **Cross-platform support**: Added `modules/platform_helpers.py` with cross-platform utilities for file opening, subprocess flags, global hotkeys, and keystroke automation. Supervertaler now runs on macOS and Linux in addition to Windows.
-- **Native global hotkey system**: Replaced the AutoHotkey-based hotkey system with a native implementation — Windows `RegisterHotKey` API with AHK-based keystroke injection for Ctrl+C, pynput `GlobalHotKeys` on macOS/Linux. No more signal file watcher or polling timer.
+- **Native global hotkey system**: Replaced the AutoHotkey-based hotkey system with a native implementation – Windows `RegisterHotKey` API with AHK-based keystroke injection for Ctrl+C, pynput `GlobalHotKeys` on macOS/Linux. No more signal file watcher or polling timer.
 - **Global Hotkeys settings moved**: The Global Hotkeys (Superlookup & QuickTrans) settings section has moved from the General tab to the Keyboard Shortcuts tab.
 
 ### Improvements
@@ -1886,7 +1886,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### New Features
 
-- **Unified settings system**: Merged `general_settings.json`, `ui_preferences.json`, `feature_settings.json`, and `api_keys.txt` into a single `settings/settings.json` file. All settings files (themes, shortcuts, find/replace history, etc.) are now organized in a `settings/` subfolder within the user data folder. Existing installations are automatically migrated on first launch — old files are renamed to `.migrated` as a safety net.
+- **Unified settings system**: Merged `general_settings.json`, `ui_preferences.json`, `feature_settings.json`, and `api_keys.txt` into a single `settings/settings.json` file. All settings files (themes, shortcuts, find/replace history, etc.) are now organized in a `settings/` subfolder within the user data folder. Existing installations are automatically migrated on first launch – old files are renamed to `.migrated` as a safety net.
 - **Inline API key editing**: API keys can now be entered directly in the Settings UI instead of editing a text file. AI provider keys (OpenAI, Claude, Google/Gemini, Ollama endpoint) are in the AI Settings tab; machine translation keys (Google Translate, DeepL, Microsoft, Amazon, ModernMT, MyMemory) are in the MT Settings tab. All key fields are password-masked with a show/hide toggle.
 
 ---
@@ -1912,7 +1912,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### ✨ New Features
 
-- **Custom OpenAI-Compatible API provider** ([#155](https://github.com/michaelbeijer/Supervertaler/issues/155)): Added support for any OpenAI-compatible API endpoint — Volcengine (Doubao), Alibaba Tongyi (Qwen), DeepSeek, Mistral, Groq, and more. Configure endpoint URL, model name, and API key in Settings > AI Settings. Works for single-segment translation, batch translation, and QuickTrans.
+- **Custom OpenAI-Compatible API provider** ([#155](https://github.com/michaelbeijer/Supervertaler/issues/155)): Added support for any OpenAI-compatible API endpoint – Volcengine (Doubao), Alibaba Tongyi (Qwen), DeepSeek, Mistral, Groq, and more. Configure endpoint URL, model name, and API key in Settings > AI Settings. Works for single-segment translation, batch translation, and QuickTrans.
 
 ---
 
@@ -1950,7 +1950,7 @@ Supervertaler now ships with an **Okapi Framework sidecar** — an industry-stan
 
 ### 🔧 Improvements
 
-- **Tabbed Project Info dialog**: The Project Info dialog now uses a tabbed layout with Overview and File Progress tabs. The standalone File Progress dialog has been merged in — click the file count in the status bar to jump directly to the File Progress tab.
+- **Tabbed Project Info dialog**: The Project Info dialog now uses a tabbed layout with Overview and File Progress tabs. The standalone File Progress dialog has been merged in – click the file count in the status bar to jump directly to the File Progress tab.
 
 ---
 
@@ -3201,7 +3201,7 @@ Glossary entries like "ca." (with period), "psi", and "typisch" were not being f
 
 **Root Cause:**
 - When tokenizing source text, punctuation was stripped from words ("ca." → "ca")
-- The database search then looked for "ca" but the glossary had "ca." — no match
+- The database search then looked for "ca" but the glossary had "ca." – no match
 - Short terms in parentheses like "(psi)" were also affected
 
 **The Fix:**
@@ -4378,19 +4378,19 @@ Fixed a critical issue where highly similar TM entries were not being found for 
 
 **Note (v1.9.99+):** `Alt+0` / `Alt+0,0` are now reserved for the Compare Panel insertion workflow. TermView shortcuts start at `Alt+1`.
 
-Insert glossary terms directly from TermView using keyboard shortcuts — a novel feature not found in other CAT tools!
+Insert glossary terms directly from TermView using keyboard shortcuts – a novel feature not found in other CAT tools!
 
-- **Alt+1 through Alt+9** — Insert terms 1-9 (displayed as badges 1-9)
-- **Double-tap Alt+N,N** — Insert terms 10-18 (displayed as badges 11, 22, ..., 99)
+- **Alt+1 through Alt+9** – Insert terms 1-9 (displayed as badges 1-9)
+- **Double-tap Alt+N,N** – Insert terms 10-18 (displayed as badges 11, 22, ..., 99)
 - **18 terms accessible** via quick keyboard shortcuts
 - **Visual badges** show shortcut numbers on each term in TermView
-- **Smart double-tap detection** — first tap inserts immediately, double-tap within 300ms replaces with the 11-20 term
+- **Smart double-tap detection** – first tap inserts immediately, double-tap within 300ms replaces with the 11-20 term
 
 **Visual Improvements:**
-- 🎨 **Unified term styling** — Background color now extends across both translation text and shortcut badge
-- 🔵 **Blue number badges** — Clear visual indicators (14px for single digit, 20px for double)
-- 💡 **Hover effects** — Entire term block highlights on hover
-- 🏷️ **Tooltips** — Show exact shortcut (e.g., "Press Alt+3 to insert" or "Press Alt+3,3 to insert")
+- 🎨 **Unified term styling** – Background color now extends across both translation text and shortcut badge
+- 🔵 **Blue number badges** – Clear visual indicators (14px for single digit, 20px for double)
+- 💡 **Hover effects** – Entire term block highlights on hover
+- 🏷️ **Tooltips** – Show exact shortcut (e.g., "Press Alt+3 to insert" or "Press Alt+3,3 to insert")
 
 **How It Works:**
 | Badge | Shortcut | Term # |
@@ -4403,22 +4403,22 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## ⌨️ Keyboard Shortcuts & Quick Glossary Add (v1.9.93) - January 11, 2026
 
 **New Features:**
-- ⚡ **Quick Add to Priority Glossary** — Add terms directly to glossaries by their priority ranking
+- ⚡ **Quick Add to Priority Glossary** – Add terms directly to glossaries by their priority ranking
   - Alt+Up: Add selected term pair to glossary with Priority #1
   - Alt+Down: Add selected term pair to glossary with Priority #2
   - Works with any glossary that has Read enabled and a priority set
-  - No dialog required — instant term addition
+  - No dialog required – instant term addition
 
-- 🔧 **Shortcut Enable/Disable** — Disable shortcuts from Settings → Keyboard Shortcuts
+- 🔧 **Shortcut Enable/Disable** – Disable shortcuts from Settings → Keyboard Shortcuts
   - New "Enabled" checkbox column in shortcuts table
   - Disabled shortcuts fully release their key combinations
   - Released keys can be reassigned to other shortcuts
   - Settings persist between sessions
 
 **Improvements:**
-- ✓ **Button Renamed** — "Save & Next" button renamed to "Confirm & Next" to accurately reflect its function
-- ⌨️ **Ctrl+Enter Fix** — Ctrl+Enter now correctly handled in target editor cells
-- ↵ **Enter Key Behavior** — Plain Enter no longer inserts newlines; use Shift+Enter for line breaks
+- ✓ **Button Renamed** – "Save & Next" button renamed to "Confirm & Next" to accurately reflect its function
+- ⌨️ **Ctrl+Enter Fix** – Ctrl+Enter now correctly handled in target editor cells
+- ↵ **Enter Key Behavior** – Plain Enter no longer inserts newlines; use Shift+Enter for line breaks
 
 **Bug Fixes:**
 - 🔧 Fixed Ctrl+Enter not working when focus is in target cell
@@ -4430,39 +4430,39 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## 🔄 F5 Force Refresh & Curly Quote Matching (v1.9.92) - January 10, 2026
 
 **New Feature:**
-- ⌨️ **F5 Force Refresh** — Press F5 to force refresh all glossary and TM matches for the current segment
+- ⌨️ **F5 Force Refresh** – Press F5 to force refresh all glossary and TM matches for the current segment
   - Clears all caches (termbase cache, translation matches cache)
   - Re-searches all connected glossaries and translation memories
   - Updates TermView, Translation Results panel, and grid highlighting with fresh results
   - Useful when glossary changes aren't immediately reflected
 
 **Bug Fixes:**
-- 🔤 **Curly Quote Matching Fix** — Single-word glossary terms now correctly match when surrounded by curly quotes
+- 🔤 **Curly Quote Matching Fix** – Single-word glossary terms now correctly match when surrounded by curly quotes
   - Terms like `"omvatten",` or `„word"` now match their glossary entries
   - Comprehensive Unicode quote handling: `"`, `"`, `„`, `«`, `»`, `'`, `'`, `‚`, `‹`, `›`
   - Text normalized by replacing all quote variants with spaces before regex matching
 
 **Improvements:**
-- 🏷️ **TermView Tag Stripping** — CAT tool tags now stripped from TermView display for cleaner appearance
+- 🏷️ **TermView Tag Stripping** – CAT tool tags now stripped from TermView display for cleaner appearance
   - Handles `<b>`, `<i>`, memoQ `{1}`, `[2}`, Trados `<1>`, Déjà Vu `{00001}`
-- 📝 **Find/Replace Field Behavior** — Selected text now always goes to Find field, never to Replace field
-- 🔄 **TermView Cache Updates** — TermView now updates from cache when navigating segments (not just TM/MT results)
+- 📝 **Find/Replace Field Behavior** – Selected text now always goes to Find field, never to Replace field
+- 🔄 **TermView Cache Updates** – TermView now updates from cache when navigating segments (not just TM/MT results)
 
 ---
 
 ## 🎯 Déjà Vu X3 Bilingual RTF Support (v1.9.91) - January 10, 2026
 
 **New CAT Tool Integration:**
-- 📄 **Déjà Vu X3 RTF Import** — Import bilingual RTF files exported from Déjà Vu X3
+- 📄 **Déjà Vu X3 RTF Import** – Import bilingual RTF files exported from Déjà Vu X3
   - Parses 4-column table format (ID | Source | Target | Comments)
   - Automatic language detection from RTF language codes (60+ languages supported)
   - Segment IDs preserved for round-trip workflow
-- 📤 **Déjà Vu X3 RTF Export** — Export translations back to RTF format
+- 📤 **Déjà Vu X3 RTF Export** – Export translations back to RTF format
   - Translations inserted with proper RTF formatting
   - Unicode characters properly encoded (`\uNNNN?` format)
   - Target language codes applied automatically
   - Balanced RTF brace structure maintained
-- 🏷️ **Déjà Vu Tag Support** — Inline tags `{00108}` highlighted in pink
+- 🏷️ **Déjà Vu Tag Support** – Inline tags `{00108}` highlighted in pink
   - Pattern: `{NNNNN}` (5-digit numbers)
   - Tags preserved through translation workflow
 - 🔄 **Full Round-Trip Workflow**:
@@ -4473,7 +4473,7 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
   5. Reimport into Déjà Vu X3
 
 **New Module:**
-- `modules/dejavurtf_handler.py` — Complete Déjà Vu X3 RTF parser (~800 lines)
+- `modules/dejavurtf_handler.py` – Complete Déjà Vu X3 RTF parser (~800 lines)
   - `DejaVuSegment` dataclass for segment data
   - `DejaVuRTFHandler` class with load/save methods
   - RTF text encoding/decoding utilities
@@ -4487,39 +4487,39 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 - Project persistence: `dejavu_source_path`, `dejavu_segment_id`, `dejavu_row_index`
 
 **Files Modified:**
-- `Supervertaler.py` — Menu items, import/export methods, TagHighlighter pattern
-- `modules/dejavurtf_handler.py` — NEW handler module
+- `Supervertaler.py` – Menu items, import/export methods, TagHighlighter pattern
+- `modules/dejavurtf_handler.py` – NEW handler module
 
 ---
 
 ## 🐛 Bug Fixes (v1.9.89) - January 9, 2026
 
 **Critical Bug Fixes:**
-- 🔧 **Translation Results Zoom Persistence** — Fixed font size settings not being restored when loading projects (typo: `set_compare_font_size` → `set_compare_box_font_size`)
-- 🎨 **Border Thickness Spinbox** — Fixed arrows not appearing in Target Cell Focus Border thickness control
+- 🔧 **Translation Results Zoom Persistence** – Fixed font size settings not being restored when loading projects (typo: `set_compare_font_size` → `set_compare_box_font_size`)
+- 🎨 **Border Thickness Spinbox** – Fixed arrows not appearing in Target Cell Focus Border thickness control
   - Removed problematic stylesheet that was hiding buttons
   - Increased maximum thickness from 5px to 10px
   - Made spinbox wider (90px) to accommodate larger values
-- 🌍 **Language Pair Memory** — Fixed DOCX import defaulting to EN→NL instead of remembering last used language pair
+- 🌍 **Language Pair Memory** – Fixed DOCX import defaulting to EN→NL instead of remembering last used language pair
   - Now remembers last imported language pair across sessions
   - Falls back to current project languages if available
   - User report: "Whatever I do... the language is detected always as EN-NL!" → FIXED
 
 **Files Modified:**
-- `Supervertaler.py` — All bug fixes implemented
+- `Supervertaler.py` – All bug fixes implemented
 
 ---
 
 ## 🔍 Context Menu Enhancement (v1.9.88) - January 9, 2026
 
 **Superlookup Integration in Context Menus (NEW):**
-- 🔍 **Quick Concordance Search** — Right-click selected text in source or target cells to instantly search in Superlookup
-- 📋 **Context Menu Item** — New "🔍 Search in Superlookup (Ctrl+K)" option appears when text is selected
-- 🎯 **Smart Navigation** — Automatically opens Superlookup tab and triggers search
-- 🌍 **Language-Aware** — Passes project language pair to Superlookup for filtered results
-- 📊 **Vertical View** — Uses traditional concordance list layout for search results
-- ⚡ **Unified Search** — Searches TM, glossaries, Supermemory, MT, and web resources simultaneously
-- 🔄 **Works Everywhere** — Available in both source (read-only) and target (editable) cells
+- 🔍 **Quick Concordance Search** – Right-click selected text in source or target cells to instantly search in Superlookup
+- 📋 **Context Menu Item** – New "🔍 Search in Superlookup (Ctrl+K)" option appears when text is selected
+- 🎯 **Smart Navigation** – Automatically opens Superlookup tab and triggers search
+- 🌍 **Language-Aware** – Passes project language pair to Superlookup for filtered results
+- 📊 **Vertical View** – Uses traditional concordance list layout for search results
+- ⚡ **Unified Search** – Searches TM, glossaries, Supermemory, MT, and web resources simultaneously
+- 🔄 **Works Everywhere** – Available in both source (read-only) and target (editable) cells
 
 **Workflow Benefits:**
 - Select any term → Right-click → Instant concordance search (no need to open Superlookup first)
@@ -4531,26 +4531,26 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## ⚡ Workflow Enhancements & UI Polish (v1.9.87) - January 9, 2026
 
 **Auto-Confirm 100% TM Matches (NEW):**
-- 🎯 **Intelligent Auto-Confirmation** — When pressing Ctrl+Enter, automatically inserts, confirms, and skips segments with perfect TM matches
-- 🔄 **Recursive Processing** — Continues through multiple 100% matches until finding a segment requiring manual work
-- 🛡️ **Safety Check** — Only auto-confirms segments with empty targets (won't overwrite existing translations)
-- ⚡ **Hash-Based Lookup** — Uses instant MD5 hash matching for O(1) performance
-- 📊 **TM Integration** — Auto-confirmed segments automatically saved to active Translation Memories
-- ⚙️ **Optional Setting** — Enable/disable in General Settings → TM/Glossary section
-- 📝 **Session Logging** — Clear logs show: Found match → Auto-confirmed → Skipped to next
+- 🎯 **Intelligent Auto-Confirmation** – When pressing Ctrl+Enter, automatically inserts, confirms, and skips segments with perfect TM matches
+- 🔄 **Recursive Processing** – Continues through multiple 100% matches until finding a segment requiring manual work
+- 🛡️ **Safety Check** – Only auto-confirms segments with empty targets (won't overwrite existing translations)
+- ⚡ **Hash-Based Lookup** – Uses instant MD5 hash matching for O(1) performance
+- 📊 **TM Integration** – Auto-confirmed segments automatically saved to active Translation Memories
+- ⚙️ **Optional Setting** – Enable/disable in General Settings → TM/Glossary section
+- 📝 **Session Logging** – Clear logs show: Found match → Auto-confirmed → Skipped to next
 
 **Tab Layout Customization (NEW):**
-- 📐 **Flexible Tab Position** — Move Termview and Session Log tabs above or below the grid
-- ⚙️ **View Settings Toggle** — New "📐 Tab Layout" section with checkbox: "Show Termview/Session Log tabs above grid"
-- 💾 **Persistent Setting** — Preference saved and restored between sessions
-- 🔄 **Easy Switching** — Close and reopen project tab to apply layout change
+- 📐 **Flexible Tab Position** – Move Termview and Session Log tabs above or below the grid
+- ⚙️ **View Settings Toggle** – New "📐 Tab Layout" section with checkbox: "Show Termview/Session Log tabs above grid"
+- 💾 **Persistent Setting** – Preference saved and restored between sessions
+- 🔄 **Easy Switching** – Close and reopen project tab to apply layout change
 
 **Grid & UI Improvements:**
-- 📏 **Wider Segment Column** — Segment # column increased from 35px to 55px (fits 4-digit segment numbers up to 9999)
-- 🎯 **Auto-Center Fix** — "Keep Active Segment Centered" setting now persists between restarts
-- 🎨 **Badge Text Color** — Changed from black to dark gray (#333333) for better appearance on bright match backgrounds
-- 🎨 **Color Customization** — New badge text color picker with 8 preset colors and custom selection
-- 🔍 **Settings Rename** — "View/Display" tab renamed to "View Settings" for clarity
+- 📏 **Wider Segment Column** – Segment # column increased from 35px to 55px (fits 4-digit segment numbers up to 9999)
+- 🎯 **Auto-Center Fix** – "Keep Active Segment Centered" setting now persists between restarts
+- 🎨 **Badge Text Color** – Changed from black to dark gray (#333333) for better appearance on bright match backgrounds
+- 🎨 **Color Customization** – New badge text color picker with 8 preset colors and custom selection
+- 🔍 **Settings Rename** – "View/Display" tab renamed to "View Settings" for clarity
 
 **Technical Improvements:**
 - Navigation logic now uses exact match lookup for 100% TM matches (not fuzzy search)
@@ -4563,11 +4563,11 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## 🔧 Glossary Quality Improvements (v1.9.86) - January 9, 2026
 
 **Enhanced Glossary Management:**
-- 🚫 **Duplicate Prevention** — Cannot save duplicate source→target pairs to a glossary
-- 🎯 **Priority-Based Filtering** — If identical match exists in multiple glossaries, only highest priority version shown
-- ⚖️ **Font Normalization** — TermView source and target text now use same font size
-- 🔍 **Smart Filtering** — Duplicate filtering applied throughout: grid highlighting, Translation Results, TermView, and Superlookup
-- ⚠️ **User Feedback** — Clear warning dialog when attempting to add duplicate terms
+- 🚫 **Duplicate Prevention** – Cannot save duplicate source→target pairs to a glossary
+- 🎯 **Priority-Based Filtering** – If identical match exists in multiple glossaries, only highest priority version shown
+- ⚖️ **Font Normalization** – TermView source and target text now use same font size
+- 🔍 **Smart Filtering** – Duplicate filtering applied throughout: grid highlighting, Translation Results, TermView, and Superlookup
+- ⚠️ **User Feedback** – Clear warning dialog when attempting to add duplicate terms
 
 **Technical Changes:**
 - Added case-insensitive duplicate check in `termbase_manager.py` before inserting terms
@@ -4580,14 +4580,14 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## ✅ AI Proofreading System (v1.9.85) - January 7, 2026
 
 **Intelligent Translation Quality Verification:**
-- 🔍 **Batch Proofreading** — LLM analyzes translations for errors, inconsistencies, and quality issues
-- 📝 **Issue Tracking** — Problems stored in Notes field with `⚠️ PROOFREAD:` prefix
-- 📊 **Results Table** — View all segments with issues, double-click to navigate
-- 🎯 **Advanced Filters** — New "Has proofreading issues" filter option
-- 🟠 **Visual Indicators** — Orange highlight on status icons for segments with proofreading notes
-- 🧹 **Clear Operations** — Bulk clear all proofreading notes or clear individual segments
-- ⚡ **Batch Processing** — Efficient API calls (20 segments per request)
-- 📈 **Progress Dialog** — Real-time stats during proofreading operation
+- 🔍 **Batch Proofreading** – LLM analyzes translations for errors, inconsistencies, and quality issues
+- 📝 **Issue Tracking** – Problems stored in Notes field with `⚠️ PROOFREAD:` prefix
+- 📊 **Results Table** – View all segments with issues, double-click to navigate
+- 🎯 **Advanced Filters** – New "Has proofreading issues" filter option
+- 🟠 **Visual Indicators** – Orange highlight on status icons for segments with proofreading notes
+- 🧹 **Clear Operations** – Bulk clear all proofreading notes or clear individual segments
+- ⚡ **Batch Processing** – Efficient API calls (20 segments per request)
+- 📈 **Progress Dialog** – Real-time stats during proofreading operation
 
 **Access Points:**
 - Edit → Batch Operations → ✅ Proofread Translation...
@@ -4599,13 +4599,13 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## 📐 Subscript & Superscript Support (v1.9.84) - January 7, 2026
 
 **New Formatting Tags:**
-- ⬇️ **Subscript** — `<sub>` tags for subscript text (e.g., P<sub>totaal</sub>)
-- ⬆️ **Superscript** — `<sup>` tags for superscript text (e.g., m<sup>2</sup>)
+- ⬇️ **Subscript** – `<sub>` tags for subscript text (e.g., P<sub>totaal</sub>)
+- ⬆️ **Superscript** – `<sup>` tags for superscript text (e.g., m<sup>2</sup>)
 
 **Full Pipeline Support:**
-- 📥 **Import** — Subscript/superscript preserved from DOCX files as `<sub>`/`<sup>` tags
-- 📤 **Export** — Tags converted back to real Word subscript/superscript formatting
-- 🎨 **Preview** — Document Preview renders actual subscript/superscript positioning
+- 📥 **Import** – Subscript/superscript preserved from DOCX files as `<sub>`/`<sup>` tags
+- 📤 **Export** – Tags converted back to real Word subscript/superscript formatting
+- 🎨 **Preview** – Document Preview renders actual subscript/superscript positioning
 
 **Technical Details:**
 - Updated `modules/tag_manager.py` with sub/sup support in FormattingRun dataclass
@@ -4617,142 +4617,142 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 ## 📝 Notes Tab & Status Indicator (v1.9.83) - January 6, 2026
 
 **Notes Tab in Translation Results Panel:**
-- 📝 **TM Info + Notes Tabs** — Translation Results panel now has tabbed interface
-- 💾 **TM Info Tab** — Shows TM match details when a match is selected
-- ✏️ **Notes Tab** — Add/edit notes for each segment
-- 🔄 **Auto-Save** — Notes save automatically as you type
-- 📂 **Persistence** — Notes saved to .svproj project file
+- 📝 **TM Info + Notes Tabs** – Translation Results panel now has tabbed interface
+- 💾 **TM Info Tab** – Shows TM match details when a match is selected
+- ✏️ **Notes Tab** – Add/edit notes for each segment
+- 🔄 **Auto-Save** – Notes save automatically as you type
+- 📂 **Persistence** – Notes saved to .svproj project file
 
 **Notes Indicator on Status Icon:**
-- 🟠 **Orange Highlight** — Status icon (✓/✗) gets orange background when segment has notes
-- 🎯 **Compact Design** — No separate icon cluttering the status cell
-- 💬 **Tooltip** — Hover over status cell to see notes preview
-- 📏 **Narrower Status Column** — Reduced from 120px to 70px for cleaner look
+- 🟠 **Orange Highlight** – Status icon (✓/✗) gets orange background when segment has notes
+- 🎯 **Compact Design** – No separate icon cluttering the status cell
+- 💬 **Tooltip** – Hover over status cell to see notes preview
+- 📏 **Narrower Status Column** – Reduced from 120px to 70px for cleaner look
 
 **UI Cleanup:**
-- 🗑️ **Removed Comments Tab** — Redundant tab under grid removed (Notes tab replaces it)
-- 🧹 **Cleaner Layout** — Only Termview and Session Log tabs remain under grid
+- 🗑️ **Removed Comments Tab** – Redundant tab under grid removed (Notes tab replaces it)
+- 🧹 **Cleaner Layout** – Only Termview and Session Log tabs remain under grid
 
 ---
 
 ## 🤖 Export for AI (v1.9.82) - January 5, 2026
 
 **New Export Format:**
-- 🤖 **AI-Readable Format** — New export option in File → Export menu
-- 📝 **[SEGMENT XXXX] Format** — Outputs clean numbered segments with language labels
-- 🌐 **Language Codes** — Auto-detects project languages (NL, EN, DE, etc.)
-- ⚙️ **Configurable** — Customizable language codes, start number, zero padding
+- 🤖 **AI-Readable Format** – New export option in File → Export menu
+- 📝 **[SEGMENT XXXX] Format** – Outputs clean numbered segments with language labels
+- 🌐 **Language Codes** – Auto-detects project languages (NL, EN, DE, etc.)
+- ⚙️ **Configurable** – Customizable language codes, start number, zero padding
 
 **Export Options:**
-- 🔄 **Content Modes** — Bilingual (source+target), Source only, Target only
-- 📊 **Segment Filters** — All segments, Untranslated only, Translated only
-- 👁️ **Live Preview** — See format preview before exporting
+- 🔄 **Content Modes** – Bilingual (source+target), Source only, Target only
+- 📊 **Segment Filters** – All segments, Untranslated only, Translated only
+- 👁️ **Live Preview** – See format preview before exporting
 
 **Use Cases:**
-- 🧠 **AI Translation** — Export source-only for ChatGPT/Claude translation
-- 🔍 **AI Review** — Export bilingual for AI quality review
-- 📎 **Easy Parsing** — Simple format for automated processing
+- 🧠 **AI Translation** – Export source-only for ChatGPT/Claude translation
+- 🔍 **AI Review** – Export bilingual for AI quality review
+- 📎 **Easy Parsing** – Simple format for automated processing
 
 ---
 
 ## 🔍 Superlookup UX Improvements (v1.9.81) - January 4, 2026
 
 **Search History Dropdown:**
-- 📜 **History Dropdown** — Superlookup search box now shows last 20 searches in dropdown
-- 💾 **Persistent History** — Saved to `user_data/superlookup_history.json`
-- ⌨️ **Editable Combo** — Type to search, click dropdown for history
+- 📜 **History Dropdown** – Superlookup search box now shows last 20 searches in dropdown
+- 💾 **Persistent History** – Saved to `user_data/superlookup_history.json`
+- ⌨️ **Editable Combo** – Type to search, click dropdown for history
 
 **Resizable Sidebar:**
-- ↔️ **QSplitter** — Web Resources sidebar now resizable (120-250px range)
-- 📏 **No Text Cutoff** — Resource buttons properly visible at all widths
+- ↔️ **QSplitter** – Web Resources sidebar now resizable (120-250px range)
+- 📏 **No Text Cutoff** – Resource buttons properly visible at all widths
 
 **UI Polish:**
-- 🎯 **Focus Rectangles Removed** — Global stylesheet removes ugly focus outlines from all buttons
-- 🟢 **Styled Radio Buttons** — Replaced 5 plain QRadioButton instances with CheckmarkRadioButton
-- 🐛 **External Mode Fix** — External browser mode now correctly triggers web search
+- 🎯 **Focus Rectangles Removed** – Global stylesheet removes ugly focus outlines from all buttons
+- 🟢 **Styled Radio Buttons** – Replaced 5 plain QRadioButton instances with CheckmarkRadioButton
+- 🐛 **External Mode Fix** – External browser mode now correctly triggers web search
 
 ---
 
 ## 💻 GitHub Code Search (Beijerterm) in Superlookup (v1.9.80) - January 4, 2026
 
 **New Web Resource:**
-- 💻 **GitHub Code (Beijerterm)** — Search Beijerterm terminology repo directly from Superlookup
-- 🔗 **Search URL** — `https://github.com/search?q={query}+repo:michaelbeijer/beijerterm&type=code`
-- 📚 **Source Files** — Search YAML glossary files, Markdown documentation
-- ✨ **Renamed** — "GitHub Code" → "GitHub Code (all)" for clarity
+- 💻 **GitHub Code (Beijerterm)** – Search Beijerterm terminology repo directly from Superlookup
+- 🔗 **Search URL** – `https://github.com/search?q={query}+repo:michaelbeijer/beijerterm&type=code`
+- 📚 **Source Files** – Search YAML glossary files, Markdown documentation
+- ✨ **Renamed** – "GitHub Code" → "GitHub Code (all)" for clarity
 
 ---
 
 ## 📚 Beijerterm Integration in Superlookup (v1.9.79) - January 4, 2026
 
 **New Web Resource:**
-- 📚 **Beijerterm** — Added to Superlookup's Web Resources tab (replaces old michaelbeijer.co.uk wiki)
-- 🔗 **Search URL** — `https://michaelbeijer.github.io/beijerterm/?q={query}`
-- 📊 **500k+ Terms** — Dutch-English terminology database with 583,000+ term entries
-- ⚡ **URL Search** — Beijerterm now supports `?q=searchterm` for programmatic search integration
+- 📚 **Beijerterm** – Added to Superlookup's Web Resources tab (replaces old michaelbeijer.co.uk wiki)
+- 🔗 **Search URL** – `https://michaelbeijer.github.io/beijerterm/?q={query}`
+- 📊 **500k+ Terms** – Dutch-English terminology database with 583,000+ term entries
+- ⚡ **URL Search** – Beijerterm now supports `?q=searchterm` for programmatic search integration
 
 ---
 
 ## 🔍 Find & Replace History & Batch Sets (v1.9.78) - January 4, 2026
 
 **F&R History Dropdowns:**
-- 📜 **History Dropdowns** — Find and Replace fields now have dropdown arrows showing last 20 searches
-- 💾 **Persistent History** — Search/replace terms saved to `user_data/find_replace_history.json`
-- 🔽 **Quick Access** — Click dropdown arrow or type to filter previous search terms
+- 📜 **History Dropdowns** – Find and Replace fields now have dropdown arrows showing last 20 searches
+- 💾 **Persistent History** – Search/replace terms saved to `user_data/find_replace_history.json`
+- 🔽 **Quick Access** – Click dropdown arrow or type to filter previous search terms
 
 **F&R Sets (Batch Operations):**
-- 📁 **F&R Sets Panel** — Collapsible panel for creating and managing batch replace operations
-- ▶️ **Batch Operations** — Run multiple find/replace operations with a single click
-- ➕ **Add to Set** — Save current find/replace values to a named set
-- 📥📤 **Import/Export** — Save F&R sets as `.svfr` files for sharing or backup
-- 🖱️ **Double-click** — Double-click any operation in a set to load it into the dialog
+- 📁 **F&R Sets Panel** – Collapsible panel for creating and managing batch replace operations
+- ▶️ **Batch Operations** – Run multiple find/replace operations with a single click
+- ➕ **Add to Set** – Save current find/replace values to a named set
+- 📥📤 **Import/Export** – Save F&R sets as `.svfr` files for sharing or backup
+- 🖱️ **Double-click** – Double-click any operation in a set to load it into the dialog
 
 **New Module (`modules/find_replace_qt.py`):**
-- `FindReplaceHistory` — Manages and persists recent search/replace terms
-- `FindReplaceOperation` — Dataclass for single F&R operation (find, replace, options)
-- `FindReplaceSet` — Collection of operations that can be saved/loaded
-- `FindReplaceSetsManager` — QWidget UI for managing F&R sets with tables
-- `HistoryComboBox` — Editable combo box with history dropdown
+- `FindReplaceHistory` – Manages and persists recent search/replace terms
+- `FindReplaceOperation` – Dataclass for single F&R operation (find, replace, options)
+- `FindReplaceSet` – Collection of operations that can be saved/loaded
+- `FindReplaceSetsManager` – QWidget UI for managing F&R sets with tables
+- `HistoryComboBox` – Editable combo box with history dropdown
 
 ---
 
 ## 💻 GitHub Code Search in Superlookup (v1.9.77) - January 4, 2026
 
 **New Web Resource:**
-- 💻 **GitHub Code Search** — Added to Superlookup's Web Resources tab
-- 🔗 **Search URL** — `https://github.com/search?q={query}&type=code`
-- 🎯 **Use Case** — Search for terms/code across all public GitHub repositories
-- ✨ **Great for** — Finding how technical terms are used in real code, locating terminology in open-source projects
+- 💻 **GitHub Code Search** – Added to Superlookup's Web Resources tab
+- 🔗 **Search URL** – `https://github.com/search?q={query}&type=code`
+- 🎯 **Use Case** – Search for terms/code across all public GitHub repositories
+- ✨ **Great for** – Finding how technical terms are used in real code, locating terminology in open-source projects
 
 ---
 
 ## 🎉 Onboarding, Spellcheck & Project Info (v1.9.76) - January 3, 2025
 
 **First-Run Welcome for New Users:**
-- 🎉 **Welcome Dialog** — Shows on first launch explaining modular pip extras
-- 📦 **Auto-Navigate** — Opens Settings → Features tab automatically to show installed/missing features
-- ✅ **Don't Show Again** — Checkbox uses standard green CheckmarkCheckBox style
-- 🐛 **Bug Fix** — First-run flag now saves to correct file (ui_preferences.json)
+- 🎉 **Welcome Dialog** – Shows on first launch explaining modular pip extras
+- 📦 **Auto-Navigate** – Opens Settings → Features tab automatically to show installed/missing features
+- ✅ **Don't Show Again** – Checkbox uses standard green CheckmarkCheckBox style
+- 🐛 **Bug Fix** – First-run flag now saves to correct file (ui_preferences.json)
 
 **Free vs Paid LLM Pricing Info:**
-- 💰 **Info Box in AI Settings** — Clear pricing information at top of Settings → AI Settings
-- 🆓 **Google Gemini** — FREE tier (15 req/min, 1M tokens/day)
-- 🖥️ **Ollama** — 100% FREE (runs locally on your computer)
-- 💳 **OpenAI/Claude** — Paid API only (no free tier)
-- ⚠️ **Important Note** — Clarifies that ChatGPT Plus and Claude Pro web subscriptions do NOT include API access
+- 💰 **Info Box in AI Settings** – Clear pricing information at top of Settings → AI Settings
+- 🆓 **Google Gemini** – FREE tier (15 req/min, 1M tokens/day)
+- 🖥️ **Ollama** – 100% FREE (runs locally on your computer)
+- 💳 **OpenAI/Claude** – Paid API only (no free tier)
+- ⚠️ **Important Note** – Clarifies that ChatGPT Plus and Claude Pro web subscriptions do NOT include API access
 
 **Spellcheck System Overhaul:**
-- 🔤 **Spylls Backend** — Replaced `cyhunspell` with `spylls` (pure Python Hunspell), fixing Windows/Python 3.12 compatibility
-- 🌍 **Language Variants** — Dropdown now shows "English (US)", "English (GB)", "Portuguese (BR)" etc.
-- 📁 **Subdirectory Search** — Finds dictionaries in subfolders like `dictionaries/en/en_GB.dic`
-- ✅ **Regional Spelling Works** — "colour" correct in en_GB, incorrect in en_US (and vice versa)
-- 📋 **Improved Spellcheck Info Dialog** — Three backends displayed separately, active one highlighted green, bundled dictionary info, project links section
+- 🔤 **Spylls Backend** – Replaced `cyhunspell` with `spylls` (pure Python Hunspell), fixing Windows/Python 3.12 compatibility
+- 🌍 **Language Variants** – Dropdown now shows "English (US)", "English (GB)", "Portuguese (BR)" etc.
+- 📁 **Subdirectory Search** – Finds dictionaries in subfolders like `dictionaries/en/en_GB.dic`
+- ✅ **Regional Spelling Works** – "colour" correct in en_GB, incorrect in en_US (and vice versa)
+- 📋 **Improved Spellcheck Info Dialog** – Three backends displayed separately, active one highlighted green, bundled dictionary info, project links section
 
 **Project Info Dialog (NEW):**
-- 📋 **File → Project Info...** — New menu item to view comprehensive project information
-- 📊 **Statistics** — Segment counts, word counts, character counts, progress percentage
-- 📁 **Source Files** — Shows original DOCX, memoQ, CafeTran, Trados paths
-- 🔧 **Resources** — Active prompt, TMs, glossaries, spellcheck settings
+- 📋 **File → Project Info...** – New menu item to view comprehensive project information
+- 📊 **Statistics** – Segment counts, word counts, character counts, progress percentage
+- 📁 **Source Files** – Shows original DOCX, memoQ, CafeTran, Trados paths
+- 🔧 **Resources** – Active prompt, TMs, glossaries, spellcheck settings
 
 ---
 
@@ -4760,10 +4760,10 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 
 **Major new feature: Install only the features you need!**
 
-- 📦 **Modular Installation System** — Users can now choose which features to install, reducing disk space from ~1.2 GB (full) to ~300 MB (core only). Heavy dependencies like sentence-transformers, chromadb, and PyQt6-WebEngine are now optional.
-- ⚙️ **Settings → Features Tab** — New settings page showing which optional features are installed (✅) vs not installed (❌), with size estimates and pip install commands for each.
-- 🔧 **Feature Manager Module** — New `modules/feature_manager.py` provides `FeatureManager` class, `FEATURE_MODULES` definitions, and lazy import helpers for conditional loading.
-- 📋 **pip Extras Support** — Install specific features with `pip install supervertaler[supermemory,voice,web]` or everything with `pip install supervertaler[all]`.
+- 📦 **Modular Installation System** – Users can now choose which features to install, reducing disk space from ~1.2 GB (full) to ~300 MB (core only). Heavy dependencies like sentence-transformers, chromadb, and PyQt6-WebEngine are now optional.
+- ⚙️ **Settings → Features Tab** – New settings page showing which optional features are installed (✅) vs not installed (❌), with size estimates and pip install commands for each.
+- 🔧 **Feature Manager Module** – New `modules/feature_manager.py` provides `FeatureManager` class, `FEATURE_MODULES` definitions, and lazy import helpers for conditional loading.
+- 📋 **pip Extras Support** – Install specific features with `pip install supervertaler[supermemory,voice,web]` or everything with `pip install supervertaler[all]`.
 
 **Installation Options:**
 | Command | Size |
@@ -4778,10 +4778,10 @@ Insert glossary terms directly from TermView using keyboard shortcuts — a nove
 
 ## 🔁 Maintenance Update (v1.9.74) - December 31, 2025
 
-- 🧹 **Removed in-app Superdocs viewer & generator** — The documentation generator and Qt viewer have been deprecated and removed from the application; official documentation is now hosted on GitBook: https://supervertaler.gitbook.io/help/. The app now directs users to the online Superdocs. Packaging metadata and site links updated accordingly.
-- 📚 **Superdocs tooling docs refreshed** — Expanded the Tools section documentation (TMX Editor, AutoFingers, Supervoice voice commands, Image Extractor) to match the current UI and workflows.
-- 🔍 **Superdocs Superlookup docs refreshed** — Expanded the Superlookup docs (TM search, glossary search, MT, web resources) to match current UI behavior and shortcuts.
-- 🧩 **Superlookup copy/insert fix** — TM/Glossary results now store plain text in table items (while still rendering highlighted rich text), so copy/insert actions work reliably.
+- 🧹 **Removed in-app Superdocs viewer & generator** – The documentation generator and Qt viewer have been deprecated and removed from the application; official documentation is now hosted on GitBook: https://supervertaler.gitbook.io/help/. The app now directs users to the online Superdocs. Packaging metadata and site links updated accordingly.
+- 📚 **Superdocs tooling docs refreshed** – Expanded the Tools section documentation (TMX Editor, AutoFingers, Supervoice voice commands, Image Extractor) to match the current UI and workflows.
+- 🔍 **Superdocs Superlookup docs refreshed** – Expanded the Superlookup docs (TM search, glossary search, MT, web resources) to match current UI behavior and shortcuts.
+- 🧩 **Superlookup copy/insert fix** – TM/Glossary results now store plain text in table items (while still rendering highlighted rich text), so copy/insert actions work reliably.
 
 ---
 

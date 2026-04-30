@@ -568,7 +568,7 @@ CRITICAL INSTRUCTIONS:
 - Be extremely specific and precise
 - PAY SPECIAL ATTENTION to quote marks: " vs " vs " (curly vs straight)
 - Check for apostrophe changes: ' vs ' (curly vs straight)  
-- Check for dash changes: - vs – vs — (hyphen vs en-dash vs em-dash)
+- Check for dash changes: - vs – vs – (hyphen vs en-dash vs em-dash)
 - Quote the exact words/phrases that changed
 - Use this format: "X" → "Y"
 - For single word changes: quote both words
@@ -764,7 +764,7 @@ CRITICAL INSTRUCTIONS:
 - Be extremely specific and precise
 - PAY SPECIAL ATTENTION to quote marks: " vs " vs " (curly vs straight)
 - Check for apostrophe changes: ' vs ' (curly vs straight)
-- Check for dash changes: - vs – vs — (hyphen vs en-dash vs em-dash)
+- Check for dash changes: - vs – vs – (hyphen vs en-dash vs em-dash)
 - Quote the exact words/phrases that changed
 - Use format: "X" → "Y"
 - For multiple changes in one segment: put each on its own line

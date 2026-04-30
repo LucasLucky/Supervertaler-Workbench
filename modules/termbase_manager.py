@@ -321,7 +321,7 @@ class TermbaseManager:
                 """, (termbase_id, project_id))
                 self.log(f"  ✓ Re-activated termbase (preserved timestamp)")
             else:
-                # New activation — background glossary by default (priority=NULL)
+                # New activation – background glossary by default (priority=NULL)
                 cursor.execute("""
                     INSERT INTO termbase_activation (termbase_id, project_id, is_active, priority)
                     VALUES (?, ?, 1, NULL)
@@ -782,7 +782,7 @@ class TermbaseManager:
         """Toggle the non-translatable flag on an existing term.
 
         When marking a term as non-translatable, target_term is also synced
-        to source_term — that's the convention the Trados plugin uses, and
+        to source_term – that's the convention the Trados plugin uses, and
         it ensures NT terms surface a visible "translation" (the original)
         in the TermLens panel.
 

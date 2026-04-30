@@ -47,7 +47,7 @@ class Topics:
     API_KEYS            = "workbench/get-started/api-keys"
     FIRST_PROJECT       = "workbench/get-started/first-project"
 
-    # Supervertaler for Trados (cross-reference — opens the Trados section
+    # Supervertaler for Trados (cross-reference – opens the Trados section
     # of the same GitBook site).
     TRADOS_PLUGIN       = "trados/"
 
@@ -113,7 +113,7 @@ class Topics:
     QA_TAGS             = "workbench/qa/tag-validation"
     QA_NT               = "workbench/qa/non-translatables"
 
-    # Tools (TOOL_VOICE removed — voice/dictation is now AutoFingers in Sidekick)
+    # Tools (TOOL_VOICE removed – voice/dictation is now AutoFingers in Sidekick)
     TOOL_PDF_RESCUE     = "workbench/tools/pdf-rescue"
     TOOL_TMX_EDITOR     = "workbench/tools/tmx-editor"
     TOOL_IMAGE_EXTRACT  = "workbench/tools/image-extractor"

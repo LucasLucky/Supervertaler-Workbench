@@ -152,7 +152,7 @@ DEFAULT_STATUS = STATUSES["not_started"]
 # Saved projects may still contain these old keys.
 _STATUS_ALIASES = {
     "translated": "draft",          # renamed in v1.9.336
-    "tr_confirmed": "confirmed",    # removed in v1.9.336 — merged into confirmed
+    "tr_confirmed": "confirmed",    # removed in v1.9.336 – merged into confirmed
 }
 
 

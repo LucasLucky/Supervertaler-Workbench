@@ -790,7 +790,7 @@ class ChatViewWidget(QWidget):
 
             if key == Qt.Key.Key_Escape:
                 self.escape_pressed.emit()
-                return False  # Don't consume — let parent window handle it too
+                return False  # Don't consume – let parent window handle it too
 
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if modifiers & Qt.KeyboardModifier.ShiftModifier:

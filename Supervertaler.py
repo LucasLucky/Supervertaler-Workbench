@@ -30,7 +30,7 @@ Author: Michael Beijer
 License: MIT
 """
 
-# Version Information — read from pyproject.toml (single source of truth)
+# Version Information – read from pyproject.toml (single source of truth)
 def _read_version():
     """Read version from pyproject.toml, importlib.metadata, or hardcoded fallback."""
     import os as _os
@@ -496,7 +496,7 @@ def strip_outer_wrapping_tags(text: str) -> tuple:
 
     text = text.strip()
 
-    # Tags that wrap entire segments — structural AND formatting.
+    # Tags that wrap entire segments – structural AND formatting.
     # Formatting tags (b, i, u, …) are included because when they wrap
     # the *entire* segment they act as structural wrappers; the function
     # already guarantees it only strips the single outermost pair, so
@@ -1024,7 +1024,7 @@ def compact_tags(text: str, tag_map: dict = None) -> str:
     """
     import re
 
-    # Tags to leave untouched (simple formatting — already short)
+    # Tags to leave untouched (simple formatting – already short)
     _PASSTHROUGH = {'b', 'i', 'u', 'sub', 'sup', 'em', 'strong', 's'}
 
     tag_pattern = re.compile(
@@ -1093,7 +1093,7 @@ def compact_tags(text: str, tag_map: dict = None) -> str:
 
 def expand_compact_tags(text: str, tag_map: dict) -> str:
     """
-    Reverse compact_tags() — replace numbered placeholders back to full tags.
+    Reverse compact_tags() – replace numbered placeholders back to full tags.
 
     Args:
         text: Text with compact placeholders like {1}, {/1}.
@@ -1717,7 +1717,7 @@ class _GridArrowKeyEventFilter(QObject):
     by Qt (horizontal arrow keys are not used for row navigation), which is why
     that shortcut works fine without this filter.
 
-    This filter sits at the application level — above the viewport — and catches
+    This filter sits at the application level – above the viewport – and catches
     the four affected key combos when focus is inside a grid cell, then calls the
     appropriate handler directly.
     """
@@ -1865,7 +1865,7 @@ class _F9HoldReleaseFilter(QObject):
     The F9 press is handled by the existing ``voice_dictate`` QShortcut
     (which calls ``start_voice_dictation``). This filter only acts on F9
     releases when the user has set ``pushtotalk_mode = 'hold'`` in the
-    AutoFingers tab — releasing F9 stops the active dictation recording so
+    AutoFingers tab – releasing F9 stops the active dictation recording so
     transcription fires immediately, walkie-talkie style.
 
     In ``toggle`` mode (the default) this filter is a no-op. Auto-repeat
@@ -1909,7 +1909,7 @@ class _F9HoldReleaseFilter(QObject):
         except Exception:
             pass
 
-        # Don't consume — other handlers may want to see the release too.
+        # Don't consume – other handlers may want to see the release too.
         return False
 
 
@@ -1980,7 +1980,7 @@ class _LoneCtrlEventFilter(QObject):
             if etype == QEvent.Type.KeyRelease:
                 if event.key() == Qt.Key.Key_Control and not event.isAutoRepeat():
                     if self._ctrl_pressed_alone:
-                        # Layer 4: live OS modifier state — catches OS-swallowed shortcuts
+                        # Layer 4: live OS modifier state – catches OS-swallowed shortcuts
                         # (e.g. AltGr/Ctrl+Alt combinations that consume intermediate keys)
                         live = QApplication.queryKeyboardModifiers()
                         other = live & ~Qt.KeyboardModifier.ControlModifier
@@ -2485,7 +2485,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
         When any invisible-character substitutions are active the text contains
         marker characters (·, →, °, ↵) and zero-width spaces (\u200B).
         We use the visible markers plus regular space as word delimiters.
-        \u200B is intentionally excluded — it is a word-wrap hint, not a delimiter.
+        \u200B is intentionally excluded – it is a word-wrap hint, not a delimiter.
         """
         from PyQt6.QtGui import QTextCursor
 
@@ -2932,10 +2932,10 @@ class ReadOnlyGridTextEditor(QTextEdit):
         if not self.table_ref or self.row < 0:
             return
 
-        # Get source selection (from this widget) — strip invisible markers before saving
+        # Get source selection (from this widget) – strip invisible markers before saving
         source_text = strip_invisible_markers(self.textCursor().selectedText()).strip()
 
-        # Get target cell widget and its selection — strip invisible markers before saving
+        # Get target cell widget and its selection – strip invisible markers before saving
         target_widget = self.table_ref.cellWidget(self.row, 3)
         target_text = ""
         if target_widget and hasattr(target_widget, 'textCursor'):
@@ -2969,10 +2969,10 @@ class ReadOnlyGridTextEditor(QTextEdit):
         if not self.table_ref or self.row < 0:
             return
 
-        # Get source selection (from this widget) — strip invisible markers before saving
+        # Get source selection (from this widget) – strip invisible markers before saving
         source_text = strip_invisible_markers(self.textCursor().selectedText()).strip()
 
-        # Get target cell widget and its selection — strip invisible markers before saving
+        # Get target cell widget and its selection – strip invisible markers before saving
         target_widget = self.table_ref.cellWidget(self.row, 3)
         target_text = ""
         if target_widget and hasattr(target_widget, 'textCursor'):
@@ -3327,7 +3327,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
-            # Supervertaler Sidekick — defer with QTimer so menu fully closes first
+            # Supervertaler Sidekick – defer with QTimer so menu fully closes first
             assistant_action = QAction("💬 Supervertaler Sidekick", self)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: main_window.show_supervertaler_assistant(
@@ -3842,7 +3842,7 @@ class EditableGridTextEditor(QTextEdit):
 
         We override double-click to use only the *visible* marker characters
         (·, →, °, ↵, \n, \t) as word delimiters.  \u200B is intentionally
-        excluded — it is a transparent word-wrap hint, not a delimiter.
+        excluded – it is a transparent word-wrap hint, not a delimiter.
         """
         from PyQt6.QtGui import QTextCursor
 
@@ -3853,7 +3853,7 @@ class EditableGridTextEditor(QTextEdit):
 
         if any_invisibles:
             # Word delimiters: regular space + visible invisible-character markers.
-            # NOTE: \u200B (zero-width space) is deliberately NOT in this set —
+            # NOTE: \u200B (zero-width space) is deliberately NOT in this set –
             # it lives inside '·\u200B' pairs and must not split word selection.
             DELIMITERS = {' ', '·', '→', '°', '↵', '\n', '\t'}
 
@@ -3873,7 +3873,7 @@ class EditableGridTextEditor(QTextEdit):
 
             # Trim any trailing \u200B from the selection (it's always at the
             # start of a '·\u200B' pair and would be the first char after 'end')
-            # — nothing to do since we stop before delimiters.
+            # – nothing to do since we stop before delimiters.
             # But trim leading \u200B if the word starts right after a '·\u200B':
             while start < end and text[start] == '\u200B':
                 start += 1
@@ -4123,7 +4123,7 @@ class EditableGridTextEditor(QTextEdit):
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
-            # Supervertaler Sidekick — defer with QTimer so menu fully closes first
+            # Supervertaler Sidekick – defer with QTimer so menu fully closes first
             assistant_action = QAction("💬 Supervertaler Sidekick", self)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: main_window.show_supervertaler_assistant(
@@ -4820,7 +4820,7 @@ class EditableGridTextEditor(QTextEdit):
         if not main_window.current_project or self.row >= len(main_window.current_project.segments):
             return
 
-        # Check if multiple segments are selected — if so, delegate to bulk
+        # Check if multiple segments are selected – if so, delegate to bulk
         if hasattr(main_window, 'get_selected_segments_from_grid'):
             selected = main_window.get_selected_segments_from_grid()
             if len(selected) > 1 and hasattr(main_window, '_copy_source_to_target_selected'):
@@ -7795,7 +7795,7 @@ class SupervertalerQt(QMainWindow):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(500, self.detach_log_window)  # 500ms delay to ensure UI is ready
 
-        # Usage statistics — opt-in dialog (once) and anonymous ping
+        # Usage statistics – opt-in dialog (once) and anonymous ping
         self._init_usage_statistics()
 
         # Initialize auto backup timer
@@ -8429,7 +8429,7 @@ class SupervertalerQt(QMainWindow):
             user_added = mm.get('user_added_models', {})
             enabled = mm.get('enabled_models', None)
             if enabled is None:
-                # First time — seed with defaults
+                # First time – seed with defaults
                 enabled = {k: [m[0] for m in v] for k, v in self._ALL_KNOWN_MODELS.items()}
 
             total_added = 0
@@ -8537,7 +8537,7 @@ class SupervertalerQt(QMainWindow):
         # F9 - Voice dictation
         # Disable autorepeat: holding F9 (hold-to-talk mode) must NOT
         # re-fire start_voice_dictation, otherwise toggle semantics keep
-        # stopping and restarting the recording while the key is held —
+        # stopping and restarting the recording while the key is held –
         # producing fragmented audio that Whisper hallucinates over.
         _voice_dictate_sc = create_shortcut("voice_dictate", "F9", self.start_voice_dictation)
         if _voice_dictate_sc is not None:
@@ -8668,7 +8668,7 @@ class SupervertalerQt(QMainWindow):
             self._double_shift_event_filter = _DoubleTapShiftEventFilter(self)
             QApplication.instance().installEventFilter(self._double_shift_event_filter)
 
-        # F9 hold-to-talk release detection — only acts when AutoFingers is
+        # F9 hold-to-talk release detection – only acts when AutoFingers is
         # set to hold-to-talk mode. Press is handled by the voice_dictate
         # QShortcut as usual; this filter just stops the recording on F9 up.
         if not hasattr(self, '_f9_hold_release_filter'):
@@ -8726,7 +8726,7 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+Shift+C - Open Sidekick directly to Clipboard tab
         create_shortcut("sidekick_open_clipboard", "Ctrl+Shift+C", self.open_clipboard_tab)
 
-        # Lone Ctrl tap — Term Insert Popup (memoQ-style glossary + NT insert list).
+        # Lone Ctrl tap – Term Insert Popup (memoQ-style glossary + NT insert list).
         # Implemented as an app-level event filter rather than a QShortcut because
         # QShortcut cannot bind to a bare modifier key.
         if not hasattr(self, '_lone_ctrl_event_filter'):
@@ -8924,7 +8924,7 @@ class SupervertalerQt(QMainWindow):
                         text_to_translate = cursor.selectedText().strip()
 
             if not text_to_translate:
-                # Fall back to full source text — use clean segment.source to avoid
+                # Fall back to full source text – use clean segment.source to avoid
                 # invisible markers (·, →, °, ↵) being sent to MT providers
                 if current_row >= 0 and current_row < len(self.current_project.segments):
                     text_to_translate = self.current_project.segments[current_row].source.strip()
@@ -9866,7 +9866,7 @@ class SupervertalerQt(QMainWindow):
         help_menu = menubar.addMenu("&Help")
 
         # Documentation links (GitHub URLs for universal access)
-        # Removed internal manual link — documentation migrated to GitBook
+        # Removed internal manual link – documentation migrated to GitBook
 
         # Context-sensitive help (F1)
         context_help_action = QAction("Context Help", self)
@@ -9906,12 +9906,12 @@ class SupervertalerQt(QMainWindow):
         copy_version_info_action.triggered.connect(self.copy_version_info_to_clipboard)
         help_menu.addAction(copy_version_info_action)
 
-        # Diagnostic log — so users can send us error output even when they
+        # Diagnostic log – so users can send us error output even when they
         # launched Supervertaler without a terminal window (silent / .exe /
         # gui-scripts entry point).
         open_log_action = QAction("📄 Open Diagnostic Log", self)
         open_log_action.setToolTip(
-            "Open the log file containing startup output and errors — useful when reporting issues"
+            "Open the log file containing startup output and errors – useful when reporting issues"
         )
         open_log_action.triggered.connect(self.open_diagnostic_log)
         help_menu.addAction(open_log_action)
@@ -10203,7 +10203,7 @@ class SupervertalerQt(QMainWindow):
         # Houses everything that exists purely for the AI translation flow:
         # the Prompt Manager, Variables reference, Assistant chat view, and
         # Image Context (figures the AI sees with each segment). Image
-        # Context lived under Resources before v1.9.395 — moved here in
+        # Context lived under Resources before v1.9.395 – moved here in
         # v1.9.395 because it isn't a translation aid like TMs/termbases;
         # it's an AI input and only the AI flow ever reads it.
         # UnifiedPromptManagerQt builds its own inner QTabWidget with
@@ -10236,8 +10236,8 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, '_preview_tab_index'):
                 self._preview_tab_index += 1
 
-        # Floating Assistant (Sidekick — replaces QMenu-based QuickLauncher).
-        # Constructed but NOT shown — Sidekick uses Qt.WindowType.Tool so
+        # Floating Assistant (Sidekick – replaces QMenu-based QuickLauncher).
+        # Constructed but NOT shown – Sidekick uses Qt.WindowType.Tool so
         # it never has a taskbar / Alt+Tab / system-tray presence; it lives
         # purely as a summon-on-demand window via Alt+K (global) or Ctrl+Q
         # (in-app). See FloatingAssistant.__init__ for why Tool was chosen.
@@ -11238,7 +11238,7 @@ class SupervertalerQt(QMainWindow):
         """Show TM Manager dialog opened to specific tab.
 
         If initial_concordance_query is provided, the Concordance tab is
-        selected and the query is auto-run — used by Superlookup's right-click
+        selected and the query is auto-run – used by Superlookup's right-click
         'Open in TM browser' to jump straight to the matching segment.
         """
         from modules.tm_manager_qt import TMManagerDialog
@@ -11585,7 +11585,7 @@ class SupervertalerQt(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Horizontal tabs (only 4 items — vertical sidebar wastes space)
+        # Horizontal tabs (only 4 items – vertical sidebar wastes space)
         resources_tabs = QTabWidget()
         self.resources_tabs = resources_tabs  # Store for navigation
 
@@ -11601,7 +11601,7 @@ class SupervertalerQt(QMainWindow):
         # plugin already worked this way). Mark a term as NT in the term
         # editor or via the grid right-click "Add to Non-Translatables".
 
-        # Image Context moved to the AI tab in v1.9.395 — it isn't a
+        # Image Context moved to the AI tab in v1.9.395 – it isn't a
         # translation aid (TM / termbase) but an AI input, so it lives
         # alongside the Prompt Manager now.
 
@@ -11637,10 +11637,10 @@ class SupervertalerQt(QMainWindow):
         # SuperlookupTab is still created here for two reasons:
         # (a) it registers the global Ctrl+Alt+L hotkey in its __init__
         # (b) it's the fallback if the floating assistant isn't available
-        # But it's no longer added to the sidebar — the floating assistant
+        # But it's no longer added to the sidebar – the floating assistant
         # hosts the primary Superlookup tab now.
         lookup_tab = SuperlookupTab(self, user_data_path=self.user_data_path)
-        lookup_tab.hide()  # Not in the sidebar — prevent rendering as a floating child widget
+        lookup_tab.hide()  # Not in the sidebar – prevent rendering as a floating child widget
         self.lookup_tab = lookup_tab
 
         # Log global hotkey status to the session log (visible in-app)
@@ -11651,9 +11651,9 @@ class SupervertalerQt(QMainWindow):
             else:
                 self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+Q, Alt+K)")
         else:
-            self.log("\u26A0 Global hotkeys NOT registered — check console for errors")
+            self.log("\u26A0 Global hotkeys NOT registered – check console for errors")
 
-        # AutoFingers (voice commands & dictation) lives in Sidekick now —
+        # AutoFingers (voice commands & dictation) lives in Sidekick now –
         # see modules/autofingers_tab.py. Reach it via Ctrl+Q → AutoFingers
         # tab, or via the right-side Workbench Tools menu inside Sidekick.
 
@@ -11707,7 +11707,7 @@ class SupervertalerQt(QMainWindow):
         temp_manager = TMManagerDialog(self, self.db_manager, self.log)
         tm_tabs.addTab(temp_manager.browser_tab, "📖 Browse All")
 
-        # Statistics (now a "Copy stats" button on the TM List tab — copies a
+        # Statistics (now a "Copy stats" button on the TM List tab – copies a
         # markdown report to the clipboard) and Maintenance (now a button that
         # opens a focused cleanup dialog) used to be sibling sub-tabs here.
         # Folded into TM List to reduce sub-tab noise.
@@ -11735,7 +11735,7 @@ class SupervertalerQt(QMainWindow):
         desc.setStyleSheet("color: #666; font-size: 11px; margin-bottom: 10px;")
         layout.addWidget(desc)
 
-        # Live summary line — updated by refresh_tm_list() below.
+        # Live summary line – updated by refresh_tm_list() below.
         summary_label = QLabel("")
         summary_label.setStyleSheet("color: #555; font-size: 11px; margin-bottom: 6px;")
         layout.addWidget(summary_label)
@@ -13065,7 +13065,7 @@ class SupervertalerQt(QMainWindow):
             tbl = table._tbl
             tbl_pr = tbl.tblPr if tbl.tblPr is not None else OxmlElement('w:tblPr')
 
-            # Fixed layout — Word must use our exact widths
+            # Fixed layout – Word must use our exact widths
             tbl_layout = OxmlElement('w:tblLayout')
             tbl_layout.set(qn('w:type'), 'fixed')
             tbl_pr.append(tbl_layout)
@@ -13781,7 +13781,7 @@ class SupervertalerQt(QMainWindow):
                          'no_termbases_activated' - no glossaries activated for project
                          'wrong_language' - activated glossaries don't match project language
         """
-        # v1.9.306: Defensive guard — strip invisible character markers from source text
+        # v1.9.306: Defensive guard – strip invisible character markers from source text
         # so the TermLens tokenizer sees clean text (e.g. "hinge load" not "hinge·\u200Bload")
         if hasattr(self, 'reverse_invisible_replacements'):
             source_text = self.reverse_invisible_replacements(source_text)
@@ -13869,7 +13869,7 @@ class SupervertalerQt(QMainWindow):
 
             # Check if any activated termbases match the project's language pair.
             # Normalise both sides through _convert_language_to_code so that
-            # full names ("Dutch") and ISO codes ("nl") compare equal — the
+            # full names ("Dutch") and ISO codes ("nl") compare equal – the
             # project stores its languages as full English names by default
             # (chosen from the Settings dropdown) while imported termbases
             # tend to carry ISO codes. Without normalisation, "dutch" == "nl"
@@ -14337,13 +14337,13 @@ class SupervertalerQt(QMainWindow):
             self.statusBar().showMessage("No segment selected", 3000)
             return
 
-        # Get source selection — strip invisible markers before saving
+        # Get source selection – strip invisible markers before saving
         source_widget = self.table.cellWidget(current_row, 2)
         source_text = ""
         if source_widget and hasattr(source_widget, 'textCursor'):
             source_text = self.reverse_invisible_replacements(source_widget.textCursor().selectedText()).strip()
 
-        # Get target selection — strip invisible markers before saving
+        # Get target selection – strip invisible markers before saving
         target_widget = self.table.cellWidget(current_row, 3)
         target_text = ""
         if target_widget and hasattr(target_widget, 'textCursor'):
@@ -14390,7 +14390,7 @@ class SupervertalerQt(QMainWindow):
 
         label = "Project glossary" if target == "project" else "Background glossary"
         if not target_termbase:
-            self.statusBar().showMessage(f"No {label} found — check Resources → Glossaries", 3000)
+            self.statusBar().showMessage(f"No {label} found – check Resources → Glossaries", 3000)
             return
         
         # Get language codes
@@ -14947,8 +14947,8 @@ class SupervertalerQt(QMainWindow):
         terms_table.setColumnCount(8)
         terms_table.setHorizontalHeaderLabels(["Source Term", "Target Term", "Domain", "Notes", "Project", "Client", "Forbidden", ""])
         terms_table.horizontalHeader().setStretchLastSection(False)
-        terms_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # Source — fills remaining space
-        terms_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)      # Target — fills remaining space
+        terms_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # Source – fills remaining space
+        terms_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)      # Target – fills remaining space
         terms_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # Domain
         terms_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)  # Notes
         terms_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Project
@@ -15485,9 +15485,9 @@ class SupervertalerQt(QMainWindow):
                     termbase_table.setCellWidget(row, 6, project_checkbox)
                 else:
                     # Non-readable termbase: show dash
-                    priority_item = QTableWidgetItem("—")
+                    priority_item = QTableWidgetItem("–")
                     priority_item.setForeground(QColor("#999"))
-                    priority_item.setToolTip("Not active — enable Read first")
+                    priority_item.setToolTip("Not active – enable Read first")
                     priority_item.setFlags(priority_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     termbase_table.setItem(row, 6, priority_item)
 
@@ -17291,7 +17291,7 @@ class SupervertalerQt(QMainWindow):
 
         # Apply saved Compact UI chrome preference on startup.
         # Defaults to compact (v1.9.386+); use 0ms timer so it lands in the same event
-        # loop iteration the widgets were constructed in — no visible flash of
+        # loop iteration the widgets were constructed in – no visible flash of
         # non-compact chrome before the restyle.
         if self._get_ui_chrome_compact():
             from PyQt6.QtCore import QTimer
@@ -17438,7 +17438,7 @@ class SupervertalerQt(QMainWindow):
         lang_group.setLayout(lang_layout)
         layout.addWidget(lang_group)
 
-        # Save button — kept for users who want an explicit confirmation
+        # Save button – kept for users who want an explicit confirmation
         # dialog. Auto-save above means it's no longer strictly required.
         save_btn = QPushButton("💾 Save Language Settings")
         save_btn.setStyleSheet("font-weight: bold; padding: 8px;")
@@ -17486,10 +17486,10 @@ class SupervertalerQt(QMainWindow):
         info_layout.addWidget(info_title)
         
         info_text = QLabel(
-            "• <b>Google Gemini</b> — <span style='color: green;'>FREE tier available</span> (15 req/min, 1M tokens/day)<br>"
-            "• <b>Ollama</b> — <span style='color: green;'>100% FREE</span> (runs locally on your computer)<br>"
-            "• <b>OpenAI</b> — Paid API only (no free tier)<br>"
-            "• <b>Anthropic Claude</b> — Paid API only (no free tier)<br><br>"
+            "• <b>Google Gemini</b> – <span style='color: green;'>FREE tier available</span> (15 req/min, 1M tokens/day)<br>"
+            "• <b>Ollama</b> – <span style='color: green;'>100% FREE</span> (runs locally on your computer)<br>"
+            "• <b>OpenAI</b> – Paid API only (no free tier)<br>"
+            "• <b>Anthropic Claude</b> – Paid API only (no free tier)<br><br>"
             "⚠️ <b>Note:</b> This app uses <i>API keys</i>, not web chat interfaces. "
             "ChatGPT Plus and Claude Pro web subscriptions do NOT include API access."
         )
@@ -17690,7 +17690,7 @@ class SupervertalerQt(QMainWindow):
         openrouter_combo.setToolTip(
             "OpenRouter gives you access to 200+ models with a single API key.\n"
             "Select a model from the dropdown or type any model ID from openrouter.ai/models.\n\n"
-            "Pricing varies per model — see openrouter.ai for details."
+            "Pricing varies per model – see openrouter.ai for details."
         )
         current_openrouter_model = settings.get('openrouter_model', 'anthropic/claude-sonnet-4.6')
         # Try to select from dropdown, or set as typed text
@@ -18738,7 +18738,7 @@ class SupervertalerQt(QMainWindow):
             self._mtql_checkboxes[f"mtql_{code}"] = checkbox
             llm_row.addWidget(checkbox)
 
-            # Model selection combo — filtered by model management enabled list
+            # Model selection combo – filtered by model management enabled list
             model_combo = QComboBox()
             model_combo.setMinimumWidth(200)
             provider_enabled_ids = _enabled_by_provider.get(code) if _enabled_by_provider else None
@@ -18779,7 +18779,7 @@ class SupervertalerQt(QMainWindow):
         profile = self._get_active_custom_profile(llm_settings)
         profile_display = ""
         if profile:
-            profile_display = f"{profile.get('name', 'Custom')} — {profile.get('model', '')}"
+            profile_display = f"{profile.get('name', 'Custom')} – {profile.get('model', '')}"
         else:
             profile_display = mt_quick_settings.get("mtql_custom_openai_model", llm_settings.get('custom_openai_model', ''))
 
@@ -18794,7 +18794,7 @@ class SupervertalerQt(QMainWindow):
         custom_row.addStretch()
         llm_layout.addLayout(custom_row)
 
-        # Ollama (local LLM — always available, no API key needed)
+        # Ollama (local LLM – always available, no API key needed)
         ollama_row = QHBoxLayout()
         ollama_cb = CheckmarkCheckBox("🖥️ Ollama (Local LLM)")
         ollama_cb.setChecked(mt_quick_settings.get("mtql_ollama", False))
@@ -18807,7 +18807,7 @@ class SupervertalerQt(QMainWindow):
         ollama_model_edit.setPlaceholderText("e.g. translategemma:12b")
         _ollama_model_saved = mt_quick_settings.get("mtql_ollama_model") or llm_settings.get('ollama_model', 'translategemma:12b')
         ollama_model_edit.setText(_ollama_model_saved)
-        ollama_model_edit.setToolTip("Ollama model name — must be pulled locally (ollama pull <model>)")
+        ollama_model_edit.setToolTip("Ollama model name – must be pulled locally (ollama pull <model>)")
         self._mtql_llm_combos["mtql_ollama_model"] = ollama_model_edit
         ollama_row.addWidget(ollama_model_edit)
         ollama_row.addStretch()
@@ -18857,8 +18857,8 @@ class SupervertalerQt(QMainWindow):
     # Tuple format: (model_id, display_name, description)
     _ALL_KNOWN_MODELS = {
         "openai": [
-            ("gpt-4o",       "GPT-4o",             "Recommended — fast, reliable, excellent for translation"),
-            ("gpt-4o-mini",  "GPT-4o Mini",         "Economical — good quality for simple text"),
+            ("gpt-4o",       "GPT-4o",             "Recommended – fast, reliable, excellent for translation"),
+            ("gpt-4o-mini",  "GPT-4o Mini",         "Economical – good quality for simple text"),
             ("gpt-5",        "GPT-5",               "Advanced reasoning"),
             ("o3",           "o3",                  "Reasoning model"),
             ("o3-mini",      "o3-mini",             "Reasoning, efficient"),
@@ -18866,18 +18866,18 @@ class SupervertalerQt(QMainWindow):
             ("gpt-4-turbo",  "GPT-4 Turbo",         "Previous generation"),
         ],
         "claude": [
-            ("claude-sonnet-4-6",          "Claude Sonnet 4.6",  "Recommended — best balance"),
-            ("claude-opus-4-7",            "Claude Opus 4.7",    "Latest premium — most capable, 1M context"),
-            ("claude-opus-4-6",            "Claude Opus 4.6",    "Premium — exceptional reasoning"),
+            ("claude-sonnet-4-6",          "Claude Sonnet 4.6",  "Recommended – best balance"),
+            ("claude-opus-4-7",            "Claude Opus 4.7",    "Latest premium – most capable, 1M context"),
+            ("claude-opus-4-6",            "Claude Opus 4.6",    "Premium – exceptional reasoning"),
             ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5",  "Previous flagship"),
             ("claude-haiku-4-5-20251001",  "Claude Haiku 4.5",   "Fast & affordable"),
             ("claude-opus-4-1-20250805",   "Claude Opus 4.1",    "Legacy premium"),
         ],
         "gemini": [
-            ("gemini-2.5-flash",       "Gemini 2.5 Flash",      "Recommended — best balance"),
+            ("gemini-2.5-flash",       "Gemini 2.5 Flash",      "Recommended – best balance"),
             ("gemini-2.5-flash-lite",  "Gemini 2.5 Flash Lite", "Fastest & most economical"),
-            ("gemini-2.5-pro",         "Gemini 2.5 Pro",        "Premium — complex reasoning"),
-            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro",        "Latest — most capable"),
+            ("gemini-2.5-pro",         "Gemini 2.5 Pro",        "Premium – complex reasoning"),
+            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro",        "Latest – most capable"),
             ("gemini-3-pro-preview",   "Gemini 3 Pro",          "Previous generation"),
             ("gemini-2.0-flash",       "Gemini 2.0 Flash",      "Stable release"),
             ("gemini-2.0-flash-exp",   "Gemini 2.0 Flash Exp",  "Experimental"),
@@ -18912,7 +18912,7 @@ class SupervertalerQt(QMainWindow):
         layout.setSpacing(15)
 
         header = QLabel(
-            "🎛️ <b>Model Management</b> — Select which AI models appear in dropdowns throughout the app.<br>"
+            "🎛️ <b>Model Management</b> – Select which AI models appear in dropdowns throughout the app.<br>"
             "Uncheck models you don't use to keep lists clean. "
             "Changes take effect after reopening Settings."
         )
@@ -18936,7 +18936,7 @@ class SupervertalerQt(QMainWindow):
             "openai": "OpenAI",
             "claude": "Claude (Anthropic)",
             "gemini": "Gemini (Google AI)",
-            "ollama": "Ollama (Local LLM — no API key needed)",
+            "ollama": "Ollama (Local LLM – no API key needed)",
         }
 
         for provider_key, built_in_models in self._ALL_KNOWN_MODELS.items():
@@ -18954,7 +18954,7 @@ class SupervertalerQt(QMainWindow):
             # Built-in models
             for model_id, model_name, model_desc in built_in_models:
                 # Escape & so Qt doesn't treat it as a keyboard accelerator
-                label_text = f"{model_name}  —  {model_desc}".replace("&", "&&")
+                label_text = f"{model_name}  –  {model_desc}".replace("&", "&&")
                 cb = CheckmarkCheckBox(label_text)
                 cb.setChecked(model_id in provider_enabled_ids)
                 cb.setToolTip(model_id)
@@ -18965,7 +18965,7 @@ class SupervertalerQt(QMainWindow):
             base_ids = {m[0] for m in built_in_models}
             for extra_id in user_added.get(provider_key, []):
                 if extra_id not in base_ids:
-                    cb = CheckmarkCheckBox(f"{extra_id}  —  discovered model")
+                    cb = CheckmarkCheckBox(f"{extra_id}  –  discovered model")
                     cb.setChecked(extra_id in provider_enabled_ids)
                     cb.setStyleSheet(cb.styleSheet() + " color: #1565C0;")
                     self._model_mgmt_checkboxes[provider_key][extra_id] = cb
@@ -20842,7 +20842,7 @@ class SupervertalerQt(QMainWindow):
                 except Exception:
                     pass
 
-        # System tray icon — visible only while Always-On is active.
+        # System tray icon – visible only while Always-On is active.
         # Gives the user a persistent "the mic is hot" signal even when
         # both Workbench and Sidekick are hidden.
         self._update_alwayson_tray_icon(status)
@@ -20866,7 +20866,7 @@ class SupervertalerQt(QMainWindow):
             qcol = QColor(color) if not isinstance(color, QColor) else color
             stroke = max(1.5, size * 0.06)
 
-            # Mic body — vertical capsule centred horizontally
+            # Mic body – vertical capsule centred horizontally
             body_w = size * 0.42
             body_h = size * 0.50
             body_x = (size - body_w) / 2
@@ -20903,7 +20903,7 @@ class SupervertalerQt(QMainWindow):
         """Lazily create the QSystemTrayIcon used as a global Always-On
         toggle and visual state indicator.
 
-        A small microphone glyph drawn programmatically — grey when
+        A small microphone glyph drawn programmatically – grey when
         Always-On is off, red when actively listening. Convention follows
         OBS / Zoom / Discord (grey = ready/off, red = live).
 
@@ -20931,7 +20931,7 @@ class SupervertalerQt(QMainWindow):
         self._alwayson_tray_icon_red = self._draw_mic_icon(QColor(0xC6, 0x28, 0x28))
 
         tray = QSystemTrayIcon(self._alwayson_tray_icon_normal, self)
-        tray.setToolTip("AutoFingers — Always-On is OFF. Click to start.")
+        tray.setToolTip("AutoFingers – Always-On is OFF. Click to start.")
 
         menu = QMenu(self)
         toggle_action = menu.addAction("▶ Start Always-On")
@@ -20947,7 +20947,7 @@ class SupervertalerQt(QMainWindow):
         tray.show()
 
     def _on_alwayson_tray_activated(self, reason):
-        """Tray-icon click handler — single-click toggles Always-On."""
+        """Tray-icon click handler – single-click toggles Always-On."""
         from PyQt6.QtWidgets import QSystemTrayIcon
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self._toggle_alwayson_listening()
@@ -20955,7 +20955,7 @@ class SupervertalerQt(QMainWindow):
     def _update_alwayson_tray_icon(self, status: str):
         """Switch the tray icon between inactive/active visuals based on
         the current listener status. The icon stays visible at all times
-        — only the pixmap, tooltip, and menu wording change."""
+        – only the pixmap, tooltip, and menu wording change."""
         self._ensure_alwayson_tray_icon()
         tray = getattr(self, '_alwayson_tray_icon', None)
         if tray is None:
@@ -20965,17 +20965,17 @@ class SupervertalerQt(QMainWindow):
         if active:
             tray.setIcon(self._alwayson_tray_icon_red)
             if status == "recording":
-                tray.setToolTip("AutoFingers — recording speech. Click to stop.")
+                tray.setToolTip("AutoFingers – recording speech. Click to stop.")
             elif status == "processing":
-                tray.setToolTip("AutoFingers — processing speech. Click to stop.")
+                tray.setToolTip("AutoFingers – processing speech. Click to stop.")
             else:
-                tray.setToolTip("AutoFingers — Always-On listening. Click to stop.")
+                tray.setToolTip("AutoFingers – Always-On listening. Click to stop.")
             action = getattr(self, '_alwayson_tray_toggle_action', None)
             if action is not None:
                 action.setText("⏹ Stop Always-On")
         else:
             tray.setIcon(self._alwayson_tray_icon_normal)
-            tray.setToolTip("AutoFingers — Always-On is OFF. Click to start.")
+            tray.setToolTip("AutoFingers – Always-On is OFF. Click to start.")
             action = getattr(self, '_alwayson_tray_toggle_action', None)
             if action is not None:
                 action.setText("▶ Start Always-On")
@@ -20998,7 +20998,7 @@ class SupervertalerQt(QMainWindow):
 
         Skipped entirely when the user has set Always-On to commands-only
         mode (AutoFingers tab → "Listen for commands only"). In that mode
-        unmatched speech is logged but not typed — dictation is reserved
+        unmatched speech is logged but not typed – dictation is reserved
         for the explicit Ctrl+Alt+D / F9 push-to-talk paths.
         """
         try:
@@ -21236,7 +21236,7 @@ class SupervertalerQt(QMainWindow):
             self.log(f"✓ Reset system prompt to default: {selected_mode}")
 
     def _create_user_identity_tab(self):
-        """Create User Identity settings tab — translator name used in file exports."""
+        """Create User Identity settings tab – translator name used in file exports."""
         from PyQt6.QtWidgets import QGroupBox, QPushButton
 
         tab = QWidget()
@@ -21324,7 +21324,7 @@ class SupervertalerQt(QMainWindow):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        header = QLabel("🎤 <b>AutoFingers</b> — voice commands and dictation")
+        header = QLabel("🎤 <b>AutoFingers</b> – voice commands and dictation")
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setStyleSheet("font-size: 14pt; padding: 8px;")
         layout.addWidget(header)
@@ -21335,7 +21335,7 @@ class SupervertalerQt(QMainWindow):
             "floating companion window you can summon from anywhere on your "
             "computer.<br><br>"
             "<b>Why is it there and not here?</b><br>"
-            "Sidekick stays accessible even when Workbench is hidden — and "
+            "Sidekick stays accessible even when Workbench is hidden – and "
             "AutoFingers' Always-On listening + global hotkeys are designed to "
             "work across every app on your computer (Word, Trados, memoQ, "
             "browsers, etc.), not just inside Workbench."
@@ -21359,13 +21359,13 @@ class SupervertalerQt(QMainWindow):
         quick_ref_group = QGroupBox("📖 Quick Reference")
         quick_ref_layout = QVBoxLayout()
         quick_ref = QLabel(
-            "<b>F9</b> — push-to-talk dictation in the translation grid (toggle "
+            "<b>F9</b> – push-to-talk dictation in the translation grid (toggle "
             "or hold mode, configurable in Sidekick).<br>"
-            "<b>Ctrl+Alt+D</b> — global push-to-talk dictation, works in any "
+            "<b>Ctrl+Alt+D</b> – global push-to-talk dictation, works in any "
             "app on your computer.<br>"
-            "<b>Always-On</b> — toggleable in Sidekick → AutoFingers tab; "
+            "<b>Always-On</b> – toggleable in Sidekick → AutoFingers tab; "
             "listens continuously, hands-free.<br>"
-            "<b>Voice commands</b> — say a phrase to execute keystrokes, "
+            "<b>Voice commands</b> – say a phrase to execute keystrokes, "
             "AutoHotkey scripts, or built-in actions. Editable in Sidekick.<br><br>"
             "All hotkeys (including Ctrl+Alt+D) can be rebound in "
             "<b>Settings → Keyboard Shortcuts → Global</b>."
@@ -21410,7 +21410,7 @@ class SupervertalerQt(QMainWindow):
         Settings → Keyboard Shortcuts. Without this call, the OS-level
         hotkey listener keeps firing on the *old* key until the next
         application restart, because pynput / WinAPI registrations don't
-        track ShortcutManager state. Idempotent — ``register_global_hotkey``
+        track ShortcutManager state. Idempotent – ``register_global_hotkey``
         stops any previously running manager before binding fresh keys.
         """
         lookup_tab = getattr(self, 'lookup_tab', None)
@@ -21570,8 +21570,8 @@ class SupervertalerQt(QMainWindow):
         header_info = QLabel(
             "📦 <b>Optional Feature Modules</b><br>"
             f"<span style='color:#666;'>{header_subtitle}</span><br><br>"
-            "<b>✅ Installed</b> — Feature is ready to use&nbsp;&nbsp;&nbsp;&nbsp;"
-            "<b>❌ Not installed</b> — Run the install command to add this feature"
+            "<b>✅ Installed</b> – Feature is ready to use&nbsp;&nbsp;&nbsp;&nbsp;"
+            "<b>❌ Not installed</b> – Run the install command to add this feature"
         )
         header_info.setTextFormat(Qt.TextFormat.RichText)
         header_info.setStyleSheet("font-size: 9pt; color: #444; padding: 10px; background-color: #E3F2FD; border-radius: 4px;")
@@ -22550,7 +22550,7 @@ class SupervertalerQt(QMainWindow):
         # Load existing settings first to preserve all values, then update with new ones
         general_settings = self.load_general_settings()
 
-        # Snapshot old values for change detection — only run expensive grid loops
+        # Snapshot old values for change detection – only run expensive grid loops
         # when the relevant setting actually changed
         _old_tag_color = getattr(EditableGridTextEditor, 'tag_highlight_color', '#7f0001')
         _old_invisible_color = getattr(self, 'invisible_char_color', '#999999')
@@ -23500,7 +23500,7 @@ class SupervertalerQt(QMainWindow):
         view_mode_group.addButton(wysiwyg_btn, 0)
         view_mode_layout.addWidget(wysiwyg_btn)
 
-        # Compact button (middle) — shortens verbose tags to {1}, {/1}
+        # Compact button (middle) – shortens verbose tags to {1}, {/1}
         compact_btn = QPushButton("Compact")
         compact_btn.setCheckable(True)
         compact_btn.setChecked(False)
@@ -23563,7 +23563,7 @@ class SupervertalerQt(QMainWindow):
         dictate_btn = QPushButton("🎤 Dictate (F9)")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 3px 5px; border: none; outline: none;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
-        dictate_btn.setToolTip("Push-to-talk dictation — press F9 (or click) to record, transcribe, and insert text")
+        dictate_btn.setToolTip("Push-to-talk dictation – press F9 (or click) to record, transcribe, and insert text")
         toolbar_layout.addWidget(dictate_btn)
         
         # Always-On Voice toggle button
@@ -23585,7 +23585,7 @@ class SupervertalerQt(QMainWindow):
                 outline: none;
             }
         """)
-        alwayson_btn.setToolTip("Always-On listening — continuously monitors the mic and transcribes automatically\nNo need to press F9")
+        alwayson_btn.setToolTip("Always-On listening – continuously monitors the mic and transcribes automatically\nNo need to press F9")
         alwayson_btn.clicked.connect(lambda checked: self._toggle_alwayson_from_grid_btn(checked, alwayson_btn))
         toolbar_layout.addWidget(alwayson_btn)
         self.grid_alwayson_btn = alwayson_btn  # Store reference
@@ -23686,7 +23686,7 @@ class SupervertalerQt(QMainWindow):
         # Info label at top
         scratchpad_info = QLabel(
             "📝 <b>Private notes for this project</b><br>"
-            "<small>Stored in .svproj file only — never exported to CAT tools</small>"
+            "<small>Stored in .svproj file only – never exported to CAT tools</small>"
         )
         scratchpad_info.setWordWrap(True)
         scratchpad_info.setStyleSheet("color: #666; font-size: 9pt; padding: 3px; background: #f9f9f9; border-radius: 3px; margin-bottom: 5px;")
@@ -23750,7 +23750,7 @@ class SupervertalerQt(QMainWindow):
             SupervertalerQt.match_panel_font_family = _mp_family
             SupervertalerQt.match_panel_font_bold = _pre_settings.get('match_panel_font_bold', False)
             # v1.9.307: Load TM pane layout preference (horizontal vs vertical stacking)
-            # Default: True (vertical) — stacked gives each pane the full panel width
+            # Default: True (vertical) – stacked gives each pane the full panel width
             self.match_panel_tm_vertical = _pre_settings.get('match_panel_tm_vertical', True)
         except Exception:
             self.match_panel_tm_vertical = True
@@ -24616,7 +24616,7 @@ class SupervertalerQt(QMainWindow):
         dictate_btn = QPushButton("🎤 Dictate (F9)")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
-        dictate_btn.setToolTip("Push-to-talk dictation — press F9 (or click) to record, transcribe, and insert text")
+        dictate_btn.setToolTip("Push-to-talk dictation – press F9 (or click) to record, transcribe, and insert text")
 
         # Store reference to dictate button for state updates
         editor_widget.dictate_btn = dictate_btn
@@ -25002,9 +25002,9 @@ class SupervertalerQt(QMainWindow):
     #  System tray integration (cross-platform via QSystemTrayIcon).
     #
     #  Three preferences live in settings.json under the "ui" section:
-    #    close_to_tray             — clicking the window's X hides instead of quits
-    #    start_minimized_to_tray   — launch with no visible window (tray only)
-    #    close_to_tray_hint_shown  — internal: have we shown the first-time hint?
+    #    close_to_tray             – clicking the window's X hides instead of quits
+    #    start_minimized_to_tray   – launch with no visible window (tray only)
+    #    close_to_tray_hint_shown  – internal: have we shown the first-time hint?
     #
     #  Toggleable from the tray icon's right-click menu, no Settings-dialog
     #  trip needed. On platforms with no system tray (e.g. headless Linux)
@@ -25020,7 +25020,7 @@ class SupervertalerQt(QMainWindow):
         self._really_quit = False  # Set by tray "Quit" so closeEvent doesn't hide
 
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            print("[Tray] System tray unavailable on this platform — skipping")
+            print("[Tray] System tray unavailable on this platform – skipping")
             return
 
         # Reuse the window icon if set, fall back to assets/icon.ico.
@@ -25054,7 +25054,7 @@ class SupervertalerQt(QMainWindow):
         self._tray_start_minimized_action.toggled.connect(self._on_toggle_start_minimized)
         menu.addAction(self._tray_start_minimized_action)
 
-        # "Start with computer" — registers an HKCU Run entry on Windows,
+        # "Start with computer" – registers an HKCU Run entry on Windows,
         # ~/Library/LaunchAgents plist on macOS, ~/.config/autostart .desktop
         # on Linux. No elevation needed; the auto-started instance uses the
         # GUI Python variant so no terminal window appears at boot.
@@ -25081,7 +25081,7 @@ class SupervertalerQt(QMainWindow):
         self._tray_icon.activated.connect(self._on_tray_activated)
         self._tray_icon.show()
 
-        # Tell Qt not to quit when all windows are closed — we manage lifecycle
+        # Tell Qt not to quit when all windows are closed – we manage lifecycle
         # via the tray "Quit" item. Otherwise hiding the only window via close
         # would terminate the app on some platforms.
         QApplication.instance().setQuitOnLastWindowClosed(False)
@@ -25119,7 +25119,7 @@ class SupervertalerQt(QMainWindow):
         if mod is None:
             return
         ok = mod.enable() if checked else mod.disable()
-        # Re-sync the checkbox with reality — if the registry / plist write
+        # Re-sync the checkbox with reality – if the registry / plist write
         # failed silently, don't leave the menu showing a stale state.
         actual = mod.is_enabled()
         if actual != checked:
@@ -25140,7 +25140,7 @@ class SupervertalerQt(QMainWindow):
                 pass
 
     def _tray_quit(self):
-        """Real quit from tray menu — bypasses the close-to-tray hide."""
+        """Real quit from tray menu – bypasses the close-to-tray hide."""
         self._really_quit = True
         self.close()  # Triggers closeEvent which now does cleanup, then accepts
         QApplication.instance().quit()
@@ -25208,7 +25208,7 @@ class SupervertalerQt(QMainWindow):
         event.accept()
         # Because _setup_tray_icon flipped setQuitOnLastWindowClosed to False
         # (so dialogs / hidden windows wouldn't terminate the app), we need
-        # to ask Qt to quit explicitly when close-to-tray is OFF — otherwise
+        # to ask Qt to quit explicitly when close-to-tray is OFF – otherwise
         # closing the main window would leave a headless process behind.
         if getattr(self, "_tray_icon", None) is not None:
             QApplication.instance().quit()
@@ -25632,7 +25632,7 @@ class SupervertalerQt(QMainWindow):
         project_id = self.current_project.id if hasattr(self.current_project, 'id') else None
 
         # Project languages, normalised to ISO codes for direction comparison.
-        # Empty string when not set — that disables the swap logic below and
+        # Empty string when not set – that disables the swap logic below and
         # the index is built in its raw (forward) orientation, matching the
         # historical behaviour for projects without language metadata.
         project_source_code = self._convert_language_to_code(self.current_project.source_lang or '') or ''
@@ -31913,7 +31913,7 @@ class SupervertalerQt(QMainWindow):
                 if load_progress.wasCanceled():
                     return False
                 if stage == 'extract':
-                    # Extraction is a single zipfile.extractall() call — can't
+                    # Extraction is a single zipfile.extractall() call – can't
                     # stream progress through it; show indeterminate-style label.
                     load_progress.setRange(0, 0)
                     load_progress.setLabelText(message)
@@ -32876,7 +32876,7 @@ class SupervertalerQt(QMainWindow):
 
             # Save file(s)
             if len(handler.xliff_files) == 1:
-                # Single file — use Save As dialog
+                # Single file – use Save As dialog
                 default_name = Path(source_files[0]).stem + "_translated.sdlxliff"
                 default_dir = str(Path(source_files[0]).parent / default_name)
 
@@ -32911,7 +32911,7 @@ class SupervertalerQt(QMainWindow):
                 else:
                     QMessageBox.critical(self, "Export Error", "Failed to save the SDLXLIFF file.")
             else:
-                # Multi-file — select output directory
+                # Multi-file – select output directory
                 output_dir = QFileDialog.getExistingDirectory(
                     self,
                     "Select Output Folder for Translated SDLXLIFF Files",
@@ -34201,7 +34201,7 @@ class SupervertalerQt(QMainWindow):
                     # Use source tag as reference (target should match source structure)
                     segment._stripped_outer_tag = stripped_source_tag or stripped_target_tag
 
-                # Apply compact tag shortening to target (display only — reversed before saving)
+                # Apply compact tag shortening to target (display only – reversed before saving)
                 if _compact_tag_map is not None:
                     target_for_display = compact_tags(target_for_display, _compact_tag_map)
                 # Apply invisible character replacements for display (will be reversed when saving)
@@ -34778,7 +34778,7 @@ class SupervertalerQt(QMainWindow):
             }
         """)
 
-        # v1.9.307: Layout toggle — always available (even with no TM matches)
+        # v1.9.307: Layout toggle – always available (even with no TM matches)
         menu.addSeparator()
         is_vertical = getattr(self, 'match_panel_tm_vertical', True)
         layout_action = QAction("↕ Stack TM Source / Target Vertically", menu)
@@ -34851,7 +34851,7 @@ class SupervertalerQt(QMainWindow):
             return
 
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"Edit TM Entry — {tm_name}")
+        dialog.setWindowTitle(f"Edit TM Entry – {tm_name}")
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         layout.setSpacing(8)
@@ -35247,7 +35247,7 @@ class SupervertalerQt(QMainWindow):
                 cp_src_display = self.apply_invisible_replacements(cp_src_display)
             self.compare_panel_tm_source.setPlainText(cp_src_display)
 
-        # Update TM Target — strip stale markers, then re-apply current settings
+        # Update TM Target – strip stale markers, then re-apply current settings
         tm_target_text = match.get('target', '')
         if tm_target_text and hasattr(self, 'reverse_invisible_replacements'):
             tm_target_text = self.reverse_invisible_replacements(tm_target_text)
@@ -37032,7 +37032,7 @@ class SupervertalerQt(QMainWindow):
 
         old_settings = self.user_data_path / "settings" / "settings.json"
         if not old_settings.exists():
-            # Nothing to migrate — fresh install or already migrated.
+            # Nothing to migrate – fresh install or already migrated.
             # Just ensure the workbench dir exists and write the flag.
             try:
                 (self.user_data_path / "workbench" / "settings").mkdir(parents=True, exist_ok=True)
@@ -37365,9 +37365,9 @@ class SupervertalerQt(QMainWindow):
                 opted_in = show_opt_in_dialog(self)
                 set_opted_in(settings_path, opted_in)
                 if opted_in:
-                    self.log("📊 Usage statistics enabled — thank you!")
+                    self.log("📊 Usage statistics enabled – thank you!")
                 else:
-                    self.log("📊 Usage statistics declined — no data will be sent.")
+                    self.log("📊 Usage statistics declined – no data will be sent.")
 
             # Send anonymous ping in background (only if opted in)
             send_ping(settings_path, __version__)
@@ -37621,7 +37621,7 @@ class SupervertalerQt(QMainWindow):
                 if tb_dict:
                     self.highlight_source_with_termbase(current_row, segment.source, tb_dict)
                 else:
-                    # No cached matches — do a fresh (cheap) termbase-only lookup
+                    # No cached matches – do a fresh (cheap) termbase-only lookup
                     fresh_tb = self.find_termbase_matches_in_source(segment.source)
                     if fresh_tb:
                         self.highlight_source_with_termbase(current_row, segment.source, fresh_tb)
@@ -38300,7 +38300,7 @@ class SupervertalerQt(QMainWindow):
         if selected:
             return selected
 
-        # No selection — check for filtered (visible) rows
+        # No selection – check for filtered (visible) rows
         visible_rows = [row for row in range(self.table.rowCount())
                         if not self.table.isRowHidden(row)]
         total_rows = self.table.rowCount()
@@ -38699,7 +38699,7 @@ class SupervertalerQt(QMainWindow):
 
     # --- Non-translatable (number/code) helpers ---
     # Compiled once at class definition time. Matches text that contains ONLY
-    # digits, whitespace, and punctuation — no Unicode letters of any script.
+    # digits, whitespace, and punctuation – no Unicode letters of any script.
     # The character class covers common numeric/code content:
     #   digits, whitespace, hyphen/dash, period, slash, comma, semicolons,
     #   colon, parentheses, plus, equals, asterisk, hash, percent, degree,
@@ -40307,7 +40307,7 @@ class SupervertalerQt(QMainWindow):
                     self.termbase_mgr.set_termbase_read_only(tb['id'], True)  # Write OFF
 
         # The legacy "deactivate NT lists" step was removed in v1.9.393
-        # along with the standalone Non-Translatables tab — NTs now live
+        # along with the standalone Non-Translatables tab – NTs now live
         # on termbase entries and follow the termbase activation state.
 
         # Refresh TM and termbase UI to reflect the deactivations
@@ -40784,7 +40784,7 @@ class SupervertalerQt(QMainWindow):
         if not source_text or not hasattr(self, 'db_manager') or not self.db_manager:
             return {}
 
-        # v1.9.306: Defensive guard — strip any invisible character markers
+        # v1.9.306: Defensive guard – strip any invisible character markers
         # that may have leaked into the source text (e.g. ·, →, °, ↵, \u200B)
         # so that multi-word terms like "hinge load" match correctly.
         if hasattr(self, 'reverse_invisible_replacements'):
@@ -41064,7 +41064,7 @@ class SupervertalerQt(QMainWindow):
             
             # Also highlight non-translatables (pastel yellow). NTs now
             # come from termbase entries flagged is_nontranslatable=1, so
-            # the search is always available — no nt_manager guard needed.
+            # the search is always available – no nt_manager guard needed.
             nt_matches = self.find_nt_matches_in_source(source_text)
             if nt_matches and hasattr(source_widget, 'highlight_non_translatables'):
                 source_widget.highlight_non_translatables(nt_matches)
@@ -43486,7 +43486,7 @@ class SupervertalerQt(QMainWindow):
             'linebreaks': new_state
         }
 
-        # Update menu checkboxes — block signals so setChecked() does NOT re-fire
+        # Update menu checkboxes – block signals so setChecked() does NOT re-fire
         # toggle_invisible_display() and cause 4 extra grid reloads
         for action_attr in ('show_spaces_action', 'show_tabs_action',
                             'show_nbsp_action', 'show_linebreaks_action'):
@@ -43512,7 +43512,7 @@ class SupervertalerQt(QMainWindow):
         Signal handling strategy
         -----------------------
         We call setPlainText() with Qt signals blocked on each widget.  Unlike
-        load_segments_to_grid() we do NOT unblock signals afterwards — the widgets
+        load_segments_to_grid() we do NOT unblock signals afterwards – the widgets
         already have their textChanged handlers connected from the original grid
         load, and those handlers remain active for future user edits.  Keeping
         signals blocked only for the duration of setPlainText() (and the brief
@@ -43546,7 +43546,7 @@ class SupervertalerQt(QMainWindow):
                     break
                 segment = segments[row]
 
-                # --- Source column (col 2) — read-only, no save risk ---
+                # --- Source column (col 2) – read-only, no save risk ---
                 source_widget = self.table.cellWidget(row, 2)
                 if source_widget is not None:
                     source_for_display = segment.source
@@ -43569,7 +43569,7 @@ class SupervertalerQt(QMainWindow):
                     if self.hide_outer_wrapping_tags:
                         stripped, _ = strip_outer_wrapping_tags(target_for_display)
                         target_for_display = stripped
-                    # Apply compact tag shortening (display only — reversed before saving)
+                    # Apply compact tag shortening (display only – reversed before saving)
                     if getattr(self, 'tag_view_mode', 'tags') == 'compact':
                         # Re-use the tag_map built from source so numbering stays consistent
                         tag_map = {}
@@ -43584,7 +43584,7 @@ class SupervertalerQt(QMainWindow):
                     new_target_text = self.apply_invisible_replacements(target_for_display)
                     target_widget.blockSignals(True)
                     target_widget.setPlainText(new_target_text)
-                    # Keep signals blocked — user edits will unblock naturally when
+                    # Keep signals blocked – user edits will unblock naturally when
                     # the widget is next focused and the handler fires from keystrokes.
                     # We restore signals here so the widget stays interactive, but
                     # _suppress_target_change_handlers guards against the queued event.
@@ -43664,20 +43664,20 @@ class SupervertalerQt(QMainWindow):
         """
         result = text
 
-        # Reverse spaces (middle dot + zero-width space → space) — always
+        # Reverse spaces (middle dot + zero-width space → space) – always
         result = result.replace('·\u200B', ' ')
         result = result.replace('·', ' ')  # Fallback for any without zero-width space
 
-        # Reverse tabs (right arrow + zero-width space → tab) — always
+        # Reverse tabs (right arrow + zero-width space → tab) – always
         result = result.replace('→\u200B', '\t')
         result = result.replace('→', '\t')  # Fallback
 
-        # Reverse non-breaking spaces (degree symbol → NBSP) — always
+        # Reverse non-breaking spaces (degree symbol → NBSP) – always
         # We can't distinguish between \u00A0 and \u202F after replacement,
         # so we default to the more common \u00A0
         result = result.replace('°', '\u00A0')
 
-        # Reverse line breaks (return arrow → line break) — always
+        # Reverse line breaks (return arrow → line break) – always
         result = result.replace('↵\n', '\n')
         result = result.replace('↵', '\r')
         # Legacy: pilcrow was used as line-break marker before v1.9.295
@@ -44062,15 +44062,15 @@ class SupervertalerQt(QMainWindow):
         hunspell_layout.addWidget(QLabel(""))
         hunspell_layout.addWidget(QLabel("<b>Download sources:</b>"))
         
-        memoq_label = QLabel('🌐 <a href="https://hunspell.memoq.com/">hunspell.memoq.com</a> — 70+ languages')
+        memoq_label = QLabel('🌐 <a href="https://hunspell.memoq.com/">hunspell.memoq.com</a> – 70+ languages')
         memoq_label.setOpenExternalLinks(True)
         hunspell_layout.addWidget(memoq_label)
         
-        github_label = QLabel('🌐 <a href="https://github.com/wooorm/dictionaries/tree/main/dictionaries">GitHub: wooorm/dictionaries</a> — 92+ languages')
+        github_label = QLabel('🌐 <a href="https://github.com/wooorm/dictionaries/tree/main/dictionaries">GitHub: wooorm/dictionaries</a> – 92+ languages')
         github_label.setOpenExternalLinks(True)
         hunspell_layout.addWidget(github_label)
         
-        libreoffice_label = QLabel('🌐 <a href="https://extensions.libreoffice.org/?Tags%5B%5D=50">LibreOffice Extensions</a> — .oxt → .zip')
+        libreoffice_label = QLabel('🌐 <a href="https://extensions.libreoffice.org/?Tags%5B%5D=50">LibreOffice Extensions</a> – .oxt → .zip')
         libreoffice_label.setOpenExternalLinks(True)
         hunspell_layout.addWidget(libreoffice_label)
         
@@ -44123,15 +44123,15 @@ class SupervertalerQt(QMainWindow):
         links_layout = QVBoxLayout(links_group)
         links_layout.setSpacing(2)
         
-        pyspell_link = QLabel('<a href="https://github.com/barrust/pyspellchecker">pyspellchecker</a> — Built-in word frequency spellcheck')
+        pyspell_link = QLabel('<a href="https://github.com/barrust/pyspellchecker">pyspellchecker</a> – Built-in word frequency spellcheck')
         pyspell_link.setOpenExternalLinks(True)
         links_layout.addWidget(pyspell_link)
         
-        spylls_link = QLabel('<a href="https://github.com/zverok/spylls">spylls</a> — Pure Python Hunspell implementation')
+        spylls_link = QLabel('<a href="https://github.com/zverok/spylls">spylls</a> – Pure Python Hunspell implementation')
         spylls_link.setOpenExternalLinks(True)
         links_layout.addWidget(spylls_link)
         
-        hunspell_link = QLabel('<a href="http://hunspell.github.io/">Hunspell</a> — Original C/C++ spellcheck library')
+        hunspell_link = QLabel('<a href="http://hunspell.github.io/">Hunspell</a> – Original C/C++ spellcheck library')
         hunspell_link.setOpenExternalLinks(True)
         links_layout.addWidget(hunspell_link)
         
@@ -45003,7 +45003,7 @@ class SupervertalerQt(QMainWindow):
                 self.status_bar.showMessage(f"🎤 {result}", 3000)
                 return
 
-        # Otherwise route as dictation text — same cross-app path Always-On
+        # Otherwise route as dictation text – same cross-app path Always-On
         # uses, so F9 and Ctrl+Alt+D work in any app.
         self._insert_dictated_text(text)
 
@@ -46651,7 +46651,7 @@ class SupervertalerQt(QMainWindow):
             self.log("⚠️ TM/Glossary lookups DISABLED from segment editor (faster editing)")
 
     def _toggle_tag_view_via_shortcut(self):
-        """Toggle tag view using keyboard shortcut (Ctrl+Alt+T) — cycles: tags → compact → wysiwyg"""
+        """Toggle tag view using keyboard shortcut (Ctrl+Alt+T) – cycles: tags → compact → wysiwyg"""
         mode = getattr(self, 'tag_view_mode', 'tags')
         cycle = {'tags': 'compact', 'compact': 'wysiwyg', 'wysiwyg': 'tags'}
         self._set_tag_view_mode(cycle.get(mode, 'tags'))
@@ -46675,16 +46675,16 @@ class SupervertalerQt(QMainWindow):
         if hasattr(self, 'tags_btn'):
             self.tags_btn.setChecked(mode == 'tags')
 
-        labels = {'tags': '🏷️ Tag View — showing raw tags',
-                  'compact': '📦 Compact View — verbose tags shortened',
-                  'wysiwyg': '✨ WYSIWYG View — showing formatted text'}
+        labels = {'tags': '🏷️ Tag View – showing raw tags',
+                  'compact': '📦 Compact View – verbose tags shortened',
+                  'wysiwyg': '✨ WYSIWYG View – showing formatted text'}
         self.log(labels.get(mode, mode))
 
         if hasattr(self, 'table') and self.current_project:
             self._refresh_grid_display_mode()
 
     def toggle_tag_view(self, checked: bool, button: QPushButton = None):
-        """Legacy toggle — routes to _set_tag_view_mode for backward compatibility"""
+        """Legacy toggle – routes to _set_tag_view_mode for backward compatibility"""
         self._set_tag_view_mode('tags' if checked else 'wysiwyg')
 
     def _refresh_grid_display_mode(self):
@@ -46920,14 +46920,14 @@ class SupervertalerQt(QMainWindow):
                            switch_to_vertical=True):
         """Open Superlookup in the Sidekick (Floating Assistant).
 
-        Superlookup no longer lives as a sub-tab in the Tools tab — Sidekick
+        Superlookup no longer lives as a sub-tab in the Tools tab – Sidekick
         hosts it. This method brings Sidekick to the foreground, switches to
         the SuperLookup pane, and (optionally) runs a search with the given
         query and language pair.
         """
         assistant = getattr(self, '_floating_assistant', None)
         if assistant is None:
-            self.log("⚠ Sidekick not available — Superlookup cannot be opened")
+            self.log("⚠ Sidekick not available – Superlookup cannot be opened")
             return
 
         assistant.show_superlookup()
@@ -47081,7 +47081,7 @@ class SupervertalerQt(QMainWindow):
     def _get_active_custom_profile(self, settings=None):
         """Get the active custom_openai profile dict (endpoint, model, api_key).
 
-        Returns dict with keys: name, endpoint, model, api_key — or None if no profile configured.
+        Returns dict with keys: name, endpoint, model, api_key – or None if no profile configured.
         Falls back to legacy single-field config for backward compatibility.
         """
         if settings is None:
@@ -47963,7 +47963,7 @@ class SupervertalerQt(QMainWindow):
         lines.append(f"Frozen (PyInstaller): {bool(getattr(sys, 'frozen', False))}")
         lines.append(f"Executable: {sys.executable}")
 
-        # Diagnostic log location — makes support easier: users paste this
+        # Diagnostic log location – makes support easier: users paste this
         # block, and the path to attach is right there in the output.
         try:
             log_path = self._get_diagnostic_log_path()
@@ -47971,7 +47971,7 @@ class SupervertalerQt(QMainWindow):
                 lines.append("")
                 lines.append(f"Diagnostic log: {log_path}")
                 lines.append(
-                    "  (Help \u2192 Open Diagnostic Log — attach this file when reporting issues)"
+                    "  (Help \u2192 Open Diagnostic Log – attach this file when reporting issues)"
                 )
         except Exception:
             pass
@@ -47999,7 +47999,7 @@ class SupervertalerQt(QMainWindow):
         Preferred source is sys._supervertaler_log_path (set by
         _setup_diagnostic_log in main()). If that's missing for any reason
         we compute the expected default location so the menu action still
-        works — the folder might be empty but at least the user sees where
+        works – the folder might be empty but at least the user sees where
         to look.
         """
         try:
@@ -48209,7 +48209,7 @@ class SupervertalerQt(QMainWindow):
 
     def _init_okapi_sidecar_deferred(self):
         """Schedule Okapi sidecar startup after the UI is fully loaded.
-        This is non-blocking — the sidecar starts in the background."""
+        This is non-blocking – the sidecar starts in the background."""
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(1500, self._start_okapi_sidecar)
 
@@ -48220,16 +48220,16 @@ class SupervertalerQt(QMainWindow):
             self.okapi_sidecar = OkapiSidecar()
 
             if not self.okapi_sidecar.is_available:
-                self.log("ℹ️ Okapi sidecar not installed — using built-in filters")
+                self.log("ℹ️ Okapi sidecar not installed – using built-in filters")
                 self.okapi_sidecar = None
                 return
 
             if self.okapi_sidecar.start():
                 version = self.okapi_sidecar.get_version() or "?"
-                self.log(f"✅ Okapi sidecar started (v{version}) — "
+                self.log(f"✅ Okapi sidecar started (v{version}) – "
                          f"enhanced file filters available")
             else:
-                self.log("⚠️ Okapi sidecar failed to start — using built-in filters")
+                self.log("⚠️ Okapi sidecar failed to start – using built-in filters")
                 self.okapi_sidecar = None
         except Exception as e:
             self.log(f"⚠️ Okapi sidecar unavailable: {e}")
@@ -50099,7 +50099,7 @@ class SupervertalerQt(QMainWindow):
                 stats_label.setText(f"Translated: {translated_count} | Skipped: {failed_count}")
                 QApplication.processEvents()
 
-                # TM-only translation complete — full grid reload
+                # TM-only translation complete – full grid reload
                 self.load_segments_to_grid()
 
                 self.project_modified = True
@@ -50412,7 +50412,7 @@ class SupervertalerQt(QMainWindow):
                             else:
                                 current_id = None
                         elif current_id is not None:
-                            # Continuation line for a multi-line translation — preserve the \n
+                            # Continuation line for a multi-line translation – preserve the \n
                             segment_translations[current_id] += '\n' + line
                     
                     self.log(f"  ✓ Parsed {len(segment_translations)} translations from response")
@@ -52292,7 +52292,7 @@ class SupervertalerQt(QMainWindow):
 class _SearchTermHighlighter(QSyntaxHighlighter):
     """Highlights occurrences of a search term with a yellow background.
 
-    Uses the same pattern as the main grid's TagHighlighter — operates on
+    Uses the same pattern as the main grid's TagHighlighter – operates on
     plain text in the QTextEdit, so native text selection and copy work
     perfectly without any HTML parsing overhead.
     """
@@ -52327,7 +52327,7 @@ class _SearchTermHighlighter(QSyntaxHighlighter):
 class _ReadOnlyHtmlCell(QTextEdit):
     """Read-only QTextEdit for Superlookup results table cells.
 
-    Uses plain text + a QSyntaxHighlighter for search term highlighting —
+    Uses plain text + a QSyntaxHighlighter for search term highlighting –
     the same pattern the main Supervertaler grid uses. This gives us full
     native text selection, right-click copy, and mouse word selection,
     without the rendering issues that QLabel cell widgets have.
@@ -52364,7 +52364,7 @@ class _ReadOnlyHtmlCell(QTextEdit):
                          QPalette.ColorRole.HighlightedText, QColor("black"))
         self.setPalette(palette)
 
-        # Compact styling — no border, no scroll bars
+        # Compact styling – no border, no scroll bars
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("""
@@ -52520,7 +52520,7 @@ class SuperlookupTab(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)  # Reduced from 10 to 5 for consistency
         
-        # Header and description — shown only when embedded in the main
+        # Header and description – shown only when embedded in the main
         # window (hidden when inside the floating assistant, where the tab
         # label already identifies the feature and vertical space is precious).
         self._header_label = QLabel("🔍 SuperLookup")
@@ -52642,7 +52642,7 @@ class SuperlookupTab(QWidget):
         termbase_tab = self.create_termbase_results_tab()
         self.results_tabs.addTab(termbase_tab, "📚 Termbases")
         
-        # MT tab removed — handled by QuickTrans.
+        # MT tab removed – handled by QuickTrans.
 
         # Web Resources tab
         web_tab = self.create_web_resources_tab()
@@ -53356,7 +53356,7 @@ class SuperlookupTab(QWidget):
         sidebar_header.setStyleSheet("font-weight: bold; font-size: 10pt; padding: 5px; color: #1976D2;")
         sidebar_layout.addWidget(sidebar_header)
 
-        # Scrollable area for resource buttons — ensures all resources are
+        # Scrollable area for resource buttons – ensures all resources are
         # accessible even on smaller screens / when the panel is short.
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -53888,7 +53888,7 @@ class SuperlookupTab(QWidget):
                         if resource['id'] in self.web_views:
                             self.web_views[resource['id']].setUrl(QUrl(url))
                 # Ensure the currently-selected resource's view is actually
-                # shown in the stack — without this, the stack can remain on
+                # shown in the stack – without this, the stack can remain on
                 # the startup welcome view and the tab looks blank.
                 try:
                     current_resource = self.web_resources[self.current_web_resource_index]
@@ -53967,7 +53967,7 @@ class SuperlookupTab(QWidget):
             to_lang = to_lang[0]
 
         # If the From/To combos are set to "Any" (or not yet populated), fall
-        # back to the main window's project language pair — the same pair
+        # back to the main window's project language pair – the same pair
         # QuickTrans uses. This is what the user configured as their default
         # in Settings → Language Pair (e.g. Dutch → English), so resources
         # like IATE / Linguee / ProZ / BabelNet fire with the right codes
@@ -53989,7 +53989,7 @@ class SuperlookupTab(QWidget):
                     if not to_lang:
                         to_lang = getattr(mw, 'target_language', None)
 
-        # Final safety net — if everything above failed, default to English-Dutch
+        # Final safety net – if everything above failed, default to English-Dutch
         if not from_lang:
             from_lang = 'en'
         if not to_lang:
@@ -54010,11 +54010,11 @@ class SuperlookupTab(QWidget):
         # Linguee uses a canonical language-pair slug: English is always
         # first in any English↔X pair (e.g. /english-dutch/, never
         # /dutch-english/), and source=auto handles the query direction.
-        # Non-canonical URLs redirect/error — particularly badly inside the
+        # Non-canonical URLs redirect/error – particularly badly inside the
         # embedded QWebEngineView. Swap sl_full/tl_full for this resource
         # when one side is English and it isn't already first. For non-
         # English pairs (e.g. French↔German), fall back to alphabetical
-        # ordering — this mirrors Linguee's actual slug scheme.
+        # ordering – this mirrors Linguee's actual slug scheme.
         if resource.get('id') == 'linguee' and sl_full and tl_full:
             if 'english' in (sl_full, tl_full):
                 if sl_full != 'english':
@@ -54958,7 +54958,7 @@ class SuperlookupTab(QWidget):
         # resource in the Settings → Web Resources sub-tab disables web search
         # entirely. The individual checkbox.stateChanged handler already
         # hides the corresponding sidebar button, so if NONE are checked the
-        # Web Resources tab has nothing to show — skip the per-engine URL
+        # Web Resources tab has nothing to show – skip the per-engine URL
         # loads so we don't fire requests to disabled sites.
         any_web_checked = True
         if hasattr(self, 'web_resource_checkboxes') and self.web_resource_checkboxes:
@@ -55108,7 +55108,7 @@ class SuperlookupTab(QWidget):
             row = self.tm_results_table.rowCount()
             self.tm_results_table.insertRow(row)
 
-            # Source — QTextEdit cell widget with highlighting + text selection
+            # Source – QTextEdit cell widget with highlighting + text selection
             source_item = QTableWidgetItem(result.source)
             source_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.tm_results_table.setItem(row, 0, source_item)
@@ -55117,7 +55117,7 @@ class SuperlookupTab(QWidget):
                 parent=self.tm_results_table, bold=False)
             self.tm_results_table.setCellWidget(row, 0, source_editor)
 
-            # Target — same pattern
+            # Target – same pattern
             target_item = QTableWidgetItem(result.target)
             target_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.tm_results_table.setItem(row, 1, target_item)
@@ -55206,7 +55206,7 @@ class SuperlookupTab(QWidget):
         if not lang:
             return None
         name = lang
-        # Prefer the main window's normalisation if available — it maps
+        # Prefer the main window's normalisation if available – it maps
         # 'en'/'en-US'/'en-GB' all to 'English', etc.
         try:
             if self.main_window and hasattr(self.main_window, '_normalize_language_code'):
@@ -55335,7 +55335,7 @@ class SuperlookupTab(QWidget):
             domain = metadata.get('domain', '')
             notes = metadata.get('notes', '')
             
-            # Source term — QTextEdit with syntax highlighter for native text selection
+            # Source term – QTextEdit with syntax highlighter for native text selection
             source_item = QTableWidgetItem(result.source)
             source_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.termbase_results_table.setItem(row, 0, source_item)
@@ -55344,7 +55344,7 @@ class SuperlookupTab(QWidget):
                 parent=self.termbase_results_table, bold=False)
             self.termbase_results_table.setCellWidget(row, 0, source_editor)
 
-            # Target term — same pattern
+            # Target term – same pattern
             target_item = QTableWidgetItem(result.target)
             target_item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.termbase_results_table.setItem(row, 1, target_item)
@@ -55374,7 +55374,7 @@ class SuperlookupTab(QWidget):
             source_editor.setProperty('source_term', result.source)
             source_editor.setProperty('termbase_name', termbase_name)
 
-        # Resize rows to fit the actual rendered QTextEdit content — short
+        # Resize rows to fit the actual rendered QTextEdit content – short
         # entries get short rows, long entries wrap to taller rows.
         self._resize_html_cell_rows(self.termbase_results_table,
                                     cols_with_html=(0, 1),
@@ -55512,7 +55512,7 @@ class SuperlookupTab(QWidget):
         # The MT tab was removed from the Superlookup UI (MT is now handled by
         # QuickTrans). When this SuperlookupTab instance was built without the
         # MT tab (e.g. inside the Floating Assistant), mt_results_table does
-        # not exist — silently skip so perform_lookup() can continue to the
+        # not exist – silently skip so perform_lookup() can continue to the
         # web-resource search that follows.
         if not hasattr(self, 'mt_results_table'):
             return
@@ -55843,14 +55843,14 @@ class SuperlookupTab(QWidget):
 
             if self.tb_checkboxes and not selected_tb_ids:
                 # User has explicitly unchecked every termbase → disabled.
-                print("[DEBUG search_termbases] All termbases deselected — skipping termbase search.")
+                print("[DEBUG search_termbases] All termbases deselected – skipping termbase search.")
                 return results
 
             if selected_tb_ids:
                 # Filter to only selected termbases
                 termbases_to_search = [tb for tb in all_termbases if tb['id'] in selected_tb_ids]
             else:
-                # Checkbox list not yet built — search everything.
+                # Checkbox list not yet built – search everything.
                 termbases_to_search = all_termbases
             
             text_lower = text.lower()
@@ -56401,7 +56401,7 @@ class SuperlookupTab(QWidget):
     def _on_pynput_superlookup(self):
         """Called from pynput background thread when Ctrl+Alt+L is pressed.
 
-        IMPORTANT: Do NO work here — pynput callbacks on macOS crash if they
+        IMPORTANT: Do NO work here – pynput callbacks on macOS crash if they
         touch pyperclip, pynput Controller, or Qt objects.  Just signal the
         Qt main thread and return immediately.
         """
@@ -56417,7 +56417,7 @@ class SuperlookupTab(QWidget):
     def _on_pynput_quicktrans(self):
         """Called from pynput background thread when Ctrl+Alt+Q is pressed.
 
-        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
         """
         try:
             from PyQt6.QtCore import QMetaObject, Qt as QtConst
@@ -56445,7 +56445,7 @@ class SuperlookupTab(QWidget):
     def _on_pynput_clipboard(self):
         """Called from pynput background thread when Ctrl+Shift+C is pressed.
 
-        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
         """
         try:
             from PyQt6.QtCore import QTimer
@@ -56455,7 +56455,7 @@ class SuperlookupTab(QWidget):
 
     @pyqtSlot()
     def _handle_clipboard_hotkey(self):
-        """Runs on Qt main thread — opens Sidekick to the Clipboard tab."""
+        """Runs on Qt main thread – opens Sidekick to the Clipboard tab."""
         try:
             from modules.platform_helpers import get_foreground_window
             source_win = get_foreground_window()
@@ -56471,10 +56471,10 @@ class SuperlookupTab(QWidget):
             print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
 
     def _on_pynput_pushtotalk(self):
-        """AutoFingers global push-to-talk hotkey — fires on the pynput
+        """AutoFingers global push-to-talk hotkey – fires on the pynput
         background thread.
 
-        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
         """
         try:
             from PyQt6.QtCore import QTimer
@@ -56484,11 +56484,11 @@ class SuperlookupTab(QWidget):
 
     @pyqtSlot()
     def _handle_pushtotalk_hotkey(self):
-        """Runs on Qt main thread — start the push-to-talk dictation
+        """Runs on Qt main thread – start the push-to-talk dictation
         recording on the main Workbench, exactly as F9 does. The dictation
         result is then routed by ``_insert_dictated_text``, which falls
         back to AHK SendText / osascript / pynput typing when focus is
-        outside Supervertaler — so this works in any app."""
+        outside Supervertaler – so this works in any app."""
         try:
             mw = self.main_window or self.window()
             if mw and hasattr(mw, 'start_voice_dictation'):
@@ -56499,10 +56499,10 @@ class SuperlookupTab(QWidget):
             print(f"[AutoFingers] Error in push-to-talk hotkey handler: {e}")
 
     def _on_pynput_alwayson_toggle(self):
-        """AutoFingers Always-On toggle hotkey — fires on the pynput
+        """AutoFingers Always-On toggle hotkey – fires on the pynput
         background thread.
 
-        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
         """
         try:
             from PyQt6.QtCore import QTimer
@@ -56512,7 +56512,7 @@ class SuperlookupTab(QWidget):
 
     @pyqtSlot()
     def _handle_alwayson_toggle_hotkey(self):
-        """Runs on Qt main thread — toggle Always-On listening on/off.
+        """Runs on Qt main thread – toggle Always-On listening on/off.
 
         Unlike push-to-talk (which records a single utterance), this
         starts continuous listening that stays on until pressed again.
@@ -56768,7 +56768,7 @@ class SuperlookupTab(QWidget):
     def _handle_quicktrans_hotkey(self):
         """Runs on Qt main thread after the QuickTrans global hotkey fires."""
         try:
-            # Capture the foreground window BEFORE we do anything —
+            # Capture the foreground window BEFORE we do anything –
             # this is the app the user was working in (browser, Trados, etc.)
             from modules.platform_helpers import CrossPlatformKeySender, get_foreground_window
             self._quicktrans_source_window = get_foreground_window()
@@ -56804,7 +56804,7 @@ class SuperlookupTab(QWidget):
         text from the source app, then dispatches that text to Sidekick
         (the floating assistant). The downstream method is still called
         ``show_quicklauncher_external`` because it's also used by the
-        editor's right-click QuickLauncher menu — they share the same
+        editor's right-click QuickLauncher menu – they share the same
         "open Sidekick with this text" plumbing.
         """
         try:
@@ -56954,7 +56954,7 @@ class SuperlookupTab(QWidget):
             # Store reference to prevent garbage collection
             self._ahk_mt_popup = popup
 
-            # Show popup on top — Tool window type prevents the main
+            # Show popup on top – Tool window type prevents the main
             # Supervertaler icon from flashing in the taskbar
             popup.show()
             popup.raise_()
@@ -57095,7 +57095,7 @@ class SuperlookupTab(QWidget):
             qt_action.triggered.connect(lambda: self.show_mt_quick_lookup_from_ahk(text))
             menu.addAction(qt_action)
 
-            # Supervertaler Sidekick — defer with QTimer so menu fully closes first
+            # Supervertaler Sidekick – defer with QTimer so menu fully closes first
             assistant_action = QAction("💬 Supervertaler Sidekick", menu)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: self.show_supervertaler_assistant(
@@ -57104,7 +57104,7 @@ class SuperlookupTab(QWidget):
             )
             menu.addAction(assistant_action)
 
-            # Superlookup — defer with QTimer so menu fully closes first
+            # Superlookup – defer with QTimer so menu fully closes first
             superlookup_action = QAction("🔍 SuperLookup", menu)
             superlookup_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: self._launch_superlookup_external(text))
@@ -57714,7 +57714,7 @@ def _setup_diagnostic_log():
 
     Runs at the very start of main() so all startup output is captured.
     Critical for silent launches (pythonw / Windows GUI subsystem) where
-    stdout/stderr would otherwise go to a null device — users have no
+    stdout/stderr would otherwise go to a null device – users have no
     console to copy from, but they can point us at a file.
 
     Path: <user_data_path>/workbench/logs/supervertaler.log
@@ -57744,7 +57744,7 @@ def _setup_diagnostic_log():
                     prev_path.unlink()
                 log_path.rename(prev_path)
         except Exception:
-            pass  # Non-fatal — keep going with append mode
+            pass  # Non-fatal – keep going with append mode
 
         # Open in line-buffered append mode so a hard crash still leaves a
         # usable log on disk (nothing stuck in a Python-side buffer).
@@ -57830,10 +57830,10 @@ def _install_log_hooks():
     Without this, four sources of debug info disappear under pythonw /
     the built .exe (no console attached):
 
-      * threading.excepthook  — uncaught exceptions in worker threads
-      * Qt message handler    — qWarning / qCritical, layout warnings, GL errors
-      * stdlib logging        — modules/* use ``logging.getLogger(__name__)``
-      * Python warnings       — DeprecationWarning, ResourceWarning, ...
+      * threading.excepthook  – uncaught exceptions in worker threads
+      * Qt message handler    – qWarning / qCritical, layout warnings, GL errors
+      * stdlib logging        – modules/* use ``logging.getLogger(__name__)``
+      * Python warnings       – DeprecationWarning, ResourceWarning, ...
 
     Everything they emit is written via ``print`` / ``sys.stderr``, which
     _setup_diagnostic_log has already teed to supervertaler.log. So after
@@ -57845,7 +57845,7 @@ def _install_log_hooks():
     import traceback
 
     # 1. Thread exception hook (Python 3.8+). Without it, a crashing
-    #    worker thread vanishes silently — only the main thread is
+    #    worker thread vanishes silently – only the main thread is
     #    covered by sys.excepthook.
     def _thread_excepthook(args):
         if args.exc_type is SystemExit:
@@ -57864,7 +57864,7 @@ def _install_log_hooks():
     except Exception:
         pass
 
-    # 2. Qt message handler — surface qWarning / qCritical / layout
+    # 2. Qt message handler – surface qWarning / qCritical / layout
     #    warnings that Qt would otherwise print to a console we don't have.
     try:
         from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
@@ -57912,7 +57912,7 @@ def _install_log_hooks():
 
 def main():
     """Application entry point"""
-    # Redirect stdout/stderr to a rolling log file FIRST — so even crashes
+    # Redirect stdout/stderr to a rolling log file FIRST – so even crashes
     # during QApplication import or QWebEngine init get captured.
     _setup_diagnostic_log()
     # Then route Qt / threads / stdlib-logging / warnings into the same tee.
@@ -58021,7 +58021,7 @@ def main():
 
     # Suppress dotted focus rectangles app-wide. Native styles (notably the
     # Windows Vista style) draw PE_FrameFocusRect at the QStyle level, which
-    # bypasses CSS — `outline: none` does nothing against it. A QProxyStyle
+    # bypasses CSS – `outline: none` does nothing against it. A QProxyStyle
     # that intercepts that single primitive removes the rectangle from every
     # tab, button, list item, and tree item without touching individual
     # widgets.
@@ -58064,7 +58064,7 @@ def main():
     window = SupervertalerQt()
 
     # Decide visibility BEFORE creating the tray icon, so the main window
-    # is fully realised on screen first — some Windows configs render a
+    # is fully realised on screen first – some Windows configs render a
     # cold-started QMainWindow incorrectly when a tray icon is installed
     # ahead of the first show().
     ui_prefs = window._load_settings_section("ui")

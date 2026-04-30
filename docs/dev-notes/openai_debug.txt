@@ -1042,7 +1042,7 @@ Response has 1 choices
 Choice[0] finish_reason: stop
 Choice[0] message.role: assistant
 Choice[0] message.content type: <class 'str'>
-Choice[0] message.content value: 'It’s a Dutch introductory course document about learning basic Python programming. It highlights why Python is popular—free, beginner-friendly, cross‑platform, with reusable code (inheritance) and a 
+Choice[0] message.content value: 'It’s a Dutch introductory course document about learning basic Python programming. It highlights why Python is popular–free, beginner-friendly, cross‑platform, with reusable code (inheritance) and a 
 Choice[0] message.refusal: None
 
 ============================================================
@@ -1906,7 +1906,7 @@ Response has 1 choices
 Choice[0] finish_reason: stop
 Choice[0] message.role: assistant
 Choice[0] message.content type: <class 'str'>
-Choice[0] message.content value: 'I don’t have direct access to embedded drawings or figures in the source .docx here—only the segmented text. If there are figure callouts and descriptions in the text, I’ll capture those and infer th
+Choice[0] message.content value: 'I don’t have direct access to embedded drawings or figures in the source .docx here–only the segmented text. If there are figure callouts and descriptions in the text, I’ll capture those and infer th
 Choice[0] message.refusal: None
 
 ============================================================
@@ -1922,7 +1922,7 @@ Response has 1 choices
 Choice[0] finish_reason: stop
 Choice[0] message.role: assistant
 Choice[0] message.content type: <class 'str'>
-Choice[0] message.content value: 'Yes—within this chat window I can see and use our earlier messages to keep context and consistency. If the thread gets very long, older parts can drop out due to context limits. Across new chats or d
+Choice[0] message.content value: 'Yes–within this chat window I can see and use our earlier messages to keep context and consistency. If the thread gets very long, older parts can drop out due to context limits. Across new chats or d
 Choice[0] message.refusal: None
 
 ============================================================
@@ -2242,7 +2242,7 @@ Response has 1 choices
 Choice[0] finish_reason: stop
 Choice[0] message.role: assistant
 Choice[0] message.content type: <class 'str'>
-Choice[0] message.content value: '<li>The use cases are endless—think of scripts, games, apps, data analyses, and websites.</li>'
+Choice[0] message.content value: '<li>The use cases are endless–think of scripts, games, apps, data analyses, and websites.</li>'
 Choice[0] message.refusal: None
 
 ============================================================
@@ -16628,7 +16628,7 @@ Response has 1 choices
 Choice[0] finish_reason: stop
 Choice[0] message.role: assistant
 Choice[0] message.content type: <class 'str'>
-Choice[0] message.content value: 'ACTION:create_prompt PARAMS:{"name":"NL→EN Legal Prompt — CREAGEN Notarial Deed (597 seg)","content":"# ROLE & EXPERTISE\\nYou are an expert legal/corporate law translator (Dutch (Belgium) → English 
+Choice[0] message.content value: 'ACTION:create_prompt PARAMS:{"name":"NL→EN Legal Prompt – CREAGEN Notarial Deed (597 seg)","content":"# ROLE & EXPERTISE\\nYou are an expert legal/corporate law translator (Dutch (Belgium) → English 
 Choice[0] message.refusal: None
 
 ============================================================

@@ -183,7 +183,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
                 if stripped:
                     html_lines.append(line + '<br/>')
                 else:
-                    # Empty line = paragraph break — use small spacer instead of full line break
+                    # Empty line = paragraph break – use small spacer instead of full line break
                     html_lines.append('<div style="height: 4px;"></div>')
 
         if in_list:
@@ -480,32 +480,32 @@ DOMAIN_TEMPLATES = {
             'Translate claims exactly, preserving dependency chains (independent/dependent claim relationships)',
             'Maintain patent-specific open-ended language: "comprising" (open-ended, from "omvattende"), never "consisting of" unless source explicitly uses limiting language',
             'Preserve all reference numerals, figure references (Fig. 1, Figure 2A), and part numbers exactly as written',
-            'Never paraphrase, simplify, or improve source text — patents require exact semantic equivalence',
+            'Never paraphrase, simplify, or improve source text – patents require exact semantic equivalence',
             'Preserve formal patent register: "wherein", "thereof", "hereinafter", "person skilled in the art"',
             'Maintain claim numbering, cross-references, and dependency structure without alteration',
             'Use gerund constructions naturally: "An example is replacing..." NOT "An example is the replacing of..."',
             'Preserve all prior art document references verbatim (e.g., US 20130183090, EP 2923344)',
             'Maintain the hierarchical structure: TECHNICAL FIELD > PRIOR ART > SUMMARY > DRAWINGS > DETAILED DESCRIPTION > CLAIMS > ABSTRACT',
-            'When source is long, repetitive, or awkward, reproduce it faithfully — every word in a patent is legally operative',
+            'When source is long, repetitive, or awkward, reproduce it faithfully – every word in a patent is legally operative',
         ],
         'sections': [
             'ROLE (senior patent translator with specific expertise areas)',
             'SCOPE OF APPLICATION (project context: invention type, technology field, patent number if known)',
-            'TRANSLATION MANDATE (NON-NEGOTIABLE) — pure translation only, explicitly forbid improvement, simplification, harmonization, correction, streamlining',
-            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION — never omit repetitive phrases, collapse clauses, shorten lists, simplify enumerations, or "fix" grammar',
-            'CORE EXECUTION PRINCIPLES — with ABSOLUTE REQUIREMENTS (checkmarks) and ABSOLUTE PROHIBITIONS (crosses)',
-            'SUPERVERTALER INPUT HANDLING — translate only provided segment, preserve exact order, do not rely on unseen context',
-            'TRANSLATION STYLE (LOCKED) — mandatory term mappings (omvattende>comprising, waarbij>wherein, met het kenmerk dat>characterized in that, conclusie>claim, stand der techniek>prior art, uitvoeringsvorm>embodiment, bij voorkeur>preferably, inrichting>device, werkwijze>method)',
-            'CLAIM TRANSLATION STYLE — preserve dependency structure, maintain "according to any one of the preceding claims" phrasing, avoid stylistic smoothing',
-            'GERUND STYLE RULE — prefer natural English gerund over "the [verb]ing of" construction',
-            'TERMINOLOGY CONSISTENCY HIERARCHY — (1) Previous correct translations, (2) Project-specific glossary, (3) General mandatory mappings',
-            'TECHNICAL AND MECHANICAL FORMATTING RULES — dimensions, figure refs, prior art numbers, sensor designations, standard abbreviations',
-            'PREFLIGHT SELF-CHECK (MANDATORY) — verify every word translated, no compression, all values intact, all references intact, no claim restructuring',
-            'POST-TRANSLATION INTEGRITY ASSERTION (MANDATORY) — assert completeness, literalness, structural faithfulness',
-            'PROJECT CONTEXT (for model understanding only — do not output) — comprehensive invention description',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED) — all terms organized by category',
-            'PREVIOUS CORRECT TRANSLATIONS — validated TM pairs as style anchors',
-            'OUTPUT FORMAT — translation only, preserve line breaks, no markdown, no commentary, UTF-8',
+            'TRANSLATION MANDATE (NON-NEGOTIABLE) – pure translation only, explicitly forbid improvement, simplification, harmonization, correction, streamlining',
+            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION – never omit repetitive phrases, collapse clauses, shorten lists, simplify enumerations, or "fix" grammar',
+            'CORE EXECUTION PRINCIPLES – with ABSOLUTE REQUIREMENTS (checkmarks) and ABSOLUTE PROHIBITIONS (crosses)',
+            'SUPERVERTALER INPUT HANDLING – translate only provided segment, preserve exact order, do not rely on unseen context',
+            'TRANSLATION STYLE (LOCKED) – mandatory term mappings (omvattende>comprising, waarbij>wherein, met het kenmerk dat>characterized in that, conclusie>claim, stand der techniek>prior art, uitvoeringsvorm>embodiment, bij voorkeur>preferably, inrichting>device, werkwijze>method)',
+            'CLAIM TRANSLATION STYLE – preserve dependency structure, maintain "according to any one of the preceding claims" phrasing, avoid stylistic smoothing',
+            'GERUND STYLE RULE – prefer natural English gerund over "the [verb]ing of" construction',
+            'TERMINOLOGY CONSISTENCY HIERARCHY – (1) Previous correct translations, (2) Project-specific glossary, (3) General mandatory mappings',
+            'TECHNICAL AND MECHANICAL FORMATTING RULES – dimensions, figure refs, prior art numbers, sensor designations, standard abbreviations',
+            'PREFLIGHT SELF-CHECK (MANDATORY) – verify every word translated, no compression, all values intact, all references intact, no claim restructuring',
+            'POST-TRANSLATION INTEGRITY ASSERTION (MANDATORY) – assert completeness, literalness, structural faithfulness',
+            'PROJECT CONTEXT (for model understanding only – do not output) – comprehensive invention description',
+            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED) – all terms organized by category',
+            'PREVIOUS CORRECT TRANSLATIONS – validated TM pairs as style anchors',
+            'OUTPUT FORMAT – translation only, preserve line breaks, no markdown, no commentary, UTF-8',
         ],
         'special': (
             'Patent translation demands ABSOLUTE fidelity. Every word, repetition, structure, '
@@ -521,7 +521,7 @@ DOMAIN_TEMPLATES = {
             'Deep expertise in civil law and common law systems, notarial acts, and regulatory texts.'
         ),
         'rules': [
-            'Maintain exact legal terminology — never substitute informal equivalents',
+            'Maintain exact legal terminology – never substitute informal equivalents',
             'Preserve legal entity types and abbreviations (BV, NV, GmbH, Ltd, Inc., SA, SARL) without translation',
             'Maintain "Meester" + surname format for Belgian/Dutch notaries',
             'Preserve statutory references, article numbers, and legal citations exactly as written',
@@ -529,22 +529,22 @@ DOMAIN_TEMPLATES = {
             'Preserve all dates, deadlines, and procedural time limits without alteration',
             'Distinguish between common law and civil law terminology as appropriate for the target jurisdiction',
             'Preserve Latin legal terms (bona fide, inter alia, prima facie) unless target convention replaces them',
-            'Never translate proper names of laws, statutes, or regulations — retain original with optional translation in parentheses',
+            'Never translate proper names of laws, statutes, or regulations – retain original with optional translation in parentheses',
             'Maintain contractual numbering, clause references, and article structure exactly',
         ],
         'sections': [
             'ROLE (senior legal translator with jurisdiction expertise)',
             'LEGAL FRAMEWORK (jurisdiction, legal system type, document type)',
-            'TRANSLATION MANDATE (NON-NEGOTIABLE) — faithful legal translation, no interpretation or simplification',
-            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION — every clause, proviso, and exception is legally operative',
-            'CORE EXECUTION PRINCIPLES — absolute requirements and prohibitions',
-            'LEGAL REGISTER REQUIREMENTS — formality, precision, no colloquial language',
-            'LEGAL ENTITY AND TITLE HANDLING — preservation rules for entities, titles, proper names',
-            'STATUTORY REFERENCE PRESERVATION — article numbers, law names, citations',
-            'TERMINOLOGY CONSISTENCY HIERARCHY — (1) Previous correct translations, (2) Project glossary, (3) Domain conventions',
-            'NUMBER, DATE & LOCALISATION RULES — date formats, currency, number formatting',
+            'TRANSLATION MANDATE (NON-NEGOTIABLE) – faithful legal translation, no interpretation or simplification',
+            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION – every clause, proviso, and exception is legally operative',
+            'CORE EXECUTION PRINCIPLES – absolute requirements and prohibitions',
+            'LEGAL REGISTER REQUIREMENTS – formality, precision, no colloquial language',
+            'LEGAL ENTITY AND TITLE HANDLING – preservation rules for entities, titles, proper names',
+            'STATUTORY REFERENCE PRESERVATION – article numbers, law names, citations',
+            'TERMINOLOGY CONSISTENCY HIERARCHY – (1) Previous correct translations, (2) Project glossary, (3) Domain conventions',
+            'NUMBER, DATE & LOCALISATION RULES – date formats, currency, number formatting',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
-            'PROJECT CONTEXT — document type, parties, jurisdiction, subject matter',
+            'PROJECT CONTEXT – document type, parties, jurisdiction, subject matter',
             'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
@@ -574,16 +574,16 @@ DOMAIN_TEMPLATES = {
         'sections': [
             'ROLE (senior medical translator with clinical and regulatory expertise)',
             'CLINICAL CONTEXT (document type, therapeutic area, regulatory framework)',
-            'TRANSLATION MANDATE (NON-NEGOTIABLE) — patient safety paramount, faithful translation',
-            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION — every dosage, warning, and specification is safety-critical',
-            'CORE EXECUTION PRINCIPLES — absolute requirements and prohibitions',
-            'PHARMACOLOGICAL TERM HANDLING — drug names, dosages, routes of administration',
-            'ANATOMICAL NOMENCLATURE RULES — standardized anatomical terminology',
-            'DOSAGE AND MEASUREMENT PRESERVATION — exact reproduction of all numerical medical data',
-            'SAFETY-CRITICAL CONTENT RULES — warnings, contraindications, adverse effects must be complete',
+            'TRANSLATION MANDATE (NON-NEGOTIABLE) – patient safety paramount, faithful translation',
+            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION – every dosage, warning, and specification is safety-critical',
+            'CORE EXECUTION PRINCIPLES – absolute requirements and prohibitions',
+            'PHARMACOLOGICAL TERM HANDLING – drug names, dosages, routes of administration',
+            'ANATOMICAL NOMENCLATURE RULES – standardized anatomical terminology',
+            'DOSAGE AND MEASUREMENT PRESERVATION – exact reproduction of all numerical medical data',
+            'SAFETY-CRITICAL CONTENT RULES – warnings, contraindications, adverse effects must be complete',
             'TERMINOLOGY CONSISTENCY HIERARCHY',
-            'PREFLIGHT SELF-CHECK (SAFETY-FOCUSED) — verify all dosages, warnings, and measurements intact',
-            'PROJECT CONTEXT — document type, therapeutic area, patient population',
+            'PREFLIGHT SELF-CHECK (SAFETY-FOCUSED) – verify all dosages, warnings, and measurements intact',
+            'PROJECT CONTEXT – document type, therapeutic area, patient population',
             'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
@@ -604,23 +604,23 @@ DOMAIN_TEMPLATES = {
             'Preserve all technical specifications, model numbers, and part references exactly',
             'Maintain consistent terminology for UI elements, menu items, and software terms',
             'Preserve code snippets, file paths, command syntax, and API names without translation',
-            'Maintain measurement units as specified — do not convert unless explicitly required',
+            'Maintain measurement units as specified – do not convert unless explicitly required',
             'Preserve camelCase, snake_case, and PascalCase identifiers verbatim',
             'Maintain the distinction between similar technical terms (do not conflate related but distinct concepts)',
         ],
         'sections': [
             'ROLE (senior technical translator with domain expertise)',
             'TECHNICAL DOMAIN (field, technology, product/system)',
-            'TRANSLATION MANDATE (NON-NEGOTIABLE) — precise technical translation, no interpretation',
+            'TRANSLATION MANDATE (NON-NEGOTIABLE) – precise technical translation, no interpretation',
             'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION',
-            'CORE EXECUTION PRINCIPLES — absolute requirements and prohibitions',
-            'TECHNICAL IDENTIFIER HANDLING — product names, API names, code, file paths',
-            'MEASUREMENT AND SPECIFICATION RULES — units, tolerances, dimensions',
-            'UI/SOFTWARE STRING RULES — menu items, button labels, error messages',
+            'CORE EXECUTION PRINCIPLES – absolute requirements and prohibitions',
+            'TECHNICAL IDENTIFIER HANDLING – product names, API names, code, file paths',
+            'MEASUREMENT AND SPECIFICATION RULES – units, tolerances, dimensions',
+            'UI/SOFTWARE STRING RULES – menu items, button labels, error messages',
             'TERMINOLOGY CONSISTENCY HIERARCHY',
             'NUMBER, DATE & LOCALISATION RULES',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
-            'PROJECT CONTEXT — product/system, technical domain, target audience',
+            'PROJECT CONTEXT – product/system, technical domain, target audience',
             'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
@@ -648,15 +648,15 @@ DOMAIN_TEMPLATES = {
         'sections': [
             'ROLE (senior financial translator with regulatory expertise)',
             'FINANCIAL CONTEXT (document type, regulatory framework, jurisdiction)',
-            'TRANSLATION MANDATE (NON-NEGOTIABLE) — faithful financial translation, no interpretation',
-            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION — every figure and disclaimer is regulatory',
-            'CORE EXECUTION PRINCIPLES — absolute requirements and prohibitions',
-            'FINANCIAL DATA PRESERVATION RULES — figures, percentages, calculations',
-            'REGULATORY AND COMPLIANCE LANGUAGE — risk warnings, disclaimers, obligations',
-            'CURRENCY AND NUMBER FORMAT RULES — currency codes, decimal/thousands separators',
+            'TRANSLATION MANDATE (NON-NEGOTIABLE) – faithful financial translation, no interpretation',
+            'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION – every figure and disclaimer is regulatory',
+            'CORE EXECUTION PRINCIPLES – absolute requirements and prohibitions',
+            'FINANCIAL DATA PRESERVATION RULES – figures, percentages, calculations',
+            'REGULATORY AND COMPLIANCE LANGUAGE – risk warnings, disclaimers, obligations',
+            'CURRENCY AND NUMBER FORMAT RULES – currency codes, decimal/thousands separators',
             'TERMINOLOGY CONSISTENCY HIERARCHY',
-            'PREFLIGHT SELF-CHECK (MANDATORY) — verify all figures, calculations, and disclosures',
-            'PROJECT CONTEXT — document type, financial instrument, jurisdiction',
+            'PREFLIGHT SELF-CHECK (MANDATORY) – verify all figures, calculations, and disclosures',
+            'PROJECT CONTEXT – document type, financial instrument, jurisdiction',
             'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
@@ -684,20 +684,20 @@ DOMAIN_TEMPLATES = {
         'sections': [
             'ROLE (senior marketing translator/transcreator)',
             'BRAND CONTEXT (brand, audience, campaign, tone of voice)',
-            'CREATIVE MANDATE — cultural adaptation and persuasive effectiveness prioritized',
+            'CREATIVE MANDATE – cultural adaptation and persuasive effectiveness prioritized',
             'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION',
-            'BRAND VOICE RULES (LOCKED) — tone, personality, register specifications',
-            'CULTURAL ADAPTATION GUIDELINES — when to adapt vs. preserve',
-            'CALL-TO-ACTION AND TAGLINE RULES — effectiveness over literalness',
+            'BRAND VOICE RULES (LOCKED) – tone, personality, register specifications',
+            'CULTURAL ADAPTATION GUIDELINES – when to adapt vs. preserve',
+            'CALL-TO-ACTION AND TAGLINE RULES – effectiveness over literalness',
             'TERMINOLOGY CONSISTENCY HIERARCHY',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
-            'PROJECT CONTEXT — brand, campaign, target audience, key messages',
+            'PROJECT CONTEXT – brand, campaign, target audience, key messages',
             'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
         'special': (
-            'Marketing translation permits creative freedom — prioritize persuasive effectiveness '
+            'Marketing translation permits creative freedom – prioritize persuasive effectiveness '
             'and cultural fit over word-for-word fidelity. However, brand names, product names, '
             'and trademarked terms must never be altered.'
         ),
@@ -718,14 +718,14 @@ DOMAIN_TEMPLATES = {
         'sections': [
             'ROLE (professional translator)',
             'DOCUMENT CONTEXT (type, domain, subject matter)',
-            'TRANSLATION MANDATE (NON-NEGOTIABLE) — faithful translation, no improvement or simplification',
+            'TRANSLATION MANDATE (NON-NEGOTIABLE) – faithful translation, no improvement or simplification',
             'HARD CONSTRAINT: NO HALLUCINATED TRUNCATION',
-            'CORE EXECUTION PRINCIPLES — absolute requirements and prohibitions',
-            'TRANSLATION STYLE RULES — register, tone, formality',
+            'CORE EXECUTION PRINCIPLES – absolute requirements and prohibitions',
+            'TRANSLATION STYLE RULES – register, tone, formality',
             'TERMINOLOGY CONSISTENCY HIERARCHY',
-            'NUMBER, DATE & LOCALISATION RULES — appropriate for language pair',
+            'NUMBER, DATE & LOCALISATION RULES – appropriate for language pair',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
-            'PROJECT CONTEXT — document description and subject matter',
+            'PROJECT CONTEXT – document description and subject matter',
             'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
@@ -933,7 +933,7 @@ class UnifiedPromptManagerQt:
         variables_tab = self._create_placeholders_tab()
         self.sub_tabs.addTab(variables_tab, "📝 Variables")
 
-        # Supervertaler Sidekick — created here but added to the right panel
+        # Supervertaler Sidekick – created here but added to the right panel
         # in Supervertaler.py so it's visible alongside the translation grid.
         self.assistant_tab = self._create_ai_assistant_tab()
 
@@ -950,7 +950,7 @@ class UnifiedPromptManagerQt:
         main_layout.addWidget(self.sub_tabs, 1)  # 1 = stretch
 
     def _on_assistant_shown(self):
-        """Handle AI Assistant becoming visible — update context sidebar"""
+        """Handle AI Assistant becoming visible – update context sidebar"""
         self._update_context_sidebar()
 
     def receive_text_for_assistant(self, text: str, from_external: bool = False):
@@ -1782,7 +1782,7 @@ class UnifiedPromptManagerQt:
 
     def _create_chat_interface(self) -> QWidget:
         """Legacy: returns the grid chat view widget.
-        Kept for backward compatibility — _create_ai_assistant_tab now
+        Kept for backward compatibility – _create_ai_assistant_tab now
         creates the ChatViewWidget directly.
         """
         if self._grid_chat_view:
@@ -2455,7 +2455,7 @@ class UnifiedPromptManagerQt:
                 # Prompt file (.md is preferred format, .svprompt/.txt legacy)
                 rel_path = str(Path(relative_path) / item.name) if relative_path else item.name
                 
-                # Debug logging removed — was flooding terminal/session log
+                # Debug logging removed – was flooding terminal/session log
                 
                 if rel_path in self.library.prompts:
                     prompt_data = self.library.prompts[rel_path]
@@ -3471,15 +3471,15 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
     # ============================================================================
     
     def _init_llm_client(self):
-        """Initialize LLM client — delegates to ChatBackend."""
+        """Initialize LLM client – delegates to ChatBackend."""
         self.chat_backend.init_llm_client()
 
     def _load_conversation_history(self):
-        """Load conversation — handled by ChatBackend on init."""
+        """Load conversation – handled by ChatBackend on init."""
         pass
 
     def _save_conversation_history(self):
-        """Save conversation — handled by ChatBackend."""
+        """Save conversation – handled by ChatBackend."""
         self.chat_backend._save_history()
 
     def _load_persisted_attachments(self):
@@ -3764,7 +3764,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
         all_terms = []
 
         try:
-            # Method 1: AI-inject terms (preferred — respects activation + ai_inject flag)
+            # Method 1: AI-inject terms (preferred – respects activation + ai_inject flag)
             if hasattr(self.parent_app, 'termbase_manager') and self.parent_app.termbase_manager:
                 project_id = None
                 if hasattr(self.parent_app, 'current_project') and self.parent_app.current_project:
@@ -3773,7 +3773,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
                 if ai_terms:
                     all_terms.extend(ai_terms)
 
-            # Method 2: Fallback — iterate active termbases directly
+            # Method 2: Fallback – iterate active termbases directly
             if not all_terms and hasattr(self.parent_app, 'termbase_manager') and self.parent_app.termbase_manager:
                 project_id = None
                 if hasattr(self.parent_app, 'current_project') and self.parent_app.current_project:
@@ -3826,7 +3826,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             result = "\n".join(lines)
 
             if forbidden:
-                result += "\n\n**FORBIDDEN TERMS (DO NOT USE — these translations are explicitly rejected):**\n"
+                result += "\n\n**FORBIDDEN TERMS (DO NOT USE – these translations are explicitly rejected):**\n"
                 for t in forbidden:
                     result += f"- {t.get('source_term', '')} -> {t.get('target_term', '')} [FORBIDDEN]\n"
 
@@ -3901,7 +3901,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             )
             if has_forbidden:
                 terminology_instruction += (
-                    "Include a FORBIDDEN TERMS section — the model must NEVER use these translations.\n"
+                    "Include a FORBIDDEN TERMS section – the model must NEVER use these translations.\n"
                 )
             terminology_instruction += f"\nTERMBASE DATA:\n{terminology_table}"
         else:
@@ -3917,7 +3917,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
         if tm_has_data:
             tm_instruction = (
                 "Include a PREVIOUS CORRECT TRANSLATIONS section with these validated translation pairs from TM.\n"
-                "These serve as style anchors — the model must match the style, register, and terminology "
+                "These serve as style anchors – the model must match the style, register, and terminology "
                 "patterns visible in these validated translations. State that previous correct translations "
                 "have HIGHEST priority in the terminology consistency hierarchy.\n\n"
                 f"TM REFERENCE PAIRS:\n{tm_pairs}"
@@ -3947,7 +3947,7 @@ SEGMENT COUNT: {segment_count}
 IMPORTANT: This is a multi-file project. Your generated prompt MUST include a MULTI-FILE GUIDANCE
 section that lists each file with its detected domain and register, and instructs the translator AI
 to adapt its translation style, terminology choices, and register when moving between files.
-Each file may have a different domain (legal, technical, marketing, etc.) — the prompt must
+Each file may have a different domain (legal, technical, marketing, etc.) – the prompt must
 acknowledge this and provide file-specific guidance.
 """ if file_manifest else ""}=== DOMAIN-SPECIFIC ROLE ===
 {template['role']}
@@ -3983,7 +3983,7 @@ SPECIAL DOMAIN INSTRUCTIONS:
    "You must assume that every element of the source text is deliberate. You are strictly forbidden from:
    omitting repetitive phrases, collapsing coordinated or parallel clauses, shortening component lists,
    simplifying enumerations or method steps, 'fixing' grammar or perceived defects. If uncertain,
-   default to literal surface structure — never interpretation."
+   default to literal surface structure – never interpretation."
 
 3. SUPERVERTALER INPUT HANDLING:
    "Text is supplied in controlled segments by Supervertaler. You must: translate only the provided
@@ -4036,17 +4036,17 @@ Analyze the document content above and write a 3-8 sentence PROJECT CONTEXT sect
 - What the document is about (invention, contract, product, procedure, etc.)
 - The specific technology/domain/subject matter
 - Key components, parties, or concepts involved
-This section is marked "FOR MODEL UNDERSTANDING ONLY — DO NOT OUTPUT" in the final prompt.
+This section is marked "FOR MODEL UNDERSTANDING ONLY – DO NOT OUTPUT" in the final prompt.
 
 === OUTPUT INSTRUCTIONS ===
-1. The prompt content must be ready to use — NO placeholders like [Translation] or [Source Language]
+1. The prompt content must be ready to use – NO placeholders like [Translation] or [Source Language]
 2. Use actual values: {source_lang} and {target_lang}
 3. Include ALL termbase terms in the glossary (do not summarize or sample)
 4. The prompt should be comprehensive (2000-5000 words)
-5. Output the prompt content between the delimiters shown below — NOTHING else
+5. Output the prompt content between the delimiters shown below – NOTHING else
 
 ===PROMPT_START===
-(Your full prompt content here — plain text, no JSON escaping needed)
+(Your full prompt content here – plain text, no JSON escaping needed)
 ===PROMPT_END===
 
 Output ONLY the delimiters and prompt content. No text before ===PROMPT_START=== or after ===PROMPT_END===."""
@@ -4253,7 +4253,7 @@ Output ONLY the delimiters and prompt content. No text before ===PROMPT_START===
                 file_count = len(project.sdlxliff_source_paths)
                 doc_info = f"{project_name}\n{file_count} SDLXLIFF file{'s' if file_count != 1 else ''}"
             else:
-                # Project loaded but no specific file info — show segment count if available
+                # Project loaded but no specific file info – show segment count if available
                 seg_count = len(project.segments) if getattr(project, 'segments', None) else 0
                 if seg_count > 0:
                     doc_info = f"{project_name}\n{seg_count} segments"
@@ -4711,7 +4711,7 @@ IMPORTANT:
                 self._post_prompt_creation_refresh(action_results)
             else:
                 # Last resort: treat the entire response as prompt content
-                self.log_message("[AI Assistant] No delimiters or ACTION blocks found — using full response as prompt")
+                self.log_message("[AI Assistant] No delimiters or ACTION blocks found – using full response as prompt")
                 self._create_prompt_from_content(response.strip())
             return
 
@@ -4801,13 +4801,13 @@ IMPORTANT:
                 self._update_active_prompt_display()
 
     def _reload_chat_display(self):
-        """Reload chat display from history — now handled by ChatViewWidget via signals."""
+        """Reload chat display from history – now handled by ChatViewWidget via signals."""
         # No-op: ChatViewWidget views auto-update via ChatBackend signals.
         # Kept for backward compatibility with callers that still reference it.
         pass
     
     def _clear_chat(self):
-        """Clear chat history — delegates to ChatBackend.
+        """Clear chat history – delegates to ChatBackend.
         ChatViewWidgets handle their own clear confirmation dialogs.
         """
         self.chat_backend.clear_history()
@@ -4815,11 +4815,11 @@ IMPORTANT:
         self._update_context_sidebar()
 
     def _show_chat_context_menu(self, position):
-        """Legacy context menu — now handled by ChatViewWidget internally."""
+        """Legacy context menu – now handled by ChatViewWidget internally."""
         pass
 
     def _copy_message_to_clipboard(self, text: str):
-        """Legacy copy — now handled by ChatViewWidget internally."""
+        """Legacy copy – now handled by ChatViewWidget internally."""
         pass
 
     def _add_chat_message(self, role: str, message: str, save: bool = True):

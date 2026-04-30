@@ -347,7 +347,7 @@ class VoiceCommandManager(QObject):
         """Execute a keystroke command.
 
         On Windows, converts the keystroke string (e.g. ``ctrl+alt+p``) to
-        AHK ``Send`` syntax and runs it via ``_run_ahk_code`` — the same
+        AHK ``Send`` syntax and runs it via ``_run_ahk_code`` – the same
         proven path used by ``ahk_inline`` voice commands.
 
         On other platforms, delegates to ``CrossPlatformKeySender``.

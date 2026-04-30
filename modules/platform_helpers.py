@@ -176,7 +176,7 @@ def activate_window_by_title(title: str) -> bool:
             return True
 
         else:
-            # Linux — try wmctrl, then xdotool
+            # Linux – try wmctrl, then xdotool
             wmctrl = shutil.which('wmctrl')
             if wmctrl:
                 subprocess.run([wmctrl, '-a', title], capture_output=True)
@@ -232,7 +232,7 @@ def activate_foreground_window(handle):
     """Re-activate a window previously captured by ``get_foreground_window()``.
 
     Uses the same AttachThreadInput trick on Windows for reliable activation.
-    Does NOT call ShowWindow(SW_RESTORE) — that would un-maximize a maximized
+    Does NOT call ShowWindow(SW_RESTORE) – that would un-maximize a maximized
     window.  The target window is already visible; we just need to give it focus.
     """
     if handle is None:
@@ -251,7 +251,7 @@ def activate_foreground_window(handle):
             if fg_thread != our_thread:
                 attached = user32.AttachThreadInput(fg_thread, our_thread, True)
 
-            # Only SetForegroundWindow — don't call ShowWindow(SW_RESTORE)
+            # Only SetForegroundWindow – don't call ShowWindow(SW_RESTORE)
             # as that would un-maximize a maximized browser/editor window
             user32.SetForegroundWindow(handle)
 
@@ -290,7 +290,7 @@ def activate_foreground_window(handle):
 # ---------------------------------------------------------------------------
 #
 # On Windows: uses the native RegisterHotKey API (runs its own message pump
-#   in a background thread — works perfectly alongside PyQt6).
+#   in a background thread – works perfectly alongside PyQt6).
 # On macOS/Linux: uses pynput GlobalHotKeys.
 # ---------------------------------------------------------------------------
 
@@ -370,7 +370,7 @@ class GlobalHotkeyManager:
         """Register a global hotkey.
 
         *shortcut* uses the format ``'ctrl+alt+l'``.  The *callback* will
-        be invoked from a **background thread** — callers must dispatch to
+        be invoked from a **background thread** – callers must dispatch to
         the Qt main thread themselves (e.g. via ``QTimer.singleShot``).
         """
         self._hotkeys[shortcut.lower()] = callback
@@ -441,7 +441,7 @@ class GlobalHotkeyManager:
             if not success_flag[0]:
                 return
 
-            # Message loop — blocks until PostThreadMessage(WM_QUIT)
+            # Message loop – blocks until PostThreadMessage(WM_QUIT)
             msg = ctypes.wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == _WM_HOTKEY:
@@ -508,7 +508,7 @@ class GlobalHotkeyManager:
         try:
             from pynput.keyboard import GlobalHotKeys
         except ImportError:
-            print("[GlobalHotkeyManager] pynput not installed — "
+            print("[GlobalHotkeyManager] pynput not installed – "
                   "global hotkeys unavailable")
             return False
 
@@ -524,7 +524,7 @@ class GlobalHotkeyManager:
             self._running = True
             self._backend = 'pynput'
             registered = ', '.join(self._pynput_hotkeys.keys())
-            print(f"[GlobalHotkeyManager] Started (pynput) — hotkeys: {registered}")
+            print(f"[GlobalHotkeyManager] Started (pynput) – hotkeys: {registered}")
             if IS_MACOS:
                 print("[GlobalHotkeyManager] macOS note: global hotkeys require "
                       "Accessibility permission (System Settings → Privacy & Security "
@@ -635,7 +635,7 @@ class CrossPlatformKeySender:
                 print(f"[CrossPlatformKeySender] AHK found: {path}")
                 return cls._ahk_exe
 
-        print("[CrossPlatformKeySender] AHK not found — will use PowerShell fallback")
+        print("[CrossPlatformKeySender] AHK not found – will use PowerShell fallback")
         return None
 
     # -- Public API ----------------------------------------------------------
@@ -664,7 +664,7 @@ class CrossPlatformKeySender:
         """Send Cmd+C via osascript (macOS native automation).
 
         Uses AppleScript ``System Events`` to inject a keystroke into the
-        foreground application — equivalent to AHK on Windows.  Runs as a
+        foreground application – equivalent to AHK on Windows.  Runs as a
         separate process, so it's thread-safe.
         """
         try:
@@ -684,8 +684,8 @@ class CrossPlatformKeySender:
         """Send Ctrl+C to the foreground app on Windows.
 
         Strategy:
-        1. AHK inline script  — ``Send ^c``  (works perfectly, proven)
-        2. PowerShell SendKeys — ``[System.Windows.Forms.SendKeys]::SendWait('^c')``
+        1. AHK inline script  – ``Send ^c``  (works perfectly, proven)
+        2. PowerShell SendKeys – ``[System.Windows.Forms.SendKeys]::SendWait('^c')``
         """
         ahk = cls._find_ahk()
         if ahk:
@@ -976,7 +976,7 @@ class CrossPlatformKeySender:
             action = f'key code (ASCII number of "{key}")'
             # For special keys, use 'keystroke' with the key name isn't ideal;
             # AppleScript uses 'keystroke' for characters. For special keys we
-            # still use keystroke with the key name — AppleScript handles most.
+            # still use keystroke with the key name – AppleScript handles most.
         using = ''
         if mods:
             using = ' using {' + ', '.join(mods) + '}'
@@ -1015,7 +1015,7 @@ class CrossPlatformKeySender:
             except Exception as e:
                 print(f"[CrossPlatformKeySender] AHK keystroke failed: {e}")
 
-        # Fallback: PowerShell SendKeys (limited — no Alt support)
+        # Fallback: PowerShell SendKeys (limited – no Alt support)
         ps_keys = self._keystroke_to_powershell_sendkeys(keystroke)
         if ps_keys:
             try:
@@ -1079,7 +1079,7 @@ class CrossPlatformKeySender:
         """Type ``text`` into the foreground window character-by-character.
 
         Unlike clipboard+paste, this works in apps that don't bind Ctrl+V the
-        standard way — Windows Terminal, cmd, PowerShell, VSCode terminals,
+        standard way – Windows Terminal, cmd, PowerShell, VSCode terminals,
         some Java apps, and any other app that accepts keyboard input but
         not the system paste shortcut. The trade-off is speed: typing is
         per-character, so very long passages take noticeably longer than a

@@ -5,13 +5,13 @@
 ## What's New (v1.9.272)
 
 ### Bug Fixes
-- **Fixed Trados return package with missing `<target>` elements** — Trados Studio 2024 creates SDLXLIFF files where untranslated segments have no `<target>` element at all. The export engine now creates `<target>` by cloning the `<seg-source>` structure with translations inserted. Also handles targets without `<mrk>` tags. Resolves [#161](https://github.com/Supervertaler/Supervertaler-Workbench/issues/161).
-- **Fixed XML entity escaping in SDLXLIFF export** — Source text containing `&`, `<`, or `>` characters was written unescaped, causing Trados Studio to reject the return package. Now properly escaped in XML output.
-- **`conf="Translated"` attribute now added when missing** — Ensures Trados Studio recognizes segments as translated even when the original SDLXLIFF had no `conf` attribute.
-- **Grid-to-segment sync now reverses invisible characters** — Display characters (middle dots, arrows) are converted back to actual whitespace before export. Stripped outer wrapping tags are also restored.
+- **Fixed Trados return package with missing `<target>` elements** – Trados Studio 2024 creates SDLXLIFF files where untranslated segments have no `<target>` element at all. The export engine now creates `<target>` by cloning the `<seg-source>` structure with translations inserted. Also handles targets without `<mrk>` tags. Resolves [#161](https://github.com/Supervertaler/Supervertaler-Workbench/issues/161).
+- **Fixed XML entity escaping in SDLXLIFF export** – Source text containing `&`, `<`, or `>` characters was written unescaped, causing Trados Studio to reject the return package. Now properly escaped in XML output.
+- **`conf="Translated"` attribute now added when missing** – Ensures Trados Studio recognizes segments as translated even when the original SDLXLIFF had no `conf` attribute.
+- **Grid-to-segment sync now reverses invisible characters** – Display characters (middle dots, arrows) are converted back to actual whitespace before export. Stripped outer wrapping tags are also restored.
 
 ### Improvements
-- **Enhanced Trados export diagnostics** — The export pipeline now logs segment counts, translation counts, and warns when file content is unchanged after replacement.
+- **Enhanced Trados export diagnostics** – The export pipeline now logs segment counts, translation counts, and warns when file content is unchanged after replacement.
 
 ## Downloads
 

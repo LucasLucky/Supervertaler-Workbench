@@ -38,7 +38,7 @@ Expected fixes:
 --------------
 After repair, these should become:
 - En dash: –
-- Em dash: —
+- Em dash: –
 - Quotes: "quoted text"
 - Ellipsis: …
 - Bullet: •

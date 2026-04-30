@@ -66,12 +66,12 @@ RECOMMENDED_MODELS = {
     },
     "translategemma:12b": {
         "name": "TranslateGemma 12B",
-        "description": "Best translation model for size — beats larger general models",
+        "description": "Best translation model for size – beats larger general models",
         "size_gb": 8.1,
         "ram_required_gb": 12,
         "quality_stars": 5,
         "strengths": ["Top translation quality", "55 languages incl. Dutch", "Beats Gemma 3 27B on translation"],
-        "use_case": "Professional translation — best quality/size ratio",
+        "use_case": "Professional translation – best quality/size ratio",
         "download_size": "8.1 GB",
         "recommended": True
     },
@@ -85,7 +85,7 @@ RECOMMENDED_MODELS = {
         "use_case": "Maximum translation quality (needs 24 GB+ VRAM/RAM)",
         "download_size": "17 GB"
     },
-    # === GENERAL-PURPOSE — SMALL (4-6 GB RAM) ===
+    # === GENERAL-PURPOSE – SMALL (4-6 GB RAM) ===
     "qwen3:4b": {
         "name": "Qwen 3 4B",
         "description": "Fast & lightweight general-purpose (100+ languages)",
@@ -96,10 +96,10 @@ RECOMMENDED_MODELS = {
         "use_case": "Quick drafts, simple text, low-end hardware",
         "download_size": "2.5 GB"
     },
-    # === GENERAL-PURPOSE — MEDIUM (8-12 GB RAM) ===
+    # === GENERAL-PURPOSE – MEDIUM (8-12 GB RAM) ===
     "qwen3:8b": {
         "name": "Qwen 3 8B",
-        "description": "Excellent general-purpose — strong multilingual",
+        "description": "Excellent general-purpose – strong multilingual",
         "size_gb": 5.2,
         "ram_required_gb": 8,
         "quality_stars": 4,
@@ -109,7 +109,7 @@ RECOMMENDED_MODELS = {
     },
     "gemma3:12b": {
         "name": "Gemma 3 12B",
-        "description": "Google's general-purpose — 140+ languages, multimodal",
+        "description": "Google's general-purpose – 140+ languages, multimodal",
         "size_gb": 8.1,
         "ram_required_gb": 12,
         "quality_stars": 5,
@@ -117,10 +117,10 @@ RECOMMENDED_MODELS = {
         "use_case": "Quality-focused translation, technical content",
         "download_size": "8.1 GB"
     },
-    # === GENERAL-PURPOSE — LARGE (16+ GB RAM) ===
+    # === GENERAL-PURPOSE – LARGE (16+ GB RAM) ===
     "qwen3:14b": {
         "name": "Qwen 3 14B",
-        "description": "Premium quality — excellent for complex text",
+        "description": "Premium quality – excellent for complex text",
         "size_gb": 9.3,
         "ram_required_gb": 16,
         "quality_stars": 5,
@@ -130,7 +130,7 @@ RECOMMENDED_MODELS = {
     },
     "qwen3:32b": {
         "name": "Qwen 3 32B",
-        "description": "Flagship general-purpose — near cloud-level quality",
+        "description": "Flagship general-purpose – near cloud-level quality",
         "size_gb": 20.0,
         "ram_required_gb": 32,
         "quality_stars": 5,
@@ -141,7 +141,7 @@ RECOMMENDED_MODELS = {
     # === DUTCH/MULTILINGUAL SPECIALIST ===
     "aya-expanse:8b": {
         "name": "Aya Expanse 8B",
-        "description": "Cohere's multilingual model — excellent for Dutch",
+        "description": "Cohere's multilingual model – excellent for Dutch",
         "size_gb": 5.1,
         "ram_required_gb": 8,
         "quality_stars": 5,
@@ -229,7 +229,7 @@ def check_ollama_status(endpoint: str = None) -> Dict:
                 root_resp = requests.get(endpoint, timeout=3)
                 if root_resp.status_code == 200 and 'ollama' in root_resp.text.lower():
                     error_msg = (f"Ollama is reachable but /api/tags returned {response.status_code}. "
-                                 f"Check your Ollama endpoint — it should be just the base URL "
+                                 f"Check your Ollama endpoint – it should be just the base URL "
                                  f"(e.g. http://localhost:11434), not including /api or /v1.")
             except:
                 pass

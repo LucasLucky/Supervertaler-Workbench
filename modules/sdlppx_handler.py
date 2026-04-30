@@ -492,10 +492,10 @@ def _markers_to_xml(text: str) -> str:
     escaped_parts = []
     for part in parts:
         if re.match(tag_pattern, part):
-            # This is a marker tag — keep as-is
+            # This is a marker tag – keep as-is
             escaped_parts.append(part)
         else:
-            # This is text content — escape XML entities
+            # This is text content – escape XML entities
             part = part.replace('&', '&amp;')
             part = part.replace('<', '&lt;')
             part = part.replace('>', '&gt;')
@@ -645,10 +645,10 @@ def _replace_target_content(content: str, xliff_file: SDLXLIFFFile,
     replace <mrk mtype="seg" mid="N"> content within it.
 
     Handles several Trados SDLXLIFF structures:
-    1. Standard: <target> has <mrk mtype="seg" mid="N"> — replace content
-    2. Empty target: <target> exists but has no <mrk> tags — rebuild from seg-source
-    3. Missing target: no <target> element — create one from seg-source structure
-    4. Unsegmented: no mrk tags at all — use tu_id as segment_id
+    1. Standard: <target> has <mrk mtype="seg" mid="N"> – replace content
+    2. Empty target: <target> exists but has no <mrk> tags – rebuild from seg-source
+    3. Missing target: no <target> element – create one from seg-source structure
+    4. Unsegmented: no mrk tags at all – use tu_id as segment_id
 
     Also handles lock TU xid remapping: when building new target content from
     seg-source for partial-lock segments, lock element xids are remapped to
@@ -760,7 +760,7 @@ def _replace_target_content(content: str, xliff_file: SDLXLIFFFile,
         target_m = re.search(r'(<target[^>]*>)(.*?)(</target>)', tu_block, re.DOTALL)
 
         if not target_m:
-            # No <target> element — create one by cloning seg-source structure
+            # No <target> element – create one by cloning seg-source structure
             result = _build_target_from_seg_source(
                 tu_block, tu_id, segment_map, locked_id_counter)
             if result is None:
@@ -822,7 +822,7 @@ def _replace_target_content(content: str, xliff_file: SDLXLIFFFile,
                         )
                 elif re.search(r'<x\s+id="locked\d+"', new_content):
                     # Target mrk was empty but translated text has lock
-                    # markers — restore xids from seg-source and remap.
+                    # markers – restore xids from seg-source and remap.
                     seg_xids = _get_seg_source_lock_xids(tu_block, mid)
                     if seg_xids:
                         new_content = _restore_and_remap_lock_xids(
@@ -897,7 +897,7 @@ def _replace_target_content(content: str, xliff_file: SDLXLIFFFile,
         )
 
         if replaced_count == 0:
-            # No mrk replacements happened — either:
+            # No mrk replacements happened – either:
             # a) target has no <mrk mtype="seg"> tags at all, or
             # b) segment_ids didn't match
 
@@ -965,7 +965,7 @@ def _build_target_from_seg_source(tu_block: str, tu_id: str,
     # Extract seg-source inner content
     seg_source_m = re.search(r'<seg-source[^>]*>(.*?)</seg-source>', tu_block, re.DOTALL)
     if not seg_source_m:
-        # No seg-source — try <source> as fallback for unsegmented TUs
+        # No seg-source – try <source> as fallback for unsegmented TUs
         source_m = re.search(r'<source[^>]*>(.*?)</source>', tu_block, re.DOTALL)
         if source_m:
             segment = segment_map.get(tu_id)
@@ -1052,7 +1052,7 @@ def _replace_seg_attributes(content: str, xliff_file: SDLXLIFFFile,
         }
         new_conf = _status_to_conf.get(matching_segment.status)
         if new_conf:
-            # Update conf — replace existing or add if missing
+            # Update conf – replace existing or add if missing
             # (applies to ALL translated segments, including TM matches)
             if 'conf="' in seg_text:
                 seg_text = re.sub(r'conf="[^"]*"', f'conf="{new_conf}"', seg_text)
@@ -1062,7 +1062,7 @@ def _replace_seg_attributes(content: str, xliff_file: SDLXLIFFFile,
             # Only update origin/percent/text-match for segments the user
             # translated in this session. Leave TM-matched segments untouched.
             if matching_segment.modified:
-                # Update origin to interactive — replace existing or add if missing
+                # Update origin to interactive – replace existing or add if missing
                 if 'origin="' in seg_text:
                     seg_text = re.sub(r'origin="[^"]*"', 'origin="interactive"', seg_text)
                 else:
@@ -1147,7 +1147,7 @@ def _insert_comment_defs(content: str, seg_to_cmt: Dict[str, Tuple[str, str]],
     if '<cmt-defs>' in content:
         content = content.replace('</cmt-defs>', cmt_defs_block + '</cmt-defs>')
     elif re.search(r'xmlns="http://sdl\.com/FileTypes/SdlXliff/1\.0"', content):
-        # Has doc-info with SDL namespace — insert <cmt-defs> before </doc-info>
+        # Has doc-info with SDL namespace – insert <cmt-defs> before </doc-info>
         # The doc-info element uses SDL namespace as default, so children are unprefixed
         content = re.sub(
             r'(</doc-info>)',
@@ -1231,7 +1231,7 @@ def _wrap_targets_with_comments(content: str, seg_to_cmt: Dict[str, Tuple[str, s
                 target_inner = re.sub(mrk_pattern, _wrap_mrk, target_inner,
                                       flags=re.DOTALL, count=1)
             else:
-                # Unsegmented TU — wrap entire target content
+                # Unsegmented TU – wrap entire target content
                 wrapped_count += 1
                 target_inner = (f'<mrk mtype="x-sdl-comment" sdl:cid="{cmt_id}">' +
                                 target_inner + '</mrk>')
@@ -1290,7 +1290,7 @@ def _save_sdlxliff_file(xliff_file: SDLXLIFFFile, output_path: str,
 
         content = raw_bytes.decode('utf-8')
 
-        # Strip existing comment markers FIRST — nested <mrk mtype="x-sdl-comment">
+        # Strip existing comment markers FIRST – nested <mrk mtype="x-sdl-comment">
         # inside <mrk mtype="seg"> would break the lazy regex in _replace_target_content
         content = _strip_comment_markers(content)
 
@@ -1731,7 +1731,7 @@ class TradosPackageHandler:
 
             content = raw_bytes.decode('utf-8')
 
-            # Strip existing comment markers FIRST — nested <mrk mtype="x-sdl-comment">
+            # Strip existing comment markers FIRST – nested <mrk mtype="x-sdl-comment">
             # inside <mrk mtype="seg"> would break the lazy regex in _replace_target_content
             content = _strip_comment_markers(content)
 
@@ -1983,7 +1983,7 @@ class TradosPackageHandler:
                 x_elem.set('id', tag_id)
                 continue
 
-            # Plain text — append to the current element
+            # Plain text – append to the current element
             current_elem = stack[-1][0]
             children = list(current_elem)
             if children:

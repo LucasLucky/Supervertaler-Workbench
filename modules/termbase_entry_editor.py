@@ -331,7 +331,7 @@ class TermbaseEntryEditor(QDialog):
         self.forbidden_check.setStyleSheet("font-weight: bold; color: #d32f2f;")
         metadata_layout.addWidget(self.forbidden_check)
 
-        # Non-translatable checkbox — when ticked, the target field is
+        # Non-translatable checkbox – when ticked, the target field is
         # auto-synced to the source so the term copies through unchanged
         # at translation time. Highlighted in pastel yellow in TermLens
         # to match the convention used by the Trados plugin.
@@ -518,7 +518,7 @@ class TermbaseEntryEditor(QDialog):
     def _on_nontranslatable_toggled(self, checked: bool):
         """When NT is turned on, mirror source into target so the entry
         renders as a copy-through. Untoggling leaves whatever the user
-        last typed in the target field — they can edit it freely again.
+        last typed in the target field – they can edit it freely again.
         """
         if checked:
             source_text = self.source_edit.text().strip() if hasattr(self, 'source_edit') else ''

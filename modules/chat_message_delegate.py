@@ -244,7 +244,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
 
         bubble_y = label_y + self.label_height
 
-        # Draw bubble — light blue (Trados style)
+        # Draw bubble – light blue (Trados style)
         bubble_rect = QRectF(bubble_x, bubble_y, bubble_width, bubble_height)
         path = QPainterPath()
         path.addRoundedRect(bubble_rect, 10, 10)
@@ -326,7 +326,7 @@ class ChatMessageDelegate(QStyledItemDelegate):
 
         bubble_y = label_y + self.label_height
 
-        # Draw bubble — light grey
+        # Draw bubble – light grey
         bubble_rect = QRectF(bubble_x, bubble_y, bubble_width, bubble_height)
         path = QPainterPath()
         path.addRoundedRect(bubble_rect, 10, 10)

@@ -21,7 +21,7 @@ single "Library" editor later without a data migration.
 
 Default snippets are defined in `DEFAULT_SNIPPETS` and written to disk on
 first launch if missing. Users can edit, delete, or add their own .md files
-freely — defaults are re-seeded only when absent, never overwriting edits.
+freely – defaults are re-seeded only when absent, never overwriting edits.
 
 Author: Michael Beijer (Claude-assisted)
 =============================================================================
@@ -166,11 +166,11 @@ DEFAULT_SNIPPETS: List[Dict] = [
     # -- Special Characters --
     #
     # Each entry has three fields:
-    #   `filename` — the on-disk .md file stem (ASCII-safe, stable across OSes)
-    #   `name`     — the display label shown in the Sidekick menu (free to use
+    #   `filename` – the on-disk .md file stem (ASCII-safe, stable across OSes)
+    #   `name`     – the display label shown in the Sidekick menu (free to use
     #                unicode glyphs so you can see at a glance what you're
     #                about to insert)
-    #   `body`     — the actual text inserted at the cursor on click
+    #   `body`     – the actual text inserted at the cursor on click
     #
     # Users can edit any of these freely in the generated .md files; we never
     # overwrite once a file exists. If you want the old plain-word labels

@@ -318,7 +318,7 @@ class KeyboardShortcutsWidget(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(10)
 
-        # Export/Import buttons — stack vertically in the narrower column
+        # Export/Import buttons – stack vertically in the narrower column
         # so they don't get clipped, with the green "Export Cheatsheet"
         # button up top since it's the action people actually reach for.
         io_group = QGroupBox("Import/Export")
@@ -460,7 +460,7 @@ class KeyboardShortcutsWidget(QWidget):
         hotkey_group.setLayout(hotkey_layout)
         right_layout.addWidget(hotkey_group)
 
-        # Push everything in the right column to the top — extra vertical
+        # Push everything in the right column to the top – extra vertical
         # space goes to the splitter handle area, not into stretched groups.
         right_layout.addStretch(1)
 

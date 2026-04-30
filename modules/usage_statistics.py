@@ -13,7 +13,7 @@ on app startup. The payload contains only:
   - Product identifier ("workbench")
 
 No personal data, no translation content, no termbase info, no tracking.
-Silent failure — if the ping fails, nothing happens.
+Silent failure – if the ping fails, nothing happens.
 """
 
 import json
@@ -36,7 +36,7 @@ TIMEOUT_SECONDS = 10
 def send_ping(settings_path: Path, app_version: str) -> None:
     """
     Send the anonymous usage ping if the user has opted in.
-    Runs in a background thread — never blocks the UI.
+    Runs in a background thread – never blocks the UI.
     Call this once during app startup.
     """
     thread = threading.Thread(
@@ -49,7 +49,7 @@ def send_ping(settings_path: Path, app_version: str) -> None:
 
 
 def _send_ping_background(settings_path: Path, app_version: str) -> None:
-    """Background worker — sends the ping. All exceptions swallowed silently."""
+    """Background worker – sends the ping. All exceptions swallowed silently."""
     try:
         settings = _load_settings(settings_path)
 
@@ -92,7 +92,7 @@ def _send_ping_background(settings_path: Path, app_version: str) -> None:
         urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS)
 
     except Exception:
-        # Silent failure — no retries, no queuing, no error messages
+        # Silent failure – no retries, no queuing, no error messages
         pass
 
 
@@ -144,7 +144,7 @@ def show_opt_in_dialog(parent=None) -> bool:
     msg.setInformativeText(
         "Would you like to share anonymous usage statistics to help "
         "improve the app?\n\n"
-        "Only the following is sent — once per session, on startup:\n"
+        "Only the following is sent – once per session, on startup:\n"
         "  •  App version\n"
         "  •  OS and Python version\n"
         "  •  System locale\n\n"

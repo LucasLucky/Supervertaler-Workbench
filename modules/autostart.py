@@ -50,7 +50,7 @@ def get_launch_command() -> Tuple[str, List[str]]:
     else:
         gui_py = py
 
-    # Resolve Supervertaler.py — this module lives in modules/, so go one up.
+    # Resolve Supervertaler.py – this module lives in modules/, so go one up.
     script = (Path(__file__).resolve().parent.parent / "Supervertaler.py").resolve()
     return str(gui_py), [str(script)]
 

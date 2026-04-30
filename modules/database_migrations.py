@@ -399,11 +399,11 @@ def create_clipboard_history_table(db_manager) -> bool:
 
     Schema:
     - id         INTEGER PRIMARY KEY AUTOINCREMENT
-    - text       TEXT                     — display text or label (e.g. "Image 1920×1080")
-    - copied_at  TEXT DEFAULT datetime()  — ISO-8601 timestamp
-    - pasted     INTEGER DEFAULT 0        — 1 once the item has been pasted
-    - kind       TEXT DEFAULT 'text'      — 'text' or 'image'
-    - image_data BLOB                     — PNG bytes for image clips, NULL for text
+    - text       TEXT                     – display text or label (e.g. "Image 1920×1080")
+    - copied_at  TEXT DEFAULT datetime()  – ISO-8601 timestamp
+    - pasted     INTEGER DEFAULT 0        – 1 once the item has been pasted
+    - kind       TEXT DEFAULT 'text'      – 'text' or 'image'
+    - image_data BLOB                     – PNG bytes for image clips, NULL for text
 
     Args:
         db_manager: DatabaseManager instance
@@ -440,7 +440,7 @@ def create_clipboard_history_table(db_manager) -> bool:
             print("✅ clipboard_history table created successfully")
             return True
 
-        # Existing table — add new columns if missing
+        # Existing table – add new columns if missing
         cursor.execute("PRAGMA table_info(clipboard_history)")
         columns = {row[1] for row in cursor.fetchall()}
         added = []

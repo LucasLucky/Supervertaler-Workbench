@@ -25,7 +25,7 @@ class EncodingRepair:
     CORRUPTION_PATTERNS = {
         # En dash, em dash, hyphen variants (as literal strings, not Unicode escapes)
         '\\u00e2\\u20ac\\u201c': '–',  # en dash
-        '\\u00e2\\u20ac\\u201d': '—',  # em dash
+        '\\u00e2\\u20ac\\u201d': '–',  # em dash
         '\\u00e2\\u20ac\\u0090': '-',  # non-breaking hyphen (3-char sequence)
         
         # Standalone Unicode escape sequences (single occurrence)

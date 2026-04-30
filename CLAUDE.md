@@ -1,4 +1,4 @@
-# Supervertaler — Claude Code Reference
+# Supervertaler – Claude Code Reference
 
 > Concise project reference for AI-assisted development. Check `CHANGELOG.md` for latest version and recent work.
 
@@ -18,23 +18,23 @@ Supervertaler is a desktop CAT (Computer-Assisted Translation) tool built with P
 | Website (Workbench page) | `docs/workbench/index.html` |
 | Website (Trados page) | `docs/trados/index.html` |
 | Website CSS | `docs/styles.css` |
-| Help — Desktop (GitBook) | `docs/help/supervertaler/` |
-| Help — Trados (GitBook) | Moved to `Supervertaler-for-Trados` repo `docs/` |
-| Help — Desktop (old, git-synced) | `docs/superdocs/` |
+| Help – Desktop (GitBook) | `docs/help/supervertaler/` |
+| Help – Trados (GitBook) | Moved to `Supervertaler-for-Trados` repo `docs/` |
+| Help – Desktop (old, git-synced) | `docs/superdocs/` |
 | Tests | `tests/` |
 | Settings | `settings/settings.json` |
 | Dependencies | `requirements.txt` |
 
 ### Important modules
 
-- `modules/termlens_widget.py` — TermLens inline terminology display (`TermLensWidget`)
-- `modules/llm_clients.py` — LLM provider abstraction
-- `modules/termbase_manager.py` — glossary/termbase CRUD
-- `modules/database_manager.py` — SQLite database layer
-- `modules/translation_results_panel.py` — match panel UI
-- `modules/shortcut_manager.py` — keyboard shortcut system
-- `modules/simple_segmenter.py` — sentence segmentation (`SimpleSegmenter`, `MarkdownSegmenter`)
-- `modules/platform_helpers.py` — cross-platform utilities (Windows/macOS/Linux)
+- `modules/termlens_widget.py` – TermLens inline terminology display (`TermLensWidget`)
+- `modules/llm_clients.py` – LLM provider abstraction
+- `modules/termbase_manager.py` – glossary/termbase CRUD
+- `modules/database_manager.py` – SQLite database layer
+- `modules/translation_results_panel.py` – match panel UI
+- `modules/shortcut_manager.py` – keyboard shortcut system
+- `modules/simple_segmenter.py` – sentence segmentation (`SimpleSegmenter`, `MarkdownSegmenter`)
+- `modules/platform_helpers.py` – cross-platform utilities (Windows/macOS/Linux)
 
 ## Settings Architecture
 
@@ -46,7 +46,7 @@ Legacy settings files are auto-migrated at startup and renamed to `.migrated`.
 
 ## Pitfalls
 
-1. `Supervertaler.py` is very large — always read/edit by line range, never full-file.
+1. `Supervertaler.py` is very large – always read/edit by line range, never full-file.
 2. Qt table access: use `cellWidget()` for editors, `item()` for plain items.
 3. Block signals during programmatic text updates to avoid cascades.
 4. Style issues can be timing-related (hidden widgets, deferred visibility).

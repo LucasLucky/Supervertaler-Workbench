@@ -122,7 +122,7 @@ class MarkdownSegmenter(SimpleSegmenter):
     # Patterns ordered from most specific to least specific to avoid
     # partial matches.  Each pattern is compiled once at class level.
     _MD_PATTERNS = [
-        # Fenced code blocks (``` ... ```) — should not appear mid-line but
+        # Fenced code blocks (``` ... ```) – should not appear mid-line but
         # protect just in case (non-greedy across backticks)
         re.compile(r'```.*?```', re.DOTALL),
         # Inline code spans with double backticks (`` ... ``)
@@ -137,7 +137,7 @@ class MarkdownSegmenter(SimpleSegmenter):
         re.compile(r'!?\[[^\]]*\]\[[^\]]*\]'),
         # Autolinks: <https://...> or <user@example.com>
         re.compile(r'<(?:https?://[^>]+|[^>]+@[^>]+)>'),
-        # Bare URLs (http/https) — common in markdown even without angle brackets
+        # Bare URLs (http/https) – common in markdown even without angle brackets
         re.compile(r'https?://\S+'),
         # HTML tags: <tag attr="val"> or </tag> or <br/> etc.
         re.compile(r'</?[a-zA-Z][a-zA-Z0-9]*(?:\s+[^>]*)?>'),

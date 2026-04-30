@@ -469,7 +469,7 @@ class DatabaseManager:
         # ============================================
         # The standalone non_translatables table was removed in v1.9.393.
         # NTs are now flagged on individual termbase entries via the
-        # is_nontranslatable column on termbase_terms — same convention as
+        # is_nontranslatable column on termbase_terms – same convention as
         # the Trados plugin uses, so the two products share storage.
         # Existing databases that still have the legacy table are left
         # untouched (it's just an unused table sitting on disk).

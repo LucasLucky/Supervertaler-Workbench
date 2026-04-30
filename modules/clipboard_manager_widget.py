@@ -139,7 +139,7 @@ class ClipboardManagerWidget(QWidget):
 
         self._text_list = self._make_list_widget()
         self._text_empty = self._make_empty_label(
-            "No text snippets yet —\ncopy any text to start.")
+            "No text snippets yet –\ncopy any text to start.")
         self._text_header = QLabel("📝 Text snippets")
         text_col = self._make_column(
             self._text_header, self._text_list, self._text_empty)
@@ -147,7 +147,7 @@ class ClipboardManagerWidget(QWidget):
 
         self._image_list = self._make_list_widget()
         self._image_empty = self._make_empty_label(
-            "No images yet —\ncopy any image to start.")
+            "No images yet –\ncopy any image to start.")
         self._image_header = QLabel("🖼 Images")
         image_col = self._make_column(
             self._image_header, self._image_list, self._image_empty)
@@ -242,7 +242,7 @@ class ClipboardManagerWidget(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        # Default focus is the text list — that's where most clips live.
+        # Default focus is the text list – that's where most clips live.
         self._text_list.setFocus()
         if self._text_list.count() > 0 and self._text_list.currentRow() < 0:
             self._text_list.setCurrentRow(0)
@@ -290,7 +290,7 @@ class ClipboardManagerWidget(QWidget):
             if left_neighbour is not None:
                 self._focus_list(left_neighbour)
                 return True
-            # Already on the leftmost column — Left is a no-op (per design).
+            # Already on the leftmost column – Left is a no-op (per design).
             return False
 
         return False
@@ -392,7 +392,7 @@ class ClipboardManagerWidget(QWidget):
         return f"{n / (1024 * 1024):.1f} MB"
 
     # ------------------------------------------------------------------
-    # List management — TEXT
+    # List management – TEXT
     # ------------------------------------------------------------------
 
     def _add_text_clip(self, text: str, *, item_id=None,
@@ -419,7 +419,7 @@ class ClipboardManagerWidget(QWidget):
         self._update_count()
 
     # ------------------------------------------------------------------
-    # List management — IMAGE
+    # List management – IMAGE
     # ------------------------------------------------------------------
 
     def _add_image_clip(self, label: str, png_bytes: bytes, *,
@@ -568,7 +568,7 @@ class ClipboardManagerWidget(QWidget):
             f"🖼 Images ({image_n})" if image_n else "🖼 Images")
 
     # ------------------------------------------------------------------
-    # DB loading — called lazily once db_manager is ready
+    # DB loading – called lazily once db_manager is ready
     # ------------------------------------------------------------------
 
     def ensure_db_loaded(self):

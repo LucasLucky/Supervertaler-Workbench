@@ -552,7 +552,7 @@ Local LLM allows you to run AI translation entirely on your computer - no API co
 **Step 2: Download a Model**
 Open a terminal/command prompt and run:
 ```bash
-# Recommended — purpose-built translation model (12GB+ RAM):
+# Recommended – purpose-built translation model (12GB+ RAM):
 ollama pull translategemma:12b
 
 # For 24GB+ RAM (highest translation quality):

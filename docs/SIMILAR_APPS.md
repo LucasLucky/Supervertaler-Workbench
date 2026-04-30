@@ -48,20 +48,20 @@ A curated list of translation tools and AI-powered assistants that offer similar
 - **Type:** Desktop application (Windows, Mac)
 - **Description:** Lightweight translation assistant that works system-wide inside any application. Select text and press a global hotkey (Ctrl+J / Cmd+J) to get MT and LLM suggestions in a small popup; press a number to insert. Supports 29+ MT engines plus LLMs including ChatGPT. Also does batch file translation (DOCX, XLIFF, SDLXLIFF, subtitles, etc.) locally without uploading to servers. Popular with translators since ~2009. *Supervertaler QuickTrans is inspired by this workflow.*
 - **Key Features:**
-  - Global hotkey popup (Ctrl+J) — works inside any app including CAT tools
+  - Global hotkey popup (Ctrl+J) – works inside any app including CAT tools
   - 29+ MT engines: Google, DeepL, Microsoft, Yandex, Baidu, Papago, and more
   - LLM support: ChatGPT (and local AI models)
   - Batch file translation with drag-and-drop (no file size limit)
-  - Local-first processing — files stay on your machine
+  - Local-first processing – files stay on your machine
   - Dictionary lookup
   - Pay-per-use credit model (chars prepaid, no expiry); free tier available
-- **Pricing:** Freemium — free tier + prepaid character credits (pay-as-you-go)
+- **Pricing:** Freemium – free tier + prepaid character credits (pay-as-you-go)
 - **Open Source:** ❌
 
 ### Bureau Works
 - **Website:** [bureauworks.com](https://www.bureauworks.com/)
 - **Type:** Cloud-based Translation Management System (TMS) with integrated CAT editor
-- **Description:** Enterprise-grade TMS with a native AI-enhanced in-browser CAT editor. Targets translation agencies and localization teams rather than individual freelancers. Handles end-to-end project management: quoting, task assignment, QA, invoicing, and payment — all in one platform.
+- **Description:** Enterprise-grade TMS with a native AI-enhanced in-browser CAT editor. Targets translation agencies and localization teams rather than individual freelancers. Handles end-to-end project management: quoting, task assignment, QA, invoicing, and payment – all in one platform.
 - **Key Features:**
   - In-browser CAT editor with TM, terminology, and AI suggestions
   - Supports 54+ file types, 200+ languages
@@ -91,9 +91,9 @@ A curated list of translation tools and AI-powered assistants that offer similar
 - **Type:** Web-based AI translation platform
 - **Description:** Suite of AI-powered translation and localisation tools designed for professional translators and localisation teams. Focuses on context-aware translation that goes beyond single-segment approaches, with tools for CAT tool integration, automated workflows, and corpus alignment.
 - **Key Features:**
-  - XLee — context-aware AI translation for XLIFF files, integrates with CAT tools
-  - XTrans — automated translation workflow (file conversion → AI translation → target file → review)
-  - XAligner — multilingual sentence alignment for building parallel corpora and TMs
+  - XLee – context-aware AI translation for XLIFF files, integrates with CAT tools
+  - XTrans – automated translation workflow (file conversion → AI translation → target file → review)
+  - XAligner – multilingual sentence alignment for building parallel corpora and TMs
   - Preserves formatting in translated files
   - English–Chinese translation and post-editing services also available
 - **Pricing:** Free
@@ -116,7 +116,7 @@ A curated list of translation tools and AI-powered assistants that offer similar
 ### LLM-AutoHotkey-Assistant
 - **Website:** [github.com/kdalanon/LLM-AutoHotkey-Assistant](https://github.com/kdalanon/LLM-AutoHotkey-Assistant)
 - **Type:** Open-source AutoHotkey v2 script (Windows)
-- **Description:** AutoHotkey v2 script that uses OpenRouter.ai to bring any LLM into your daily workflow via a global hotkey. Select text anywhere, press the hotkey (backtick by default), pick a prompt from the menu, and get the result — including translation. Supports multiple AI models simultaneously. Highly customisable via prompt arrays. *Conceptually similar to Supervertaler QuickLauncher.*
+- **Description:** AutoHotkey v2 script that uses OpenRouter.ai to bring any LLM into your daily workflow via a global hotkey. Select text anywhere, press the hotkey (backtick by default), pick a prompt from the menu, and get the result – including translation. Supports multiple AI models simultaneously. Highly customisable via prompt arrays. *Conceptually similar to Supervertaler QuickLauncher.*
 - **Key Features:**
   - Global hotkey (backtick) works system-wide in any app
   - Any LLM via OpenRouter.ai (ChatGPT, Claude, Gemini, and more)

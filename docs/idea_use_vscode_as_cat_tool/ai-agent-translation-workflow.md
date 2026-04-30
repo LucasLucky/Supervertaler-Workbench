@@ -262,7 +262,7 @@ Always use when translating Gigaset materials:
 
 This approach leverages the strengths of coding assistants (context awareness, flexibility, iterative refinement) while working around their limitations (no TM database) through smart workspace organization. 
 
-**Key insight**: Modern AI coding assistants are essentially "context-aware text processors" — which is exactly what translation requires.
+**Key insight**: Modern AI coding assistants are essentially "context-aware text processors" – which is exactly what translation requires.
 
 The feasibility depends on:
 - Project size (smaller projects may work better)

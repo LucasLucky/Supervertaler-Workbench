@@ -1,4 +1,4 @@
-"""AutoFingers tab — voice commands and dictation control panel.
+"""AutoFingers tab – voice commands and dictation control panel.
 
 Designed to live inside Supervertaler Sidekick (modules/floating_assistant.py)
 as a 4th tab, but works standalone with any parent that exposes the same
@@ -74,7 +74,7 @@ class AutoFingersTab(QWidget):
 
         # --- Header ----------------------------------------------------
         header = QLabel(
-            "🎤 <b>AutoFingers</b> — voice commands and dictation.<br>"
+            "🎤 <b>AutoFingers</b> – voice commands and dictation.<br>"
             "Toggle Always-On to listen continuously, or press <b>F9</b> "
             "(or Ctrl+Alt+D anywhere) to dictate on demand."
         )
@@ -131,7 +131,7 @@ class AutoFingersTab(QWidget):
 
         # Commands-only toggle
         self._commands_only_cb = CheckmarkCheckBox(
-            "Listen for commands only — don't type unmatched speech as dictation"
+            "Listen for commands only – don't type unmatched speech as dictation"
         )
         self._commands_only_cb.setToolTip(
             "When checked, Always-On fires voice commands but ignores any "
@@ -147,7 +147,7 @@ class AutoFingersTab(QWidget):
             "ℹ️ <b>How it works:</b> commands and dictation go to whichever "
             "app is in the foreground when you speak. After turning Always-On "
             "on, click into Word, Trados, memoQ, or wherever you want the "
-            "text to land — then speak. Press <b>Esc</b> to hide Sidekick."
+            "text to land – then speak. Press <b>Esc</b> to hide Sidekick."
         )
         ao_focus_hint.setTextFormat(Qt.TextFormat.RichText)
         ao_focus_hint.setWordWrap(True)
@@ -158,7 +158,7 @@ class AutoFingersTab(QWidget):
         ao_layout.addWidget(ao_focus_hint)
 
         ao_tip = QLabel(
-            "💡 OpenAI API mode is recommended for Always-On — much faster and "
+            "💡 OpenAI API mode is recommended for Always-On – much faster and "
             "more accurate. Requires an OpenAI API key (Settings → AI Settings)."
         )
         ao_tip.setWordWrap(True)
@@ -574,7 +574,7 @@ class AutoFingersTab(QWidget):
         else:
             QMessageBox.warning(
                 self, "AutoFingers Settings",
-                "Couldn't save settings — check the log for details.")
+                "Couldn't save settings – check the log for details.")
 
     def _open_ahk_folder(self):
         fn = getattr(self._parent_app, '_open_voice_scripts_folder', None)

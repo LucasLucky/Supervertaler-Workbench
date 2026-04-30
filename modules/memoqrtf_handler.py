@@ -41,7 +41,7 @@ RTF_ESCAPE_MAP = {
     r"\'c9": "É", r"\'c8": "È", r"\'c0": "À", r"\'c1": "Á",
     r"\'d3": "Ó", r"\'da": "Ú", r"\'d1": "Ñ",
     r"\'ab": "«", r"\'bb": "»", r"\'b0": "°",
-    r"\'96": "–", r"\'97": "—",
+    r"\'96": "–", r"\'97": "–",
     r"\'92": "'", r"\'93": """, r"\'94": """,
     r"\'85": "…", r"\'a0": " ",
     r"\'91": "'", r"\'95": "•",
@@ -521,7 +521,7 @@ class MemoQRTFHandler:
         while i < len(text):
             # Skip RTF control words we just inserted (don't re-encode their backslashes)
             if text[i] == '\\' and i + 1 < len(text) and text[i + 1].isalpha():
-                # This is an RTF control word — pass it through verbatim
+                # This is an RTF control word – pass it through verbatim
                 j = i + 1
                 while j < len(text) and text[j].isalpha():
                     j += 1

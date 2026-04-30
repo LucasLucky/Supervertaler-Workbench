@@ -27,7 +27,7 @@ class LineBreakWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(0, 0)
-        self.hide()  # Invisible — only used as a layout hint
+        self.hide()  # Invisible – only used as a layout hint
 
 
 class FlowLayout(QLayout):
@@ -450,7 +450,7 @@ class NTBlock(QWidget):
     Since NTs are now backed by termbase entries flagged
     is_nontranslatable=1, the block carries term_id and termbase_id when
     they are known and emits edit_requested / delete_requested signals
-    on right-click — same pattern as TermBlock. Entries without an id
+    on right-click – same pattern as TermBlock. Entries without an id
     (e.g. legacy paths that don't propagate them) keep the click-to-
     insert-only behaviour.
     """
@@ -468,7 +468,7 @@ class NTBlock(QWidget):
             font_size: Base font size in points (default 10)
             font_family: Font family name (default "Segoe UI")
             font_bold: Whether to use bold font (default False)
-            term_id: Termbase entry ID — enables right-click edit/delete
+            term_id: Termbase entry ID – enables right-click edit/delete
             termbase_id: Termbase ID containing the entry
         """
         super().__init__(parent)
@@ -547,7 +547,7 @@ class NTBlock(QWidget):
 
         layout.addWidget(nt_label)
 
-        # Right-click context menu — only enabled when we know which
+        # Right-click context menu – only enabled when we know which
         # termbase entry to act on. The matching path through
         # find_nt_matches_in_source populates term_id and termbase_id
         # for every entry it returns, so this should always be live.
@@ -941,7 +941,7 @@ class TermLensWidget(QWidget):
         assigned_shortcuts = set()
         
         for token in tokens:
-            # Handle newline sentinel tokens — insert a line break in the flow layout
+            # Handle newline sentinel tokens – insert a line break in the flow layout
             if token == '\n':
                 lb = LineBreakWidget(self.terms_container)
                 self.terms_layout.addWidget(lb)
@@ -973,7 +973,7 @@ class TermLensWidget(QWidget):
                 nt_block.nt_clicked.connect(
                     lambda txt: self.on_term_insert_requested(txt, txt)
                 )
-                # Wire edit/delete to the same host handlers used by TermBlock —
+                # Wire edit/delete to the same host handlers used by TermBlock –
                 # NT entries are termbase rows, so the existing edit dialog
                 # handles them transparently.
                 nt_block.edit_requested.connect(self._on_edit_entry_requested)
@@ -1267,7 +1267,7 @@ class TermLensWidget(QWidget):
             # entry, even if it sits inside a longer matched phrase.
             # When hide_shorter is ON: honour the overlap suppression unconditionally.
             if not already_covered or (has_own_match and not hide_shorter):
-                # Only add once — skip if this exact (start, token) is already present
+                # Only add once – skip if this exact (start, token) is already present
                 if not any(p == word_start and t == token for p, _, t in tokens_with_positions):
                     tokens_with_positions.append((word_start, len(token), token))
 

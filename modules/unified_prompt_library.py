@@ -438,7 +438,7 @@ class UnifiedPromptLibrary:
             # leaked in (e.g. if the editor displayed raw frontmatter as content)
             content = prompt_data.get('content', '').strip()
             if content.startswith('---'):
-                # Content starts with what looks like YAML frontmatter — strip it
+                # Content starts with what looks like YAML frontmatter – strip it
                 after_open = content[3:].lstrip('\n')
                 close_idx = after_open.find('---')
                 if close_idx >= 0:

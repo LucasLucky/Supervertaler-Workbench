@@ -98,7 +98,7 @@ Patterns found:
 | Corrupted Pattern | Fixed Character | Meaning |
 |---|---|---|
 | `\u00e2\u20ac\u201c` | – | En dash |
-| `\u00e2\u20ac\u201d` | — | Em dash |
+| `\u00e2\u20ac\u201d` | – | Em dash |
 | `\u00e2\u20ac\u0090` | - | Non-breaking hyphen |
 | `\u00e2\u20ac\u0153` | " | Left double quote |
 | `\u00e2\u20ac\u009d` | " | Right double quote |

@@ -147,7 +147,7 @@ class TermInsertPopup(QFrame):
     """
 
     term_inserted = pyqtSignal(str)
-    edit_requested = pyqtSignal(int, int)   # term_id, termbase_id — popup closes itself first
+    edit_requested = pyqtSignal(int, int)   # term_id, termbase_id – popup closes itself first
 
     MAX_ITEMS = 9
 

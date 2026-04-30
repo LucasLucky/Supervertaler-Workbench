@@ -164,48 +164,48 @@ class LLMClient:
     MISTRAL_MODELS = {
         "mistral-large-latest": {
             "name": "Mistral Large",
-            "description": "Flagship model — top-tier reasoning and multilingual quality",
+            "description": "Flagship model – top-tier reasoning and multilingual quality",
             "strengths": ["Multilingual", "Complex reasoning", "High accuracy"],
             "use_case": "Recommended for most translation tasks"
         },
         "mistral-small-latest": {
             "name": "Mistral Small",
-            "description": "Fast and cost-effective — great for high-volume translation",
+            "description": "Fast and cost-effective – great for high-volume translation",
             "strengths": ["Fast", "Cost-effective", "Multilingual"],
             "use_case": "Best for large projects where speed and cost matter"
         },
         "open-mistral-nemo": {
             "name": "Mistral Nemo",
-            "description": "Open, multilingual model — strong across European languages",
+            "description": "Open, multilingual model – strong across European languages",
             "strengths": ["Open model", "Multilingual", "European languages"],
             "use_case": "Good for multilingual translation projects"
         }
     }
     
     # Available OpenRouter models (curated selection)
-    # OpenRouter is an API gateway — users can also type any model ID from openrouter.ai/models
+    # OpenRouter is an API gateway – users can also type any model ID from openrouter.ai/models
     OPENROUTER_MODELS = {
         "anthropic/claude-sonnet-4.6": {
             "name": "Claude Sonnet 4.6",
-            "description": "Anthropic flagship — fast, high quality",
+            "description": "Anthropic flagship – fast, high quality",
             "strengths": ["General translation", "Multilingual", "Fast"],
             "use_case": "Recommended for most translation tasks"
         },
         "anthropic/claude-opus-4.7": {
             "name": "Claude Opus 4.7",
-            "description": "Anthropic's most capable — 1M context, top-tier reasoning",
+            "description": "Anthropic's most capable – 1M context, top-tier reasoning",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "1M context"],
             "use_case": "Specialised legal/technical translation, long-context jobs"
         },
         "anthropic/claude-opus-4.6": {
             "name": "Claude Opus 4.6",
-            "description": "Previous Opus — still excellent for reasoning",
+            "description": "Previous Opus – still excellent for reasoning",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning"],
             "use_case": "Specialised legal/technical translation"
         },
         "openai/gpt-5.4": {
             "name": "GPT 5.4",
-            "description": "OpenAI flagship — advanced reasoning",
+            "description": "OpenAI flagship – advanced reasoning",
             "strengths": ["Complex reasoning", "Multilingual", "High accuracy"],
             "use_case": "Complex translation tasks"
         },
@@ -217,25 +217,25 @@ class LLMClient:
         },
         "google/gemini-3.1-pro-preview": {
             "name": "Gemini 3.1 Pro",
-            "description": "Google latest — strong multilingual",
+            "description": "Google latest – strong multilingual",
             "strengths": ["Multilingual", "Large context", "High quality"],
             "use_case": "General translation"
         },
         "google/gemini-3-flash-preview": {
             "name": "Gemini 3 Flash",
-            "description": "Google fast — great for high volume",
+            "description": "Google fast – great for high volume",
             "strengths": ["Fast", "Cost-effective", "Multilingual"],
             "use_case": "High-volume translation"
         },
         "mistralai/mistral-small-2603": {
             "name": "Mistral Small",
-            "description": "Mistral cost-effective — strong European languages",
+            "description": "Mistral cost-effective – strong European languages",
             "strengths": ["European languages", "Fast", "Cost-effective"],
             "use_case": "European language translation"
         },
         "qwen/qwen3.6-plus:free": {
             "name": "Qwen 3.6 Plus (Free)",
-            "description": "Free tier — no cost, good quality",
+            "description": "Free tier – no cost, good quality",
             "strengths": ["Free", "Multilingual", "100+ languages"],
             "use_case": "Testing or budget-constrained projects"
         }
@@ -255,12 +255,12 @@ class LLMClient:
         },
         "translategemma:12b": {
             "name": "TranslateGemma 12B",
-            "description": "Best translation model for size — beats larger general models",
+            "description": "Best translation model for size – beats larger general models",
             "size_gb": 8.1,
             "ram_required": 12,
             "quality_stars": 5,
             "strengths": ["Top translation quality", "55 languages incl. Dutch", "Beats Gemma 3 27B on translation"],
-            "use_case": "Professional translation — best quality/size ratio"
+            "use_case": "Professional translation – best quality/size ratio"
         },
         "qwen3:4b": {
             "name": "Qwen 3 4B",
@@ -273,7 +273,7 @@ class LLMClient:
         },
         "qwen3:8b": {
             "name": "Qwen 3 8B",
-            "description": "Excellent general-purpose — strong multilingual",
+            "description": "Excellent general-purpose – strong multilingual",
             "size_gb": 5.2,
             "ram_required": 8,
             "quality_stars": 4,
@@ -282,7 +282,7 @@ class LLMClient:
         },
         "gemma3:12b": {
             "name": "Gemma 3 12B",
-            "description": "Google's general-purpose — 140+ languages, multimodal",
+            "description": "Google's general-purpose – 140+ languages, multimodal",
             "size_gb": 8.1,
             "ram_required": 12,
             "quality_stars": 5,
@@ -291,7 +291,7 @@ class LLMClient:
         },
         "qwen3:14b": {
             "name": "Qwen 3 14B",
-            "description": "Premium quality — excellent for complex text",
+            "description": "Premium quality – excellent for complex text",
             "size_gb": 9.3,
             "ram_required": 16,
             "quality_stars": 5,
@@ -300,7 +300,7 @@ class LLMClient:
         },
         "aya-expanse:8b": {
             "name": "Aya Expanse 8B",
-            "description": "Cohere's multilingual model — excellent for Dutch",
+            "description": "Cohere's multilingual model – excellent for Dutch",
             "size_gb": 5.1,
             "ram_required": 8,
             "quality_stars": 5,
@@ -369,7 +369,7 @@ class LLMClient:
             "released": "2026-02-04",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy"],
             "pricing": {"input": 5, "output": 25},  # USD per million tokens
-            "use_case": "Previous Opus generation — still strong for legal/technical translation"
+            "use_case": "Previous Opus generation – still strong for legal/technical translation"
         },
         "claude-sonnet-4-5-20250929": {
             "name": "Claude Sonnet 4.5",
@@ -477,7 +477,7 @@ class LLMClient:
                     root_resp = requests.get(endpoint, timeout=3)
                     if root_resp.status_code == 200 and 'ollama' in root_resp.text.lower():
                         error_msg = (f"Ollama is reachable but /api/tags returned {response.status_code}. "
-                                     f"Check your Ollama endpoint — it should be just the base URL "
+                                     f"Check your Ollama endpoint – it should be just the base URL "
                                      f"(e.g. http://localhost:11434), not including /api or /v1.")
                 except:
                     pass
@@ -1308,7 +1308,7 @@ class LLMClient:
             timeout_seconds = base_timeout
 
         # Use streaming for large requests to avoid timeout issues
-        # Streaming reads tokens as they arrive — only the connection + first token
+        # Streaming reads tokens as they arrive – only the connection + first token
         # must arrive within the timeout, not the entire response
         use_streaming = prompt_len > 3000 or tokens_to_use > 4096
 

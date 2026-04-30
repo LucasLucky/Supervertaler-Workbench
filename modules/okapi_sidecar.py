@@ -8,7 +8,7 @@ SRX segmentation.
 
 The sidecar is a small Java-based REST service (okapi-sidecar.jar) that
 wraps Okapi Framework filters.  It runs on localhost and communicates
-via HTTP — no files ever leave the user's machine.
+via HTTP – no files ever leave the user's machine.
 
 Usage:
     sidecar = OkapiSidecar()
@@ -53,7 +53,7 @@ class OkapiSidecar:
 
     The sidecar runs as a local subprocess on 127.0.0.1 (never exposed
     to the network).  All document processing happens on the user's
-    machine — nothing is sent over the internet.
+    machine – nothing is sent over the internet.
     """
 
     DEFAULT_PORT = 8090
@@ -89,7 +89,7 @@ class OkapiSidecar:
         already running), False if the sidecar is not available."""
 
         if requests is None:
-            logger.error("'requests' package not installed — "
+            logger.error("'requests' package not installed – "
                          "cannot communicate with Okapi sidecar")
             return False
 
@@ -107,7 +107,7 @@ class OkapiSidecar:
         # Find Java
         java_path = self._find_java()
         if java_path is None:
-            logger.warning("Java runtime not found — Okapi sidecar unavailable")
+            logger.warning("Java runtime not found – Okapi sidecar unavailable")
             return False
 
         # Launch the process
@@ -131,7 +131,7 @@ class OkapiSidecar:
             self._started_by_us = True
             # Drain the merged stdout/stderr pipe in a daemon thread.
             # Without this the OS pipe buffer (~64 KB on Windows) eventually
-            # fills and the sidecar blocks on its next write — a latent
+            # fills and the sidecar blocks on its next write – a latent
             # hang that's hard to diagnose without a console.
             if self._process.stdout is not None:
                 threading.Thread(
@@ -164,7 +164,7 @@ class OkapiSidecar:
             try:
                 self._process.wait(timeout=self.SHUTDOWN_TIMEOUT)
             except subprocess.TimeoutExpired:
-                logger.warning("Sidecar didn't stop gracefully — killing")
+                logger.warning("Sidecar didn't stop gracefully – killing")
                 self._process.kill()
                 self._process.wait(timeout=2)
             self._process = None

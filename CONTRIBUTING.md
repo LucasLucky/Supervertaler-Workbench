@@ -45,7 +45,7 @@ If you’re proposing a larger change, it’s best to open an issue first so we 
 
 ## Pull requests
 
-PRs are welcome — thank you.
+PRs are welcome – thank you.
 
 ### Before you start
 
@@ -168,7 +168,7 @@ This is a mature, user-facing desktop app; stability matters.
 - Avoid adding new global state unless necessary.
 - When working with Qt, keep UI updates on the main thread (use signals for worker threads).
 - When working with XML (SDLXLIFF/ElementTree), handle namespaces explicitly.
-- Don’t add heavy new dependencies lightly — the project supports modular installs via extras.
+- Don’t add heavy new dependencies lightly – the project supports modular installs via extras.
 
 ### UI consistency
 

@@ -107,8 +107,8 @@ class TMCleanupThread(QThread):
     UI.
 
     Modes:
-      MODE_IDENTICAL_PAIRS   — DELETE rows where source_text == target_text.
-      MODE_DUPLICATE_SOURCES — for each duplicated source_hash, keep the row
+      MODE_IDENTICAL_PAIRS   – DELETE rows where source_text == target_text.
+      MODE_DUPLICATE_SOURCES – for each duplicated source_hash, keep the row
                                with the most recent modified_date and delete
                                the rest (ties broken by id, deterministic).
     """
@@ -1327,7 +1327,7 @@ Average Target Length: {avg_target:.1f} characters
         progress = QProgressDialog(initial_label, "", 0, 0, self)
         progress.setWindowTitle(dialog_title)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setCancelButton(None)  # no cancel — see docstring
+        progress.setCancelButton(None)  # no cancel – see docstring
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
         progress.setAutoReset(False)
@@ -1346,7 +1346,7 @@ Average Target Length: {avg_target:.1f} characters
                     progress.setRange(0, total)
                 progress.setValue(done)
             else:
-                # Indeterminate — keep range (0,0)
+                # Indeterminate – keep range (0,0)
                 if progress.maximum() != 0 or progress.minimum() != 0:
                     progress.setRange(0, 0)
 

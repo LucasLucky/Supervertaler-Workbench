@@ -662,7 +662,7 @@ class TMDatabase:
                 elif elem.tag == 'tu':
                     tu_count += 1
                     elem.clear()
-                    # Stop early — languages are consistent across the file
+                    # Stop early – languages are consistent across the file
                     if tu_count >= 100:
                         break
 

@@ -37,7 +37,7 @@ class _SidekickTabPaneFilter(QObject):
     From the right pane, Tab moves focus back into the active left tab.
 
     Tab events going to text-editing widgets (QTextEdit, QPlainTextEdit,
-    QLineEdit) are passed through untouched — typing 'Tab' in a chat
+    QLineEdit) are passed through untouched – typing 'Tab' in a chat
     input must still indent / move between fields normally.
 
     Only intercepts when the Sidekick window is the active window, so this
@@ -58,8 +58,8 @@ class _SidekickTabPaneFilter(QObject):
             return False
         if event.key() != Qt.Key.Key_Tab and event.key() != Qt.Key.Key_Backtab:
             return False
-        # Only Tab without modifiers (Shift+Tab is Backtab — also handled
-        # below as the reverse direction). Ignore Ctrl+Tab — that's the
+        # Only Tab without modifiers (Shift+Tab is Backtab – also handled
+        # below as the reverse direction). Ignore Ctrl+Tab – that's the
         # tab-cycling shortcut, handled separately by QShortcut.
         mods = event.modifiers()
         if mods & (Qt.KeyboardModifier.ControlModifier
@@ -119,7 +119,7 @@ class FloatingAssistant(QWidget):
 
         # Action data: list of callbacks
         self._action_items = []
-        # Source window handle — captured when the assistant opens via global hotkey
+        # Source window handle – captured when the assistant opens via global hotkey
         self._source_window = None
 
         # Geometry persistence
@@ -130,14 +130,14 @@ class FloatingAssistant(QWidget):
             self._state_file = None
 
         # ``Tool`` window (NOT always-on-top): behaves like any other app
-        # window when visible — clicking a different program brings that
-        # program to the front — but the Tool style means Windows does NOT
+        # window when visible – clicking a different program brings that
+        # program to the front – but the Tool style means Windows does NOT
         # allocate a taskbar slot for it. That has two consequences:
         #
-        #  1. Sidekick is invisible whenever it's hidden — no taskbar icon,
+        #  1. Sidekick is invisible whenever it's hidden – no taskbar icon,
         #     no Alt+Tab entry, no system tray entry. Pure summon-on-demand.
         #  2. Showing it never adds a taskbar slot, so the taskbar (and the
-        #     system tray icons sharing its right edge) doesn't reflow — no
+        #     system tray icons sharing its right edge) doesn't reflow – no
         #     visible "bounce" of the tray icons every time you press Alt+K.
         #
         # Trade-off accepted: you can't click a taskbar icon to bring
@@ -150,14 +150,14 @@ class FloatingAssistant(QWidget):
         self.setMinimumSize(500, 350)
         self.resize(850, 520)
 
-        # Window icon (taskbar / alt-tab) — canonical Sv mark, same file the
+        # Window icon (taskbar / alt-tab) – canonical Sv mark, same file the
         # main Workbench window uses.
         self._apply_app_icon()
 
         self._init_ui()
         self._restore_state()
 
-        # Global Escape shortcut — works regardless of which child has focus
+        # Global Escape shortcut – works regardless of which child has focus
         from PyQt6.QtGui import QShortcut, QKeySequence
         esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -188,7 +188,7 @@ class FloatingAssistant(QWidget):
 
 
     def _dismiss_to_tray(self):
-        """Hide Sidekick completely — Tool-style windows have no taskbar
+        """Hide Sidekick completely – Tool-style windows have no taskbar
         slot, so hiding doesn't cause a slot to be deallocated, and the
         next summon doesn't cause one to be allocated. No taskbar reflow,
         no system-tray-icon bounce. The method name is kept for symmetry
@@ -198,7 +198,7 @@ class FloatingAssistant(QWidget):
         self.hide()
 
     def _cycle_tab_forward(self):
-        """Ctrl+Tab — advance to the next Sidekick tab, wrapping at the end."""
+        """Ctrl+Tab – advance to the next Sidekick tab, wrapping at the end."""
         if not hasattr(self, '_left_tabs'):
             return
         count = self._left_tabs.count()
@@ -208,7 +208,7 @@ class FloatingAssistant(QWidget):
         self._left_tabs.setCurrentIndex(idx)
 
     def _cycle_tab_backward(self):
-        """Ctrl+Shift+Tab — go to the previous Sidekick tab, wrapping."""
+        """Ctrl+Shift+Tab – go to the previous Sidekick tab, wrapping."""
         if not hasattr(self, '_left_tabs'):
             return
         count = self._left_tabs.count()
@@ -244,7 +244,7 @@ class FloatingAssistant(QWidget):
                     last.setFocus(Qt.FocusReason.OtherFocusReason)
                     return
             except RuntimeError:
-                # Widget was deleted out from under us — fall through.
+                # Widget was deleted out from under us – fall through.
                 self._last_left_pane_focus = None
 
         if not hasattr(self, '_left_tabs'):
@@ -415,26 +415,26 @@ class FloatingAssistant(QWidget):
             self._chat_view._do_send = self._parent_app.prompt_manager_qt._context_aware_send
         self._left_tabs.addTab(self._chat_view, "\U0001F4AC Chat")
 
-        # QuickTrans widget — constructed here (so all self._qt_* state is
+        # QuickTrans widget – constructed here (so all self._qt_* state is
         # initialised) but NOT added to _left_tabs. It's reparented into the
         # Superlookup results_tabs as a sub-tab (after Termbases) once the
         # Superlookup widget is lazy-created in _ensure_superlookup_tab().
         self._quicktrans_widget = self._create_quicktrans_tab()
         self._quicktrans_embedded_in_superlookup = False
 
-        # Superlookup tab — deferred until first show to avoid init-order
+        # Superlookup tab – deferred until first show to avoid init-order
         # issues (the main window's database/termbase managers may not be
         # fully wired when the FloatingAssistant is first constructed).
         self._superlookup_widget = None
         self._superlookup_tab_added = False
 
-        # Clipboard tab — widget created eagerly so monitoring starts immediately,
+        # Clipboard tab – widget created eagerly so monitoring starts immediately,
         # but not added to _left_tabs until _ensure_superlookup_tab() runs (so
         # the tab order stays Chat → SuperLookup → Clipboard).
         self._clipboard_widget = self._create_clipboard_tab()
         self._clipboard_tab_added = False
 
-        # AutoFingers tab — voice commands + dictation. Lazy because it relies on
+        # AutoFingers tab – voice commands + dictation. Lazy because it relies on
         # parent_app.voice_command_manager and other attrs that may not be
         # ready when the FloatingAssistant is first constructed.
         self._autofingers_widget = None
@@ -452,7 +452,7 @@ class FloatingAssistant(QWidget):
         self._splitter.setStretchFactor(1, 0)
         outer_layout.addWidget(self._splitter, 1)
 
-        # Context-aware info bar — shows a short tip depending on the active tab
+        # Context-aware info bar – shows a short tip depending on the active tab
         self._info_label = QLabel("")
         self._info_label.setStyleSheet(
             "color: #888; font-size: 8pt; padding: 2px 8px; border: none;")
@@ -479,7 +479,7 @@ class FloatingAssistant(QWidget):
         # 40px with explicit 8px top/bottom layout margins leaves a clean 24px
         # content band for the 24×24 Sv icon and 24×24 window buttons.
         bar.setFixedHeight(40)
-        # Keep the un-scoped `QWidget { ... }` selector — scoping via object
+        # Keep the un-scoped `QWidget { ... }` selector – scoping via object
         # name stops Qt from enabling styled background painting on a plain
         # QWidget, which made the bar lose its navy fill in an earlier pass.
         # The descendant-cascading is harmless since children (buttons, icon
@@ -498,7 +498,7 @@ class FloatingAssistant(QWidget):
         layout.setContentsMargins(10, 8, 8, 8)
         layout.setSpacing(8)
 
-        # Sv icon — canonical Workbench brand mark, native 24×24 (no scaling).
+        # Sv icon – canonical Workbench brand mark, native 24×24 (no scaling).
         # The explicit stylesheet override is required: the bar's unscoped
         # `QWidget { background-color; border-top-*-radius }` rule otherwise
         # cascades down to this QLabel, and a border-radius on a QLabel triggers
@@ -523,7 +523,7 @@ class FloatingAssistant(QWidget):
         layout.addWidget(title)
         layout.addStretch()
 
-        # Settings (gear) — opens Workbench Settings tab
+        # Settings (gear) – opens Workbench Settings tab
         settings_btn = QPushButton("\u2699")  # ⚙
         settings_btn.setFixedSize(24, 24)
         settings_btn.setToolTip("Open Supervertaler Workbench settings")
@@ -663,7 +663,7 @@ class FloatingAssistant(QWidget):
         cat = QTreeWidgetItem([label])
         cat.setFont(0, bold_font)
         cat.setForeground(0, cat_color)
-        # Mark as category — keep selectable for keyboard highlight
+        # Mark as category – keep selectable for keyboard highlight
         cat.setData(0, Qt.ItemDataRole.UserRole, self._CATEGORY_SENTINEL)
         self._action_tree.addTopLevelItem(cat)
         cat.setExpanded(expanded)
@@ -685,7 +685,7 @@ class FloatingAssistant(QWidget):
                 item.setText(0, indicator + text)
 
     def _on_tree_expanded_collapsed(self, _item):
-        """Slot for itemExpanded / itemCollapsed — update indicators."""
+        """Slot for itemExpanded / itemCollapsed – update indicators."""
         self._update_expand_indicators()
 
     def _populate_actions(self):
@@ -884,7 +884,7 @@ class FloatingAssistant(QWidget):
         QApplication.clipboard().setText(text)
 
         # 2. Get the assistant window out of the user's way (minimized so
-        #    the taskbar entry stays — see _dismiss_to_tray).
+        #    the taskbar entry stays – see _dismiss_to_tray).
         self._dismiss_to_tray()
 
         # 3. After a short delay, activate the source window and send Ctrl+V
@@ -911,7 +911,7 @@ class FloatingAssistant(QWidget):
 
         Most apps that accept clipboard images respond to Ctrl+V the same way
         they do for text, so the activate-source + send-paste sequence is
-        identical — only the clipboard payload differs.
+        identical – only the clipboard payload differs.
         """
         from PyQt6.QtCore import QTimer
 
@@ -1089,13 +1089,13 @@ class FloatingAssistant(QWidget):
             return
 
         # QuickTrans now lives as a sub-tab of Superlookup (outer Superlookup
-        # tab, inner sub-tab index 2 — after Termbases). Make sure Superlookup
+        # tab, inner sub-tab index 2 – after Termbases). Make sure Superlookup
         # is lazy-built (this also re-parents QuickTrans into its results_tabs
         # on first call), then switch the outer tab to Superlookup and the
         # inner tab to QuickTrans.
         self._ensure_superlookup_tab()
 
-        # Outer: find Superlookup tab index (it's dynamic — Chat + possibly
+        # Outer: find Superlookup tab index (it's dynamic – Chat + possibly
         # Superlookup, so don't hard-code a number).
         outer_superlookup_idx = self._left_tabs.indexOf(self._superlookup_widget) \
             if self._superlookup_widget is not None else -1
@@ -1254,7 +1254,7 @@ class FloatingAssistant(QWidget):
             self._action_items[data]()
 
     def _on_tree_clicked(self, item: QTreeWidgetItem, column: int):
-        """Handle single-click — expand categories, run leaf actions."""
+        """Handle single-click – expand categories, run leaf actions."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data == self._CATEGORY_SENTINEL or item.childCount() > 0:
             item.setExpanded(not item.isExpanded())
@@ -1300,7 +1300,7 @@ class FloatingAssistant(QWidget):
         (via _run_quicktrans, which switches to the QuickTrans sub-tab and
         kicks off the MT fetch). That means clicking the SuperLookup action
         in the right-hand menu with text selected lands the user on a
-        populated QuickTrans sub-tab with translations already loading —
+        populated QuickTrans sub-tab with translations already loading –
         no need to click the Translate button separately.
         """
         self._ensure_superlookup_tab()
@@ -1327,7 +1327,7 @@ class FloatingAssistant(QWidget):
                 self._superlookup_widget.perform_lookup()
             # Auto-fire QuickTrans as well. _run_quicktrans switches the
             # SuperLookup sub-tab to QuickTrans and starts the provider
-            # fetches immediately — matches what Ctrl+Alt+Q does, so the
+            # fetches immediately – matches what Ctrl+Alt+Q does, so the
             # user doesn't have to click "Translate" after navigating here.
             self._run_quicktrans(text)
 
@@ -1625,7 +1625,7 @@ class FloatingAssistant(QWidget):
         if captured_text:
             self._chat_view.insert_text(captured_text)
 
-        # Detect if the target tab is the clipboard tab — its list should
+        # Detect if the target tab is the clipboard tab – its list should
         # always own focus when shown, regardless of focus_actions.
         clipboard_idx = (
             self._left_tabs.indexOf(self._clipboard_widget)
@@ -1657,12 +1657,12 @@ class FloatingAssistant(QWidget):
             screen = QApplication.screenAt(QPoint(x + self.width() // 2,
                                                   y + self.height() // 2))
             if screen is None:
-                # Saved position is off-screen (monitor removed?) — fall
+                # Saved position is off-screen (monitor removed?) – fall
                 # back to the screen under the cursor.
                 screen = QApplication.screenAt(QCursor.pos()) \
                     or QApplication.primaryScreen()
         else:
-            # First launch — open on the screen where the cursor currently is
+            # First launch – open on the screen where the cursor currently is
             # (user's active monitor), not necessarily the primary.
             screen = QApplication.screenAt(QCursor.pos()) \
                 or QApplication.primaryScreen()
@@ -1717,7 +1717,7 @@ class FloatingAssistant(QWidget):
             if self.isActiveWindow():
                 self._dismiss_to_tray()
             else:
-                # Visible but not in front — bring to foreground
+                # Visible but not in front – bring to foreground
                 self.raise_()
                 self.activateWindow()
         else:
@@ -1771,7 +1771,7 @@ class FloatingAssistant(QWidget):
 
         Uses the window's OWN current screen, not the primary one. If you
         dragged the assistant to a secondary monitor and press Maximise, it
-        should fill that monitor — not jump back to the primary display.
+        should fill that monitor – not jump back to the primary display.
         """
         if self._is_maximised:
             # Restore to saved geometry
@@ -1902,8 +1902,8 @@ class FloatingAssistant(QWidget):
 
         # Left arrow on the action tree: jump focus back to the previous
         # left-pane widget (e.g. the clipboard image list). Only intercept
-        # when Qt's default Left would do nothing useful — i.e. the
-        # current item is a top-level row that's not expanded — so tree
+        # when Qt's default Left would do nothing useful – i.e. the
+        # current item is a top-level row that's not expanded – so tree
         # navigation (collapse expanded categories, move from leaf to
         # parent) still works as normal.
         if (obj is getattr(self, '_action_tree', None)
@@ -1968,7 +1968,7 @@ class FloatingAssistant(QWidget):
     def _force_foreground_focus(self):
         """Force OS-level keyboard focus to this window.
 
-        Tries a plain ``SetForegroundWindow`` first — that suffices when
+        Tries a plain ``SetForegroundWindow`` first – that suffices when
         the call is happening in response to a registered global hotkey
         (Windows briefly grants the receiving process foreground rights),
         and avoids the Windows shell side effect of ``AttachThreadInput``
@@ -1976,7 +1976,7 @@ class FloatingAssistant(QWidget):
         tray icons every time Sidekick is summoned.
 
         Falls back to the AttachThreadInput + SetForegroundWindow trick
-        only if the plain call doesn't actually move us to the foreground —
+        only if the plain call doesn't actually move us to the foreground –
         e.g. when invoked from a context where Windows hasn't granted
         foreground permission and another app (notably Trados Studio)
         would otherwise reclaim focus.
@@ -1994,7 +1994,7 @@ class FloatingAssistant(QWidget):
             if fg_hwnd == hwnd:
                 return  # Already foreground
 
-            # First attempt: plain SetForegroundWindow. Quiet — no shell
+            # First attempt: plain SetForegroundWindow. Quiet – no shell
             # broadcast, no tray bounce.
             user32.SetForegroundWindow(hwnd)
             if user32.GetForegroundWindow() == hwnd:

@@ -30,10 +30,10 @@ python Supervertaler.py
 
 macOS will block the app on first launch because it is not signed with an Apple Developer certificate. To allow it:
 
-1. **Double-click** `Supervertaler.app` — macOS will show a warning
+1. **Double-click** `Supervertaler.app` – macOS will show a warning
 2. Open **System Settings > Privacy & Security**
 3. Scroll down and click **"Open Anyway"** next to the Supervertaler message
-4. Confirm when prompted — the app will launch normally from now on
+4. Confirm when prompted – the app will launch normally from now on
 
 ---
 

@@ -233,7 +233,7 @@ class DOCXHandler:
             
             numId = numId_elem.val
 
-            # numId=0 is Word's explicit "no numbering" override — the
+            # numId=0 is Word's explicit "no numbering" override – the
             # paragraph style may define numbering, but this paragraph
             # opts out.  Treat it as a normal paragraph.
             if numId == 0:
@@ -279,7 +279,7 @@ class DOCXHandler:
                                 break
                 except Exception as e:
                     # We know this paragraph HAS numPr with numId > 0, so it IS
-                    # a list item — we just couldn't look up the numbering type.
+                    # a list item – we just couldn't look up the numbering type.
                     # Default to numbered unless text starts with a bullet char.
                     text = para.text.strip() if para.text else ""
                     if text.startswith(('•', '·', '○', '■', '□', '►')):
@@ -480,7 +480,7 @@ class DOCXHandler:
         return len(text.split())
 
     def get_raw_word_count(self) -> int:
-        """Count words directly from the loaded DOCX XML — independent of
+        """Count words directly from the loaded DOCX XML – independent of
         the paragraph extraction logic.  This concatenates all <w:t> text
         within each paragraph-level element first, then counts words, so
         that characters split across multiple runs (e.g. sub/superscript

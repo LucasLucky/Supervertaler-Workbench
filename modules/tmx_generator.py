@@ -213,7 +213,7 @@ def languages_are_compatible(lang1: str, lang2: str) -> bool:
 # ---------------------------------------------------------------------------
 
 # Outer wrapping tags that should be stripped entirely before TMX export.
-# These are structural/segment-level tags — they carry no meaning inside a TM.
+# These are structural/segment-level tags – they carry no meaning inside a TM.
 _OUTER_TAGS = {
     'li-o', 'li-b', 'li', 'p', 'td', 'th', 'tr', 'div', 'span',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'title', 'caption',
@@ -256,7 +256,7 @@ def _strip_outer_tags(text: str) -> str:
     inner = text[m.end():-len(closing)]
     # Reject if the same tag is nested inside
     if re.search(rf'<{re.escape(tag)}[\s>]', inner, re.IGNORECASE):
-        return inner  # still strip — nested duplicates are rare and harmless
+        return inner  # still strip – nested duplicates are rare and harmless
     return inner
 
 
@@ -356,12 +356,12 @@ class TMXGenerator:
 
             tu = ET.SubElement(body, 'tu')
 
-            # Source segment — outer tags stripped, formatting → bpt/ept
+            # Source segment – outer tags stripped, formatting → bpt/ept
             tuv_src = ET.SubElement(tu, 'tuv')
             tuv_src.set('xml:lang', get_simple_lang_code(source_lang))
             _build_seg(tuv_src, src)
 
-            # Target segment — same treatment
+            # Target segment – same treatment
             tuv_tgt = ET.SubElement(tu, 'tuv')
             tuv_tgt.set('xml:lang', get_simple_lang_code(target_lang))
             _build_seg(tuv_tgt, str(tgt))
@@ -386,7 +386,7 @@ class TMXGenerator:
     def _indent(self, elem, level=0):
         """Add indentation to XML for pretty printing.
 
-        Skips <seg> elements entirely — their mixed content (text + bpt/ept
+        Skips <seg> elements entirely – their mixed content (text + bpt/ept
         children) must not be touched or whitespace will leak into the TM.
         """
         if elem.tag == 'seg':

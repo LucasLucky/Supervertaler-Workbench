@@ -612,42 +612,42 @@ class ShortcutManager:
         # Global hotkeys (system-wide, work from any application)
         "global_superlookup": {
             "category": "Global",
-            "description": "Superlookup (global — works from any app)",
+            "description": "Superlookup (global – works from any app)",
             "default": "Ctrl+Alt+L",
             "action": "global_superlookup",
             "context": "global"
         },
         "global_quicktrans": {
             "category": "Global",
-            "description": "QuickTrans (global — works from any app)",
+            "description": "QuickTrans (global – works from any app)",
             "default": "Ctrl+Alt+Q",
             "action": "global_quicktrans",
             "context": "global"
         },
         "global_sidekick": {
             "category": "Global",
-            "description": "Supervertaler Sidekick (global — works from any app)",
+            "description": "Supervertaler Sidekick (global – works from any app)",
             "default": "Alt+K",
             "action": "global_sidekick",
             "context": "global"
         },
         "global_clipboard": {
             "category": "Global",
-            "description": "Sidekick – Clipboard tab (global — works from any app)",
+            "description": "Sidekick – Clipboard tab (global – works from any app)",
             "default": "Ctrl+Shift+C",
             "action": "global_clipboard",
             "context": "global"
         },
         "global_pushtotalk": {
             "category": "Global",
-            "description": "AutoFingers push-to-talk (global — works from any app)",
+            "description": "AutoFingers push-to-talk (global – works from any app)",
             "default": "Ctrl+Alt+D",
             "action": "global_pushtotalk",
             "context": "global"
         },
         "global_alwayson_toggle": {
             "category": "Global",
-            "description": "AutoFingers Always-On toggle (global — works from any app)",
+            "description": "AutoFingers Always-On toggle (global – works from any app)",
             "default": "Ctrl+Alt+A",
             "action": "global_alwayson_toggle",
             "context": "global"

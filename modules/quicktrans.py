@@ -105,7 +105,7 @@ class MTSuggestionItem(QFrame):
         """)
         layout.addWidget(num_label)
 
-        # Provider name badge — full name, sized to content
+        # Provider name badge – full name, sized to content
         provider_label = QLabel(suggestion.provider_name)
         provider_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 

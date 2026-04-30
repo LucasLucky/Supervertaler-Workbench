@@ -8,7 +8,7 @@ This file contains notes on stuff to add to a future QA module.
 - BBC (BBC) 
 - Blah blah blah (Blah blah blah)
 
-Find: \b([A-Za-z0-9À-ÿ’'‘\-–—,.!? ]+)\s*\(\1\)
+Find: \b([A-Za-z0-9À-ÿ’'‘\-––,.!? ]+)\s*\(\1\)
 Replace: $1
 
 ----

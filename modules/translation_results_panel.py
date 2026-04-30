@@ -405,7 +405,7 @@ class CompactMatchItem(QFrame):
 
         # Build a simple edit dialog
         dialog = QDialog(parent_window)
-        dialog.setWindowTitle(f"Edit TM Entry — {tm_name}")
+        dialog.setWindowTitle(f"Edit TM Entry – {tm_name}")
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         layout.setSpacing(8)
@@ -526,7 +526,7 @@ class CompactMatchItem(QFrame):
         if hasattr(parent_window, '_last_selected_row'):
             parent_window._last_selected_row = None
 
-        # Hide this card — it no longer exists in the DB
+        # Hide this card – it no longer exists in the DB
         self.hide()
 
     def select(self):
@@ -2009,7 +2009,7 @@ class TranslationResultsPanel(QWidget):
         parent_window = self.window()
 
         dialog = QDialog(parent_window)
-        dialog.setWindowTitle(f"Edit TM Entry — {tm_name}")
+        dialog.setWindowTitle(f"Edit TM Entry – {tm_name}")
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         layout.setSpacing(8)

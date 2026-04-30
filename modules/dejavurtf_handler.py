@@ -70,7 +70,7 @@ RTF_ESCAPE_MAP = {
     r"\'bb": "»",  # right guillemet
     r"\'b0": "°",  # degree
     r"\'96": "–",  # en-dash
-    r"\'97": "—",  # em-dash
+    r"\'97": "–",  # em-dash
     r"\'92": "'",  # right single quote
     r"\'93": """,  # left double quote
     r"\'94": """,  # right double quote
