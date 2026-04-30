@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.404 (April 30, 2026)
+**Current Version:** v1.9.405 (April 30, 2026)
 
+
+## v1.9.405 - April 30, 2026
+
+### Changed
+
+- **`DOCS_BASE_URL` in `modules/help_system.py` updated to `https://supervertaler.gitbook.io/help`** to match the renamed GitBook site slug (chosen over root publishing because GitBook's free plan requires a non-empty slug). Workbench `Topics` constants are unchanged from v1.9.404 — they still begin with `workbench/`, just appended to the new base. F1 / context-help opens will now land at `…/help/workbench/<topic>`.
+
+---
 
 ## v1.9.404 - April 30, 2026
 
