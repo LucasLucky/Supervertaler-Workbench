@@ -26,6 +26,8 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QScrollArea, QFrame, QMessageBox,
 )
 
+from modules.styled_widgets import CheckmarkCheckBox
+
 from modules.voice_command_dialog import VoiceCommandEditDialog
 
 
@@ -126,6 +128,20 @@ class AutoFingersTab(QWidget):
         self._sensitivity_combo.currentIndexChanged.connect(self._on_sensitivity_changed)
         sens_row.addWidget(self._sensitivity_combo, stretch=1)
         ao_layout.addLayout(sens_row)
+
+        # Commands-only toggle
+        self._commands_only_cb = CheckmarkCheckBox(
+            "Listen for commands only — don't type unmatched speech as dictation"
+        )
+        self._commands_only_cb.setToolTip(
+            "When checked, Always-On fires voice commands but ignores any "
+            "speech that doesn't match a command. Use Ctrl+Alt+D (or F9 in "
+            "the editor) for one-off dictation."
+        )
+        self._commands_only_cb.setChecked(
+            bool(settings.get('alwayson_commands_only', False)))
+        self._commands_only_cb.toggled.connect(self._on_commands_only_toggled)
+        ao_layout.addWidget(self._commands_only_cb)
 
         ao_focus_hint = QLabel(
             "ℹ️ <b>How it works:</b> commands and dictation go to whichever "
@@ -531,6 +547,9 @@ class AutoFingersTab(QWidget):
     def _on_ptt_changed(self, idx: int):
         mode = self._ptt_combo.itemData(idx) or 'toggle'
         self._set_dictation_keys(pushtotalk_mode=mode)
+
+    def _on_commands_only_toggled(self, checked: bool):
+        self._set_dictation_keys(alwayson_commands_only=bool(checked))
 
     def _save_settings(self):
         ok = self._set_dictation_keys(

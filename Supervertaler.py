@@ -268,6 +268,7 @@ from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
+from modules.styled_widgets import CheckmarkCheckBox
 from modules.statuses import (
     STATUSES,
     DEFAULT_STATUS,
@@ -7770,6 +7771,13 @@ class SupervertalerQt(QMainWindow):
         
         self.log(f"Welcome to Supervertaler Workbench v{__version__}")
         self.log("Supervertaler: The Ultimate Translation Workbench.")
+
+        # Bring up the AutoFingers tray icon now (in its inactive/grey
+        # state) so the system tray slot is allocated up-front. Allocating
+        # it on first Always-On activation would cause a one-time bounce
+        # of neighbouring tray icons; doing it at startup folds that into
+        # normal app launch instead.
+        self._ensure_alwayson_tray_icon()
         
         # Load general settings (including auto-propagation)
         self.load_general_settings()
@@ -20746,7 +20754,7 @@ class SupervertalerQt(QMainWindow):
         # Update status bar indicator (always visible when active)
         if hasattr(self, 'alwayson_indicator_label'):
             if status == "listening" or status == "waiting":
-                self.alwayson_indicator_label.setText("🎤 VOICE COMMANDS ON")
+                self.alwayson_indicator_label.setText("🎤 ALWAYS-ON")
                 self.alwayson_indicator_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #2E7D32; background-color: #C8E6C9; padding: 2px 6px; border-radius: 3px;")
                 self.alwayson_indicator_label.setToolTip("Always-on voice listening ACTIVE\nClick to stop")
                 self.alwayson_indicator_label.show()
@@ -20834,6 +20842,144 @@ class SupervertalerQt(QMainWindow):
                 except Exception:
                     pass
 
+        # System tray icon — visible only while Always-On is active.
+        # Gives the user a persistent "the mic is hot" signal even when
+        # both Workbench and Sidekick are hidden.
+        self._update_alwayson_tray_icon(status)
+
+    @staticmethod
+    def _draw_mic_icon(color):
+        """Draw a small microphone glyph as a QIcon, in the given QColor.
+
+        Used by the Always-On tray indicator. Two visual states share the
+        same shape but differ in colour: grey when Always-On is off, red
+        when it's actively listening. Drawing programmatically avoids
+        bundling an extra asset and keeps colour-swaps trivial.
+        """
+        from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QBrush
+        size = 32
+        pix = QPixmap(size, size)
+        pix.fill(QColor(0, 0, 0, 0))
+        p = QPainter(pix)
+        try:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            qcol = QColor(color) if not isinstance(color, QColor) else color
+            stroke = max(1.5, size * 0.06)
+
+            # Mic body — vertical capsule centred horizontally
+            body_w = size * 0.42
+            body_h = size * 0.50
+            body_x = (size - body_w) / 2
+            body_y = size * 0.10
+            p.setBrush(QBrush(qcol))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawRoundedRect(
+                int(body_x), int(body_y), int(body_w), int(body_h),
+                int(body_w / 2), int(body_w / 2),
+            )
+
+            # U-shaped pickup arc cradling the body
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(qcol, stroke, Qt.PenStyle.SolidLine,
+                          Qt.PenCapStyle.RoundCap))
+            arc_x = size * 0.16
+            arc_y = size * 0.30
+            arc_w = size * 0.68
+            arc_h = size * 0.50
+            # Qt uses 1/16ths of a degree; 0° is at 3 o'clock, going CCW.
+            p.drawArc(int(arc_x), int(arc_y), int(arc_w), int(arc_h),
+                      200 * 16, 140 * 16)
+
+            # Stand (vertical) + base (horizontal)
+            cx = size / 2
+            p.drawLine(int(cx), int(size * 0.80), int(cx), int(size * 0.90))
+            p.drawLine(int(cx - size * 0.18), int(size * 0.90),
+                       int(cx + size * 0.18), int(size * 0.90))
+        finally:
+            p.end()
+        return QIcon(pix)
+
+    def _ensure_alwayson_tray_icon(self):
+        """Lazily create the QSystemTrayIcon used as a global Always-On
+        toggle and visual state indicator.
+
+        A small microphone glyph drawn programmatically — grey when
+        Always-On is off, red when actively listening. Convention follows
+        OBS / Zoom / Discord (grey = ready/off, red = live).
+
+        The icon is created once and stays visible for the lifetime of
+        the Workbench window. Showing/hiding a tray slot causes Windows
+        to reflow the tray (the "icons bounce" effect), so the slot
+        stays allocated and only the pixmap, tooltip, and menu wording
+        change as state changes.
+
+        Single-click toggles Always-On. Right-click shows a small menu
+        with the same toggle plus an "Open AutoFingers in Sidekick"
+        shortcut.
+        """
+        if hasattr(self, '_alwayson_tray_icon'):
+            return
+        from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+        from PyQt6.QtGui import QColor
+
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self._alwayson_tray_icon = None
+            return
+
+        # Material grey 600 (off) and red 800 (live).
+        self._alwayson_tray_icon_normal = self._draw_mic_icon(QColor(0x75, 0x75, 0x75))
+        self._alwayson_tray_icon_red = self._draw_mic_icon(QColor(0xC6, 0x28, 0x28))
+
+        tray = QSystemTrayIcon(self._alwayson_tray_icon_normal, self)
+        tray.setToolTip("AutoFingers — Always-On is OFF. Click to start.")
+
+        menu = QMenu(self)
+        toggle_action = menu.addAction("▶ Start Always-On")
+        toggle_action.triggered.connect(self._toggle_alwayson_listening)
+        menu.addSeparator()
+        open_action = menu.addAction("🎤 Open AutoFingers in Sidekick")
+        open_action.triggered.connect(self._open_autofingers_in_sidekick)
+        tray.setContextMenu(menu)
+        self._alwayson_tray_toggle_action = toggle_action
+
+        tray.activated.connect(self._on_alwayson_tray_activated)
+        self._alwayson_tray_icon = tray
+        tray.show()
+
+    def _on_alwayson_tray_activated(self, reason):
+        """Tray-icon click handler — single-click toggles Always-On."""
+        from PyQt6.QtWidgets import QSystemTrayIcon
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._toggle_alwayson_listening()
+
+    def _update_alwayson_tray_icon(self, status: str):
+        """Switch the tray icon between inactive/active visuals based on
+        the current listener status. The icon stays visible at all times
+        — only the pixmap, tooltip, and menu wording change."""
+        self._ensure_alwayson_tray_icon()
+        tray = getattr(self, '_alwayson_tray_icon', None)
+        if tray is None:
+            return
+
+        active = status in ("listening", "waiting", "recording", "processing")
+        if active:
+            tray.setIcon(self._alwayson_tray_icon_red)
+            if status == "recording":
+                tray.setToolTip("AutoFingers — recording speech. Click to stop.")
+            elif status == "processing":
+                tray.setToolTip("AutoFingers — processing speech. Click to stop.")
+            else:
+                tray.setToolTip("AutoFingers — Always-On listening. Click to stop.")
+            action = getattr(self, '_alwayson_tray_toggle_action', None)
+            if action is not None:
+                action.setText("⏹ Stop Always-On")
+        else:
+            tray.setIcon(self._alwayson_tray_icon_normal)
+            tray.setToolTip("AutoFingers — Always-On is OFF. Click to start.")
+            action = getattr(self, '_alwayson_tray_toggle_action', None)
+            if action is not None:
+                action.setText("▶ Start Always-On")
+
     def _on_alwayson_speech(self, text: str):
         """Handle raw speech from always-on listener"""
         self.log(f"🎤 Heard: {text}")
@@ -20849,7 +20995,19 @@ class SupervertalerQt(QMainWindow):
         Routes through the shared cross-app helper so Always-On, F9
         push-to-talk, and the AutoFingers global hotkey all behave the same
         way regardless of which app has focus.
+
+        Skipped entirely when the user has set Always-On to commands-only
+        mode (AutoFingers tab → "Listen for commands only"). In that mode
+        unmatched speech is logged but not typed — dictation is reserved
+        for the explicit Ctrl+Alt+D / F9 push-to-talk paths.
         """
+        try:
+            settings = self.load_dictation_settings()
+            if settings.get('alwayson_commands_only', False):
+                self.log(f"💬 Heard (commands-only mode, not dictated): {text}")
+                return
+        except Exception:
+            pass
         self._insert_dictated_text(text)
 
     def _on_alwayson_status(self, message: str):
@@ -21244,6 +21402,24 @@ class SupervertalerQt(QMainWindow):
             opener()
         except Exception as e:
             QMessageBox.warning(self, "Could not open AutoFingers", str(e))
+
+    def reload_global_hotkeys(self):
+        """Re-register the global hotkey set with current ShortcutManager values.
+
+        Called after the user changes a ``global_*`` shortcut in
+        Settings → Keyboard Shortcuts. Without this call, the OS-level
+        hotkey listener keeps firing on the *old* key until the next
+        application restart, because pynput / WinAPI registrations don't
+        track ShortcutManager state. Idempotent — ``register_global_hotkey``
+        stops any previously running manager before binding fresh keys.
+        """
+        lookup_tab = getattr(self, 'lookup_tab', None)
+        if lookup_tab is None or not hasattr(lookup_tab, 'register_global_hotkey'):
+            return
+        try:
+            lookup_tab.register_global_hotkey()
+        except Exception as e:
+            self.log(f"⚠ Could not reload global hotkeys: {e}")
 
     def _create_debug_settings_tab(self):
         """Create Debug Settings tab content"""
@@ -56119,7 +56295,14 @@ class SuperlookupTab(QWidget):
             )
     
     def register_global_hotkey(self):
-        """Register global hotkeys for Superlookup, QuickTrans, and QuickLauncher.
+        """Register global hotkeys for Superlookup, QuickTrans, Sidekick,
+        Clipboard, AutoFingers push-to-talk, and AutoFingers Always-On
+        toggle.
+
+        Idempotent: if a manager from a previous registration is still
+        running, it is stopped first. That makes this safe to call from
+        ``reload_global_hotkeys`` after the user changes a binding in
+        Settings \u2192 Keyboard Shortcuts.
 
         Strategy:
         1. Try WinAPI RegisterHotKey / pynput GlobalHotKeys (cross-platform)
@@ -56130,6 +56313,14 @@ class SuperlookupTab(QWidget):
         """
         global _ahk_process, _hotkey_manager
 
+        # Stop any previously-running manager so re-registration applies a
+        # clean set of bindings instead of stacking new keys on top of old.
+        prev_manager = getattr(self, '_hotkey_manager', None)
+        if prev_manager is not None:
+            try:
+                prev_manager.stop()
+            except Exception:
+                pass
         self._using_pynput = False
         self._hotkey_manager = None
 
@@ -56141,12 +56332,14 @@ class SuperlookupTab(QWidget):
             sk_shortcut = sm.get_shortcut('global_sidekick').lower().replace('+', '+')
             cb_shortcut = sm.get_shortcut('global_clipboard').lower().replace('+', '+')
             pt_shortcut = sm.get_shortcut('global_pushtotalk').lower().replace('+', '+')
+            ao_shortcut = sm.get_shortcut('global_alwayson_toggle').lower().replace('+', '+')
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+m'
             sk_shortcut = 'alt+k'
             cb_shortcut = 'ctrl+shift+c'
             pt_shortcut = 'ctrl+alt+d'
+            ao_shortcut = 'ctrl+alt+a'
 
         # On macOS, replace 'alt' with 'cmd' in the shortcuts
         if IS_MACOS:
@@ -56155,6 +56348,7 @@ class SuperlookupTab(QWidget):
             sk_shortcut = sk_shortcut.replace('alt', 'cmd')
             cb_shortcut = cb_shortcut.replace('alt', 'cmd')
             pt_shortcut = pt_shortcut.replace('alt', 'cmd')
+            ao_shortcut = ao_shortcut.replace('alt', 'cmd')
 
         # --- Attempt 1: WinAPI / pynput (cross-platform) ---
         import sys as _sys
@@ -56172,7 +56366,8 @@ class SuperlookupTab(QWidget):
                 manager.register(sk_shortcut, self._on_pynput_sidekick)
                 manager.register(cb_shortcut, self._on_pynput_clipboard)
                 manager.register(pt_shortcut, self._on_pynput_pushtotalk)
-                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}, {cb_shortcut}, {pt_shortcut}")
+                manager.register(ao_shortcut, self._on_pynput_alwayson_toggle)
+                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}, {cb_shortcut}, {pt_shortcut}, {ao_shortcut}")
                 started = manager.start()
                 _log(f"[Global Hotkeys] Started: {started}")
                 if started:
@@ -56183,7 +56378,7 @@ class SuperlookupTab(QWidget):
                     failed = getattr(manager, 'failed_hotkeys', [])
                     if failed:
                         _log(f"\u26A0 [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)")
-                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut, cb_shortcut, pt_shortcut] if k not in failed]
+                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut, cb_shortcut, pt_shortcut, ao_shortcut] if k not in failed]
                     _log(f"\u2328 [Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}")
                     return
                 else:
@@ -56302,6 +56497,36 @@ class SuperlookupTab(QWidget):
                 print("[AutoFingers] Workbench unavailable for push-to-talk")
         except Exception as e:
             print(f"[AutoFingers] Error in push-to-talk hotkey handler: {e}")
+
+    def _on_pynput_alwayson_toggle(self):
+        """AutoFingers Always-On toggle hotkey — fires on the pynput
+        background thread.
+
+        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        """
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._handle_alwayson_toggle_hotkey)
+        except Exception as e:
+            print(f"[AutoFingers] Error signaling main thread: {e}")
+
+    @pyqtSlot()
+    def _handle_alwayson_toggle_hotkey(self):
+        """Runs on Qt main thread — toggle Always-On listening on/off.
+
+        Unlike push-to-talk (which records a single utterance), this
+        starts continuous listening that stays on until pressed again.
+        Visual feedback: the system tray icon appears when Always-On is
+        active, plus the grid toolbar button + Sidekick AutoFingers tab
+        update via _update_alwayson_ui."""
+        try:
+            mw = self.main_window or self.window()
+            if mw and hasattr(mw, '_toggle_alwayson_listening'):
+                mw._toggle_alwayson_listening()
+            else:
+                print("[AutoFingers] Workbench unavailable for Always-On toggle")
+        except Exception as e:
+            print(f"[AutoFingers] Error in Always-On toggle handler: {e}")
 
     def _try_ahk_library_method(self):
         """Try to register hotkey using ahk Python library
@@ -57085,90 +57310,6 @@ class SuperlookupTab(QWidget):
 # AUTOFINGERS DIALOG
 # ============================================================================
 
-class CheckmarkCheckBox(QCheckBox):
-    """Custom checkbox with green background and white checkmark when checked"""
-    
-    def __init__(self, text="", parent=None):
-        super().__init__(text, parent)
-        self.setCheckable(True)
-        self.setEnabled(True)
-        self.setStyleSheet("""
-            QCheckBox {
-                font-size: 9pt;
-                spacing: 6px;
-            }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #999;
-                border-radius: 3px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #4CAF50;
-                border-color: #4CAF50;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #666;
-            }
-            QCheckBox::indicator:checked:hover {
-                background-color: #45a049;
-                border-color: #45a049;
-            }
-        """)
-    
-    def paintEvent(self, event):
-        """Override paint event to draw white checkmark when checked"""
-        super().paintEvent(event)
-        
-        if self.isChecked():
-            # Get the indicator rectangle using QStyle
-            from PyQt6.QtWidgets import QStyleOptionButton
-            from PyQt6.QtGui import QPainter, QPen, QColor
-            from PyQt6.QtCore import QPointF, QRect
-            
-            opt = QStyleOptionButton()
-            self.initStyleOption(opt)
-            indicator_rect = self.style().subElementRect(
-                self.style().SubElement.SE_CheckBoxIndicator,
-                opt,
-                self
-            )
-            
-            if indicator_rect.isValid():
-                # Draw white checkmark
-                painter = QPainter(self)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                pen_width = max(2.0, min(indicator_rect.width(), indicator_rect.height()) * 0.12)
-                painter.setPen(QPen(QColor(255, 255, 255), pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-                painter.setBrush(QColor(255, 255, 255))
-                
-                # Draw checkmark (✓ shape) - coordinates relative to indicator
-                x = indicator_rect.x()
-                y = indicator_rect.y()
-                w = indicator_rect.width()
-                h = indicator_rect.height()
-                
-                # Add padding (15% on all sides)
-                padding = min(w, h) * 0.15
-                x += padding
-                y += padding
-                w -= padding * 2
-                h -= padding * 2
-                
-                # Checkmark path
-                check_x1 = x + w * 0.10
-                check_y1 = y + h * 0.50
-                check_x2 = x + w * 0.35
-                check_y2 = y + h * 0.70
-                check_x3 = x + w * 0.90
-                check_y3 = y + h * 0.25
-                
-                # Draw two lines forming the checkmark
-                painter.drawLine(QPointF(check_x2, check_y2), QPointF(check_x3, check_y3))
-                painter.drawLine(QPointF(check_x1, check_y1), QPointF(check_x2, check_y2))
-                
-                painter.end()
 
 
 class PinkCheckmarkCheckBox(QCheckBox):

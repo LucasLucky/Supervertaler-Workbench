@@ -2,8 +2,34 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.401 (April 30, 2026)
+**Current Version:** v1.9.402 (April 30, 2026)
 
+
+## v1.9.402 - April 30, 2026
+
+### Added
+
+- **`Ctrl+Alt+A` global hotkey toggles AutoFingers Always-On listening from any application.** Sibling to `Ctrl+Alt+D` (push-to-talk for one-shot dictation), but where Ctrl+Alt+D records a single utterance and stops, Ctrl+Alt+A flips Always-On into continuous-listening mode and back off. Registered through the same `GlobalHotkeyManager` as the other global shortcuts, with handlers that marshal off the pynput thread via `QTimer.singleShot(0, ...)` exactly like the existing patterns. Customisable in Settings → Keyboard Shortcuts → Global as `global_alwayson_toggle`. The previous wiring of Ctrl+Alt+D had been ambiguously documented as "AutoFingers push-to-talk" — users reasonably read that as the Always-On toggle and were confused when it didn't behave that way; this change clarifies the split (Ctrl+Alt+D = single utterance, Ctrl+Alt+A = listening-mode toggle) and gives each its own hotkey.
+
+- **Hotkey rebindings now apply immediately, no restart required.** Previously the OS-level global hotkey listeners (pynput / WinAPI / AHK fallback) were registered once at app startup, and changing a `global_*` shortcut in Settings → Keyboard Shortcuts only took effect on the next launch — so a user could remap and then discover their new key did nothing. `register_global_hotkey` is now idempotent: it stops any previously-running manager before registering a fresh set, so it's safe to call repeatedly. A new `reload_global_hotkeys` method on the Workbench delegates to that registration, and `KeyboardShortcutsWidget` calls it after every save path (the edit dialog, single-shortcut reset, reset-all, and import). The "Changes will take effect when you restart" copy in those success dialogs has been replaced with "applied immediately" / "applied immediately to the OS-level hotkey listeners".
+
+- **System tray icon for Always-On state.** A small microphone glyph drawn programmatically (no extra asset bundled) appears in the system tray whenever Workbench is running. Grey when Always-On is off, red (`#C62828`) when actively listening — convention follows OBS / Zoom / Discord / Microsoft Teams (grey = off, red = live). The icon stays permanently allocated rather than appearing on activation: that avoids the visible "bounce" of neighbouring tray icons that would otherwise occur every time the tray slot is allocated/deallocated. Single-click toggles Always-On; right-click shows a small menu with the same toggle (label adapts: "▶ Start" / "⏹ Stop") plus an "Open AutoFingers in Sidekick" shortcut. Tooltip changes between states ("Always-On is OFF. Click to start." / "Always-On listening." / "recording speech." / "processing speech."). Icon is created once at the end of Workbench `__init__`, so the tray slot is allocated as part of normal app startup instead of on the first Always-On toggle.
+
+- **Always-On "commands-only" mode toggle in the AutoFingers tab.** A new green-checkmark checkbox, *"Listen for commands only — don't type unmatched speech as dictation"*, sits inside the Always-On Listening section. When unchecked (default, current behaviour) Always-On still does both: matches voice commands first, falls back to typing unmatched speech as dictation. When checked, Always-On only fires voice commands — anything spoken that doesn't match a command is logged (so you can see what was heard, useful for debugging "why didn't my command fire?") but never typed anywhere. Pairs nicely with the focus-doesn't-matter behaviour: with commands-only on, Always-On can run all day and any random speech / mumbling / colleague-conversation passes through harmlessly instead of getting injected into whatever window happens to have focus. For dictation, the explicit Ctrl+Alt+D / F9 push-to-talk paths still work normally. Persists under `dictation_settings.alwayson_commands_only`; the in-Workbench `_on_alwayson_dictation` handler reads the flag on every utterance, so the change applies immediately without toggling Always-On off and on.
+
+### Changed
+
+- **Consolidated nine duplicate `CheckmarkCheckBox` class definitions into one** at `modules/styled_widgets.py`. Each of `Supervertaler.py`, `keyboard_shortcuts_widget.py`, `llm_superbench_ui.py`, `model_update_dialog.py`, `pdf_rescue_Qt.py`, `termbase_entry_editor.py`, `tmx_editor_qt.py`, and `unified_prompt_manager_qt.py` previously carried its own copy of this widget — sometimes near-identical, sometimes with subtle drift (16×16 vs 18×18 indicators, slightly different checkmark proportions, some missing the painter `try/finally` cleanup, one using `QPolygonF + drawPolyline` while others used two `drawLine` calls). Net change: −706 lines (the local copies) / +94 lines (the canonical class), so about 612 lines lighter. All callers now import `CheckmarkCheckBox` from `modules.styled_widgets`. The dominant 16×16 + canonical-checkmark variant was kept as the standard; the small visual drift in the three files that used 18×18 indicators is resolved in favour of consistency. Style tweaks in future will propagate everywhere automatically. `superdocs_viewer_qt.py`, which is a deprecated shim, had its orphan copy of the class deleted outright since nothing in that module uses it.
+
+- **AutoFingers "commands-only" checkbox uses the standard Supervertaler `CheckmarkCheckBox`** (green fill with white tick when checked) instead of the default platform `QCheckBox`, matching every other settings checkbox in the app.
+
+- **In-Workbench Always-On status pill now reads "🎤 ALWAYS-ON"** (was "🎤 VOICE COMMANDS ON"). Brings the wording in line with the rest of the AutoFingers naming.
+
+### Fixed
+
+- **F9 hold-to-talk no longer produces Whisper hallucinations** ("MBC 뉴스 이덕영입니다", "you you", and similar Whisper-on-silence artefacts). Root cause: Qt's `QShortcut` defaults to `setAutoRepeat(True)`, so holding F9 fired the `activated()` signal repeatedly while the key was held — and since each fire called `start_voice_dictation()`, which is a *toggle*, holding F9 oscillated between recording and not-recording, producing fragmented near-empty audio buffers. Fixed by calling `setAutoRepeat(False)` on the `voice_dictate` QShortcut. Toggle mode unaffected; hold mode now records the full press duration and transcribes cleanly on release. (The hold-to-talk infrastructure itself shipped in v1.9.401; this is a follow-up correctness fix on the same code path.)
+
+---
 
 ## v1.9.401 - April 30, 2026
 

@@ -645,6 +645,13 @@ class ShortcutManager:
             "action": "global_pushtotalk",
             "context": "global"
         },
+        "global_alwayson_toggle": {
+            "category": "Global",
+            "description": "AutoFingers Always-On toggle (global — works from any app)",
+            "default": "Ctrl+Alt+A",
+            "action": "global_alwayson_toggle",
+            "context": "global"
+        },
     }
     
     def __init__(self, settings_file: Optional[Path] = None):

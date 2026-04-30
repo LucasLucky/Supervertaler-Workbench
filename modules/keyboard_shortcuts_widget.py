@@ -18,72 +18,7 @@ from modules.shortcut_display import format_shortcut_for_display, format_shortcu
 from modules.platform_helpers import IS_WINDOWS, IS_MACOS, IS_LINUX
 
 
-class CheckmarkCheckBox(QCheckBox):
-    """Custom checkbox with green background and white checkmark when checked"""
-
-    def __init__(self, text="", parent=None):
-        super().__init__(text, parent)
-        self.setCheckable(True)
-        self.setEnabled(True)
-        self.setStyleSheet("""
-            QCheckBox {
-                font-size: 9pt;
-                spacing: 6px;
-            }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #999;
-                border-radius: 3px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #4CAF50;
-                border-color: #4CAF50;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #666;
-            }
-            QCheckBox::indicator:checked:hover {
-                background-color: #45a049;
-                border-color: #45a049;
-            }
-        """)
-
-    def paintEvent(self, event):
-        """Override paint event to draw white checkmark when checked"""
-        super().paintEvent(event)
-
-        if self.isChecked():
-            opt = QStyleOptionButton()
-            self.initStyleOption(opt)
-            indicator_rect = self.style().subElementRect(
-                self.style().SubElement.SE_CheckBoxIndicator,
-                opt,
-                self
-            )
-
-            if indicator_rect.isValid():
-                # Draw white checkmark
-                painter = QPainter(self)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                pen_width = max(2.0, min(indicator_rect.width(), indicator_rect.height()) * 0.12)
-                painter.setPen(QPen(QColor(255, 255, 255), pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-
-                # Draw checkmark (✓ shape)
-                x = indicator_rect.x()
-                y = indicator_rect.y()
-                w = indicator_rect.width()
-                h = indicator_rect.height()
-
-                # Checkmark coordinates (relative to indicator)
-                p1 = QPointF(x + w * 0.20, y + h * 0.50)  # Start left
-                p2 = QPointF(x + w * 0.40, y + h * 0.70)  # Bottom middle
-                p3 = QPointF(x + w * 0.80, y + h * 0.30)  # End right-top
-
-                painter.drawLine(p1, p2)
-                painter.drawLine(p2, p3)
-                painter.end()
+from modules.styled_widgets import CheckmarkCheckBox  # noqa: E402
 
 
 class KeySequenceEdit(QLineEdit):
@@ -638,6 +573,22 @@ class KeyboardShortcutsWidget(QWidget):
                         shortcut_item.setForeground(Qt.GlobalColor.gray)
                 break
     
+    def _reload_global_hotkeys_on_main_window(self):
+        """Tell the main window to re-register its OS-level global hotkeys.
+
+        Called after any shortcut change so that updates to ``global_*``
+        bindings (Superlookup, QuickTrans, Sidekick, Clipboard, AutoFingers
+        push-to-talk, AutoFingers Always-On toggle) take effect immediately
+        instead of waiting for the next application restart. Local
+        QShortcuts already update on each load_shortcuts call.
+        """
+        mw = self.main_window
+        if mw is not None and hasattr(mw, 'reload_global_hotkeys'):
+            try:
+                mw.reload_global_hotkeys()
+            except Exception as e:
+                print(f"[KeyboardShortcuts] reload_global_hotkeys failed: {e}")
+
     def filter_shortcuts(self):
         """Filter shortcuts based on search text"""
         search_text = self.search_input.text().lower()
@@ -668,10 +619,11 @@ class KeyboardShortcutsWidget(QWidget):
         dialog = ShortcutEditDialog(shortcut_id, data, self.manager, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.load_shortcuts()  # Reload to show changes
+            self._reload_global_hotkeys_on_main_window()
             QMessageBox.information(
-                self, 
-                "Shortcut Updated", 
-                "The shortcut has been updated. Changes will take effect when you restart the application."
+                self,
+                "Shortcut Updated",
+                "The shortcut has been updated and applied immediately."
             )
     
     def reset_selected(self):
@@ -701,6 +653,7 @@ class KeyboardShortcutsWidget(QWidget):
             self.manager.reset_shortcut(shortcut_id)
             self.manager.save_shortcuts()
             self.load_shortcuts()
+            self._reload_global_hotkeys_on_main_window()
             QMessageBox.information(self, "Reset Complete", "Shortcut has been reset to default.")
     
     def reset_all(self):
@@ -717,6 +670,7 @@ class KeyboardShortcutsWidget(QWidget):
             self.manager.reset_all_shortcuts()
             self.manager.save_shortcuts()
             self.load_shortcuts()
+            self._reload_global_hotkeys_on_main_window()
             QMessageBox.information(self, "Reset Complete", "All shortcuts have been reset to defaults.")
     
     def export_shortcuts(self):
@@ -765,10 +719,11 @@ class KeyboardShortcutsWidget(QWidget):
                     if self.manager.import_shortcuts(Path(file_path)):
                         self.manager.save_shortcuts()
                         self.load_shortcuts()
+                        self._reload_global_hotkeys_on_main_window()
                         QMessageBox.information(
-                            self, 
-                            "Import Successful", 
-                            "Shortcuts imported successfully.\n\nChanges will take effect when you restart the application."
+                            self,
+                            "Import Successful",
+                            "Shortcuts imported successfully and applied immediately."
                         )
                     else:
                         QMessageBox.critical(
