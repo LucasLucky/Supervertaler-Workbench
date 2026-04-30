@@ -2,8 +2,36 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.402 (April 30, 2026)
+**Current Version:** v1.9.403 (April 30, 2026)
 
+
+## v1.9.403 - April 30, 2026
+
+### Added
+
+- **Sidekick keyboard navigation overhaul.** Sidekick is now fully keyboard-driveable: `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle through the four left-pane tabs (Chat → SuperLookup → Clipboard → AutoFingers, wrapping); `Tab` jumps focus from the active tab content to the right-pane Menu (action tree) and back; `Left` arrow on the Menu returns focus to whatever left-pane widget was previously focused (not just a default — so if you navigated *out of* the clipboard image list with `Right`, `Left` brings you back to the image list specifically). The Tab-pane filter is implemented as an app-level event filter rather than a `QShortcut`, so `Tab` keeps its normal meaning inside text-editing widgets (chat input, search fields, etc.). Sidekick tracks `_last_left_pane_focus` via Qt's `focusChanged` signal, with descendant-walk filtering so action-tree focus events don't pollute the remembered left-pane focus.
+
+- **Visual focus indicator on region headers.** Every "region" of Sidekick that you can keyboard-navigate to now has a header that lights up when keyboard focus lands inside it: the right-pane "Menu" label, the clipboard "📝 Text snippets" header, and the clipboard "🖼 Images" header. Active styling is `#1976D2` (Material blue) text with a 2px underline; inactive is the previous muted dark-blue / grey. The active tab indicator in the `QTabWidget` already showed *which tab* you're on; this fills in the *which sub-region* gap so you never have to guess where keyboard input will land next.
+
+- **Sortable columns in the AutoFingers voice commands table.** Click any column header (Phrase / Aliases / Type / Action / Category) to sort ascending; click again to flip to descending. Especially useful as your command list grows: sort by Type to group all keystroke commands together, by Category to see all "navigation" or "editing" commands side by side, by Phrase for alphabetical lookup. Sorting is suspended during `_populate_table`'s bulk insert (Qt's "items reshuffle while you're inserting" gotcha) and re-enabled after — so adds, edits, removes, and resets all keep working correctly. Edit / Remove identify the selected command by its phrase rather than by row index, so they're already sort-order-agnostic.
+
+### Changed
+
+- **Clipboard tab split into two side-by-side columns: text snippets and images.** Replaces the previous single mixed list. A horizontal `QSplitter` (default 60/40 favouring text — text snippets are typically more numerous, images are fewer but visual) lets users rebalance to taste. Each column has its own header showing the per-kind count ("📝 Text snippets (N)" / "🖼 Images (N)"); the title bar still shows the total. When a column is empty, a centred italic placeholder ("No text snippets yet — copy any text to start" / "No images yet — copy any image to start") appears via a `QStackedLayout` in-place of the empty list, so the layout doesn't jump when the first item arrives. Default focus on opening the Clipboard tab is the text list (where most clips go); `Right` switches to the image list, `Right` again jumps out to the right-pane Menu (matching the Tab pane-switch convention); `Left` reverses through the same path; `Up` / `Down` move within a column and stop at the edges; `Enter` pastes the selected item. Internally the `ClipboardManagerWidget`'s lists, trim cap enforcement, dedup, and per-column "pasted = grey" state are split per-list, but the existing per-kind cap behaviour (200 text + 50 images) is preserved.
+
+- **Right-pane Menu's "Workbench Tools" section heading renamed to "Tools".** Inside Sidekick, the "Workbench" qualifier was redundant (every Sidekick tool is a Workbench tool). Shorter heading, cleaner panel.
+
+- **Hotkey changes apply immediately, no restart required** *(originally v1.9.402 — strengthened in this release with the Sidekick keyboard work above).*
+
+### Fixed
+
+- *(none — this release is all additive UX work; no defects fixed.)*
+
+### Refactor
+
+- **Consolidated nine duplicate `CheckmarkCheckBox` class definitions into one** at `modules/styled_widgets.py` *(landed in v1.9.402; rolled forward here as a stability check — no callers broke).*
+
+---
 
 ## v1.9.402 - April 30, 2026
 

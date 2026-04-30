@@ -17,7 +17,7 @@ so the user can immediately navigate with arrow keys and press Enter.
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QCursor, QKeyEvent, QFont, QColor, QBrush
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -27,6 +27,79 @@ from PyQt6.QtWidgets import (
 
 from modules.chat_backend import ChatBackend
 from modules.chat_view_widget import ChatViewWidget
+
+
+class _SidekickTabPaneFilter(QObject):
+    """App-level event filter: Tab jumps between the Sidekick's two panes.
+
+    From anywhere in the **left** pane (the active tab's content), pressing
+    Tab moves keyboard focus to the **right** pane's action tree (Menu).
+    From the right pane, Tab moves focus back into the active left tab.
+
+    Tab events going to text-editing widgets (QTextEdit, QPlainTextEdit,
+    QLineEdit) are passed through untouched — typing 'Tab' in a chat
+    input must still indent / move between fields normally.
+
+    Only intercepts when the Sidekick window is the active window, so this
+    filter doesn't bleed into Workbench's own Tab handling.
+    """
+
+    def __init__(self, sidekick):
+        super().__init__(sidekick)
+        self._sidekick = sidekick
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtWidgets import (
+            QTextEdit, QPlainTextEdit, QLineEdit, QApplication,
+        )
+
+        if event.type() != QEvent.Type.KeyPress:
+            return False
+        if event.key() != Qt.Key.Key_Tab and event.key() != Qt.Key.Key_Backtab:
+            return False
+        # Only Tab without modifiers (Shift+Tab is Backtab — also handled
+        # below as the reverse direction). Ignore Ctrl+Tab — that's the
+        # tab-cycling shortcut, handled separately by QShortcut.
+        mods = event.modifiers()
+        if mods & (Qt.KeyboardModifier.ControlModifier
+                   | Qt.KeyboardModifier.AltModifier
+                   | Qt.KeyboardModifier.MetaModifier):
+            return False
+
+        sk = self._sidekick
+        if sk is None or not sk.isActiveWindow():
+            return False
+
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return False
+        # Pass Tab through if focus is on a real text-editing widget so
+        # users can still indent / traverse form fields normally.
+        if isinstance(focus, (QTextEdit, QPlainTextEdit, QLineEdit)):
+            return False
+
+        action_tree = getattr(sk, '_action_tree', None)
+        if action_tree is None:
+            return False
+
+        # Determine current pane by walking up the focus widget's ancestors.
+        in_action_tree = False
+        w = focus
+        while w is not None:
+            if w is action_tree:
+                in_action_tree = True
+                break
+            w = w.parent()
+
+        if in_action_tree:
+            # On the right pane → jump back to the left.
+            sk._focus_left_pane()
+        else:
+            # Otherwise (left pane or anywhere else inside Sidekick) → jump
+            # to the right action tree.
+            sk._focus_action_tree()
+        return True
 
 
 class FloatingAssistant(QWidget):
@@ -90,6 +163,29 @@ class FloatingAssistant(QWidget):
         esc_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         esc_shortcut.activated.connect(self._dismiss_to_tray)
 
+        # Ctrl+Tab / Ctrl+Shift+Tab cycle through the Sidekick's left tabs
+        # (Chat → SuperLookup → Clipboard → AutoFingers → wrap). Standard
+        # Qt convention; matches what users expect from any tabbed app.
+        next_tab_sc = QShortcut(QKeySequence("Ctrl+Tab"), self)
+        next_tab_sc.setContext(Qt.ShortcutContext.WindowShortcut)
+        next_tab_sc.activated.connect(self._cycle_tab_forward)
+        prev_tab_sc = QShortcut(QKeySequence("Ctrl+Shift+Tab"), self)
+        prev_tab_sc.setContext(Qt.ShortcutContext.WindowShortcut)
+        prev_tab_sc.activated.connect(self._cycle_tab_backward)
+
+        # Tab as pane-switcher (left tab content ↔ right action menu).
+        # Implemented as an app-event filter rather than a QShortcut so we
+        # can let Tab through to text-editing widgets (chat input,
+        # search fields, etc.) where Tab has its normal meaning.
+        from PyQt6.QtWidgets import QApplication
+        self._tab_pane_switch_filter = _SidekickTabPaneFilter(self)
+        QApplication.instance().installEventFilter(self._tab_pane_switch_filter)
+
+        # Track last-focused widget in the left pane so Left/Tab from the
+        # right-pane Menu can return the user to exactly where they were.
+        self._last_left_pane_focus = None
+        QApplication.instance().focusChanged.connect(self._on_focus_changed)
+
 
     def _dismiss_to_tray(self):
         """Hide Sidekick completely — Tool-style windows have no taskbar
@@ -100,6 +196,125 @@ class FloatingAssistant(QWidget):
         Ctrl+Q toggle).
         """
         self.hide()
+
+    def _cycle_tab_forward(self):
+        """Ctrl+Tab — advance to the next Sidekick tab, wrapping at the end."""
+        if not hasattr(self, '_left_tabs'):
+            return
+        count = self._left_tabs.count()
+        if count <= 1:
+            return
+        idx = (self._left_tabs.currentIndex() + 1) % count
+        self._left_tabs.setCurrentIndex(idx)
+
+    def _cycle_tab_backward(self):
+        """Ctrl+Shift+Tab — go to the previous Sidekick tab, wrapping."""
+        if not hasattr(self, '_left_tabs'):
+            return
+        count = self._left_tabs.count()
+        if count <= 1:
+            return
+        idx = (self._left_tabs.currentIndex() - 1) % count
+        self._left_tabs.setCurrentIndex(idx)
+
+    def _focus_action_tree(self):
+        """Move keyboard focus to the right-pane action tree (Menu)."""
+        tree = getattr(self, '_action_tree', None)
+        if tree is None:
+            return
+        tree.setFocus(Qt.FocusReason.TabFocusReason)
+        # If nothing's selected yet, land on the first row so arrow keys
+        # work immediately.
+        if tree.currentItem() is None and tree.topLevelItemCount() > 0:
+            tree.setCurrentItem(tree.topLevelItem(0))
+
+    def _focus_left_pane(self):
+        """Move keyboard focus back into the left pane.
+
+        Prefers whichever widget last held focus there (e.g. the clipboard
+        image list, if that's where the user pressed Right from), so
+        Left/Tab from the right-pane Menu returns them to the same spot
+        they came from. Falls back to the active tab's main widget if no
+        previous left-pane focus is remembered.
+        """
+        last = getattr(self, '_last_left_pane_focus', None)
+        if last is not None:
+            try:
+                if last.isVisible() and last.isEnabled():
+                    last.setFocus(Qt.FocusReason.OtherFocusReason)
+                    return
+            except RuntimeError:
+                # Widget was deleted out from under us — fall through.
+                self._last_left_pane_focus = None
+
+        if not hasattr(self, '_left_tabs'):
+            return
+        widget = self._left_tabs.currentWidget()
+        if widget is None:
+            return
+        widget.setFocus(Qt.FocusReason.TabFocusReason)
+
+    # Header styles for the focus indicator. The "active" variant has the
+    # accent blue + bottom underline; the inactive variant is muted.
+    _FOCUS_STYLE_ACTIVE = (
+        "font-weight: bold; font-size: 10pt; color: #1976D2; "
+        "border: none; border-bottom: 2px solid #1976D2; "
+        "padding: 0 6px 2px 6px;"
+    )
+    _FOCUS_STYLE_INACTIVE = (
+        "font-weight: bold; font-size: 10pt; color: #3D5A80; "
+        "border: none; padding-left: 6px;"
+    )
+
+    def _on_focus_changed(self, _old, new):
+        """Track the most recently focused widget in the left pane so the
+        right-pane Menu can return there with Left or Tab. Also refreshes
+        the visual focus indicators on region headers (Menu / Text snippets
+        / Images) so the user can see at a glance which area they're in.
+        """
+        if new is None:
+            self._refresh_focus_styles(menu_active=False)
+            return
+        try:
+            # Skip if the new focus is outside Sidekick.
+            if not self.isAncestorOf(new):
+                self._refresh_focus_styles(menu_active=False)
+                return
+            # Skip remembering if the new focus is the action tree (or one of
+            # its descendants). We want to remember LEFT-pane focus only.
+            tree = getattr(self, '_action_tree', None)
+            in_action_tree = False
+            if tree is not None:
+                w = new
+                while w is not None:
+                    if w is tree:
+                        in_action_tree = True
+                        break
+                    w = w.parent()
+            if not in_action_tree:
+                self._last_left_pane_focus = new
+            self._refresh_focus_styles(menu_active=in_action_tree, focused=new)
+        except RuntimeError:
+            pass
+
+    def _refresh_focus_styles(self, *, menu_active: bool, focused=None):
+        """Update header colours so the user can see which region has
+        keyboard focus: the right-pane Menu (action tree), or one of the
+        clipboard columns inside the active tab."""
+        # Right-pane Menu header
+        hdr = getattr(self, '_action_header', None)
+        if hdr is not None:
+            hdr.setStyleSheet(
+                self._FOCUS_STYLE_ACTIVE if menu_active
+                else self._FOCUS_STYLE_INACTIVE
+            )
+        # Forward to the clipboard widget so its column headers update too.
+        cb = getattr(self, '_clipboard_widget', None)
+        if cb is not None and hasattr(cb, '_refresh_focus_styles'):
+            try:
+                cb._refresh_focus_styles(focused)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Branding helpers
@@ -381,12 +596,9 @@ class FloatingAssistant(QWidget):
         panel_layout.setContentsMargins(4, 8, 4, 4)
         panel_layout.setSpacing(4)
 
-        header = QLabel("Menu")
-        header.setStyleSheet(
-            "font-weight: bold; font-size: 10pt; color: #3D5A80; "
-            "border: none; padding-left: 6px;"
-        )
-        panel_layout.addWidget(header)
+        self._action_header = QLabel("Menu")
+        self._action_header.setStyleSheet(self._FOCUS_STYLE_INACTIVE)
+        panel_layout.addWidget(self._action_header)
 
         # QTreeWidget for expandable categories + keyboard navigation
         self._action_tree = QTreeWidget()
@@ -425,6 +637,12 @@ class FloatingAssistant(QWidget):
         )
         self._action_tree.itemActivated.connect(self._on_tree_activated)
         self._action_tree.itemClicked.connect(self._on_tree_clicked)
+        # Left arrow on the action tree → return focus to the previous
+        # left-pane widget (e.g. the clipboard image list the user came
+        # from). Installed as an event filter so we can pass through to
+        # Qt's default Left-collapses-tree-node behaviour when the user is
+        # somewhere it would do something useful.
+        self._action_tree.installEventFilter(self)
 
         self._populate_actions()
 
@@ -484,11 +702,11 @@ class FloatingAssistant(QWidget):
         self._action_tree.itemExpanded.connect(self._on_tree_expanded_collapsed)
         self._action_tree.itemCollapsed.connect(self._on_tree_expanded_collapsed)
 
-        # -- Workbench Tools --
+        # -- Tools --
         # QuickTrans is no longer a separate menu entry: it's the first
         # sub-tab inside SuperLookup, so clicking "SuperLookup" lands on it
         # automatically. Leaving only one entry here keeps the menu tidy.
-        tools_cat = self._make_category("\U0001F6E0 Workbench Tools", expanded=True)
+        tools_cat = self._make_category("\U0001F6E0 Tools", expanded=True)
         self._add_tree_action(tools_cat, "\U0001F50D SuperLookup", self._on_superlookup)
         self._add_tree_action(tools_cat, "\U0001F4CB Clipboard", self._on_clipboard)
         self._add_tree_action(tools_cat, "\U0001F3A4 AutoFingers", self._on_autofingers)
@@ -1263,10 +1481,13 @@ class FloatingAssistant(QWidget):
         QTimer.singleShot(50, self._focus_clipboard_list)
 
     def _focus_clipboard_list(self):
-        """Give keyboard focus to the clipboard list."""
+        """Give keyboard focus to the clipboard's text list (the default
+        column). The user can switch to the image list with Right arrow."""
         if not (hasattr(self, '_clipboard_widget') and self._clipboard_tab_added):
             return
-        lst = self._clipboard_widget._list
+        lst = getattr(self._clipboard_widget, '_text_list', None)
+        if lst is None:
+            return
         lst.setFocus()
         if lst.count() > 0 and lst.currentRow() < 0:
             lst.setCurrentRow(0)
@@ -1670,13 +1891,36 @@ class FloatingAssistant(QWidget):
     # ------------------------------------------------------------------
 
     def eventFilter(self, obj, event):
-        """Handle Enter in the QuickTrans input field."""
+        """Handle Enter in the QuickTrans input field, and Left on the
+        right-pane action tree (returns focus to the left pane)."""
         if obj is self._qt_input and event.type() == event.Type.KeyPress:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     return False  # Allow newline
                 self._on_qt_translate_clicked()
                 return True
+
+        # Left arrow on the action tree: jump focus back to the previous
+        # left-pane widget (e.g. the clipboard image list). Only intercept
+        # when Qt's default Left would do nothing useful — i.e. the
+        # current item is a top-level row that's not expanded — so tree
+        # navigation (collapse expanded categories, move from leaf to
+        # parent) still works as normal.
+        if (obj is getattr(self, '_action_tree', None)
+                and event.type() == event.Type.KeyPress
+                and event.key() == Qt.Key.Key_Left
+                and not event.modifiers()):
+            current = self._action_tree.currentItem()
+            if current is None:
+                # Empty tree (shouldn't happen, but be safe).
+                self._focus_left_pane()
+                return True
+            at_top = current.parent() is None
+            if at_top and not current.isExpanded():
+                self._focus_left_pane()
+                return True
+            # Otherwise let Qt collapse / move-to-parent.
+
         return super().eventFilter(obj, event)
 
     def keyPressEvent(self, event):

@@ -197,6 +197,11 @@ class AutoFingersTab(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setMinimumHeight(220)
+        # Click any column header to sort by that column; click again to
+        # reverse the sort. Sorting is disabled during _populate_table so
+        # the Qt-known "items reshuffle while you're inserting" footgun
+        # doesn't apply here.
+        self._table.setSortingEnabled(True)
         cmd_layout.addWidget(self._table)
 
         cmd_btn_row = QHBoxLayout()
@@ -374,8 +379,13 @@ class AutoFingersTab(QWidget):
 
     def _populate_table(self):
         mgr = self._voice_command_manager()
+        # Suspend sorting during bulk insert so each setItem doesn't
+        # trigger a re-sort that would scramble subsequent row indices.
+        was_sorting = self._table.isSortingEnabled()
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
         if mgr is None:
+            self._table.setSortingEnabled(was_sorting)
             return
         for cmd in mgr.commands:
             row = self._table.rowCount()
@@ -388,6 +398,7 @@ class AutoFingersTab(QWidget):
             self._table.setItem(row, 3, QTableWidgetItem(
                 cmd.description or cmd.action))
             self._table.setItem(row, 4, QTableWidgetItem(cmd.category))
+        self._table.setSortingEnabled(was_sorting)
 
     def _add_command(self):
         mgr = self._voice_command_manager()

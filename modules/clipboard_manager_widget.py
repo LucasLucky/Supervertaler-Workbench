@@ -18,6 +18,7 @@ from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QAbstractItemView, QApplication,
+    QSplitter, QStackedLayout,
 )
 
 
@@ -81,6 +82,22 @@ class ClipboardManagerWidget(QWidget):
     # UI construction
     # ------------------------------------------------------------------
 
+    _LIST_STYLESHEET = """
+        QListWidget {
+            border: 1px solid #E0E0E0; border-radius: 4px;
+            background: white; font-size: 9pt; outline: none;
+        }
+        QListWidget::item {
+            padding: 5px 8px; border-bottom: 1px solid #E4E4E4;
+        }
+        QListWidget::item:selected {
+            background-color: #E8F4FD; color: #1E1E1E;
+        }
+        QListWidget::item:hover {
+            background-color: #F5F9FF;
+        }
+    """
+
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -113,40 +130,111 @@ class ClipboardManagerWidget(QWidget):
         header.addWidget(clear_btn)
         layout.addLayout(header)
 
-        # Clip list
-        self._list = QListWidget()
-        self._list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #E0E0E0; border-radius: 4px;
-                background: white; font-size: 9pt; outline: none;
-            }
-            QListWidget::item {
-                padding: 5px 8px; border-bottom: 1px solid #E4E4E4;
-            }
-            QListWidget::item:selected {
-                background-color: #E8F4FD; color: #1E1E1E;
-            }
-            QListWidget::item:hover {
-                background-color: #F5F9FF;
-            }
-        """)
-        self._list.setIconSize(self._THUMB_SIZE)
-        self._list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._list.setWordWrap(False)
-        self._list.itemActivated.connect(self._on_item_activated)
-        self._list.itemClicked.connect(self._on_item_activated)
-        self._list.installEventFilter(self)
-        layout.addWidget(self._list, 1)
+        # Two-column split: text on the left, images on the right.
+        # 60/40 default favouring text (more numerous, shorter rows);
+        # QSplitter so users can rebalance to taste.
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setHandleWidth(4)
+        self._splitter.setChildrenCollapsible(False)
+
+        self._text_list = self._make_list_widget()
+        self._text_empty = self._make_empty_label(
+            "No text snippets yet —\ncopy any text to start.")
+        self._text_header = QLabel("📝 Text snippets")
+        text_col = self._make_column(
+            self._text_header, self._text_list, self._text_empty)
+        self._splitter.addWidget(text_col)
+
+        self._image_list = self._make_list_widget()
+        self._image_empty = self._make_empty_label(
+            "No images yet —\ncopy any image to start.")
+        self._image_header = QLabel("🖼 Images")
+        image_col = self._make_column(
+            self._image_header, self._image_list, self._image_empty)
+        self._splitter.addWidget(image_col)
+
+        self._splitter.setStretchFactor(0, 6)
+        self._splitter.setStretchFactor(1, 4)
+        self._splitter.setSizes([600, 400])
+
+        layout.addWidget(self._splitter, 1)
+
+        # Reflect counts in the per-column headers.
+        self._update_column_headers()
 
         # Footer hint
-        hint = QLabel("Click to paste  •  Pasted items shown in grey  •  Text + images")
+        hint = QLabel(
+            "Click to paste  •  Pasted items shown in grey  •  "
+            "← / → switches columns")
         hint.setStyleSheet(
             "color: #999; font-size: 7pt; padding: 2px 4px; border: none;"
         )
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint)
+
+    # -- column / list construction helpers -----------------------------
+
+    def _make_list_widget(self):
+        lst = QListWidget()
+        lst.setStyleSheet(self._LIST_STYLESHEET)
+        lst.setIconSize(self._THUMB_SIZE)
+        lst.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        lst.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        lst.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        lst.setWordWrap(False)
+        lst.itemActivated.connect(self._on_item_activated)
+        lst.itemClicked.connect(self._on_item_activated)
+        lst.installEventFilter(self)
+        return lst
+
+    @staticmethod
+    def _make_empty_label(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setWordWrap(True)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet(
+            "color: #999; font-size: 8pt; padding: 20px;"
+            " font-style: italic; background: white;"
+            " border: 1px solid #E0E0E0; border-radius: 4px;"
+        )
+        return lbl
+
+    _COL_HEADER_INACTIVE = (
+        "font-weight: bold; font-size: 8pt; color: #555;"
+        " padding: 2px 4px; border: none;"
+    )
+    _COL_HEADER_ACTIVE = (
+        "font-weight: bold; font-size: 8pt; color: #1976D2;"
+        " padding: 2px 4px; border: none;"
+        " border-bottom: 2px solid #1976D2;"
+    )
+
+    def _make_column(self, header_label: QLabel,
+                      list_widget: QListWidget,
+                      empty_label: QLabel) -> QWidget:
+        container = QWidget()
+        cl = QVBoxLayout(container)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(2)
+
+        header_label.setStyleSheet(self._COL_HEADER_INACTIVE)
+        cl.addWidget(header_label)
+
+        # Stack so list and placeholder share the same area, and only
+        # one is ever visible.
+        stack_widget = QWidget()
+        stack = QStackedLayout(stack_widget)
+        stack.addWidget(list_widget)   # index 0
+        stack.addWidget(empty_label)   # index 1
+        list_widget._sv_stack = stack  # so _update_empty_state can switch
+        cl.addWidget(stack_widget, 1)
+        return container
+
+    def _update_empty_state(self, list_widget: QListWidget):
+        stack = getattr(list_widget, '_sv_stack', None)
+        if stack is None:
+            return
+        stack.setCurrentIndex(0 if list_widget.count() > 0 else 1)
 
     # ------------------------------------------------------------------
     # Focus & keyboard handling
@@ -154,18 +242,86 @@ class ClipboardManagerWidget(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        self._list.setFocus()
-        if self._list.count() > 0 and self._list.currentRow() < 0:
-            self._list.setCurrentRow(0)
+        # Default focus is the text list — that's where most clips live.
+        self._text_list.setFocus()
+        if self._text_list.count() > 0 and self._text_list.currentRow() < 0:
+            self._text_list.setCurrentRow(0)
 
     def eventFilter(self, obj, event):
-        if obj is self._list and event.type() == QEvent.Type.KeyPress:
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                item = self._list.currentItem()
-                if item:
-                    self._on_item_activated(item)
-                return True
+        if event.type() != QEvent.Type.KeyPress:
+            return super().eventFilter(obj, event)
+        if obj is self._text_list:
+            return self._handle_list_key(self._text_list, event,
+                                          right_neighbour=self._image_list,
+                                          left_neighbour=None)
+        if obj is self._image_list:
+            return self._handle_list_key(self._image_list, event,
+                                          right_neighbour=None,
+                                          left_neighbour=self._text_list)
         return super().eventFilter(obj, event)
+
+    def _handle_list_key(self, list_widget, event, *,
+                         right_neighbour, left_neighbour):
+        """Custom key behaviour for either column.
+
+        - Enter / Return  → paste the selected item
+        - Right           → focus right_neighbour (other list, or right-pane
+                            Menu if at the rightmost column)
+        - Left            → focus left_neighbour (other list, or no-op at
+                            the leftmost column)
+        """
+        key = event.key()
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            item = list_widget.currentItem()
+            if item:
+                self._on_item_activated(item)
+            return True
+
+        if key == Qt.Key.Key_Right:
+            if right_neighbour is not None:
+                self._focus_list(right_neighbour)
+            else:
+                # Past the rightmost column → jump to Sidekick's right-pane
+                # action tree, matching the Tab-pane-jump convention.
+                self._focus_sidekick_action_tree()
+            return True
+
+        if key == Qt.Key.Key_Left:
+            if left_neighbour is not None:
+                self._focus_list(left_neighbour)
+                return True
+            # Already on the leftmost column — Left is a no-op (per design).
+            return False
+
+        return False
+
+    def _focus_list(self, list_widget: QListWidget):
+        list_widget.setFocus(Qt.FocusReason.OtherFocusReason)
+        if list_widget.count() > 0 and list_widget.currentRow() < 0:
+            list_widget.setCurrentRow(0)
+
+    def _focus_sidekick_action_tree(self):
+        """If embedded in Sidekick, jump focus to the right-pane action tree."""
+        try:
+            fa = getattr(self._parent_app, '_floating_assistant', None)
+            if fa is not None and hasattr(fa, '_focus_action_tree'):
+                fa._focus_action_tree()
+        except Exception:
+            pass
+
+    def _refresh_focus_styles(self, focused=None):
+        """Highlight the column header whose list currently has focus
+        (or contains the focused widget). Called by Sidekick's
+        focus-change handler so users see at a glance which clipboard
+        column they're in."""
+        text_active = (focused is self._text_list)
+        image_active = (focused is self._image_list)
+        self._text_header.setStyleSheet(
+            self._COL_HEADER_ACTIVE if text_active else self._COL_HEADER_INACTIVE
+        )
+        self._image_header.setStyleSheet(
+            self._COL_HEADER_ACTIVE if image_active else self._COL_HEADER_INACTIVE
+        )
 
     # ------------------------------------------------------------------
     # Clipboard monitoring
@@ -197,9 +353,8 @@ class ClipboardManagerWidget(QWidget):
 
     def _handle_new_text(self, text: str):
         # Skip if identical to the most recent TEXT item (avoid duplicate on re-copy)
-        top = self._top_item()
-        if (top is not None and top.data(_ROLE_KIND) == 'text'
-                and top.data(_ROLE_TEXT) == text):
+        top = self._top_text_item()
+        if top is not None and top.data(_ROLE_TEXT) == text:
             return
         self._add_text_clip(text, item_id=None, pasted=False, save_to_db=True)
 
@@ -210,9 +365,8 @@ class ClipboardManagerWidget(QWidget):
         digest = hashlib.sha1(png_bytes).digest()
 
         # Skip if the most-recent image is byte-identical
-        top = self._top_item()
-        if (top is not None and top.data(_ROLE_KIND) == 'image'
-                and self._last_image_hash == digest):
+        top = self._top_image_item()
+        if top is not None and self._last_image_hash == digest:
             return
         self._last_image_hash = digest
 
@@ -251,7 +405,7 @@ class ClipboardManagerWidget(QWidget):
         item.setData(_ROLE_PASTED, pasted)
         item.setToolTip(text[:500] if len(text) > 500 else text)
         self._apply_style(item, pasted)
-        self._list.insertItem(0, item)
+        self._text_list.insertItem(0, item)
 
         if save_to_db:
             db = self._get_db()
@@ -260,7 +414,8 @@ class ClipboardManagerWidget(QWidget):
                                                self.MAX_IMAGE_ITEMS)
                 item.setData(_ROLE_DB_ID, new_id)
 
-        self._trim_kind('text', self.MAX_TEXT_ITEMS)
+        self._trim_list(self._text_list, self.MAX_TEXT_ITEMS)
+        self._update_empty_state(self._text_list)
         self._update_count()
 
     # ------------------------------------------------------------------
@@ -283,7 +438,7 @@ class ClipboardManagerWidget(QWidget):
 
         item.setToolTip(label)
         self._apply_style(item, pasted)
-        self._list.insertItem(0, item)
+        self._image_list.insertItem(0, item)
 
         if save_to_db:
             db = self._get_db()
@@ -292,7 +447,8 @@ class ClipboardManagerWidget(QWidget):
                                                 self.MAX_IMAGE_ITEMS)
                 item.setData(_ROLE_DB_ID, new_id)
 
-        self._trim_kind('image', self.MAX_IMAGE_ITEMS)
+        self._trim_list(self._image_list, self.MAX_IMAGE_ITEMS)
+        self._update_empty_state(self._image_list)
         self._update_count()
 
     def _make_thumbnail(self, png_bytes: bytes):
@@ -370,38 +526,46 @@ class ClipboardManagerWidget(QWidget):
     # Trimming, clearing, count
     # ------------------------------------------------------------------
 
-    def _trim_kind(self, kind: str, max_items: int):
-        """Remove oldest items of a given kind beyond the per-kind cap."""
-        # Walk from bottom up, counting items of this kind until cap reached;
-        # everything past that is removed.
-        seen = 0
-        rows_to_remove = []
-        for i in range(self._list.count()):
-            it = self._list.item(i)
-            if it.data(_ROLE_KIND) == kind:
-                seen += 1
-                if seen > max_items:
-                    rows_to_remove.append(i)
-        # Remove from highest index down so the indices stay valid.
-        for i in reversed(rows_to_remove):
-            self._list.takeItem(i)
+    def _trim_list(self, list_widget: QListWidget, max_items: int):
+        """Remove the oldest items in ``list_widget`` beyond ``max_items``."""
+        while list_widget.count() > max_items:
+            list_widget.takeItem(list_widget.count() - 1)
 
     def _clear_all(self):
-        self._list.clear()
+        self._text_list.clear()
+        self._image_list.clear()
         self._last_image_hash = None
         db = self._get_db()
         if db:
             db.clear_clipboard_history()
+        self._update_empty_state(self._text_list)
+        self._update_empty_state(self._image_list)
         self._update_count()
 
-    def _top_item(self):
-        return self._list.item(0) if self._list.count() > 0 else None
+    def _top_text_item(self):
+        return self._text_list.item(0) if self._text_list.count() > 0 else None
+
+    def _top_image_item(self):
+        return self._image_list.item(0) if self._image_list.count() > 0 else None
 
     def _update_count(self):
-        count = self._list.count()
+        text_n = self._text_list.count()
+        image_n = self._image_list.count()
+        total = text_n + image_n
         self._count_label.setText(
-            f"Clipboard History ({count})" if count else "Clipboard History"
+            f"Clipboard History ({total})" if total else "Clipboard History"
         )
+        self._update_column_headers(text_n, image_n)
+
+    def _update_column_headers(self, text_n=None, image_n=None):
+        if text_n is None:
+            text_n = self._text_list.count()
+        if image_n is None:
+            image_n = self._image_list.count()
+        self._text_header.setText(
+            f"📝 Text snippets ({text_n})" if text_n else "📝 Text snippets")
+        self._image_header.setText(
+            f"🖼 Images ({image_n})" if image_n else "🖼 Images")
 
     # ------------------------------------------------------------------
     # DB loading — called lazily once db_manager is ready
