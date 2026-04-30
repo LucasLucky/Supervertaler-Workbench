@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.403 (April 30, 2026)
+**Current Version:** v1.9.404 (April 30, 2026)
 
+
+## v1.9.404 - April 30, 2026
+
+### Changed
+
+- **Workbench help docs migrated to the unified Supervertaler GitBook site**, joining the existing Trados-plugin docs in a single space. The previous standalone VitePress site at `help.supervertaler.com` had drifted badly out of sync — the Trados GitBook was up to date and well-maintained, so rather than fix two parallel docs systems, the Workbench content was imported alongside the Trados content under a `workbench/` URL prefix. GitBook's "Parts" feature visually separates the two products' sidebars in a single space (no need for the £250/month Ultimate plan that would have allowed two independent spaces). `modules/help_system.py` updated accordingly: `DOCS_BASE_URL` now `https://supervertaler.gitbook.io`, all `Topics` constants prefixed with `workbench/`. Topic identifiers (`Topics.TRANSLATION_GRID`, `Topics.AI_BATCH`, etc.) are unchanged — call sites continue to work without modification.
+- **`Topics.TOOL_VOICE` removed** since the page it pointed to (`tools/voice-commands.md`) was orphaned by the AutoFingers reorganisation in v1.9.401 and is gone from GitBook. Voice/dictation help now lives in the AutoFingers tab inside Sidekick (and in the Workbench Settings → AutoFingers signpost). No callers existed for `TOOL_VOICE`.
+- **Source-of-truth for Workbench docs moved to the `Supervertaler-for-Trados` repo** (the docs side, not the plugin side) since that's the repo GitBook syncs from. The old `Supervertaler/docs/help/supervertaler/` location was deleted to avoid confusion. (The marketing site at `Supervertaler/docs/` is unaffected.)
+
+---
 
 ## v1.9.403 - April 30, 2026
 

@@ -22,104 +22,111 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QApplication
 
 
-DOCS_BASE_URL = "https://help.supervertaler.com"
+DOCS_BASE_URL = "https://supervertaler.gitbook.io"
 
 # Property key stored on widgets to identify their help topic
 _HELP_TOPIC_PROPERTY = "_help_topic"
 
 
 class Topics:
-    """Help topic identifiers mapping to help.supervertaler.com page paths."""
+    """Help topic identifiers mapping to GitBook page paths.
+
+    All Workbench pages live under ``workbench/`` on the unified
+    Supervertaler help site (Trados pages live alongside under
+    ``trados/``). The site previously used a separate domain for the
+    Workbench docs; that's been retired in favour of one home for both
+    products.
+    """
 
     # Home
-    HOME                = ""
+    HOME                = "workbench/"
 
     # Get Started
-    INSTALLATION        = "get-started/installation"
-    QUICK_START         = "get-started/quick-start"
-    API_KEYS            = "get-started/api-keys"
-    FIRST_PROJECT       = "get-started/first-project"
+    INSTALLATION        = "workbench/get-started/installation"
+    QUICK_START         = "workbench/get-started/quick-start"
+    API_KEYS            = "workbench/get-started/api-keys"
+    FIRST_PROJECT       = "workbench/get-started/first-project"
 
-    # Supervertaler for Trados (cross-reference — opens Trados help site)
-    TRADOS_PLUGIN       = "https://supervertaler.gitbook.io/trados"
+    # Supervertaler for Trados (cross-reference — opens the Trados section
+    # of the same GitBook site).
+    TRADOS_PLUGIN       = "trados/"
 
     # Editor & Translation
-    TRANSLATION_GRID    = "editor/translation-grid"
-    NAVIGATION          = "editor/navigation"
-    EDITING             = "editor/editing-confirming"
-    SEGMENT_STATUSES    = "editor/segment-statuses"
-    KEYBOARD_SHORTCUTS  = "editor/keyboard-shortcuts"
-    FIND_REPLACE        = "editor/find-replace"
-    FILTERING           = "editor/filtering"
-    PAGINATION          = "editor/pagination"
+    TRANSLATION_GRID    = "workbench/editor/translation-grid"
+    NAVIGATION          = "workbench/editor/navigation"
+    EDITING             = "workbench/editor/editing-confirming"
+    SEGMENT_STATUSES    = "workbench/editor/segment-statuses"
+    KEYBOARD_SHORTCUTS  = "workbench/editor/keyboard-shortcuts"
+    FIND_REPLACE        = "workbench/editor/find-replace"
+    FILTERING           = "workbench/editor/filtering"
+    PAGINATION          = "workbench/editor/pagination"
 
     # AI Translation
-    AI_OVERVIEW         = "ai-translation/overview"
-    AI_PROVIDERS        = "ai-translation/providers"
-    AI_SINGLE_SEGMENT   = "ai-translation/single-segment"
-    AI_BATCH            = "ai-translation/batch-translation"
-    AI_PROMPTS          = "ai-translation/prompts"
-    AI_PROMPT_MANAGER   = "ai-translation/prompt-library"
-    AI_QUICKLAUNCHER    = "ai-translation/quicklauncher"
-    AI_OLLAMA           = "ai-translation/ollama"
+    AI_OVERVIEW         = "workbench/ai-translation/overview"
+    AI_PROVIDERS        = "workbench/ai-translation/providers"
+    AI_SINGLE_SEGMENT   = "workbench/ai-translation/single-segment"
+    AI_BATCH            = "workbench/ai-translation/batch-translation"
+    AI_PROMPTS          = "workbench/ai-translation/prompts"
+    AI_PROMPT_MANAGER   = "workbench/ai-translation/prompt-library"
+    AI_QUICKLAUNCHER    = "workbench/ai-translation/quicklauncher"
+    AI_OLLAMA           = "workbench/ai-translation/ollama"
 
     # CAT Tool Integration
-    CAT_OVERVIEW        = "cat-tools/overview"
-    CAT_TRADOS          = "cat-tools/trados"
-    CAT_MEMOQ           = "cat-tools/memoq"
-    CAT_PHRASE          = "cat-tools/phrase"
-    CAT_CAFETRAN        = "cat-tools/cafetran"
+    CAT_OVERVIEW        = "workbench/cat-tools/overview"
+    CAT_TRADOS          = "workbench/cat-tools/trados"
+    CAT_MEMOQ           = "workbench/cat-tools/memoq"
+    CAT_PHRASE          = "workbench/cat-tools/phrase"
+    CAT_CAFETRAN        = "workbench/cat-tools/cafetran"
 
     # Translation Memory
-    TM_BASICS           = "translation-memory/basics"
-    TM_MANAGING         = "translation-memory/managing-tms"
-    TM_IMPORTING        = "translation-memory/importing-tmx"
-    TM_FUZZY            = "translation-memory/fuzzy-matching"
-    TM_SUPERMEMORY      = "translation-memory/supermemory"
+    TM_BASICS           = "workbench/translation-memory/basics"
+    TM_MANAGING         = "workbench/translation-memory/managing-tms"
+    TM_IMPORTING        = "workbench/translation-memory/importing-tmx"
+    TM_FUZZY            = "workbench/translation-memory/fuzzy-matching"
+    TM_SUPERMEMORY      = "workbench/translation-memory/supermemory"
 
     # Glossaries
-    GLOSSARY_BASICS     = "glossaries/basics"
-    GLOSSARY_CREATING   = "glossaries/creating"
-    GLOSSARY_IMPORTING  = "glossaries/importing"
-    GLOSSARY_HIGHLIGHT  = "glossaries/highlighting"
-    GLOSSARY_TERMLENS   = "glossaries/termlens"
-    GLOSSARY_EXTRACTION = "glossaries/extraction"
+    GLOSSARY_BASICS     = "workbench/glossaries/basics"
+    GLOSSARY_CREATING   = "workbench/glossaries/creating"
+    GLOSSARY_IMPORTING  = "workbench/glossaries/importing"
+    GLOSSARY_HIGHLIGHT  = "workbench/glossaries/highlighting"
+    GLOSSARY_TERMLENS   = "workbench/glossaries/termlens"
+    GLOSSARY_EXTRACTION = "workbench/glossaries/extraction"
 
     # Import & Export
-    IMPORT_FORMATS      = "import-export/formats"
-    IMPORT_DOCX         = "import-export/docx-import"
-    IMPORT_TXT          = "import-export/txt-import"
-    IMPORT_MULTI        = "import-export/multi-file"
-    EXPORT              = "import-export/exporting"
-    BILINGUAL_TABLES    = "import-export/bilingual-tables"
+    IMPORT_FORMATS      = "workbench/import-export/formats"
+    IMPORT_DOCX         = "workbench/import-export/docx-import"
+    IMPORT_TXT          = "workbench/import-export/txt-import"
+    IMPORT_MULTI        = "workbench/import-export/multi-file"
+    EXPORT              = "workbench/import-export/exporting"
+    BILINGUAL_TABLES    = "workbench/import-export/bilingual-tables"
 
     # Superlookup
-    SUPERLOOKUP         = "superlookup/overview"
-    SUPERLOOKUP_TM      = "superlookup/tm-search"
-    SUPERLOOKUP_GLOSS   = "superlookup/glossary-search"
-    SUPERLOOKUP_MT      = "superlookup/mt"
-    SUPERLOOKUP_WEB     = "superlookup/web-resources"
+    SUPERLOOKUP         = "workbench/superlookup/overview"
+    SUPERLOOKUP_TM      = "workbench/superlookup/tm-search"
+    SUPERLOOKUP_GLOSS   = "workbench/superlookup/glossary-search"
+    SUPERLOOKUP_MT      = "workbench/superlookup/mt"
+    SUPERLOOKUP_WEB     = "workbench/superlookup/web-resources"
 
     # Quality Assurance
-    QA_SPELLCHECK       = "qa/spellcheck"
-    QA_TAGS             = "qa/tag-validation"
-    QA_NT               = "qa/non-translatables"
+    QA_SPELLCHECK       = "workbench/qa/spellcheck"
+    QA_TAGS             = "workbench/qa/tag-validation"
+    QA_NT               = "workbench/qa/non-translatables"
 
-    # Tools
-    TOOL_PDF_RESCUE     = "tools/pdf-rescue"
-    TOOL_TMX_EDITOR     = "tools/tmx-editor"
-    TOOL_VOICE          = "tools/voice-commands"
-    TOOL_IMAGE_EXTRACT  = "tools/image-extractor"
+    # Tools (TOOL_VOICE removed — voice/dictation is now AutoFingers in Sidekick)
+    TOOL_PDF_RESCUE     = "workbench/tools/pdf-rescue"
+    TOOL_TMX_EDITOR     = "workbench/tools/tmx-editor"
+    TOOL_IMAGE_EXTRACT  = "workbench/tools/image-extractor"
 
     # Settings
-    SETTINGS_GENERAL    = "settings/general"
-    SETTINGS_VIEW       = "settings/view"
-    SETTINGS_SHORTCUTS  = "settings/shortcuts"
-    SETTINGS_THEME      = "settings/theme"
-    SETTINGS_FONTS      = "settings/fonts"
+    SETTINGS_GENERAL    = "workbench/settings/general"
+    SETTINGS_VIEW       = "workbench/settings/view"
+    SETTINGS_SHORTCUTS  = "workbench/settings/shortcuts"
+    SETTINGS_THEME      = "workbench/settings/theme"
+    SETTINGS_FONTS      = "workbench/settings/fonts"
 
     # Troubleshooting
-    TROUBLESHOOTING     = "troubleshooting/common-issues"
+    TROUBLESHOOTING     = "workbench/troubleshooting/common-issues"
 
 
 class _HelpEventFilter(QObject):
