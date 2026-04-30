@@ -108,7 +108,6 @@ class Topics:
     # Tools
     TOOL_PDF_RESCUE     = "tools/pdf-rescue"
     TOOL_TMX_EDITOR     = "tools/tmx-editor"
-    TOOL_AUTOFINGERS    = "tools/autofingers"
     TOOL_VOICE          = "tools/voice-commands"
     TOOL_IMAGE_EXTRACT  = "tools/image-extractor"
 

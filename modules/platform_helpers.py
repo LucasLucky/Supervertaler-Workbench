@@ -1072,3 +1072,108 @@ class CrossPlatformKeySender:
                 )
         except Exception as e:
             print(f"[CrossPlatformKeySender] macOS keystroke failed: {e}")
+
+    # -- Direct text typing (for dictation) ---------------------------------
+
+    def type_text(self, text: str) -> bool:
+        """Type ``text`` into the foreground window character-by-character.
+
+        Unlike clipboard+paste, this works in apps that don't bind Ctrl+V the
+        standard way — Windows Terminal, cmd, PowerShell, VSCode terminals,
+        some Java apps, and any other app that accepts keyboard input but
+        not the system paste shortcut. The trade-off is speed: typing is
+        per-character, so very long passages take noticeably longer than a
+        paste would.
+
+        Returns True if typing was attempted on a supported backend.
+        """
+        if not text:
+            return True
+        if IS_WINDOWS:
+            return self._type_text_win32(text)
+        if IS_MACOS:
+            return self._type_text_macos(text)
+        if self._controller:
+            try:
+                self._controller.type(text)
+                return True
+            except Exception as e:
+                print(f"[CrossPlatformKeySender] linux type_text failed: {e}")
+        return False
+
+    def _type_text_win32(self, text: str) -> bool:
+        """Type ``text`` on Windows via AHK SendText.
+
+        The payload is written to a UTF-8 temp file and read back inside the
+        AHK script. This avoids escape-sequence pitfalls with quotes,
+        backslashes, and arbitrary Unicode (CJK, emoji, etc.) that
+        translators routinely deal with.
+        """
+        ahk = self._find_ahk()
+        if not ahk:
+            return False
+
+        is_v2 = 'v2' in ahk.lower()
+        txt_path = None
+        ahk_path = None
+        try:
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(
+                mode='w', suffix='.txt', delete=False,
+                encoding='utf-8', newline='',
+            ) as f:
+                f.write(text)
+                txt_path = f.name
+
+            if is_v2:
+                # AHK v2: SendText with text loaded from the temp file.
+                # Double the backslashes for the AHK string literal.
+                escaped = txt_path.replace('\\', '\\\\')
+                script = (
+                    f'txt := FileRead("{escaped}", "UTF-8")\n'
+                    f'SendText txt\n'
+                )
+            else:
+                # AHK v1: SendInput with {Text} literal mode.
+                script = (
+                    f'FileRead, txt, *p65001 {txt_path}\n'
+                    f'SendInput, {{Text}}%txt%\n'
+                )
+
+            with tempfile.NamedTemporaryFile(
+                mode='w', suffix='.ahk', delete=False, encoding='utf-8',
+            ) as f:
+                f.write(script + '\n')
+                ahk_path = f.name
+
+            subprocess.run(
+                [ahk, '/ErrorStdOut', ahk_path],
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            return True
+        except Exception as e:
+            print(f"[CrossPlatformKeySender] AHK type_text failed: {e}")
+            return False
+        finally:
+            for path in (ahk_path, txt_path):
+                if path:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+
+    def _type_text_macos(self, text: str) -> bool:
+        """Type ``text`` on macOS via osascript keystroke."""
+        try:
+            escaped = text.replace('\\', '\\\\').replace('"', '\\"')
+            subprocess.run(
+                ['osascript', '-e',
+                 f'tell application "System Events" to keystroke "{escaped}"'],
+                capture_output=True, timeout=10,
+            )
+            return True
+        except Exception as e:
+            print(f"[CrossPlatformKeySender] macOS type_text failed: {e}")
+            return False

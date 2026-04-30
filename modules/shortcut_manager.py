@@ -173,12 +173,6 @@ class ShortcutManager:
             "default": "Ctrl+Alt+L",
             "action": "show_universal_lookup"
         },
-        "tools_autofingers": {
-            "category": "Resources",
-            "description": "AutoFingers",
-            "default": "Ctrl+Shift+A",
-            "action": "show_autofingers"
-        },
         "tools_force_refresh": {
             "category": "Resources",
             "description": "Force Refresh Matches (clear cache)",
@@ -642,6 +636,13 @@ class ShortcutManager:
             "description": "Sidekick – Clipboard tab (global — works from any app)",
             "default": "Ctrl+Shift+C",
             "action": "global_clipboard",
+            "context": "global"
+        },
+        "global_pushtotalk": {
+            "category": "Global",
+            "description": "AutoFingers push-to-talk (global — works from any app)",
+            "default": "Ctrl+Alt+D",
+            "action": "global_pushtotalk",
             "context": "global"
         },
     }

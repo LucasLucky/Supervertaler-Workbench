@@ -40,7 +40,7 @@ from modules.tmx_editor import (
 
 
 class CheckmarkCheckBox(QCheckBox):
-    """Custom checkbox with green background and white checkmark when checked - same as AutoFingers"""
+    """Custom checkbox with green background and white checkmark when checked."""
     
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
@@ -692,7 +692,7 @@ class TmxEditorUIQt(QWidget):
         btn_apply.setStyleSheet("background-color: #ff9800; color: white; padding: 4px 8px; font-size: 9pt;")
         header_layout.addWidget(btn_apply)
         
-        # Checkboxes - use custom CheckmarkCheckBox style like AutoFingers
+        # Checkboxes - use custom CheckmarkCheckBox style
         self.filter_ignore_case = CheckmarkCheckBox("Ignore case")
         self.filter_ignore_case.setChecked(True)
         header_layout.addWidget(self.filter_ignore_case)

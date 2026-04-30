@@ -1239,7 +1239,7 @@ class UnifiedPromptManagerQt:
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)
 
-        # Header (matches standard tool style: Superbench, AutoFingers, TMX Editor)
+        # Header (matches standard tool style: Superbench, TMX Editor)
         header = QLabel("📝 Available Variables")
         header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
         layout.addWidget(header, 0)

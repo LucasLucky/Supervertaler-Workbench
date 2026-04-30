@@ -219,6 +219,12 @@ class FloatingAssistant(QWidget):
         self._clipboard_widget = self._create_clipboard_tab()
         self._clipboard_tab_added = False
 
+        # AutoFingers tab — voice commands + dictation. Lazy because it relies on
+        # parent_app.voice_command_manager and other attrs that may not be
+        # ready when the FloatingAssistant is first constructed.
+        self._autofingers_widget = None
+        self._autofingers_tab_added = False
+
         left_layout.addWidget(self._left_tabs)
         self._splitter.addWidget(left_panel)
 
@@ -485,6 +491,7 @@ class FloatingAssistant(QWidget):
         tools_cat = self._make_category("\U0001F6E0 Workbench Tools", expanded=True)
         self._add_tree_action(tools_cat, "\U0001F50D SuperLookup", self._on_superlookup)
         self._add_tree_action(tools_cat, "\U0001F4CB Clipboard", self._on_clipboard)
+        self._add_tree_action(tools_cat, "\U0001F3A4 AutoFingers", self._on_autofingers)
 
         # -- Prompt library items (grouped by folder) --
         self._populate_prompt_library_tree()
@@ -1200,6 +1207,7 @@ class FloatingAssistant(QWidget):
         0: "AI chat assistant – ask questions, get translations, save answers to your memory bank",
         1: "SuperLookup – QuickTrans (Ctrl+Alt+Q), TMs, termbases (Ctrl+Alt+L), and web resources in one place",
         2: "Clipboard history – click any item to paste it; pasted items are shown in grey",
+        3: "AutoFingers – voice commands and dictation; toggle Always-On to listen continuously across all apps",
     }
 
     def _update_info_label(self, index):
@@ -1226,6 +1234,23 @@ class FloatingAssistant(QWidget):
         # Load persisted history now that db_manager is ready
         self._clipboard_widget.ensure_db_loaded()
 
+    def _ensure_autofingers_tab(self):
+        """Add the AutoFingers tab on first call (guarded). Always added last so
+        the tab order stays Chat → SuperLookup → Clipboard → AutoFingers."""
+        if self._autofingers_tab_added:
+            return
+        try:
+            from modules.autofingers_tab import AutoFingersTab
+            self._autofingers_widget = AutoFingersTab(self._parent_app)
+            self._autofingers_tab_added = True
+            self._left_tabs.addTab(self._autofingers_widget, "\U0001F3A4 AutoFingers")
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            log = getattr(self._parent_app, 'log', None)
+            if log:
+                log(f"⚠ FloatingAssistant: Could not load AutoFingers tab: {e}")
+
     def _open_to_clipboard(self, source_window=None):
         """Open the Sidekick directly to the Clipboard tab and focus the list."""
         from PyQt6.QtCore import QTimer
@@ -1249,6 +1274,22 @@ class FloatingAssistant(QWidget):
     def _on_clipboard(self):
         """Action-panel handler: show the Clipboard tab."""
         self._open_to_clipboard()
+
+    # ------------------------------------------------------------------
+    # AutoFingers action
+    # ------------------------------------------------------------------
+
+    def _open_to_autofingers(self, source_window=None):
+        """Open the Sidekick directly to the AutoFingers tab."""
+        self._ensure_superlookup_tab()
+        self._ensure_autofingers_tab()
+        idx = self._left_tabs.indexOf(self._autofingers_widget) if self._autofingers_widget else -1
+        self.show_at_cursor(start_tab=idx if idx >= 0 else None,
+                            source_window=source_window)
+
+    def _on_autofingers(self):
+        """Action-panel handler: show the AutoFingers tab."""
+        self._open_to_autofingers()
 
     # ------------------------------------------------------------------
     # Default-tab preference (right-click on tab bar)
@@ -1327,6 +1368,8 @@ class FloatingAssistant(QWidget):
 
         # Clipboard tab always goes after SuperLookup
         self._ensure_clipboard_tab()
+        # AutoFingers tab always goes last
+        self._ensure_autofingers_tab()
 
     # ------------------------------------------------------------------
     # Show / toggle

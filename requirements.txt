@@ -78,17 +78,13 @@ spylls>=0.1.7  # Pure Python Hunspell (replaces cyhunspell which doesn't work on
 # Global hotkey registration and keystroke automation (Superlookup, QuickTrans)
 pynput>=1.7.6
 
-# [windows] - Windows Automation (~10 MB)
-# AutoFingers and keyboard control (Windows only)
-keyboard>=0.13.5; sys_platform == "win32"
+# [windows] - Windows-only AutoHotkey support for keystroke commands
+# (used by Dicta voice commands of type 'keystroke', 'ahk_inline', 'ahk_script')
 ahk>=1.0.0; sys_platform == "win32"
-
-# AutoFingers UI automation (used when available)
-pyautogui>=0.9.54; sys_platform == "win32"
 
 
 # ===== PLATFORM-SPECIFIC NOTES =====
 # - Linux: Install Hunspell dictionaries: sudo apt install hunspell-<lang>
-# - macOS: All features available except AutoFingers (Windows-only)
+# - macOS: All features available
 # - Windows: All features available
 # - Supervoice: Requires ffmpeg system package on all platforms

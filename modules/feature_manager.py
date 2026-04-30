@@ -57,7 +57,7 @@ class FeatureModule:
 FEATURE_MODULES: Dict[str, FeatureModule] = {
     "voice": FeatureModule(
         id="voice",
-        name="Supervoice (Voice Commands)",
+        name="AutoFingers (Voice Commands & Dictation)",
         description=(
             "Voice dictation and hands-free commands. Works via the OpenAI Whisper API (recommended). "
             "Optional offline Local Whisper is available via the 'local-whisper' extra."
@@ -129,18 +129,6 @@ FEATURE_MODULES: Dict[str, FeatureModule] = {
         icon="📝",
         category="Quality Assurance",
         enabled_by_default=True,  # spylls works everywhere
-    ),
-    "automation": FeatureModule(
-        id="automation",
-        name="AutoFingers (Windows)",
-        description="Automated keyboard/mouse control for memoQ integration. Windows only - uses AutoHotkey.",
-        pip_extra="windows",
-        packages=["keyboard", "ahk"],
-        size_mb=10,
-        check_import="keyboard",
-        icon="🤖",
-        category="Automation",
-        enabled_by_default=False,  # Windows-only
     ),
 }
 

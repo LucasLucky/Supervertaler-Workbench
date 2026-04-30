@@ -83,7 +83,6 @@
 
 * [PDF Rescue (OCR)](tools/pdf-rescue.md)
 * [TMX Editor](tools/tmx-editor.md)
-* [AutoFingers (memoQ Automation)](tools/autofingers.md)
 * [Voice Commands](tools/voice-commands.md)
 * [Image Extractor](tools/image-extractor.md)
 

@@ -9,6 +9,7 @@ Talon-style voice command system with 3 tiers:
 import json
 import os
 import re
+import sys
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict, List, Callable, Tuple
@@ -194,32 +195,14 @@ class VoiceCommandManager(QObject):
             # Dictation
             "start_dictation": lambda: main_window.start_voice_dictation() if hasattr(main_window, 'start_voice_dictation') else self._log_missing('start_voice_dictation'),
             "stop_listening": lambda: self._stop_voice_recognition(),
-
-            # AutoFingers (lives on AutoFingersWidget child, not main_window)
-            "autofingers_single": lambda: self._call_autofingers("process_single_safe"),
-            "autofingers_loop": lambda: self._call_autofingers("toggle_loop_safe"),
-            "autofingers_stop": lambda: self._call_autofingers("stop_loop_safe"),
         }
-    
+
     def _log_missing(self, method_name: str):
         """Log when a method is missing from main_window"""
         print(f"⚠️ Voice command: Method '{method_name}' not found on main window")
         if self.main_window and hasattr(self.main_window, 'log'):
             self.main_window.log(f"⚠️ Voice command: Method '{method_name}' not found")
 
-    def _call_autofingers(self, method_name: str):
-        """Call a method on the AutoFingersWidget (child of main_window)."""
-        if not self.main_window:
-            return
-        # Find the AutoFingersWidget among main_window's children
-        for child in self.main_window.findChildren(QWidget):
-            if type(child).__name__ == "AutoFingersWidget":
-                method = getattr(child, method_name, None)
-                if method:
-                    method()
-                    return
-        self._log_missing(f"AutoFingersWidget.{method_name}")
-    
     def _show_tab(self, main_window, tab_name: str):
         """Helper to switch to a specific tab"""
         if hasattr(main_window, 'main_tabs'):
@@ -815,12 +798,20 @@ class _VADListenerThread(QObject):
                 try:
                     import whisper
                 except ImportError:
-                    self.error_occurred.emit(
-                        "Local Whisper is not installed.\n\n"
-                        "Option A (recommended): Choose 'OpenAI Whisper API' in Settings → Supervoice (requires OpenAI API key).\n"
-                        "Option B: Install Local Whisper:\n"
-                        "  pip install supervertaler[local-whisper]"
-                    )
+                    if getattr(sys, 'frozen', False):
+                        msg = (
+                            "Local Whisper is not available in the Windows EXE build.\n\n"
+                            "To use Always-On dictation, switch to 'OpenAI Whisper API' in\n"
+                            "Sidekick → AutoFingers (requires an OpenAI API key)."
+                        )
+                    else:
+                        msg = (
+                            "Local Whisper is not installed.\n\n"
+                            "Option A (recommended): Choose 'OpenAI Whisper API' in Sidekick → AutoFingers (requires OpenAI API key).\n"
+                            "Option B: Install Local Whisper:\n"
+                            "  pip install supervertaler[local-whisper]"
+                        )
+                    self.error_occurred.emit(msg)
                     self._running = False
                     return
                 self._model = whisper.load_model(self.listener.model_name)

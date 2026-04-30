@@ -11,7 +11,7 @@ For the classic tkinter edition, see Supervertaler_tkinter.py
 Key Features:
 - Complete Translation Matching: Termbase + TM + MT + Multi-LLM
 - Project Termbases: Dedicated terminology per project with automatic extraction
-- Supervoice: AI-enhanced voice dictation (100+ languages via OpenAI Whisper)
+- AutoFingers: AI-enhanced voice dictation (100+ languages via OpenAI Whisper)
 - Superimage: Extract images from DOCX files with preview
 - Google Cloud Translation API integration
 - Multi-LLM Support: OpenAI GPT, Claude, Google Gemini
@@ -20,7 +20,6 @@ Key Features:
 - Superlookup with global hotkey (Ctrl+Alt+L)
 - Detachable Log window for multi-monitor setups
 - Modern theme system (6 themes + custom editor)
-- AutoFingers automation for memoQ with TagCleaner module
 - memoQ bilingual DOCX import/export
 - Bilingual Table export/import for review workflow
 - SQLite-based translation memory with FTS5 search
@@ -58,7 +57,7 @@ def _read_version():
 
 __version__ = _read_version()
 __phase__ = "0.9"
-__release_date__ = "2026-02-12"
+__release_date__ = "2026-04-30"
 __edition__ = "Qt"
 
 # --- macOS Finder crash logging (v1.9.275) ---
@@ -268,6 +267,7 @@ import pyperclip  # For clipboard operations in Superlookup
 from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
+from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
 from modules.statuses import (
     STATUSES,
     DEFAULT_STATUS,
@@ -1855,6 +1855,60 @@ class _DoubleTapShiftEventFilter(QObject):
                 QApplication.sendEvent(focus, fake_event)
             return True
 
+        return False
+
+
+class _F9HoldReleaseFilter(QObject):
+    """App-level event filter for AutoFingers hold-to-talk dictation mode.
+
+    The F9 press is handled by the existing ``voice_dictate`` QShortcut
+    (which calls ``start_voice_dictation``). This filter only acts on F9
+    releases when the user has set ``pushtotalk_mode = 'hold'`` in the
+    AutoFingers tab — releasing F9 stops the active dictation recording so
+    transcription fires immediately, walkie-talkie style.
+
+    In ``toggle`` mode (the default) this filter is a no-op. Auto-repeat
+    releases (which Qt fires when a key is held) are ignored so the stop
+    only triggers on the genuine release.
+    """
+
+    def __init__(self, main_window):
+        super().__init__(main_window)
+        self._main_window = main_window
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+
+        if event.type() != QEvent.Type.KeyRelease:
+            return False
+        if event.key() != Qt.Key.Key_F9:
+            return False
+        if event.isAutoRepeat():
+            return False
+
+        mw = self._main_window
+        if not mw or not mw.isActiveWindow():
+            return False
+
+        try:
+            settings = mw.load_dictation_settings()
+        except Exception:
+            return False
+        if settings.get('pushtotalk_mode', 'toggle') != 'hold':
+            return False
+
+        thread = getattr(mw, 'dictation_thread', None)
+        if thread is None:
+            return False
+        try:
+            if thread.isRunning() and getattr(thread, 'is_recording', False):
+                thread.stop_recording()
+                if hasattr(mw, 'log'):
+                    mw.log("⏹️ Hold-to-talk: F9 released, transcribing…")
+        except Exception:
+            pass
+
+        # Don't consume — other handlers may want to see the release too.
         return False
 
 
@@ -6236,164 +6290,6 @@ class TermMetadataDialog(QDialog):
         self.accept()
 
 
-class VoiceCommandEditDialog(QDialog):
-    """Dialog for adding/editing voice commands"""
-    
-    CATEGORIES = ["navigation", "editing", "translation", "lookup", "file", "view", "dictation", "memoq", "trados", "custom"]
-    ACTION_TYPES = [
-        ("internal", "Internal Action (Supervertaler)"),
-        ("keystroke", "Keystroke (e.g., ctrl+s)"),
-        ("ahk_inline", "AutoHotkey Code"),
-        ("ahk_script", "AutoHotkey Script File"),
-    ]
-    
-    def __init__(self, parent=None, command: VoiceCommand = None):
-        super().__init__(parent)
-        self.command = command
-        self.setup_ui()
-        
-        if command:
-            self.populate_from_command(command)
-    
-    def setup_ui(self):
-        self.setWindowTitle("Edit Voice Command" if self.command else "Add Voice Command")
-        self.setMinimumWidth(500)
-        
-        layout = QVBoxLayout(self)
-        
-        # Phrase
-        phrase_layout = QHBoxLayout()
-        phrase_layout.addWidget(QLabel("Phrase:"))
-        self.phrase_edit = QLineEdit()
-        self.phrase_edit.setPlaceholderText("e.g., confirm segment")
-        phrase_layout.addWidget(self.phrase_edit)
-        layout.addLayout(phrase_layout)
-        
-        # Aliases
-        aliases_layout = QHBoxLayout()
-        aliases_layout.addWidget(QLabel("Aliases:"))
-        self.aliases_edit = QLineEdit()
-        self.aliases_edit.setPlaceholderText("e.g., confirm, done, okay (comma-separated)")
-        aliases_layout.addWidget(self.aliases_edit)
-        layout.addLayout(aliases_layout)
-        
-        # Action Type
-        type_layout = QHBoxLayout()
-        type_layout.addWidget(QLabel("Type:"))
-        self.type_combo = QComboBox()
-        for value, label in self.ACTION_TYPES:
-            self.type_combo.addItem(label, value)
-        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
-        type_layout.addWidget(self.type_combo)
-        layout.addLayout(type_layout)
-        
-        # Action
-        action_layout = QVBoxLayout()
-        action_label = QLabel("Action:")
-        action_layout.addWidget(action_label)
-        self.action_edit = QTextEdit()
-        self.action_edit.setMaximumHeight(100)
-        self.action_edit.setPlaceholderText("For internal: action_name\nFor keystroke: ctrl+s\nFor AHK: Send, ^s")
-        action_layout.addWidget(self.action_edit)
-        layout.addLayout(action_layout)
-        
-        # Internal actions dropdown (for internal type)
-        self.internal_actions_layout = QHBoxLayout()
-        self.internal_actions_layout.addWidget(QLabel("Preset:"))
-        self.internal_combo = QComboBox()
-        self.internal_combo.addItems([
-            "navigate_next", "navigate_previous", "navigate_first", "navigate_last",
-            "confirm_segment", "copy_source_to_target", "clear_target",
-            "translate_segment", "batch_translate",
-            "open_superlookup", "concordance_search",
-            "show_log", "show_editor",
-            "start_dictation", "stop_listening"
-        ])
-        self.internal_combo.currentTextChanged.connect(lambda t: self.action_edit.setPlainText(t))
-        self.internal_actions_layout.addWidget(self.internal_combo)
-        self.internal_actions_layout.addStretch()
-        layout.addLayout(self.internal_actions_layout)
-        
-        # Description
-        desc_layout = QHBoxLayout()
-        desc_layout.addWidget(QLabel("Description:"))
-        self.desc_edit = QLineEdit()
-        self.desc_edit.setPlaceholderText("e.g., Confirm current segment")
-        desc_layout.addWidget(self.desc_edit)
-        layout.addLayout(desc_layout)
-        
-        # Category
-        cat_layout = QHBoxLayout()
-        cat_layout.addWidget(QLabel("Category:"))
-        self.cat_combo = QComboBox()
-        self.cat_combo.addItems(self.CATEGORIES)
-        self.cat_combo.setEditable(True)
-        cat_layout.addWidget(self.cat_combo)
-        layout.addLayout(cat_layout)
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        
-        save_btn = QPushButton("Save")
-        save_btn.clicked.connect(self.accept)
-        save_btn.setDefault(True)
-        btn_layout.addWidget(save_btn)
-        
-        layout.addLayout(btn_layout)
-        
-        # Initial type setup
-        self._on_type_changed()
-    
-    def _on_type_changed(self):
-        """Show/hide internal actions dropdown based on type"""
-        is_internal = self.type_combo.currentData() == "internal"
-        for i in range(self.internal_actions_layout.count()):
-            widget = self.internal_actions_layout.itemAt(i).widget()
-            if widget:
-                widget.setVisible(is_internal)
-    
-    def populate_from_command(self, cmd: VoiceCommand):
-        """Populate dialog from existing command"""
-        self.phrase_edit.setText(cmd.phrase)
-        self.aliases_edit.setText(", ".join(cmd.aliases))
-        
-        # Find and set action type
-        for i in range(self.type_combo.count()):
-            if self.type_combo.itemData(i) == cmd.action_type:
-                self.type_combo.setCurrentIndex(i)
-                break
-        
-        self.action_edit.setPlainText(cmd.action)
-        self.desc_edit.setText(cmd.description)
-        
-        # Set category
-        idx = self.cat_combo.findText(cmd.category)
-        if idx >= 0:
-            self.cat_combo.setCurrentIndex(idx)
-        else:
-            self.cat_combo.setCurrentText(cmd.category)
-    
-    def get_command(self) -> VoiceCommand:
-        """Get the command from dialog inputs"""
-        aliases_text = self.aliases_edit.text().strip()
-        aliases = [a.strip() for a in aliases_text.split(",") if a.strip()] if aliases_text else []
-        
-        return VoiceCommand(
-            phrase=self.phrase_edit.text().strip(),
-            aliases=aliases,
-            action_type=self.type_combo.currentData(),
-            action=self.action_edit.toPlainText().strip(),
-            description=self.desc_edit.text().strip(),
-            category=self.cat_combo.currentText().strip(),
-            enabled=True
-        )
-
-
 class AdvancedFiltersDialog(QDialog):
     """Dialog for advanced filtering options"""
     
@@ -7720,7 +7616,7 @@ class SupervertalerQt(QMainWindow):
         self.source_language = "English"
         self.target_language = "Dutch"
 
-        # Supervoice model download tracking
+        # AutoFingers model download tracking
         self.is_loading_model = False
         self.loading_model_name = None
         
@@ -8631,7 +8527,16 @@ class SupervertalerQt(QMainWindow):
             return shortcut
 
         # F9 - Voice dictation
-        create_shortcut("voice_dictate", "F9", self.start_voice_dictation)
+        # Disable autorepeat: holding F9 (hold-to-talk mode) must NOT
+        # re-fire start_voice_dictation, otherwise toggle semantics keep
+        # stopping and restarting the recording while the key is held —
+        # producing fragmented audio that Whisper hallucinates over.
+        _voice_dictate_sc = create_shortcut("voice_dictate", "F9", self.start_voice_dictation)
+        if _voice_dictate_sc is not None:
+            try:
+                _voice_dictate_sc.setAutoRepeat(False)
+            except Exception:
+                pass
         
         # Ctrl+Up/Down - Segment navigation is handled by _GridArrowKeyEventFilter
         # (QTableWidget intercepts vertical arrow keys before QShortcuts can fire)
@@ -8754,6 +8659,14 @@ class SupervertalerQt(QMainWindow):
             from PyQt6.QtWidgets import QApplication
             self._double_shift_event_filter = _DoubleTapShiftEventFilter(self)
             QApplication.instance().installEventFilter(self._double_shift_event_filter)
+
+        # F9 hold-to-talk release detection — only acts when AutoFingers is
+        # set to hold-to-talk mode. Press is handled by the voice_dictate
+        # QShortcut as usual; this filter just stops the recording on F9 up.
+        if not hasattr(self, '_f9_hold_release_filter'):
+            from PyQt6.QtWidgets import QApplication
+            self._f9_hold_release_filter = _F9HoldReleaseFilter(self)
+            QApplication.instance().installEventFilter(self._f9_hold_release_filter)
         
         # Ctrl+Shift+Enter - Always confirm all selected segments
         create_shortcut("editor_confirm_selected", "Ctrl+Shift+Return", self.confirm_selected_segments)
@@ -9896,11 +9809,6 @@ class SupervertalerQt(QMainWindow):
         tools_menu = menubar.addMenu("&Tools")
         
         # Tools in same order as Tools tab
-        autofingers_action = QAction("✋ &AutoFingers...", self)
-        autofingers_action.setShortcut("Ctrl+Shift+A")
-        autofingers_action.triggered.connect(self.show_autofingers)
-        tools_menu.addAction(autofingers_action)
-        
         superconverter_action = QAction("🔄 Super&converter...", self)
         superconverter_action.triggered.connect(lambda: self._navigate_to_tool("Superconverter"))
         tools_menu.addAction(superconverter_action)
@@ -9918,10 +9826,6 @@ class SupervertalerQt(QMainWindow):
         # which calls show_concordance_search() for proper selection capture
         superlookup_action.triggered.connect(self.show_concordance_search)
         tools_menu.addAction(superlookup_action)
-        
-        supervoice_action = QAction("🎤 Super&voice...", self)
-        supervoice_action.triggered.connect(lambda: self._navigate_to_tool("Supervoice"))
-        tools_menu.addAction(supervoice_action)
         
         encoding_action = QAction("🔧 &Text Encoding Repair...", self)
         encoding_action.triggered.connect(lambda: self._navigate_to_tool("Text Encoding Repair"))
@@ -10536,12 +10440,12 @@ class SupervertalerQt(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)  # Reduced from 10 to 5 for tighter spacing
         
-        # Header (matches Superlookup / AutoFingers / PDF Rescue style)
+        # Header (matches Superlookup / PDF Rescue style)
         header = QLabel("📝 TMX Editor")
         header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
         layout.addWidget(header, 0)  # 0 = no stretch, stays compact
         
-        # Description box (matches Superlookup / AutoFingers / PDF Rescue style)
+        # Description box (matches Superlookup / PDF Rescue style)
         description = QLabel(
             "Edit translation memory files directly - inspired by Heartsome TMX Editor.\n"
             "Open, edit, filter, and manage your TMX translation memories."
@@ -11708,10 +11612,6 @@ class SupervertalerQt(QMainWindow):
         self.modules_tabs = modules_tabs  # Store for navigation
 
         # Add tool tabs (alphabetical order)
-        autofingers_tab = AutoFingersWidget(self)
-        set_help_topic(autofingers_tab, HelpTopics.TOOL_AUTOFINGERS)
-        modules_tabs.addTab(autofingers_tab, "✋ AutoFingers")
-
         # Superconverter - Format conversion tools
         superconverter_tab = self.create_superconverter_tab()
         modules_tabs.addTab(superconverter_tab, "🔄 Superconverter")
@@ -11745,10 +11645,9 @@ class SupervertalerQt(QMainWindow):
         else:
             self.log("\u26A0 Global hotkeys NOT registered — check console for errors")
 
-        # Supervoice - Voice Commands & Dictation
-        supervoice_tab = self._create_voice_dictation_settings_tab()
-        set_help_topic(supervoice_tab, HelpTopics.TOOL_VOICE)
-        modules_tabs.addTab(supervoice_tab, "🎤 Supervoice")
+        # AutoFingers (voice commands & dictation) lives in Sidekick now —
+        # see modules/autofingers_tab.py. Reach it via Ctrl+Q → AutoFingers
+        # tab, or via the right-side Workbench Tools menu inside Sidekick.
 
         encoding_tab = self.create_encoding_repair_tab()
         modules_tabs.addTab(encoding_tab, "🔧 Text Encoding Repair")
@@ -17323,6 +17222,10 @@ class SupervertalerQt(QMainWindow):
         model_mgmt_tab = self._create_model_management_tab()
         settings_tabs.addTab(scroll_area_wrapper(model_mgmt_tab), "🤖 AI Models")
 
+        # ===== TAB: AutoFingers (voice commands & dictation, lives in Sidekick) =====
+        autofingers_tab = self._create_autofingers_settings_tab()
+        settings_tabs.addTab(scroll_area_wrapper(autofingers_tab), "🎤 AutoFingers")
+
         # ===== TAB 3: Language Pair Settings =====
         lang_tab = self._create_language_pair_tab()
         settings_tabs.addTab(scroll_area_wrapper(lang_tab), "🌐 Language Pair")
@@ -20664,370 +20567,22 @@ class SupervertalerQt(QMainWindow):
 
         return tab
 
-    def _create_voice_dictation_settings_tab(self):
-        """Create Supervoice Settings tab content with Voice Commands"""
-        from PyQt6.QtWidgets import (QGroupBox, QPushButton, QComboBox, QSpinBox,
-                                     QTableWidget, QTableWidgetItem, QHeaderView,
-                                     QAbstractItemView, QCheckBox, QSplitter)
-        from modules.keyboard_shortcuts_widget import CheckmarkCheckBox
-
-        tab = QWidget()
-        main_layout = QVBoxLayout(tab)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
-
-        # Load current dictation settings
-        dictation_settings = self.load_dictation_settings()
-
-        # Header info
-        header_info = QLabel(
-            "🎤 <b>Supervoice</b> - Hands-free translation with voice commands.<br>"
-            "Press <b>F9</b> to start recording. Speak commands or dictate text."
-        )
-        header_info.setTextFormat(Qt.TextFormat.RichText)
-        header_info.setStyleSheet("font-size: 9pt; color: #444; padding: 10px; background-color: #E3F2FD; border-radius: 4px;")
-        header_info.setWordWrap(True)
-        main_layout.addWidget(header_info)
-
-        # ===== Two-column layout: Left = Settings, Right = Voice Commands Table =====
-        columns_layout = QHBoxLayout()
-        columns_layout.setSpacing(15)
-
-        # --- LEFT COLUMN: Settings ---
-        left_column = QVBoxLayout()
-        left_column.setSpacing(15)
-
-        # Enable voice commands checkbox (green checkmark style)
-        voice_cmd_enabled = CheckmarkCheckBox("Enable voice commands (spoken phrases trigger actions)")
-        voice_cmd_enabled.setChecked(dictation_settings.get('voice_commands_enabled', True))
-        voice_cmd_enabled.setToolTip("When enabled, spoken phrases like 'confirm' or 'next segment' will execute commands instead of being inserted as text")
-        left_column.addWidget(voice_cmd_enabled)
-        self.voice_commands_enabled_checkbox = voice_cmd_enabled
-
-        # Create a layout variable for settings sections to be added below
-        layout = left_column
-
-        # --- RIGHT COLUMN: Voice Commands Table ---
-        right_column = QVBoxLayout()
-        right_column.setSpacing(10)
-
-        commands_group = QGroupBox("🗣️ Voice Commands (Talon-style)")
-        commands_layout = QVBoxLayout()
-
-        commands_info = QLabel(
-            "Voice commands let you control Supervertaler by voice. Say a phrase to execute an action.\n"
-            "If no command matches, the spoken text is inserted as dictation."
-        )
-        commands_info.setStyleSheet("font-size: 8pt; padding: 8px; color: #666;")
-        commands_info.setWordWrap(True)
-        commands_layout.addWidget(commands_info)
-
-        # Commands table
-        self.voice_commands_table = QTableWidget()
-        self.voice_commands_table.setColumnCount(4)
-        self.voice_commands_table.setHorizontalHeaderLabels(["Phrase", "Aliases", "Action", "Category"])
-        self.voice_commands_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.voice_commands_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.voice_commands_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.voice_commands_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.voice_commands_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.voice_commands_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.voice_commands_table.setMinimumHeight(350)
-
-        # Populate table with current commands
-        self._populate_voice_commands_table()
-        commands_layout.addWidget(self.voice_commands_table)
-
-        # Command buttons
-        cmd_btn_layout = QHBoxLayout()
-
-        add_cmd_btn = QPushButton("➕ Add")
-        add_cmd_btn.clicked.connect(self._add_voice_command)
-        cmd_btn_layout.addWidget(add_cmd_btn)
-
-        edit_cmd_btn = QPushButton("✏️ Edit")
-        edit_cmd_btn.clicked.connect(self._edit_voice_command)
-        cmd_btn_layout.addWidget(edit_cmd_btn)
-
-        remove_cmd_btn = QPushButton("🗑️ Remove")
-        remove_cmd_btn.clicked.connect(self._remove_voice_command)
-        cmd_btn_layout.addWidget(remove_cmd_btn)
-
-        cmd_btn_layout.addStretch()
-
-        reset_cmd_btn = QPushButton("🔄 Reset")
-        reset_cmd_btn.clicked.connect(self._reset_voice_commands)
-        cmd_btn_layout.addWidget(reset_cmd_btn)
-
-        commands_layout.addLayout(cmd_btn_layout)
-
-        commands_group.setLayout(commands_layout)
-        right_column.addWidget(commands_group)
-        right_column.addStretch()
-
-        # Add columns to the two-column layout
-        left_widget = QWidget()
-        left_widget.setLayout(left_column)
-        right_widget = QWidget()
-        right_widget.setLayout(right_column)
-
-        columns_layout.addWidget(left_widget, stretch=1)
-        columns_layout.addWidget(right_widget, stretch=1)
-
-        # ===== Always-On Mode Section =====
-        alwayson_group = QGroupBox("🎧 Always-On Listening Mode")
-        alwayson_layout = QVBoxLayout()
-
-        alwayson_info = QLabel(
-            "Always-on mode continuously listens for speech. When you speak, it automatically\n"
-            "records, transcribes, and processes as a command or dictation. No need to press F9!"
-        )
-        alwayson_info.setStyleSheet("font-size: 8pt; padding: 8px; color: #666;")
-        alwayson_info.setWordWrap(True)
-        alwayson_layout.addWidget(alwayson_info)
-
-        # Status row
-        status_row = QHBoxLayout()
-        
-        # Status indicator
-        self.alwayson_status_label = QLabel("⚪ Not active")
-        self.alwayson_status_label.setStyleSheet("font-size: 9pt; padding: 5px;")
-        status_row.addWidget(self.alwayson_status_label)
-        
-        status_row.addStretch()
-        
-        # Start/Stop button
-        self.alwayson_toggle_btn = QPushButton("▶️ Start Always-On Listening")
-        self.alwayson_toggle_btn.setStyleSheet("padding: 8px 15px;")
-        self.alwayson_toggle_btn.clicked.connect(self._toggle_alwayson_listening)
-        status_row.addWidget(self.alwayson_toggle_btn)
-        
-        alwayson_layout.addLayout(status_row)
-
-        # Recognition Engine row
-        engine_row = QHBoxLayout()
-        engine_row.addWidget(QLabel("Recognition Engine:"))
-        
-        self.recognition_engine_combo = QComboBox()
-        self.recognition_engine_combo.addItems([
-            "Local Whisper (offline, slower)",
-            "OpenAI Whisper API (online, fast & accurate)"
-        ])
-        saved_engine = dictation_settings.get('recognition_engine', 'local')
-        if saved_engine == 'api':
-            self.recognition_engine_combo.setCurrentIndex(1)
-        else:
-            self.recognition_engine_combo.setCurrentIndex(0)
-        self.recognition_engine_combo.setToolTip(
-            "Local: Uses Whisper model on your computer (works offline, but slower and less accurate)\n"
-            "API: Uses OpenAI's cloud API (faster, much more accurate, requires API key)"
-        )
-        engine_row.addWidget(self.recognition_engine_combo)
-        
-        engine_row.addStretch()
-        alwayson_layout.addLayout(engine_row)
-
-        # Sensitivity row
-        sensitivity_row = QHBoxLayout()
-        sensitivity_row.addWidget(QLabel("Mic Sensitivity:"))
-        
-        self.sensitivity_combo = QComboBox()
-        self.sensitivity_combo.addItems(["Low (noisy environment)", "Medium (normal)", "High (quiet environment)"])
-        self.sensitivity_combo.setCurrentIndex(1)  # Default to medium
-        saved_sensitivity = dictation_settings.get('alwayson_sensitivity', 'medium')
-        if saved_sensitivity == 'low':
-            self.sensitivity_combo.setCurrentIndex(0)
-        elif saved_sensitivity == 'high':
-            self.sensitivity_combo.setCurrentIndex(2)
-        self.sensitivity_combo.setToolTip("Adjust how sensitive the microphone is to speech detection")
-        sensitivity_row.addWidget(self.sensitivity_combo)
-        
-        sensitivity_row.addStretch()
-        
-        alwayson_layout.addLayout(sensitivity_row)
-
-        # Note about F9 and API
-        f9_note = QLabel(
-            "💡 <b>Tip:</b> OpenAI API is <b>highly recommended</b> for always-on mode - it's much faster and more accurate "
-            "for short voice commands. Requires an OpenAI API key in Settings → AI Settings."
-        )
-        f9_note.setTextFormat(Qt.TextFormat.RichText)
-        f9_note.setStyleSheet("font-size: 8pt; padding: 8px; color: #666; background-color: #E8F5E9; border-radius: 4px;")
-        f9_note.setWordWrap(True)
-        alwayson_layout.addWidget(f9_note)
-
-        alwayson_group.setLayout(alwayson_layout)
-        layout.addWidget(alwayson_group)
-
-        # ===== Whisper Model Settings =====
-        model_group = QGroupBox("🤖 Speech Recognition Model")
-        model_layout = QVBoxLayout()
-
-        model_info = QLabel(
-            "Whisper model size (larger = more accurate but slower):\n"
-            "• tiny: ~75 MB  •  base: ~142 MB (recommended)  •  small: ~466 MB\n"
-            "• medium: ~1.5 GB  •  large: ~2.9 GB"
-        )
-        model_info.setStyleSheet("font-size: 8pt; padding: 8px;")
-        model_info.setWordWrap(True)
-        model_layout.addWidget(model_info)
-
-        model_select_layout = QHBoxLayout()
-        model_select_layout.addWidget(QLabel("Model:"))
-        model_combo = QComboBox()
-        model_combo.addItems(["tiny", "base", "small", "medium", "large"])
-        model_combo.setCurrentText(dictation_settings.get('model', 'base'))
-        model_select_layout.addWidget(model_combo)
-        
-        model_select_layout.addSpacing(20)
-        model_select_layout.addWidget(QLabel("Max Duration:"))
-        duration_spin = QSpinBox()
-        duration_spin.setMinimum(3)
-        duration_spin.setMaximum(60)
-        duration_spin.setValue(dictation_settings.get('max_duration', 10))
-        duration_spin.setSuffix(" sec")
-        model_select_layout.addWidget(duration_spin)
-        
-        model_select_layout.addSpacing(20)
-        model_select_layout.addWidget(QLabel("Language:"))
-        lang_combo = QComboBox()
-        lang_combo.addItems([
-            "Auto (use project target language)",
-            "English", "Dutch", "German", "French", "Spanish",
-            "Italian", "Portuguese", "Polish", "Russian",
-            "Chinese", "Japanese", "Korean"
-        ])
-        lang_combo.setCurrentText(dictation_settings.get('language', 'Auto (use project target language)'))
-        model_select_layout.addWidget(lang_combo)
-        
-        model_select_layout.addStretch()
-        model_layout.addLayout(model_select_layout)
-
-        model_group.setLayout(model_layout)
-        layout.addWidget(model_group)
-
-        # ===== AutoHotkey Integration =====
-        ahk_group = QGroupBox("⌨️ AutoHotkey Integration (System Commands)")
-        ahk_layout = QVBoxLayout()
-
-        ahk_info = QLabel(
-            "Voice commands can trigger AutoHotkey scripts for system-level automation.\n"
-            "This enables controlling other applications (memoQ, Trados, Word) by voice."
-        )
-        ahk_info.setStyleSheet("font-size: 8pt; padding: 8px; color: #666;")
-        ahk_info.setWordWrap(True)
-        ahk_layout.addWidget(ahk_info)
-
-        ahk_btn_layout = QHBoxLayout()
-        
-        ahk_status = self._check_ahk_installed()
-        ahk_status_label = QLabel(ahk_status)
-        ahk_status_label.setStyleSheet("font-size: 8pt; padding: 4px;")
-        ahk_btn_layout.addWidget(ahk_status_label)
-        
-        ahk_btn_layout.addStretch()
-        
-        open_ahk_folder_btn = QPushButton("📂 Open Scripts Folder")
-        open_ahk_folder_btn.clicked.connect(self._open_voice_scripts_folder)
-        ahk_btn_layout.addWidget(open_ahk_folder_btn)
-        
-        ahk_layout.addLayout(ahk_btn_layout)
-        ahk_group.setLayout(ahk_layout)
-        layout.addWidget(ahk_group)
-
-        # Add stretch to left column to push content up
-        layout.addStretch()
-
-        # Add two-column layout to main layout
-        main_layout.addLayout(columns_layout, stretch=1)
-
-        # Save button (full width, below the two columns)
-        save_btn = QPushButton("💾 Save Supervoice Settings")
-        save_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; border: none; outline: none;")
-        save_btn.clicked.connect(lambda: self._save_voice_settings(
-            model_combo.currentText(),
-            duration_spin.value(),
-            lang_combo.currentText(),
-            voice_cmd_enabled.isChecked()
-        ))
-        main_layout.addWidget(save_btn)
-
-        # Store references
-        self.dictation_model_combo = model_combo
-        self.dictation_duration_spin = duration_spin
-        self.dictation_lang_combo = lang_combo
-
-        return tab
-
     def _populate_voice_commands_table(self):
-        """Populate the voice commands table with current commands"""
+        """Refresh the AutoFingers voice-command table in Sidekick (if open).
+
+        Called whenever the underlying voice_command_manager has changed
+        (commands added, edited, removed, or reset).
+        """
         if not hasattr(self, 'voice_command_manager'):
             return
-        
-        table = self.voice_commands_table
-        table.setRowCount(0)
-        
-        for cmd in self.voice_command_manager.commands:
-            row = table.rowCount()
-            table.insertRow(row)
-            
-            table.setItem(row, 0, QTableWidgetItem(cmd.phrase))
-            table.setItem(row, 1, QTableWidgetItem(", ".join(cmd.aliases) if cmd.aliases else ""))
-            table.setItem(row, 2, QTableWidgetItem(cmd.description or cmd.action))
-            table.setItem(row, 3, QTableWidgetItem(cmd.category))
-
-    def _add_voice_command(self):
-        """Add a new voice command"""
-        dialog = VoiceCommandEditDialog(self)
-        if dialog.exec():
-            cmd = dialog.get_command()
-            self.voice_command_manager.add_command(cmd)
-            self._populate_voice_commands_table()
-
-    def _edit_voice_command(self):
-        """Edit selected voice command"""
-        table = self.voice_commands_table
-        selected = table.selectedItems()
-        if not selected:
-            QMessageBox.information(self, "Edit Command", "Please select a command to edit.")
-            return
-        
-        row = selected[0].row()
-        phrase = table.item(row, 0).text()
-        
-        # Find the command
-        cmd = next((c for c in self.voice_command_manager.commands if c.phrase == phrase), None)
-        if not cmd:
-            return
-        
-        dialog = VoiceCommandEditDialog(self, cmd)
-        if dialog.exec():
-            # Remove old, add new
-            self.voice_command_manager.remove_command(phrase)
-            new_cmd = dialog.get_command()
-            self.voice_command_manager.add_command(new_cmd)
-            self._populate_voice_commands_table()
-
-    def _remove_voice_command(self):
-        """Remove selected voice command"""
-        table = self.voice_commands_table
-        selected = table.selectedItems()
-        if not selected:
-            QMessageBox.information(self, "Remove Command", "Please select a command to remove.")
-            return
-        
-        row = selected[0].row()
-        phrase = table.item(row, 0).text()
-        
-        reply = QMessageBox.question(
-            self, "Remove Command",
-            f"Remove voice command '{phrase}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            self.voice_command_manager.remove_command(phrase)
-            self._populate_voice_commands_table()
+        sidekick = getattr(self, '_floating_assistant', None)
+        if sidekick is not None:
+            af = getattr(sidekick, '_autofingers_widget', None)
+            if af is not None:
+                try:
+                    af._populate_table()
+                except Exception:
+                    pass
 
     def _reset_voice_commands(self):
         """Reset voice commands to defaults"""
@@ -21086,13 +20641,21 @@ class SupervertalerQt(QMainWindow):
                         try:
                             import whisper  # noqa: F401
                         except ImportError:
+                            if getattr(sys, 'frozen', False):
+                                extra = (
+                                    "Local Whisper is also not available in the Windows EXE build."
+                                )
+                            else:
+                                extra = (
+                                    "Local Whisper is also not installed.\n\n"
+                                    "Install offline Local Whisper with:\n"
+                                    "  pip install supervertaler[local-whisper]"
+                                )
                             QMessageBox.warning(
                                 self, "OpenAI API Key Required",
                                 "To use OpenAI Whisper API, please set your OpenAI API key in:\n\n"
                                 "Settings → AI Settings → OpenAI API Key\n\n"
-                                "Local Whisper is not installed either.\n\n"
-                                "Install offline Local Whisper with:\n"
-                                "  pip install supervertaler[local-whisper]"
+                                + extra
                             )
                             return
                         QMessageBox.warning(
@@ -21127,10 +20690,10 @@ class SupervertalerQt(QMainWindow):
                     api_key=api_key
                 )
                 
-                # Set sensitivity
-                if hasattr(self, 'sensitivity_combo'):
-                    idx = self.sensitivity_combo.currentIndex()
-                    sensitivity = ['low', 'medium', 'high'][idx]
+                # Set sensitivity from persisted settings (the AutoFingers tab
+                # writes this key directly via _set_dictation_keys).
+                sensitivity = dictation_settings.get('alwayson_sensitivity', 'medium')
+                if sensitivity in ('low', 'medium', 'high'):
                     self.voice_listener.set_sensitivity(sensitivity)
                 
                 # Connect signals
@@ -21203,7 +20766,7 @@ class SupervertalerQt(QMainWindow):
         # Update grid toolbar button (if exists)
         if hasattr(self, 'grid_alwayson_btn'):
             if status == "listening" or status == "waiting":
-                self.grid_alwayson_btn.setText("🎧 Voice Commands ON")
+                self.grid_alwayson_btn.setText("🎧 Always-On: ON")
                 self.grid_alwayson_btn.setChecked(True)
                 self.grid_alwayson_btn.setStyleSheet("""
                     QPushButton {
@@ -21246,7 +20809,7 @@ class SupervertalerQt(QMainWindow):
                     }
                 """)
             else:  # stopped or other
-                self.grid_alwayson_btn.setText("🎧 Voice Commands OFF")
+                self.grid_alwayson_btn.setText("🎧 Always-On: OFF")
                 self.grid_alwayson_btn.setChecked(False)
                 self.grid_alwayson_btn.setStyleSheet("""
                     QPushButton {
@@ -21261,6 +20824,16 @@ class SupervertalerQt(QMainWindow):
                     }
                 """)
 
+        # Update Sidekick's AutoFingers tab if it has been created.
+        sidekick = getattr(self, '_floating_assistant', None)
+        if sidekick is not None:
+            af = getattr(sidekick, '_autofingers_widget', None)
+            if af is not None:
+                try:
+                    af.set_alwayson_status(status)
+                except Exception:
+                    pass
+
     def _on_alwayson_speech(self, text: str):
         """Handle raw speech from always-on listener"""
         self.log(f"🎤 Heard: {text}")
@@ -21271,23 +20844,13 @@ class SupervertalerQt(QMainWindow):
         self.status_bar.showMessage(f"🎤 {result}", 3000)
 
     def _on_alwayson_dictation(self, text: str):
-        """Handle dictation text from always-on listener (no command matched)"""
-        # Insert into focused widget
-        focused_widget = QApplication.focusWidget()
-        
-        if isinstance(focused_widget, EditableGridTextEditor):
-            current_text = focused_widget.toPlainText()
-            if current_text:
-                focused_widget.setPlainText(current_text + " " + text)
-            else:
-                focused_widget.setPlainText(text)
-            cursor = focused_widget.textCursor()
-            cursor.movePosition(cursor.MoveOperation.End)
-            focused_widget.setTextCursor(cursor)
-            self.status_bar.showMessage(f"✅ Dictation: {text[:50]}...", 3000)
-        else:
-            self.log(f"💬 Dictation (no target): {text}")
-            self.status_bar.showMessage(f"💬 {text[:50]}...", 3000)
+        """Handle dictation text from always-on listener (no command matched).
+
+        Routes through the shared cross-app helper so Always-On, F9
+        push-to-talk, and the AutoFingers global hotkey all behave the same
+        way regardless of which app has focus.
+        """
+        self._insert_dictated_text(text)
 
     def _on_alwayson_status(self, message: str):
         """Handle status updates from always-on listener"""
@@ -21313,44 +20876,6 @@ class SupervertalerQt(QMainWindow):
         """Toggle always-on listening from the grid toolbar button"""
         self._toggle_alwayson_listening()
         # Button state will be updated by _update_alwayson_ui
-
-    def _save_voice_settings(self, model: str, duration: int, language: str, voice_commands_enabled: bool):
-        """Save all voice settings including voice commands enabled state, sensitivity, and recognition engine"""
-        # Save base settings
-        self.save_dictation_settings(model, duration, language)
-        
-        # Save voice commands enabled state, sensitivity, and recognition engine
-        all_settings = self._load_unified_settings()
-        prefs = all_settings.setdefault("ui", {})
-
-        if 'dictation_settings' not in prefs:
-            prefs['dictation_settings'] = {}
-        prefs['dictation_settings']['voice_commands_enabled'] = voice_commands_enabled
-
-        # Save sensitivity setting
-        if hasattr(self, 'sensitivity_combo'):
-            idx = self.sensitivity_combo.currentIndex()
-            sensitivity = ['low', 'medium', 'high'][idx]
-            prefs['dictation_settings']['alwayson_sensitivity'] = sensitivity
-
-        # Save recognition engine setting
-        if hasattr(self, 'recognition_engine_combo'):
-            idx = self.recognition_engine_combo.currentIndex()
-            engine = 'api' if idx == 1 else 'local'
-            prefs['dictation_settings']['recognition_engine'] = engine
-
-        try:
-            self._save_unified_settings(all_settings)
-            
-            # Update active listener if running
-            if self.voice_listener and hasattr(self, 'sensitivity_combo'):
-                idx = self.sensitivity_combo.currentIndex()
-                sensitivity = ['low', 'medium', 'high'][idx]
-                self.voice_listener.set_sensitivity(sensitivity)
-                self.log(f"✓ Updated always-on sensitivity to: {sensitivity}")
-                
-        except Exception as e:
-            self.log(f"⚠ Could not save voice command settings: {e}")
 
     def _create_system_prompts_tab(self):
         """Create System Prompts (Layer 1) Settings tab content"""
@@ -21625,6 +21150,100 @@ class SupervertalerQt(QMainWindow):
         display = saved_name if saved_name else "(system username)"
         self.log(f"✓ User identity saved: translator name = {display}")
         QMessageBox.information(self, "Settings Saved", f"User identity saved.\nTranslator name: {display}")
+
+    def _create_autofingers_settings_tab(self):
+        """Create the AutoFingers info/redirect tab.
+
+        AutoFingers (voice commands & dictation) lives in Sidekick. This
+        Workbench Settings tab is just a signpost: a brief explanation, a
+        quick-reference card for the hotkeys, and a button that opens
+        Sidekick directly to the AutoFingers tab.
+        """
+        from PyQt6.QtWidgets import QGroupBox, QPushButton
+
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        header = QLabel("🎤 <b>AutoFingers</b> — voice commands and dictation")
+        header.setTextFormat(Qt.TextFormat.RichText)
+        header.setStyleSheet("font-size: 14pt; padding: 8px;")
+        layout.addWidget(header)
+
+        info = QLabel(
+            "AutoFingers is Supervertaler's voice command and dictation system. "
+            "Its full settings panel lives in <b>Supervertaler Sidekick</b>, the "
+            "floating companion window you can summon from anywhere on your "
+            "computer.<br><br>"
+            "<b>Why is it there and not here?</b><br>"
+            "Sidekick stays accessible even when Workbench is hidden — and "
+            "AutoFingers' Always-On listening + global hotkeys are designed to "
+            "work across every app on your computer (Word, Trados, memoQ, "
+            "browsers, etc.), not just inside Workbench."
+        )
+        info.setTextFormat(Qt.TextFormat.RichText)
+        info.setWordWrap(True)
+        info.setStyleSheet(
+            "font-size: 9pt; color: #444; padding: 12px;"
+            " background-color: #E3F2FD; border-radius: 4px;"
+        )
+        layout.addWidget(info)
+
+        open_btn = QPushButton("🎤  Open AutoFingers in Sidekick")
+        open_btn.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-weight: bold;"
+            " padding: 12px; font-size: 11pt; border: none;"
+        )
+        open_btn.clicked.connect(self._open_autofingers_in_sidekick)
+        layout.addWidget(open_btn)
+
+        quick_ref_group = QGroupBox("📖 Quick Reference")
+        quick_ref_layout = QVBoxLayout()
+        quick_ref = QLabel(
+            "<b>F9</b> — push-to-talk dictation in the translation grid (toggle "
+            "or hold mode, configurable in Sidekick).<br>"
+            "<b>Ctrl+Alt+D</b> — global push-to-talk dictation, works in any "
+            "app on your computer.<br>"
+            "<b>Always-On</b> — toggleable in Sidekick → AutoFingers tab; "
+            "listens continuously, hands-free.<br>"
+            "<b>Voice commands</b> — say a phrase to execute keystrokes, "
+            "AutoHotkey scripts, or built-in actions. Editable in Sidekick.<br><br>"
+            "All hotkeys (including Ctrl+Alt+D) can be rebound in "
+            "<b>Settings → Keyboard Shortcuts → Global</b>."
+        )
+        quick_ref.setTextFormat(Qt.TextFormat.RichText)
+        quick_ref.setWordWrap(True)
+        quick_ref.setStyleSheet("font-size: 9pt; color: #555; padding: 8px;")
+        quick_ref_layout.addWidget(quick_ref)
+        quick_ref_group.setLayout(quick_ref_layout)
+        layout.addWidget(quick_ref_group)
+
+        layout.addStretch()
+        return tab
+
+    def _open_autofingers_in_sidekick(self):
+        """Open Sidekick directly to its AutoFingers tab from a Settings link."""
+        fa = getattr(self, '_floating_assistant', None)
+        if fa is None:
+            QMessageBox.information(
+                self, "Sidekick unavailable",
+                "Supervertaler Sidekick isn't initialised yet. "
+                "Try again in a moment, or press Ctrl+Q to summon it manually."
+            )
+            return
+        opener = getattr(fa, '_open_to_autofingers', None)
+        if not callable(opener):
+            QMessageBox.warning(
+                self, "Could not open AutoFingers",
+                "Sidekick is loaded but the AutoFingers entry point is missing. "
+                "Press Ctrl+Q and click the AutoFingers tab manually."
+            )
+            return
+        try:
+            opener()
+        except Exception as e:
+            QMessageBox.warning(self, "Could not open AutoFingers", str(e))
 
     def _create_debug_settings_tab(self):
         """Create Debug Settings tab content"""
@@ -23765,14 +23384,14 @@ class SupervertalerQt(QMainWindow):
         preview_prompt_btn.clicked.connect(self._preview_combined_prompt_from_grid)
         toolbar_layout.addWidget(preview_prompt_btn)
         
-        dictate_btn = QPushButton("🎤 Dictation")
+        dictate_btn = QPushButton("🎤 Dictate (F9)")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 3px 5px; border: none; outline: none;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
-        dictate_btn.setToolTip("Start/stop voice dictation (F9)")
+        dictate_btn.setToolTip("Push-to-talk dictation — press F9 (or click) to record, transcribe, and insert text")
         toolbar_layout.addWidget(dictate_btn)
         
         # Always-On Voice toggle button
-        alwayson_btn = QPushButton("🎧 Voice Commands OFF")
+        alwayson_btn = QPushButton("🎧 Always-On: OFF")
         alwayson_btn.setCheckable(True)
         alwayson_btn.setChecked(False)
         alwayson_btn.setStyleSheet("""
@@ -23790,7 +23409,7 @@ class SupervertalerQt(QMainWindow):
                 outline: none;
             }
         """)
-        alwayson_btn.setToolTip("Toggle always-on voice listening\n\nWhen ON: Listens continuously for voice commands\nNo need to press F9")
+        alwayson_btn.setToolTip("Always-On listening — continuously monitors the mic and transcribes automatically\nNo need to press F9")
         alwayson_btn.clicked.connect(lambda checked: self._toggle_alwayson_from_grid_btn(checked, alwayson_btn))
         toolbar_layout.addWidget(alwayson_btn)
         self.grid_alwayson_btn = alwayson_btn  # Store reference
@@ -24818,10 +24437,10 @@ class SupervertalerQt(QMainWindow):
         clear_btn.clicked.connect(self.clear_tab_target)
 
         # Voice dictation button
-        dictate_btn = QPushButton("🎤 Dictation (F9)")
+        dictate_btn = QPushButton("🎤 Dictate (F9)")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
-        dictate_btn.setToolTip("Click or press F9 to start/stop voice dictation")
+        dictate_btn.setToolTip("Push-to-talk dictation — press F9 (or click) to record, transcribe, and insert text")
 
         # Store reference to dictate button for state updates
         editor_widget.dictate_btn = dictate_btn
@@ -37331,7 +36950,7 @@ class SupervertalerQt(QMainWindow):
             self.log(f"⚠ Could not save general settings: {str(e)}")
 
     def load_dictation_settings(self) -> Dict[str, Any]:
-        """Load Supervoice settings"""
+        """Load AutoFingers settings"""
         defaults = {
             'model': 'base',
             'max_duration': 10,
@@ -37348,7 +36967,7 @@ class SupervertalerQt(QMainWindow):
             return defaults
 
     def save_dictation_settings(self, model: str, duration: int, language: str):
-        """Save Supervoice settings"""
+        """Save AutoFingers settings"""
         # Load existing preferences to check if model changed
         all_settings = self._load_unified_settings()
         prefs = all_settings.setdefault("ui", {})
@@ -37373,11 +36992,11 @@ class SupervertalerQt(QMainWindow):
         # Save back
         try:
             self._save_unified_settings(all_settings)
-            self.log(f"✓ Supervoice settings saved: Model={model}, Duration={duration}s")
+            self.log(f"✓ AutoFingers settings saved: Model={model}, Duration={duration}s")
 
             # Build message
             message = (
-                f"Supervoice settings saved successfully!\n\n"
+                f"AutoFingers settings saved successfully!\n\n"
                 f"Model: {model}\n"
                 f"Max Duration: {duration} seconds\n"
                 f"Language: {language}"
@@ -37400,7 +37019,7 @@ class SupervertalerQt(QMainWindow):
 
             QMessageBox.information(self, "Settings Saved", message)
         except Exception as e:
-            self.log(f"⚠ Could not save Supervoice settings: {str(e)}")
+            self.log(f"⚠ Could not save AutoFingers settings: {str(e)}")
             QMessageBox.warning(self, "Save Error", f"Could not save settings:\n{str(e)}")
 
     def _load_language_pair_from_disk(self):
@@ -45197,51 +44816,93 @@ class SupervertalerQt(QMainWindow):
 
     def on_dictation_complete(self, text):
         """Handle completed dictation - check for voice commands first"""
-        # Load voice command settings
         dictation_settings = self.load_dictation_settings()
         voice_commands_enabled = dictation_settings.get('voice_commands_enabled', True)
-        
-        # Check for voice commands first (if enabled)
+
+        # Voice commands first (if enabled).
         if voice_commands_enabled and hasattr(self, 'voice_command_manager'):
             was_command, result = self.voice_command_manager.process_spoken_text(text)
             if was_command:
-                # It was a command - show result and don't insert as text
                 self.log(f"🎤 Voice command: {text} → {result}")
                 self.status_bar.showMessage(f"🎤 {result}", 3000)
                 return
-        
-        # Not a command - insert as text (dictation mode)
+
+        # Otherwise route as dictation text — same cross-app path Always-On
+        # uses, so F9 and Ctrl+Alt+D work in any app.
+        self._insert_dictated_text(text)
+
+    def _insert_dictated_text(self, text: str):
+        """Route dictated text to whatever target makes sense.
+
+        Preference order:
+        1. Focused Supervertaler grid editor (EditableGridTextEditor) →
+           direct insert with cursor handling.
+        2. Focused tabbed-panel target editor → direct insert.
+        3. Any other focused app → AHK SendText / osascript keystroke /
+           pynput type, via CrossPlatformKeySender.type_text.
+        4. Last-resort fallback → drop on clipboard so the user can paste
+           manually with whatever shortcut their app uses.
+
+        Used by both ``on_dictation_complete`` (F9 push-to-talk and the
+        global AutoFingers hotkey) and ``_on_alwayson_dictation``
+        (continuous listener) so behaviour is identical across surfaces.
+        """
         focused_widget = QApplication.focusWidget()
 
-        # Check if focused widget is a grid target cell
         if isinstance(focused_widget, EditableGridTextEditor):
             current_text = focused_widget.toPlainText()
             if current_text:
                 focused_widget.setPlainText(current_text + " " + text)
             else:
                 focused_widget.setPlainText(text)
-            # Move cursor to end
             cursor = focused_widget.textCursor()
             cursor.movePosition(cursor.MoveOperation.End)
             focused_widget.setTextCursor(cursor)
-        # Otherwise insert into segment editor below grid
-        elif hasattr(self, 'tabbed_panels'):
+            self.status_bar.showMessage(f"✅ Dictation: {text[:50]}...", 3000)
+            return
+
+        # Tabbed panel editor (legacy list view).
+        if hasattr(self, 'tabbed_panels'):
             for panel in self.tabbed_panels:
                 try:
-                    if hasattr(panel, 'editor_widget'):
-                        current_text = panel.editor_widget.target_editor.toPlainText()
+                    if hasattr(panel, 'editor_widget') and panel.editor_widget.target_editor.hasFocus():
+                        target = panel.editor_widget.target_editor
+                        current_text = target.toPlainText()
                         if current_text:
-                            panel.editor_widget.target_editor.setPlainText(current_text + " " + text)
+                            target.setPlainText(current_text + " " + text)
                         else:
-                            panel.editor_widget.target_editor.setPlainText(text)
-                        cursor = panel.editor_widget.target_editor.textCursor()
+                            target.setPlainText(text)
+                        cursor = target.textCursor()
                         cursor.movePosition(cursor.MoveOperation.End)
-                        panel.editor_widget.target_editor.setTextCursor(cursor)
-                except:
+                        target.setTextCursor(cursor)
+                        self.status_bar.showMessage(
+                            f"✅ Dictation: {text[:50]}...", 3000)
+                        return
+                except Exception:
                     pass
 
-        # Show notification
-        self.status_bar.showMessage(f"✅ Dictation: {text[:50]}...", 3000)
+        # Cross-app: type into whatever has keyboard focus.
+        try:
+            from modules.platform_helpers import CrossPlatformKeySender
+            sender = CrossPlatformKeySender()
+            if sender.is_available and sender.type_text(text):
+                self.log(f"💬 Dictated: {text}")
+                self.status_bar.showMessage(
+                    f"💬 Dictated: {text[:50]}...", 3000)
+                return
+        except Exception as e:
+            self.log(f"⚠ Dictation type failed: {e}")
+
+        # Last-resort clipboard fallback.
+        try:
+            QApplication.clipboard().setText(text)
+            self.log(
+                f"💬 Dictated → clipboard (auto-typing unavailable): {text}")
+            self.status_bar.showMessage(
+                f"📋 Copied to clipboard: {text[:50]}...", 4000)
+        except Exception:
+            self.log(f"💬 Dictation (no target): {text}")
+            self.status_bar.showMessage(f"💬 {text[:50]}...", 3000)
 
     def on_dictation_status(self, message):
         """Show dictation status"""
@@ -45293,10 +44954,10 @@ class SupervertalerQt(QMainWindow):
         model_exists = any(os.path.exists(os.path.join(cache_dir, f)) for f in model_files)
 
         if model_exists:
-            self.status_bar.showMessage(f"🎤 Supervoice: Loading '{model_name}' model...", 10000)
+            self.status_bar.showMessage(f"🎤 AutoFingers: Loading '{model_name}' model...", 10000)
             self.log(f"⏳ Loading Whisper model '{model_name}' from cache...")
         else:
-            self.status_bar.showMessage(f"📥 Supervoice: Downloading '{model_name}' model ({size})...", 60000)
+            self.status_bar.showMessage(f"📥 AutoFingers: Downloading '{model_name}' model ({size})...", 60000)
             self.log(f"")
             self.log(f"📥 DOWNLOADING Whisper model '{model_name}' ({size})...")
             self.log(f"   This is a one-time download. Please be patient!")
@@ -45309,7 +44970,7 @@ class SupervertalerQt(QMainWindow):
         model_name = self.loading_model_name  # Save before clearing
         self.is_loading_model = False
         self.loading_model_name = None
-        self.status_bar.showMessage(f"🎤 Supervoice: '{model_name}' model ready", 3000)
+        self.status_bar.showMessage(f"🎤 AutoFingers: '{model_name}' model ready", 3000)
         self.log(f"✅ Model '{model_name}' loaded successfully")
 
     def _set_dictation_button_recording(self, is_recording):
@@ -48301,8 +47962,8 @@ class SupervertalerQt(QMainWindow):
 
             reply = QMessageBox.warning(
                 self,
-                "⚠️ Supervoice Model Downloading",
-                f"Supervoice is currently downloading the '{self.loading_model_name}' model ({size}).\n\n"
+                "⚠️ AutoFingers Model Downloading",
+                f"AutoFingers is currently downloading the '{self.loading_model_name}' model ({size}).\n\n"
                 f"If you close now, the download will be interrupted and the model\n"
                 f"file may become corrupted. You would need to delete the incomplete\n"
                 f"file manually and re-download.\n\n"
@@ -51413,19 +51074,6 @@ class SupervertalerQt(QMainWindow):
 
         return self.termbase_mgr.get_ai_inject_terms(project_id)
 
-    def show_autofingers(self):
-        """Show AutoFingers by switching to the AutoFingers tab"""
-        # Find the AutoFingers tab index and activate it
-        # AutoFingers is in Tools tab (main_tabs index 3)
-        if hasattr(self, 'main_tabs'):
-            self.main_tabs.setCurrentIndex(3)  # Switch to Tools tab
-            # Then switch to AutoFingers sub-tab
-            if hasattr(self, 'modules_tabs'):
-                for i in range(self.modules_tabs.count()):
-                    if "AutoFingers" in self.modules_tabs.tabText(i):
-                        self.modules_tabs.setCurrentIndex(i)
-                        break
-    
     def show_image_extractor_from_tools(self):
         """Switch the user to the Image Context pane (now under AI in v1.9.395+)."""
         if not hasattr(self, 'main_tabs'):
@@ -56492,11 +56140,13 @@ class SuperlookupTab(QWidget):
             qt_shortcut = sm.get_shortcut('global_quicktrans').lower().replace('+', '+')
             sk_shortcut = sm.get_shortcut('global_sidekick').lower().replace('+', '+')
             cb_shortcut = sm.get_shortcut('global_clipboard').lower().replace('+', '+')
+            pt_shortcut = sm.get_shortcut('global_pushtotalk').lower().replace('+', '+')
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+m'
             sk_shortcut = 'alt+k'
             cb_shortcut = 'ctrl+shift+c'
+            pt_shortcut = 'ctrl+alt+d'
 
         # On macOS, replace 'alt' with 'cmd' in the shortcuts
         if IS_MACOS:
@@ -56504,6 +56154,7 @@ class SuperlookupTab(QWidget):
             qt_shortcut = qt_shortcut.replace('alt', 'cmd')
             sk_shortcut = sk_shortcut.replace('alt', 'cmd')
             cb_shortcut = cb_shortcut.replace('alt', 'cmd')
+            pt_shortcut = pt_shortcut.replace('alt', 'cmd')
 
         # --- Attempt 1: WinAPI / pynput (cross-platform) ---
         import sys as _sys
@@ -56520,7 +56171,8 @@ class SuperlookupTab(QWidget):
                 manager.register(qt_shortcut, self._on_pynput_quicktrans)
                 manager.register(sk_shortcut, self._on_pynput_sidekick)
                 manager.register(cb_shortcut, self._on_pynput_clipboard)
-                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}, {cb_shortcut}")
+                manager.register(pt_shortcut, self._on_pynput_pushtotalk)
+                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}, {cb_shortcut}, {pt_shortcut}")
                 started = manager.start()
                 _log(f"[Global Hotkeys] Started: {started}")
                 if started:
@@ -56531,7 +56183,7 @@ class SuperlookupTab(QWidget):
                     failed = getattr(manager, 'failed_hotkeys', [])
                     if failed:
                         _log(f"\u26A0 [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)")
-                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut, cb_shortcut] if k not in failed]
+                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut, cb_shortcut, pt_shortcut] if k not in failed]
                     _log(f"\u2328 [Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}")
                     return
                 else:
@@ -56622,6 +56274,34 @@ class SuperlookupTab(QWidget):
                 print("[Clipboard] Floating Assistant not available")
         except Exception as e:
             print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
+
+    def _on_pynput_pushtotalk(self):
+        """AutoFingers global push-to-talk hotkey — fires on the pynput
+        background thread.
+
+        IMPORTANT: Do NO work here — see _on_pynput_superlookup docstring.
+        """
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._handle_pushtotalk_hotkey)
+        except Exception as e:
+            print(f"[AutoFingers] Error signaling main thread: {e}")
+
+    @pyqtSlot()
+    def _handle_pushtotalk_hotkey(self):
+        """Runs on Qt main thread — start the push-to-talk dictation
+        recording on the main Workbench, exactly as F9 does. The dictation
+        result is then routed by ``_insert_dictated_text``, which falls
+        back to AHK SendText / osascript / pynput typing when focus is
+        outside Supervertaler — so this works in any app."""
+        try:
+            mw = self.main_window or self.window()
+            if mw and hasattr(mw, 'start_voice_dictation'):
+                mw.start_voice_dictation()
+            else:
+                print("[AutoFingers] Workbench unavailable for push-to-talk")
+        except Exception as e:
+            print(f"[AutoFingers] Error in push-to-talk hotkey handler: {e}")
 
     def _try_ahk_library_method(self):
         """Try to register hotkey using ahk Python library
@@ -57882,790 +57562,6 @@ class CustomRadioButton(QRadioButton):
                 painter.drawLine(QPointF(check_x1, check_y1), QPointF(check_x2, check_y2))
                 
                 painter.end()
-
-
-class AutoFingersWidget(QWidget):
-    """
-    AutoFingers - CAT Tool Automation Widget
-    Provides UI for translation automation in tools like memoQ
-    Now integrated as a tab in the main Supervertaler window
-    """
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        
-        # Import AutoFingers engine
-        try:
-            from modules.autofingers_engine import AutoFingersEngine
-            self.AutoFingersEngine = AutoFingersEngine
-        except ImportError:
-            QMessageBox.critical(
-                self,
-                "Import Error",
-                "Could not import AutoFingers engine.\n"
-                "Make sure modules/autofingers_engine.py exists."
-            )
-            return
-        
-        # Initialize engine
-        self.engine = None
-        self.is_running = False
-        
-        # Get default TMX path from user_data
-        if ENABLE_PRIVATE_FEATURES:
-            default_tmx = "user_data_private/autofingers_tm.tmx"
-        else:
-            default_tmx = "user_data/autofingers_tm.tmx"
-        
-        self.tmx_file = default_tmx
-        
-        self.setup_ui()
-        self.load_settings()
-        
-    def setup_ui(self):
-        """Setup the user interface"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(5)
-        
-        # Header (matches Superlookup / PDF Rescue / TMX Editor style)
-        header = QLabel("🤖 AutoFingers")
-        header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
-        layout.addWidget(header, 0)  # 0 = no stretch, stays compact
-        
-        # Description box (matches Superlookup / PDF Rescue / TMX Editor style)
-        info = QLabel(
-            "Automated Translation Pasting for memoQ.\n"
-            "AutoFingers reads from a TMX file and pastes translations automatically."
-        )
-        info.setWordWrap(True)
-        info.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(info, 0)  # 0 = no stretch, stays compact
-        
-        # Control Panel (single widget, no tab needed)
-        control_panel = self.create_control_tab()
-        layout.addWidget(control_panel, 1)  # 1 = stretch to fill space
-        
-        # Close button
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        button_layout.addWidget(close_btn)
-        
-        layout.addLayout(button_layout, 0)  # 0 = no stretch, stays compact
-        
-        # Setup global keyboard shortcuts (matching AutoHotkey version)
-        self.setup_shortcuts()
-    
-    def setup_shortcuts(self):
-        """Setup GLOBAL keyboard shortcuts for AutoFingers actions"""
-        # keyboard module is Windows-only
-        try:
-            import keyboard
-        except ImportError:
-            self.log("ℹ️ Global hotkeys not available on this platform (Windows only)")
-            return
-        
-        try:
-            # Store hotkey references for later removal
-            self.hotkeys = []
-            
-            # Register global hotkeys that work even when memoQ has focus
-            # Ctrl+Alt+P - Process single segment
-            self.hotkeys.append(keyboard.add_hotkey('ctrl+alt+p', self.process_single_safe))
-            
-            # Ctrl+Shift+L - Toggle loop mode
-            self.hotkeys.append(keyboard.add_hotkey('ctrl+shift+l', self.toggle_loop_safe))
-            
-            # Ctrl+Alt+S - Stop loop
-            self.hotkeys.append(keyboard.add_hotkey('ctrl+alt+s', self.stop_loop_safe))
-            
-            # Ctrl+Alt+R - Reload TMX
-            self.hotkeys.append(keyboard.add_hotkey('ctrl+alt+r', self.reload_tmx_safe))
-            
-            self.log(
-                f"✓ Global hotkeys registered: {format_shortcut_for_display('Ctrl+Alt+P')} (single), "
-                f"{format_shortcut_for_display('Ctrl+Shift+L')} (loop), "
-                f"{format_shortcut_for_display('Ctrl+Alt+S')} (stop), "
-                f"{format_shortcut_for_display('Ctrl+Alt+R')} (reload)"
-            )
-            self.log("ℹ️ Hotkeys work globally - even when memoQ has focus!")
-            
-        except Exception as e:
-            self.log(f"⚠️ Could not register global hotkeys: {str(e)}")
-            self.log("ℹ️ You may need to run as Administrator for global hotkeys")
-    
-    def process_single_safe(self):
-        """Safe wrapper for process_single (called from global hotkey - runs in hotkey thread)"""
-        try:
-            # Dispatch to main Qt thread to avoid threading issues
-            QTimer.singleShot(0, self.process_single)
-        except Exception as e:
-            print(f"Error in process_single_safe: {e}")
-    
-    def toggle_loop_safe(self):
-        """Safe wrapper for toggle_loop (called from global hotkey - runs in hotkey thread)"""
-        try:
-            # Dispatch to main Qt thread to avoid threading issues
-            QTimer.singleShot(0, self.toggle_loop)
-        except Exception as e:
-            print(f"Error in toggle_loop_safe: {e}")
-    
-    def stop_loop_safe(self):
-        """Safe wrapper for stop_loop (called from global hotkey)"""
-        try:
-            self.stop_loop()
-        except Exception as e:
-            print(f"Error in stop_loop: {e}")
-    
-    def reload_tmx_safe(self):
-        """Safe wrapper for reload_tmx (called from global hotkey)"""
-        try:
-            self.reload_tmx()
-        except Exception as e:
-            print(f"Error in reload_tmx: {e}")
-    
-    def cleanup_hotkeys(self):
-        """Cleanup AutoFingers hotkeys when widget is closed/hidden"""
-        # Unregister ONLY AutoFingers hotkeys
-        # keyboard module is Windows-only
-        try:
-            import keyboard
-        except ImportError:
-            return  # Not available on this platform
-        
-        try:
-            if hasattr(self, 'hotkeys'):
-                for hotkey in self.hotkeys:
-                    try:
-                        keyboard.remove_hotkey(hotkey)
-                    except:
-                        pass
-                self.log("AutoFingers hotkeys unregistered")
-        except Exception as e:
-            print(f"Error unregistering hotkeys: {e}")
-    
-    def create_control_tab(self):
-        """Create the main control panel with horizontal layout"""
-        tab = QWidget()
-        main_layout = QVBoxLayout(tab)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        
-        # TOP ROW: Actions and TMX File side by side
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
-        
-        # === LEFT: ACTIONS GROUP ===
-        actions_group = QGroupBox("🎯 Actions")
-        actions_layout = QHBoxLayout()
-        actions_layout.setSpacing(8)
-        
-        # Single button
-        single_col = QVBoxLayout()
-        single_btn = QPushButton("▶️ Single")
-        single_btn.setMinimumHeight(40)
-        single_btn.setMinimumWidth(100)
-        single_btn.setStyleSheet("font-size: 10pt; font-weight: bold;")
-        single_btn.clicked.connect(self.process_single)
-        single_col.addWidget(single_btn)
-        single_info = QLabel(f"({format_shortcut_for_display('Ctrl+Alt+P')})")
-        single_info.setStyleSheet("color: #666; font-size: 8pt;")
-        single_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        single_col.addWidget(single_info)
-        actions_layout.addLayout(single_col)
-        
-        # Loop button
-        loop_col = QVBoxLayout()
-        self.loop_btn = QPushButton("▶ Loop Mode")
-        self.loop_btn.setMinimumHeight(40)
-        self.loop_btn.setMinimumWidth(110)
-        self.loop_btn.setStyleSheet("font-size: 10pt; font-weight: bold; background-color: #4CAF50; color: white;")
-        self.loop_btn.clicked.connect(self.toggle_loop)
-        loop_col.addWidget(self.loop_btn)
-        loop_info = QLabel(f"({format_shortcut_for_display('Ctrl+Shift+L')})")
-        loop_info.setStyleSheet("color: #666; font-size: 8pt;")
-        loop_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        loop_col.addWidget(loop_info)
-        actions_layout.addLayout(loop_col)
-        
-        # Segments spin
-        segs_col = QVBoxLayout()
-        segs_label = QLabel("Segments:")
-        segs_label.setStyleSheet("font-size: 9pt; font-weight: bold;")
-        segs_col.addWidget(segs_label)
-        self.loop_segments_spin = QSpinBox()
-        self.loop_segments_spin.setMinimum(0)
-        self.loop_segments_spin.setMaximum(9999)
-        self.loop_segments_spin.setValue(0)
-        self.loop_segments_spin.setSuffix(" (0=∞)")
-        self.loop_segments_spin.setMinimumHeight(28)
-        self.loop_segments_spin.setStyleSheet("font-size: 9pt;")
-        segs_col.addWidget(self.loop_segments_spin)
-        actions_layout.addLayout(segs_col)
-        
-        # Progress
-        progress_col = QVBoxLayout()
-        self.progress_label = QLabel("Ready")
-        self.progress_label.setStyleSheet("font-weight: bold; font-size: 9pt;")
-        progress_col.addWidget(self.progress_label)
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setMinimumHeight(28)
-        progress_col.addWidget(self.progress_bar)
-        actions_layout.addLayout(progress_col)
-        
-        actions_group.setLayout(actions_layout)
-        top_row.addWidget(actions_group, 2)
-        
-        # === RIGHT: TMX FILE GROUP ===
-        tmx_group = QGroupBox("📁 TMX File")
-        tmx_layout = QVBoxLayout()
-        tmx_layout.setSpacing(4)
-        
-        # File path row
-        path_row = QHBoxLayout()
-        self.tmx_path_label = QLabel(self.tmx_file)
-        self.tmx_path_label.setStyleSheet("padding: 4px; font-size: 8pt;")
-        path_row.addWidget(self.tmx_path_label, 1)
-        
-        browse_btn = QPushButton("Browse")
-        browse_btn.setMaximumWidth(70)
-        browse_btn.clicked.connect(self.browse_tmx)
-        path_row.addWidget(browse_btn)
-        
-        reload_btn = QPushButton("Reload")
-        reload_btn.setMaximumWidth(70)
-        reload_btn.clicked.connect(self.reload_tmx)
-        path_row.addWidget(reload_btn)
-        
-        import_btn = QPushButton("📥 Import from TM")
-        import_btn.setMaximumWidth(110)
-        import_btn.setToolTip("Import translation units from a Supervertaler Translation Memory")
-        import_btn.clicked.connect(self.import_from_tm)
-        path_row.addWidget(import_btn)
-        
-        tmx_layout.addLayout(path_row)
-        
-        # Status
-        self.tmx_status_label = QLabel("No TMX loaded")
-        self.tmx_status_label.setStyleSheet("padding: 4px; font-weight: bold; font-size: 9pt;")
-        tmx_layout.addWidget(self.tmx_status_label)
-        
-        tmx_group.setLayout(tmx_layout)
-        top_row.addWidget(tmx_group, 1)
-        
-        main_layout.addLayout(top_row)
-        
-        # MIDDLE ROW: Settings in a 2-column grid layout for better organization
-        settings_group = QGroupBox("⚙️ Settings")
-        settings_layout = QGridLayout()
-        settings_layout.setSpacing(15)
-        settings_layout.setColumnStretch(0, 1)  # Left column flexible
-        settings_layout.setColumnStretch(1, 1)  # Right column flexible
-        
-        # LEFT COLUMN: Languages and Timing (input fields grouped together)
-        left_col = QVBoxLayout()
-        left_col.setSpacing(12)
-        
-        # Languages section
-        lang_group = QVBoxLayout()
-        lang_label = QLabel("Languages:")
-        lang_label.setStyleSheet("font-weight: bold; font-size: 9pt;")
-        lang_group.addWidget(lang_label)
-        lang_inputs = QHBoxLayout()
-        lang_inputs.addWidget(QLabel("Source:"))
-        self.source_lang_edit = QLineEdit("en")
-        self.source_lang_edit.setMaximumWidth(50)
-        lang_inputs.addWidget(self.source_lang_edit)
-        lang_inputs.addSpacing(10)
-        lang_inputs.addWidget(QLabel("Target:"))
-        self.target_lang_edit = QLineEdit("nl")
-        self.target_lang_edit.setMaximumWidth(50)
-        lang_inputs.addWidget(self.target_lang_edit)
-        lang_inputs.addStretch()
-        lang_group.addLayout(lang_inputs)
-        left_col.addLayout(lang_group)
-        
-        # Timing section
-        timing_group = QVBoxLayout()
-        timing_label = QLabel("Timing (ms):")
-        timing_label.setStyleSheet("font-weight: bold; font-size: 9pt;")
-        timing_group.addWidget(timing_label)
-        timing_inputs = QHBoxLayout()
-        timing_inputs.addWidget(QLabel("Loop:"))
-        self.loop_delay_spin = QSpinBox()
-        self.loop_delay_spin.setRange(500, 10000)
-        self.loop_delay_spin.setValue(4000)
-        self.loop_delay_spin.setSuffix(" ms")
-        self.loop_delay_spin.setMaximumWidth(90)
-        timing_inputs.addWidget(self.loop_delay_spin)
-        timing_inputs.addSpacing(10)
-        timing_inputs.addWidget(QLabel("Confirm:"))
-        self.confirm_delay_spin = QSpinBox()
-        self.confirm_delay_spin.setRange(100, 5000)
-        self.confirm_delay_spin.setValue(900)
-        self.confirm_delay_spin.setSuffix(" ms")
-        self.confirm_delay_spin.setMaximumWidth(90)
-        timing_inputs.addWidget(self.confirm_delay_spin)
-        timing_inputs.addStretch()
-        timing_group.addLayout(timing_inputs)
-        left_col.addLayout(timing_group)
-        
-        left_col.addStretch()  # Push content to top
-        
-        # RIGHT COLUMN: Behavior checkboxes and Save button
-        right_col = QVBoxLayout()
-        right_col.setSpacing(12)
-        
-        # Behavior section
-        behavior_group = QVBoxLayout()
-        behavior_label = QLabel("Behavior:")
-        behavior_label.setStyleSheet("font-weight: bold; font-size: 9pt;")
-        behavior_group.addWidget(behavior_label)
-        
-        # Use custom checkboxes with green background and white checkmark when checked
-        self.auto_confirm_check = CheckmarkCheckBox("Confirm segments")
-        self.auto_confirm_check.setChecked(True)
-        self.auto_confirm_check.setToolTip(
-            f"When checked: Confirm segment with {format_shortcut_for_display('Ctrl+Enter')} before moving to next. "
-            f"When unchecked: Move to next with {format_shortcut_for_display('Alt+N')} without confirming"
-        )
-        behavior_group.addWidget(self.auto_confirm_check)
-        self.skip_no_match_check = CheckmarkCheckBox("Skip no match")
-        self.skip_no_match_check.setChecked(True)
-        behavior_group.addWidget(self.skip_no_match_check)
-        right_col.addLayout(behavior_group)
-
-        # Tag Cleaning section
-        tag_cleaning_group = QVBoxLayout()
-        tag_cleaning_label = QLabel("Tag Cleaning:")
-        tag_cleaning_label.setStyleSheet("font-weight: bold; font-size: 9pt; margin-top: 8px;")
-        tag_cleaning_group.addWidget(tag_cleaning_label)
-
-        # Master switch
-        self.tag_cleaning_enabled_check = CheckmarkCheckBox("Enable tag cleaning")
-        self.tag_cleaning_enabled_check.setChecked(False)
-        self.tag_cleaning_enabled_check.setToolTip("Remove CAT tool tags from translations before pasting")
-        tag_cleaning_group.addWidget(self.tag_cleaning_enabled_check)
-
-        # Granular controls (indented)
-        tag_types_layout = QVBoxLayout()
-        tag_types_layout.setContentsMargins(20, 0, 0, 0)  # Indent
-
-        self.clean_memoq_index_tags_check = CheckmarkCheckBox("memoQ index tags ([1} {2])")
-        self.clean_memoq_index_tags_check.setChecked(True)
-        self.clean_memoq_index_tags_check.setToolTip("Remove memoQ index tags like [1} {2] [3} etc.")
-        tag_types_layout.addWidget(self.clean_memoq_index_tags_check)
-
-        self.clean_trados_tags_check = CheckmarkCheckBox("Trados Studio tags")
-        self.clean_trados_tags_check.setChecked(False)
-        self.clean_trados_tags_check.setEnabled(False)  # Not implemented yet
-        self.clean_trados_tags_check.setToolTip("Coming soon")
-        tag_types_layout.addWidget(self.clean_trados_tags_check)
-
-        self.clean_cafetran_tags_check = CheckmarkCheckBox("CafeTran tags")
-        self.clean_cafetran_tags_check.setChecked(False)
-        self.clean_cafetran_tags_check.setEnabled(False)  # Not implemented yet
-        self.clean_cafetran_tags_check.setToolTip("Coming soon")
-        tag_types_layout.addWidget(self.clean_cafetran_tags_check)
-
-        self.clean_wordfast_tags_check = CheckmarkCheckBox("Wordfast tags")
-        self.clean_wordfast_tags_check.setChecked(False)
-        self.clean_wordfast_tags_check.setEnabled(False)  # Not implemented yet
-        self.clean_wordfast_tags_check.setToolTip("Coming soon")
-        tag_types_layout.addWidget(self.clean_wordfast_tags_check)
-
-        tag_cleaning_group.addLayout(tag_types_layout)
-        right_col.addLayout(tag_cleaning_group)
-        
-        # Save button - centered at bottom of right column
-        right_col.addStretch()
-        save_btn = QPushButton("💾 Save Settings")
-        save_btn.setMinimumHeight(35)
-        save_btn.setStyleSheet("font-size: 9pt; font-weight: bold;")
-        save_btn.clicked.connect(self.save_settings)
-        right_col.addWidget(save_btn)
-        
-        # Add columns to grid layout
-        left_widget = QWidget()
-        left_widget.setLayout(left_col)
-
-        # Wrap right column in scroll area for smaller screens
-        right_widget = QWidget()
-        right_widget.setLayout(right_col)
-
-        right_scroll = QScrollArea()
-        right_scroll.setWidget(right_widget)
-        right_scroll.setWidgetResizable(True)
-        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        settings_layout.addWidget(left_widget, 0, 0)
-        settings_layout.addWidget(right_scroll, 0, 1)
-        
-        settings_group.setLayout(settings_layout)
-        
-        # Create horizontal container for Settings and Activity Log side-by-side
-        settings_log_row = QHBoxLayout()
-        settings_log_row.setSpacing(15)
-        settings_log_row.addWidget(settings_group, 1)  # Settings takes flexible space
-        
-        # Activity Log on the right
-        log_group = QGroupBox("📋 Activity Log")
-        log_layout = QVBoxLayout()
-        log_layout.setContentsMargins(5, 5, 5, 5)
-        
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(200)  # Give it a reasonable minimum height
-        self.log_text.setStyleSheet("""
-            font-family: 'Consolas', monospace;
-            padding: 4px;
-            line-height: 1.3;
-            font-size: 8pt;
-        """)
-        log_layout.addWidget(self.log_text)
-        
-        log_group.setLayout(log_layout)
-        settings_log_row.addWidget(log_group, 1)  # Activity Log takes equal flexible space
-        
-        main_layout.addLayout(settings_log_row)
-        
-        return tab
-    
-    def log(self, message: str):
-        """Add message to activity log (thread-safe)"""
-        # Skip logging if not on main thread to prevent QTextDocument crashes
-        from threading import current_thread, main_thread
-        if current_thread() is main_thread():
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            self._append_log(f"[{timestamp}] {message}")
-        else:
-            # Queue for main thread
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            QTimer.singleShot(0, lambda msg=f"[{timestamp}] {message}": self._append_log(msg))
-    
-    def _append_log(self, message: str):
-        """Actually append to log (runs on main thread)"""
-        self.log_text.append(message)
-        # Auto-scroll to bottom
-        scrollbar = self.log_text.verticalScrollBar()
-        if scrollbar:
-            scrollbar.setValue(scrollbar.maximum())
-    
-    def update_progress_label(self, text: str):
-        """Thread-safe progress label update"""
-        QTimer.singleShot(0, lambda t=text: self.progress_label.setText(t))
-    
-    def update_progress_bar(self, value: int):
-        """Thread-safe progress bar update"""
-        QTimer.singleShot(0, lambda v=value: self.progress_bar.setValue(v))
-    
-    def browse_tmx(self):
-        """Browse for TMX file"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select TMX File",
-            "",
-            "TMX Files (*.tmx);;All Files (*.*)"
-        )
-        
-        if file_path:
-            self.tmx_file = file_path
-            self.tmx_path_label.setText(file_path)
-            self.reload_tmx()
-    
-    def reload_tmx(self):
-        """Reload TMX file"""
-        try:
-            self.engine = self.AutoFingersEngine(
-                tmx_file=self.tmx_file,
-                source_lang=self.source_lang_edit.text(),
-                target_lang=self.target_lang_edit.text()
-            )
-            
-            # Apply settings
-            self.engine.loop_delay = self.loop_delay_spin.value()
-            self.engine.confirm_delay = self.confirm_delay_spin.value()
-            self.engine.auto_confirm = self.auto_confirm_check.isChecked()
-            self.engine.skip_no_match = self.skip_no_match_check.isChecked()
-
-            # Apply tag cleaner settings
-            if self.tag_cleaning_enabled_check.isChecked():
-                self.engine.tag_cleaner.enable()
-            else:
-                self.engine.tag_cleaner.disable()
-
-            if self.clean_memoq_index_tags_check.isChecked():
-                self.engine.tag_cleaner.enable_memoq_index_tags()
-            else:
-                self.engine.tag_cleaner.disable_memoq_index_tags()
-
-            success, message = self.engine.load_tmx()
-            
-            if success:
-                self.log(f"✓ {message}")
-                self.tmx_status_label.setText(f"✓ {self.engine.tm_count} TUs loaded")
-                self.tmx_status_label.setStyleSheet("padding: 4px; font-weight: bold; font-size: 9pt; color: green;")
-            else:
-                self.log(f"✗ {message}")
-                self.tmx_status_label.setText(f"✗ {message}")
-                self.tmx_status_label.setStyleSheet("padding: 4px; font-weight: bold; font-size: 9pt; color: red;")
-                
-        except Exception as e:
-            self.log(f"✗ Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to load TMX:\n{str(e)}")
-    
-    def sync_settings_to_engine(self):
-        """Sync current UI settings to the engine"""
-        if self.engine:
-            self.engine.loop_delay = self.loop_delay_spin.value()
-            self.engine.confirm_delay = self.confirm_delay_spin.value()
-            self.engine.auto_confirm = self.auto_confirm_check.isChecked()
-            self.engine.skip_no_match = self.skip_no_match_check.isChecked()
-    
-    def process_single(self):
-        """Process a single segment"""
-        if not self.engine:
-            QMessageBox.warning(self, "No TMX", "Please load a TMX file first.")
-            return
-        
-        # Sync current settings to engine before processing
-        self.sync_settings_to_engine()
-        
-        self.log("▶️ Processing single segment...")
-        self.progress_label.setText("Processing...")
-        
-        # Give user time to switch to memoQ
-        QApplication.processEvents()
-        import time
-        time.sleep(1)
-        
-        try:
-            success, message = self.engine.process_single_segment()
-            
-            # Log match result
-            if self.engine.last_source and self.engine.last_match:
-                self.log(f"✓ Match: {self.engine.last_match.match_type} ({self.engine.last_match.match_percent}%)")
-            else:
-                self.log(f"⚠️ No match found for segment")
-            
-            if success:
-                self.log(f"✓ {message}")
-                self.progress_label.setText("✓ Segment processed successfully")
-            else:
-                self.log(f"✗ {message}")
-                self.progress_label.setText(f"✗ {message}")
-        except Exception as e:
-            self.log(f"❌ Error in process_single: {str(e)}")
-            import traceback
-            self.log(traceback.format_exc())
-    
-    def toggle_loop(self):
-        """Toggle loop mode on/off"""
-        if self.is_running:
-            # Stop loop
-            self.engine.stop()
-            self.is_running = False
-            self.loop_btn.setText("▶ Loop Mode")
-            self.loop_btn.setStyleSheet("font-size: 9pt; font-weight: bold; background-color: #4CAF50; color: white; padding: 2px;")
-            self.progress_bar.setVisible(False)
-            self.log("⏹️ Loop mode stopped")
-        else:
-            # Start loop
-            if not self.engine:
-                QMessageBox.warning(self, "No TMX", "Please load a TMX file first.")
-                return
-            
-            # Sync current settings to engine before starting loop
-            self.sync_settings_to_engine()
-            
-            max_segments = self.loop_segments_spin.value()
-            self.is_running = True
-            self.loop_btn.setText("⏹ Stop Loop")
-            self.loop_btn.setStyleSheet("font-size: 9pt; font-weight: bold; background-color: #F44336; color: white; padding: 2px;")
-            
-            if max_segments > 0:
-                self.progress_bar.setMaximum(max_segments)
-                self.progress_bar.setValue(0)
-                self.progress_bar.setVisible(True)
-            else:
-                self.progress_bar.setVisible(False)
-            
-            self.log(f"▶️ Starting loop mode ({max_segments if max_segments > 0 else '∞'} segments)...")
-            
-            # Start loop in background thread
-            self.loop_thread = threading.Thread(target=self.run_loop, args=(max_segments,), daemon=True)
-            self.loop_thread.start()
-    
-    def run_loop(self, max_segments):
-        """Run the loop mode in background thread"""
-        import time
-        
-        segment_count = 0
-        
-        while self.is_running:
-            # Check if reached limit
-            if max_segments > 0 and segment_count >= max_segments:
-                self.is_running = False
-                self.log(f"✓ Completed {segment_count} segments")
-                self.update_progress_label(f"✓ Completed {segment_count} segments")
-                QTimer.singleShot(0, self.reset_loop_ui)
-                break
-            
-            # Process one segment
-            try:
-                success, message = self.engine.process_single_segment()
-                
-                if success:
-                    segment_count += 1
-                    self.log(f"✓ {message}")
-                    self.update_progress_label(f"Processing... ({segment_count} completed)")
-                    if max_segments > 0:
-                        self.update_progress_bar(segment_count)
-                else:
-                    self.log(f"✗ {message}")
-                    
-                    # Stop if no match and not skipping
-                    if not self.engine.skip_no_match:
-                        self.is_running = False
-                        self.update_progress_label(f"Stopped - no translation found")
-                        QTimer.singleShot(0, self.reset_loop_ui)
-                        break
-                
-                # Wait between segments
-                if self.is_running:
-                    time.sleep(self.engine.loop_delay / 1000)
-                    
-            except Exception as e:
-                self.log(f"✗ Error: {str(e)}")
-                self.is_running = False
-                QTimer.singleShot(0, self.reset_loop_ui)
-                break
-    
-    def reset_loop_ui(self):
-        """Reset UI after loop stops"""
-        self.loop_btn.setText("▶ Loop Mode")
-        self.loop_btn.setStyleSheet("font-size: 9pt; font-weight: bold; background-color: #4CAF50; color: white; padding: 2px;")
-        if self.progress_bar.maximum() > 0:
-            self.progress_bar.setVisible(True)  # Keep visible to show final progress
-        else:
-            self.progress_bar.setVisible(False)
-    
-    def stop_loop(self):
-        """Stop loop mode (separate method for keyboard shortcut)"""
-        if self.is_running:
-            self.toggle_loop()  # Reuse toggle logic when running
-        else:
-            self.log("Loop mode is not running")
-    
-    def create_empty_tmx(self):
-        """Create a new empty TMX file"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Create New TMX File",
-            self.tmx_file,
-            "TMX Files (*.tmx)"
-        )
-        
-        if file_path:
-            temp_engine = self.AutoFingersEngine(
-                tmx_file=file_path,
-                source_lang=self.source_lang_edit.text(),
-                target_lang=self.target_lang_edit.text()
-            )
-            
-            if temp_engine.create_empty_tmx():
-                self.log(f"✓ Created empty TMX: {file_path}")
-                self.tmx_file = file_path
-                self.tmx_path_label.setText(file_path)
-                self.reload_tmx()
-            else:
-                QMessageBox.critical(self, "Error", "Failed to create TMX file")
-    
-    def open_tmx_in_editor(self):
-        """Open TMX file in external editor"""
-        try:
-            open_file(self.tmx_file)
-            self.log(f"📂 Opened TMX in editor: {self.tmx_file}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not open TMX file:\n{str(e)}")
-    
-    def import_from_tm(self):
-        """Import translations from Supervertaler TM database"""
-        QMessageBox.information(
-            self,
-            "Feature Coming Soon",
-            "TM import functionality will be added in the next update!\n\n"
-            "For now, you can manually edit the TMX file or use the\n"
-            "AutoHotkey version to populate your translation memory."
-        )
-    
-    def load_settings(self):
-        """Load saved settings from file"""
-        try:
-            settings_file = Path("user_data_private" if ENABLE_PRIVATE_FEATURES else "user_data") / "autofingers_settings.json"
-            if settings_file.exists():
-                with open(settings_file, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-                
-                # Apply settings to UI
-                self.loop_delay_spin.setValue(settings.get('loop_delay', 4000))
-                self.confirm_delay_spin.setValue(settings.get('confirm_delay', 900))
-                self.auto_confirm_check.setChecked(settings.get('auto_confirm', True))
-                self.skip_no_match_check.setChecked(settings.get('skip_no_match', True))
-                # Backward compatibility: if old settings had use_down_arrow=True, set auto_confirm=False
-                if settings.get('use_down_arrow', False):
-                    self.auto_confirm_check.setChecked(False)
-
-                # Load tag cleaner settings
-                tag_cleaner_settings = settings.get('tag_cleaner', {})
-                self.tag_cleaning_enabled_check.setChecked(tag_cleaner_settings.get('enabled', False))
-                memoq_settings = tag_cleaner_settings.get('memoq', {})
-                self.clean_memoq_index_tags_check.setChecked(
-                    memoq_settings.get('index_tags', {}).get('enabled', True)
-                )
-
-                self.log("✓ Settings loaded")
-        except Exception as e:
-            self.log(f"⚠️ Could not load settings: {e}")
-    
-    def save_settings(self):
-        """Save current settings to file"""
-        try:
-            settings = {
-                'loop_delay': self.loop_delay_spin.value(),
-                'confirm_delay': self.confirm_delay_spin.value(),
-                'auto_confirm': self.auto_confirm_check.isChecked(),
-                'skip_no_match': self.skip_no_match_check.isChecked(),
-                'tag_cleaner': {
-                    'enabled': self.tag_cleaning_enabled_check.isChecked(),
-                    'memoq': {
-                        'index_tags': {
-                            'enabled': self.clean_memoq_index_tags_check.isChecked()
-                        }
-                    },
-                    'trados': {},
-                    'cafetran': {},
-                    'wordfast': {}
-                }
-            }
-
-            settings_file = Path("user_data_private" if ENABLE_PRIVATE_FEATURES else "user_data") / "autofingers_settings.json"
-            settings_file.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(settings_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=2)
-
-            self.log("💾 Settings saved")
-            QMessageBox.information(self, "Saved", "Settings saved successfully!")
-        except Exception as e:
-            self.log(f"⚠️ Could not save settings: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to save settings:\n{str(e)}")
 
 
 # ============================================================================

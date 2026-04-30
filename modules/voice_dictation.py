@@ -4,6 +4,7 @@ Uses OpenAI Whisper for multilingual speech recognition
 Supports English, Dutch, and 90+ other languages
 """
 
+import sys
 import sounddevice as sd
 import numpy as np
 import tempfile
@@ -95,12 +96,20 @@ class TranscriptionThread(QThread):
             try:
                 import whisper  # Local Whisper (optional)
             except ImportError:
-                self.error.emit(
-                    "Local Whisper is not installed.\n\n"
-                    "To use offline speech recognition, install:\n"
-                    "  pip install supervertaler[local-whisper]\n\n"
-                    "Or switch to 'OpenAI Whisper API' in Supervoice settings."
-                )
+                if getattr(sys, 'frozen', False):
+                    msg = (
+                        "Local Whisper is not available in the Windows EXE build.\n\n"
+                        "Switch to 'OpenAI Whisper API' in Sidekick → AutoFingers\n"
+                        "(requires an OpenAI API key)."
+                    )
+                else:
+                    msg = (
+                        "Local Whisper is not installed.\n\n"
+                        "To use offline speech recognition, install:\n"
+                        "  pip install supervertaler[local-whisper]\n\n"
+                        "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
+                    )
+                self.error.emit(msg)
                 return
 
             # Verify file exists

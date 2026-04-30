@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.400"
+version = "1.9.401"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -109,10 +109,8 @@ dependencies = [
     # Cross-platform global hotkeys and keyboard control
     "pynput>=1.7.6",
 
-    # Windows-only automation (AutoFingers memoQ integration + AHK fallback)
-    "keyboard>=0.13.5; platform_system == 'Windows'",
+    # Windows-only AutoHotkey support for Dicta keystroke commands
     "ahk>=1.0.0; platform_system == 'Windows'",
-    "pyautogui>=0.9.54; platform_system == 'Windows'",
     "psutil>=5.9.0",
 ]
 

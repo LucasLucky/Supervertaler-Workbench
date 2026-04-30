@@ -275,12 +275,12 @@ class LLMLeaderboardUI(QWidget):
         layout.setSpacing(5)  # Tighter spacing for consistency
         layout.setContentsMargins(10, 10, 10, 10)
 
-        # Header (matches TMX Editor / AutoFingers / PDF Rescue style)
+        # Header (matches TMX Editor / PDF Rescue style)
         header = QLabel("📊 Superbench")
         header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
         layout.addWidget(header, 0)  # 0 = no stretch, stays compact
 
-        # Description box (matches TMX Editor / AutoFingers / PDF Rescue style)
+        # Description box (matches TMX Editor / PDF Rescue style)
         description = QLabel(
             "LLM Translation Quality Benchmarking System - A Supervertaler Module.\n"
             "Compare translation quality, speed, and cost across multiple LLM providers."

@@ -221,10 +221,6 @@ class QuickAccessSidebar(QWidget):
         lookup_btn.clicked.connect(lambda: self.action_triggered.emit("universal_lookup"))
         tools_section.add_button(lookup_btn)
         
-        autofingers_btn = QuickActionButton("✋", "AutoFingers")
-        autofingers_btn.clicked.connect(lambda: self.action_triggered.emit("autofingers"))
-        tools_section.add_button(autofingers_btn)
-        
         tm_btn = QuickActionButton("🗂️", "TM Manager")
         tm_btn.clicked.connect(lambda: self.action_triggered.emit("tm_manager"))
         tools_section.add_button(tm_btn)

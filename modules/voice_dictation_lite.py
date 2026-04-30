@@ -80,7 +80,7 @@ class QuickDictationThread(QThread):
                 if not ensure_ffmpeg_available():
                     self.error_occurred.emit(
                         "FFmpeg not found. Local Whisper requires FFmpeg.\n\n"
-                        "Option A (recommended): Switch to 'OpenAI Whisper API' in Settings → Supervoice.\n\n"
+                        "Option A (recommended): Switch to 'OpenAI Whisper API' in Sidekick → AutoFingers.\n\n"
                         "Option B: Install FFmpeg (PowerShell as Admin):\n"
                         "winget install FFmpeg  (or)  choco install ffmpeg"
                     )
@@ -196,12 +196,20 @@ class QuickDictationThread(QThread):
             try:
                 import whisper
             except ImportError:
-                self.error_occurred.emit(
-                    "Local Whisper is not installed.\n\n"
-                    "Install it with:\n"
-                    "  pip install supervertaler[local-whisper]\n\n"
-                    "Or switch to 'OpenAI Whisper API' in Settings → Supervoice."
-                )
+                if getattr(sys, 'frozen', False):
+                    msg = (
+                        "Local Whisper is not available in the Windows EXE build.\n\n"
+                        "Switch to 'OpenAI Whisper API' in Sidekick → AutoFingers\n"
+                        "(requires an OpenAI API key)."
+                    )
+                else:
+                    msg = (
+                        "Local Whisper is not installed.\n\n"
+                        "Install it with:\n"
+                        "  pip install supervertaler[local-whisper]\n\n"
+                        "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
+                    )
+                self.error_occurred.emit(msg)
                 return ""
 
             # Check if model needs to be downloaded

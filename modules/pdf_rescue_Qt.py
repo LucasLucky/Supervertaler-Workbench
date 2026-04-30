@@ -200,12 +200,12 @@ class PDFRescueQt:
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(5)  # Reduced from 10 to 5 for tighter spacing
         
-        # Header (matches Universal Lookup / AutoFingers style)
+        # Header (matches Universal Lookup style)
         header = QLabel("🔍 PDF Rescue - AI-Powered OCR")
         header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
         main_layout.addWidget(header, 0)  # 0 = no stretch, stays compact
         
-        # Description box (matches Universal Lookup / AutoFingers style)
+        # Description box (matches Universal Lookup style)
         description = QLabel(
             "Extract text from image-based PDFs using AI vision OCR. Designed for scanned documents, screenshots, "
             "and PDFs without accessible text. Not recommended for PDFs with selectable text - use professional tools like Adobe Acrobat instead."
