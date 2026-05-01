@@ -113,6 +113,11 @@ class Topics:
     QA_TAGS             = "workbench/qa/tag-validation"
     QA_NT               = "workbench/qa/non-translatables"
 
+    # Sidekick
+    SIDEKICK            = "workbench/sidekick/overview"
+    AUTOFINGERS         = "workbench/sidekick/autofingers"
+    CLIPBOARD           = "workbench/sidekick/clipboard"
+
     # Tools (TOOL_VOICE removed – voice/dictation is now AutoFingers in Sidekick)
     TOOL_PDF_RESCUE     = "workbench/tools/pdf-rescue"
     TOOL_TMX_EDITOR     = "workbench/tools/tmx-editor"

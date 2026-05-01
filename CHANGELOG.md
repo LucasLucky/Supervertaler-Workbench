@@ -2,8 +2,29 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.405 (April 30, 2026)
+**Current Version:** v1.9.406 (May 1, 2026)
 
+
+## v1.9.406 - May 1, 2026
+
+### Added
+
+- **Per-command enable/disable checkbox in the AutoFingers voice commands table.** Each row now has a checkbox in the first column. Unchecking a command greys it out and excludes it from recognition without deleting it. The checkbox state is persisted immediately to the voice commands file.
+- **Batch enable/disable via column header and context menu.** Clicking the checkbox column header toggles all commands on or off in one click (enabling any disabled, or disabling all if all are already enabled). Right-clicking one or more selected rows shows a context menu with "Activate" and "Deactivate" options, applying to the full selection.
+- **Multi-select in the voice commands table.** Rows can be selected with `Shift+Click` and `Ctrl+Click` for bulk operations.
+- **Double-click to edit a voice command.** Double-clicking any row in the table opens the Edit Voice Command dialog for that command, replacing the previous workflow of selecting then clicking Edit.
+- **Resizable and persistent table columns.** All columns in the voice commands table can be resized by dragging the column header dividers. Column widths and the splitter position between the settings panel and the table are saved to settings and restored on next launch.
+
+### Changed
+
+- **AutoFingers tab redesigned as a two-column layout.** The settings controls (sensitivity, hotkeys, model, etc.) are now in a left panel; the voice commands table fills the right panel. A draggable `QSplitter` divides the two sides, making the command list much more usable for large command sets compared to the previous narrow single-column scroll layout.
+
+### Fixed
+
+- **Windows microphone privacy indicator no longer flickers during Always-On voice listening.** The Windows 11 system tray mic icon was briefly disappearing each time a voice command was recognised, causing a visible bounce in the notification area. Root cause: `_process_audio` (transcription – typically 1–2 seconds of blocking work) was being called directly inside PortAudio's audio callback thread, causing PortAudio to close and reopen the audio stream during transcription, which briefly released the microphone. Fixed by separating the audio pipeline into two stages: the PortAudio callback now only performs lightweight amplitude-based VAD and enqueues captured audio via a `queue.Queue`; a dedicated daemon thread (`transcription_worker`) consumes from the queue and calls `_process_audio`. The `sd.InputStream` `with` block stays continuously open for the entire session, so the microphone is never released between commands.
+- **Voice commands using keystrokes now work in Trados Studio.** Trados Studio's WPF editor ignores `SendEvent`-style input (PostMessage). Changed `_execute_keystroke` to use `SendInput` in the generated AutoHotkey v2 script, which sends input at the Win32 hardware-input-queue level and is correctly received by WPF applications.
+
+---
 
 ## v1.9.405 - April 30, 2026
 

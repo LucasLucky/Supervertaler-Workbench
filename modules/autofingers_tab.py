@@ -20,15 +20,16 @@ _populate_voice_commands_table so any future surface tied into that
 refresh entry point also updates.
 """
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QSpinBox, QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QScrollArea, QFrame, QMessageBox,
+    QAbstractItemView, QScrollArea, QFrame, QMessageBox, QSplitter, QMenu,
 )
 
 from modules.styled_widgets import CheckmarkCheckBox
-
 from modules.voice_command_dialog import VoiceCommandEditDialog
+from modules.help_system import Topics as HelpTopics, set_topic as set_help_topic
 
 
 _TYPE_LABELS = {
@@ -38,6 +39,16 @@ _TYPE_LABELS = {
     "ahk_inline": "AHK Inline",
 }
 
+_DISABLED_COLOUR = QColor(170, 170, 170)
+
+# Column indices
+_COL_ENABLED  = 0
+_COL_PHRASE   = 1
+_COL_ALIASES  = 2
+_COL_TYPE     = 3
+_COL_ACTION   = 4
+_COL_CATEGORY = 5
+
 
 class AutoFingersTab(QWidget):
     """Voice commands + dictation control panel."""
@@ -46,9 +57,15 @@ class AutoFingersTab(QWidget):
         super().__init__(parent)
         self._parent_app = parent_app
         self._build_ui()
+        self._restore_layout()
+        # Connect persistence signals after restore so restore doesn't trigger saves
+        self._splitter.splitterMoved.connect(lambda pos, idx: self._save_layout())
+        self._table.horizontalHeader().sectionResized.connect(
+            lambda idx, old, new: self._save_layout())
         # Initial population
         self._populate_table()
         self._sync_alwayson_from_listener()
+        set_help_topic(self, HelpTopics.AUTOFINGERS)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -59,20 +76,9 @@ class AutoFingersTab(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        outer.addWidget(scroll)
-
-        body = QWidget()
-        scroll.setWidget(body)
-        layout = QVBoxLayout(body)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
-
         settings = self._load_settings()
 
-        # --- Header ----------------------------------------------------
+        # --- Header (full width) ---------------------------------------
         header = QLabel(
             "🎤 <b>AutoFingers</b> – voice commands and dictation.<br>"
             "Toggle Always-On to listen continuously, or press <b>F9</b> "
@@ -82,11 +88,28 @@ class AutoFingersTab(QWidget):
         header.setWordWrap(True)
         header.setStyleSheet(
             "font-size: 9pt; color: #444; padding: 8px;"
-            " background-color: #E3F2FD; border-radius: 4px;"
+            " background-color: #E3F2FD;"
         )
-        layout.addWidget(header)
+        outer.addWidget(header)
 
-        # --- Always-On controls ---------------------------------------
+        # --- Main horizontal splitter ----------------------------------
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setHandleWidth(4)
+        self._splitter.setChildrenCollapsible(False)
+        outer.addWidget(self._splitter, 1)
+
+        # ---- Left panel: settings (scrollable) -----------------------
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_body = QWidget()
+        left_layout = QVBoxLayout(left_body)
+        left_layout.setContentsMargins(10, 10, 6, 10)
+        left_layout.setSpacing(10)
+        left_scroll.setWidget(left_body)
+        self._splitter.addWidget(left_scroll)
+
+        # Always-On Listening
         alwayson_group = QGroupBox("🎧 Always-On Listening")
         ao_layout = QVBoxLayout()
 
@@ -101,7 +124,6 @@ class AutoFingersTab(QWidget):
         ao_status_row.addWidget(self._toggle_btn)
         ao_layout.addLayout(ao_status_row)
 
-        # Recognition engine
         engine_row = QHBoxLayout()
         engine_row.addWidget(QLabel("Engine:"))
         self._engine_combo = QComboBox()
@@ -115,7 +137,6 @@ class AutoFingersTab(QWidget):
         engine_row.addWidget(self._engine_combo, stretch=1)
         ao_layout.addLayout(engine_row)
 
-        # Sensitivity
         sens_row = QHBoxLayout()
         sens_row.addWidget(QLabel("Mic sensitivity:"))
         self._sensitivity_combo = QComboBox()
@@ -123,13 +144,12 @@ class AutoFingersTab(QWidget):
             "Low (noisy)", "Medium (normal)", "High (quiet)",
         ])
         saved_sensitivity = settings.get('alwayson_sensitivity', 'medium')
-        idx = {'low': 0, 'medium': 1, 'high': 2}.get(saved_sensitivity, 1)
-        self._sensitivity_combo.setCurrentIndex(idx)
+        self._sensitivity_combo.setCurrentIndex(
+            {'low': 0, 'medium': 1, 'high': 2}.get(saved_sensitivity, 1))
         self._sensitivity_combo.currentIndexChanged.connect(self._on_sensitivity_changed)
         sens_row.addWidget(self._sensitivity_combo, stretch=1)
         ao_layout.addLayout(sens_row)
 
-        # Commands-only toggle
         self._commands_only_cb = CheckmarkCheckBox(
             "Listen for commands only – don't type unmatched speech as dictation"
         )
@@ -167,66 +187,12 @@ class AutoFingersTab(QWidget):
             " border-radius: 4px; padding: 6px;"
         )
         ao_layout.addWidget(ao_tip)
-
         alwayson_group.setLayout(ao_layout)
-        layout.addWidget(alwayson_group)
+        left_layout.addWidget(alwayson_group)
 
-        # --- Voice commands table -------------------------------------
-        cmd_group = QGroupBox("🗣️ Voice Commands")
-        cmd_layout = QVBoxLayout()
-
-        cmd_info = QLabel(
-            "Say a phrase to execute its action. If no command matches, the "
-            "spoken text is inserted as dictation."
-        )
-        cmd_info.setStyleSheet("font-size: 8pt; color: #666;")
-        cmd_info.setWordWrap(True)
-        cmd_layout.addWidget(cmd_info)
-
-        self._table = QTableWidget()
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels(
-            ["Phrase", "Aliases", "Type", "Action", "Category"]
-        )
-        hh = self._table.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.setMinimumHeight(220)
-        # Click any column header to sort by that column; click again to
-        # reverse the sort. Sorting is disabled during _populate_table so
-        # the Qt-known "items reshuffle while you're inserting" footgun
-        # doesn't apply here.
-        self._table.setSortingEnabled(True)
-        cmd_layout.addWidget(self._table)
-
-        cmd_btn_row = QHBoxLayout()
-        add_btn = QPushButton("➕ Add")
-        add_btn.clicked.connect(self._add_command)
-        cmd_btn_row.addWidget(add_btn)
-        edit_btn = QPushButton("✏️ Edit")
-        edit_btn.clicked.connect(self._edit_command)
-        cmd_btn_row.addWidget(edit_btn)
-        remove_btn = QPushButton("🗑️ Remove")
-        remove_btn.clicked.connect(self._remove_command)
-        cmd_btn_row.addWidget(remove_btn)
-        cmd_btn_row.addStretch()
-        reset_btn = QPushButton("🔄 Reset")
-        reset_btn.clicked.connect(self._reset_commands)
-        cmd_btn_row.addWidget(reset_btn)
-        cmd_layout.addLayout(cmd_btn_row)
-
-        cmd_group.setLayout(cmd_layout)
-        layout.addWidget(cmd_group)
-
-        # --- Speech recognition model --------------------------------
+        # Speech Recognition Model
         model_group = QGroupBox("🤖 Speech Recognition Model")
         model_layout = QVBoxLayout()
-
         model_info = QLabel(
             "Whisper model size (larger = more accurate but slower):\n"
             "• tiny ~75 MB  • base ~142 MB (recommended)  • small ~466 MB\n"
@@ -262,18 +228,15 @@ class AutoFingersTab(QWidget):
             "Chinese", "Japanese", "Korean",
         ])
         self._lang_combo.setCurrentText(
-            settings.get('language', 'Auto (use project target language)')
-        )
+            settings.get('language', 'Auto (use project target language)'))
         lang_row.addWidget(self._lang_combo, stretch=1)
         model_layout.addLayout(lang_row)
-
         model_group.setLayout(model_layout)
-        layout.addWidget(model_group)
+        left_layout.addWidget(model_group)
 
-        # --- Push-to-talk mode ---------------------------------------
+        # Push-to-Talk
         ptt_group = QGroupBox("🎯 Push-to-Talk Mode (F9)")
         ptt_layout = QVBoxLayout()
-
         ptt_info = QLabel(
             "Controls how the F9 key (and the Dictate button in the "
             "translation grid) start and stop recording. The global "
@@ -283,7 +246,6 @@ class AutoFingersTab(QWidget):
         ptt_info.setWordWrap(True)
         ptt_info.setStyleSheet("font-size: 8pt; color: #666;")
         ptt_layout.addWidget(ptt_info)
-
         ptt_row = QHBoxLayout()
         ptt_row.addWidget(QLabel("Mode:"))
         self._ptt_combo = QComboBox()
@@ -299,11 +261,10 @@ class AutoFingersTab(QWidget):
         self._ptt_combo.currentIndexChanged.connect(self._on_ptt_changed)
         ptt_row.addWidget(self._ptt_combo, stretch=1)
         ptt_layout.addLayout(ptt_row)
-
         ptt_group.setLayout(ptt_layout)
-        layout.addWidget(ptt_group)
+        left_layout.addWidget(ptt_group)
 
-        # --- AutoHotkey integration ----------------------------------
+        # AutoHotkey Integration
         ahk_group = QGroupBox("⌨️ AutoHotkey Integration")
         ahk_layout = QVBoxLayout()
         ahk_info = QLabel(
@@ -313,7 +274,6 @@ class AutoFingersTab(QWidget):
         ahk_info.setWordWrap(True)
         ahk_info.setStyleSheet("font-size: 8pt; color: #666;")
         ahk_layout.addWidget(ahk_info)
-
         ahk_row = QHBoxLayout()
         self._ahk_status_label = QLabel(self._ahk_status_text())
         self._ahk_status_label.setStyleSheet("font-size: 8pt;")
@@ -323,20 +283,108 @@ class AutoFingersTab(QWidget):
         scripts_btn.clicked.connect(self._open_ahk_folder)
         ahk_row.addWidget(scripts_btn)
         ahk_layout.addLayout(ahk_row)
-
         ahk_group.setLayout(ahk_layout)
-        layout.addWidget(ahk_group)
+        left_layout.addWidget(ahk_group)
 
-        # --- Save button ---------------------------------------------
+        # Save button
         save_btn = QPushButton("💾 Save AutoFingers Settings")
         save_btn.setStyleSheet(
             "background-color: #4CAF50; color: white; font-weight: bold;"
             " padding: 8px; border: none;"
         )
         save_btn.clicked.connect(self._save_settings)
-        layout.addWidget(save_btn)
+        left_layout.addWidget(save_btn)
 
-        layout.addStretch()
+        left_layout.addStretch()
+
+        # ---- Right panel: voice commands -----------------------------
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(6, 10, 10, 10)
+        right_layout.setSpacing(6)
+        self._splitter.addWidget(right_widget)
+
+        cmd_label = QLabel("🗣️ <b>Voice Commands</b>")
+        cmd_label.setTextFormat(Qt.TextFormat.RichText)
+        cmd_label.setStyleSheet("font-size: 10pt; padding: 2px 0;")
+        right_layout.addWidget(cmd_label)
+
+        cmd_info = QLabel(
+            "Say a phrase to execute its action. If no command matches, the "
+            "spoken text is inserted as dictation. Double-click a row to edit."
+        )
+        cmd_info.setStyleSheet("font-size: 8pt; color: #666;")
+        cmd_info.setWordWrap(True)
+        right_layout.addWidget(cmd_info)
+
+        self._table = QTableWidget()
+        self._table.setColumnCount(6)
+        self._table.setHorizontalHeaderLabels(
+            ["", "Phrase", "Aliases", "Type", "Action", "Category"]
+        )
+        hh = self._table.horizontalHeader()
+        hh.setSectionResizeMode(_COL_ENABLED,  QHeaderView.ResizeMode.Fixed)
+        self._table.setColumnWidth(_COL_ENABLED, 28)
+        for col in range(_COL_PHRASE, _COL_CATEGORY + 1):
+            hh.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(_COL_PHRASE,   160)
+        self._table.setColumnWidth(_COL_ALIASES,  200)
+        self._table.setColumnWidth(_COL_TYPE,      80)
+        self._table.setColumnWidth(_COL_ACTION,   220)
+        self._table.setColumnWidth(_COL_CATEGORY,  80)
+        hh.setStretchLastSection(True)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSortingEnabled(True)
+        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._table.itemChanged.connect(self._on_item_changed)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._on_context_menu)
+        self._table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
+        right_layout.addWidget(self._table, 1)
+
+        cmd_btn_row = QHBoxLayout()
+        add_btn = QPushButton("➕ Add")
+        add_btn.clicked.connect(self._add_command)
+        cmd_btn_row.addWidget(add_btn)
+        edit_btn = QPushButton("✏️ Edit")
+        edit_btn.clicked.connect(self._edit_command)
+        cmd_btn_row.addWidget(edit_btn)
+        remove_btn = QPushButton("🗑️ Remove")
+        remove_btn.clicked.connect(self._remove_command)
+        cmd_btn_row.addWidget(remove_btn)
+        cmd_btn_row.addStretch()
+        reset_btn = QPushButton("🔄 Reset")
+        reset_btn.clicked.connect(self._reset_commands)
+        cmd_btn_row.addWidget(reset_btn)
+        right_layout.addLayout(cmd_btn_row)
+
+        self._splitter.setStretchFactor(0, 2)
+        self._splitter.setStretchFactor(1, 3)
+
+    # ------------------------------------------------------------------
+    # Layout persistence
+    # ------------------------------------------------------------------
+
+    def _save_layout(self):
+        self._set_dictation_keys(autofingers_layout={
+            'splitter': self._splitter.sizes(),
+            'columns': [
+                self._table.columnWidth(col)
+                for col in range(_COL_PHRASE, _COL_CATEGORY + 1)
+            ],
+        })
+
+    def _restore_layout(self):
+        layout = self._load_settings().get('autofingers_layout', {})
+        sizes = layout.get('splitter')
+        if sizes and len(sizes) == 2:
+            self._splitter.setSizes(sizes)
+        widths = layout.get('columns')
+        if widths and len(widths) == (_COL_CATEGORY - _COL_PHRASE + 1):
+            for i, w in enumerate(widths):
+                self._table.setColumnWidth(_COL_PHRASE + i, w)
 
     # ------------------------------------------------------------------
     # State helpers
@@ -379,26 +427,127 @@ class AutoFingersTab(QWidget):
 
     def _populate_table(self):
         mgr = self._voice_command_manager()
-        # Suspend sorting during bulk insert so each setItem doesn't
-        # trigger a re-sort that would scramble subsequent row indices.
         was_sorting = self._table.isSortingEnabled()
         self._table.setSortingEnabled(False)
+        self._table.blockSignals(True)
         self._table.setRowCount(0)
         if mgr is None:
+            self._table.blockSignals(False)
             self._table.setSortingEnabled(was_sorting)
             return
         for cmd in mgr.commands:
             row = self._table.rowCount()
             self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(cmd.phrase))
-            self._table.setItem(row, 1, QTableWidgetItem(
+
+            chk = QTableWidgetItem()
+            chk.setFlags(
+                Qt.ItemFlag.ItemIsEnabled |
+                Qt.ItemFlag.ItemIsUserCheckable |
+                Qt.ItemFlag.ItemIsSelectable
+            )
+            chk.setCheckState(
+                Qt.CheckState.Checked if cmd.enabled else Qt.CheckState.Unchecked)
+            self._table.setItem(row, _COL_ENABLED, chk)
+
+            self._table.setItem(row, _COL_PHRASE, QTableWidgetItem(cmd.phrase))
+            self._table.setItem(row, _COL_ALIASES, QTableWidgetItem(
                 ", ".join(cmd.aliases) if cmd.aliases else ""))
-            self._table.setItem(row, 2, QTableWidgetItem(
+            self._table.setItem(row, _COL_TYPE, QTableWidgetItem(
                 _TYPE_LABELS.get(cmd.action_type, cmd.action_type)))
-            self._table.setItem(row, 3, QTableWidgetItem(
+            self._table.setItem(row, _COL_ACTION, QTableWidgetItem(
                 cmd.description or cmd.action))
-            self._table.setItem(row, 4, QTableWidgetItem(cmd.category))
+            self._table.setItem(row, _COL_CATEGORY, QTableWidgetItem(cmd.category))
+
+            if not cmd.enabled:
+                self._set_row_colour(row, _DISABLED_COLOUR)
+
+        self._table.blockSignals(False)
         self._table.setSortingEnabled(was_sorting)
+
+    def _set_row_colour(self, row: int, colour):
+        for col in range(_COL_PHRASE, _COL_CATEGORY + 1):
+            item = self._table.item(row, col)
+            if item is None:
+                continue
+            if colour is None:
+                item.setData(Qt.ItemDataRole.ForegroundRole, None)
+            else:
+                item.setForeground(colour)
+
+    def _on_item_changed(self, item):
+        if item.column() != _COL_ENABLED:
+            return
+        mgr = self._voice_command_manager()
+        if mgr is None:
+            return
+        row = item.row()
+        phrase_item = self._table.item(row, _COL_PHRASE)
+        if phrase_item is None:
+            return
+        phrase = phrase_item.text()
+        cmd = next((c for c in mgr.commands if c.phrase == phrase), None)
+        if cmd is None:
+            return
+        enabled = item.checkState() == Qt.CheckState.Checked
+        cmd.enabled = enabled
+        mgr.save_commands()
+        self._table.blockSignals(True)
+        self._set_row_colour(row, None if enabled else _DISABLED_COLOUR)
+        self._table.blockSignals(False)
+
+    def _on_header_clicked(self, col: int):
+        if col != _COL_ENABLED:
+            return
+        mgr = self._voice_command_manager()
+        if mgr is None:
+            return
+        # Enable all if any are disabled; disable all if all are enabled.
+        target = any(not cmd.enabled for cmd in mgr.commands)
+        self._set_rows_enabled(list(range(self._table.rowCount())), target)
+
+    def _on_context_menu(self, pos):
+        rows = self._selected_rows()
+        if not rows:
+            return
+        menu = QMenu(self)
+        act_enable  = menu.addAction("✅ Activate")
+        act_disable = menu.addAction("⬜ Deactivate")
+        action = menu.exec(self._table.viewport().mapToGlobal(pos))
+        if action == act_enable:
+            self._set_rows_enabled(rows, True)
+        elif action == act_disable:
+            self._set_rows_enabled(rows, False)
+
+    def _selected_rows(self):
+        return sorted({item.row() for item in self._table.selectedItems()})
+
+    def _set_rows_enabled(self, rows: list, enabled: bool):
+        mgr = self._voice_command_manager()
+        if mgr is None:
+            return
+        changed = False
+        self._table.blockSignals(True)
+        for row in rows:
+            phrase_item = self._table.item(row, _COL_PHRASE)
+            if phrase_item is None:
+                continue
+            cmd = next(
+                (c for c in mgr.commands if c.phrase == phrase_item.text()), None)
+            if cmd is None:
+                continue
+            cmd.enabled = enabled
+            chk = self._table.item(row, _COL_ENABLED)
+            if chk:
+                chk.setCheckState(
+                    Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked)
+            self._set_row_colour(row, None if enabled else _DISABLED_COLOUR)
+            changed = True
+        self._table.blockSignals(False)
+        if changed:
+            mgr.save_commands()
+
+    def _on_row_double_clicked(self, row: int, col: int):
+        self._edit_command_at_row(row)
 
     def _add_command(self):
         mgr = self._voice_command_manager()
@@ -410,16 +559,18 @@ class AutoFingersTab(QWidget):
             self._broadcast_table_refresh()
 
     def _edit_command(self):
-        mgr = self._voice_command_manager()
-        if mgr is None:
-            return
         selected = self._table.selectedItems()
         if not selected:
             QMessageBox.information(
                 self, "Edit Command", "Please select a command to edit.")
             return
-        row = selected[0].row()
-        phrase_item = self._table.item(row, 0)
+        self._edit_command_at_row(selected[0].row())
+
+    def _edit_command_at_row(self, row: int):
+        mgr = self._voice_command_manager()
+        if mgr is None:
+            return
+        phrase_item = self._table.item(row, _COL_PHRASE)
         if phrase_item is None:
             return
         phrase = phrase_item.text()
@@ -442,7 +593,7 @@ class AutoFingersTab(QWidget):
                 self, "Remove Command", "Please select a command to remove.")
             return
         row = selected[0].row()
-        phrase_item = self._table.item(row, 0)
+        phrase_item = self._table.item(row, _COL_PHRASE)
         if phrase_item is None:
             return
         phrase = phrase_item.text()

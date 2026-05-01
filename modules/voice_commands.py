@@ -354,7 +354,7 @@ class VoiceCommandManager(QObject):
         """
         if IS_WINDOWS:
             ahk_keys = self._convert_to_ahk_keys(command.action)
-            ahk_code = f'Send "{ahk_keys}"'
+            ahk_code = f'SendInput "{ahk_keys}"'
             if self.main_window and hasattr(self.main_window, 'log'):
                 self.main_window.log(
                     f"⌨️ Keystroke: Sending '{command.action}' to foreground window")
@@ -454,6 +454,7 @@ class VoiceCommandManager(QObject):
 
             # Wrap code in AHK v2 format
             full_script = f"""#Requires AutoHotkey v2.0
+#NoTrayIcon
 #SingleInstance Force
 {ahk_code}
 ExitApp
@@ -769,30 +770,25 @@ class _VADListenerThread(QObject):
     
     def _run(self):
         """Main VAD listening loop"""
+        import queue as _queue
+        import threading as _threading
         try:
             import sounddevice as sd
             import numpy as np
-            import tempfile
-            import wave
-            import os
             import time
-            
-            # Sample rate and chunk settings
+
             sample_rate = 16000
-            chunk_samples = int(0.1 * sample_rate)  # 100ms chunks for VAD
-            
-            # Get settings from listener
+            chunk_samples = int(0.1 * sample_rate)  # 100 ms chunks for VAD
+
             speech_threshold = self.listener.speech_threshold
             silence_duration = self.listener.silence_duration
             min_speech_duration = self.listener.min_speech_duration
             max_speech_duration = self.listener.max_speech_duration
-            
-            # Check if using API or local model
+
             if self.listener.use_api and self.listener.api_key:
                 self.status_update.emit("🎤 Using OpenAI Whisper API (fast & accurate)")
-                self._model = None  # No local model needed
+                self._model = None
             else:
-                # Load local Whisper model once
                 self.status_update.emit("🎤 Loading local speech model...")
                 self.vad_status.emit("loading")
                 try:
@@ -815,86 +811,88 @@ class _VADListenerThread(QObject):
                     self._running = False
                     return
                 self._model = whisper.load_model(self.listener.model_name)
-            
+
             self.status_update.emit("🎤 Always-on listening active (waiting for speech...)")
             self.vad_status.emit("waiting")
-            
-            # Audio buffer for recording
+
+            # Captured audio clips are handed off here; the transcription
+            # worker consumes them so the audio callback never blocks.
+            audio_queue = _queue.Queue()
+
             audio_buffer = []
             is_recording = False
             silence_start = None
             speech_start = None
-            
+
             def audio_callback(indata, frames, time_info, status):
-                """Callback for audio stream - processes each chunk"""
+                """Lightweight VAD callback – never calls transcription directly."""
                 nonlocal audio_buffer, is_recording, silence_start, speech_start
-                
+
                 if not self._running:
                     return
-                
-                # Calculate RMS amplitude
+
                 rms = np.sqrt(np.mean(indata**2))
                 is_speech = rms > speech_threshold
-                
+
                 if is_speech:
                     if not is_recording:
-                        # Speech started
                         is_recording = True
                         speech_start = time.time()
                         audio_buffer = []
                         self.vad_status.emit("recording")
                         self.status_update.emit("🔴 Recording...")
-                    
-                    # Reset silence counter
                     silence_start = None
-                    
-                    # Add to buffer
                     audio_buffer.append(indata.copy())
-                    
-                    # Check max duration
+
                     if time.time() - speech_start > max_speech_duration:
-                        # Force stop recording
                         is_recording = False
-                        self._process_audio(audio_buffer, sample_rate)
+                        audio_queue.put(list(audio_buffer))
                         audio_buffer = []
                         self.vad_status.emit("waiting")
-                        
-                else:  # Silence
+
+                else:
                     if is_recording:
-                        # Still recording, add silence chunk
                         audio_buffer.append(indata.copy())
-                        
-                        # Start or continue silence timer
                         if silence_start is None:
                             silence_start = time.time()
-                        
-                        # Check if silence duration exceeded
                         if time.time() - silence_start > silence_duration:
-                            # Speech ended - process if long enough
                             speech_duration = time.time() - speech_start
                             is_recording = False
-                            
                             if speech_duration >= min_speech_duration:
-                                self._process_audio(audio_buffer, sample_rate)
+                                audio_queue.put(list(audio_buffer))
                             else:
                                 self.status_update.emit("🎤 (too short, ignored)")
-                            
                             audio_buffer = []
                             silence_start = None
                             self.vad_status.emit("waiting")
                             self.status_update.emit("🎤 Listening...")
-            
-            # Start audio stream
+
+            def transcription_worker():
+                """Dedicated thread: transcribes queued clips without touching the stream."""
+                while self._running or not audio_queue.empty():
+                    try:
+                        captured = audio_queue.get(timeout=0.5)
+                    except _queue.Empty:
+                        continue
+                    self._process_audio(captured, sample_rate)
+
+            worker = _threading.Thread(target=transcription_worker, daemon=True)
+            worker.start()
+
+            # Keep the InputStream open for the full session so the OS mic
+            # indicator never flickers – transcription now happens off-thread.
             with sd.InputStream(
                 samplerate=sample_rate,
                 channels=1,
                 dtype='float32',
                 blocksize=chunk_samples,
-                callback=audio_callback
+                callback=audio_callback,
             ):
                 while self._running:
                     time.sleep(0.1)
-                    
+
+            worker.join(timeout=5.0)
+
         except Exception as e:
             import traceback
             self.error_occurred.emit(f"Listener error: {e}\n{traceback.format_exc()}")

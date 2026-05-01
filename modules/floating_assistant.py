@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 from modules.chat_backend import ChatBackend
 from modules.chat_view_widget import ChatViewWidget
+from modules.help_system import Topics as HelpTopics, set_topic as set_help_topic
 
 
 class _SidekickTabPaneFilter(QObject):
@@ -432,6 +433,7 @@ class FloatingAssistant(QWidget):
         # but not added to _left_tabs until _ensure_superlookup_tab() runs (so
         # the tab order stays Chat → SuperLookup → Clipboard).
         self._clipboard_widget = self._create_clipboard_tab()
+        set_help_topic(self._clipboard_widget, HelpTopics.CLIPBOARD)
         self._clipboard_tab_added = False
 
         # AutoFingers tab – voice commands + dictation. Lazy because it relies on
@@ -439,6 +441,9 @@ class FloatingAssistant(QWidget):
         # ready when the FloatingAssistant is first constructed.
         self._autofingers_widget = None
         self._autofingers_tab_added = False
+
+        # F1 from anywhere in Sidekick that has no more specific topic → overview
+        set_help_topic(self, HelpTopics.SIDEKICK)
 
         left_layout.addWidget(self._left_tabs)
         self._splitter.addWidget(left_panel)
