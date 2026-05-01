@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.409 (May 1, 2026)
+**Current Version:** v1.9.410 (May 1, 2026)
 
+
+## v1.9.410 - May 1, 2026
+
+### Fixed
+
+- **Help → Supervertaler Workbench Help now opens the current GitBook docs site.** The menu item, the placeholder Help tab label, and the `_open_superdocs_tab` fallback all still pointed to the deprecated VitePress site `https://help.supervertaler.com/`. They now open `https://supervertaler.gitbook.io/help/workbench/` — the unified GitBook site that hosts both the Workbench and Trados plugin documentation. Reported by a user.
+
+---
 
 ## v1.9.409 - May 1, 2026
 

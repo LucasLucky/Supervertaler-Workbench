@@ -9883,7 +9883,7 @@ class SupervertalerQt(QMainWindow):
         # Place Supervertaler Help at the top of the Help menu
         superdocs_action = QAction("Supervertaler Workbench Help", self)
         superdocs_action.setToolTip("Online documentation (GitBook)")
-        superdocs_action.triggered.connect(lambda: self._open_url("https://help.supervertaler.com/"))
+        superdocs_action.triggered.connect(lambda: self._open_url("https://supervertaler.gitbook.io/help/workbench/"))
         help_menu.addAction(superdocs_action)
 
         setup_wizard_action = QAction("🚀 Setup Wizard...", self)
@@ -11149,7 +11149,7 @@ class SupervertalerQt(QMainWindow):
         # The embedded docs viewer was removed in favor of online documentation.
         placeholder = QWidget()
         layout = QVBoxLayout(placeholder)
-        label = QLabel("📚 Supervertaler Help is now available online.\n\nVisit https://help.supervertaler.com/ to view the documentation.")
+        label = QLabel("📚 Supervertaler Help is now available online.\n\nVisit https://supervertaler.gitbook.io/help/workbench/ to view the documentation.")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet("color: #888; font-size: 12px;")
         layout.addWidget(label)
@@ -47432,12 +47432,12 @@ class SupervertalerQt(QMainWindow):
         """Open the online Supervertaler Help in the user's browser."""
         try:
             # Prefer opening the published online docs
-            self._open_url("https://help.supervertaler.com/")
+            self._open_url("https://supervertaler.gitbook.io/help/workbench/")
         except Exception:
             QMessageBox.information(
                 self,
                 "Supervertaler Help",
-                "Supervertaler Help is available online at https://help.supervertaler.com/"
+                "Supervertaler Help is available online at https://supervertaler.gitbook.io/help/workbench/"
             )
 
     def check_for_updates(self):
