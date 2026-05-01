@@ -10,6 +10,7 @@ Supported Providers:
 - Anthropic (Claude Sonnet 4.5, Haiku 4.5, Opus 4.1)
 - Google (Gemini 2.5 Flash, 2.5 Pro, 3 Pro Preview)
 - Mistral AI (Mistral Large, Mistral Small, Mistral Nemo)
+- DeepSeek (V4 Pro, V4 Flash)
 
 Claude 4 Models (Released 2025):
 - Sonnet 4.5: Best balance - flagship model for general translation ($3/$15 per MTok)
@@ -139,7 +140,7 @@ def _sanitize_ollama_endpoint(endpoint: str) -> str:
 @dataclass
 class LLMConfig:
     """Configuration for LLM client"""
-    provider: Literal["openai", "claude", "gemini", "mistral", "openrouter"]
+    provider: Literal["openai", "claude", "gemini", "mistral", "deepseek", "openrouter"]
     model: str
     api_key: str
     temperature: Optional[float] = None  # Auto-detected if None
@@ -155,6 +156,7 @@ class LLMClient:
         "claude": "claude-sonnet-4-6",  # Claude Sonnet 4.6 (Feb 2026)
         "gemini": "gemini-2.5-flash",  # Gemini 2.5 Flash (2025)
         "mistral": "mistral-large-latest",  # Mistral Large (flagship)
+        "deepseek": "deepseek-v4-pro",  # DeepSeek V4 Pro (flagship)
         "ollama": "translategemma:12b",  # Local LLM via Ollama - purpose-built translation model
         "custom_openai": "custom-model",  # Custom OpenAI-compatible endpoint
         "openrouter": "anthropic/claude-sonnet-4.6"  # OpenRouter gateway (200+ models)
@@ -182,6 +184,22 @@ class LLMClient:
         }
     }
     
+    # Available DeepSeek models with descriptions
+    DEEPSEEK_MODELS = {
+        "deepseek-v4-pro": {
+            "name": "DeepSeek V4 Pro",
+            "description": "Flagship – top-tier reasoning and multilingual quality",
+            "strengths": ["Multilingual", "Complex reasoning", "High accuracy"],
+            "use_case": "Recommended for most translation tasks"
+        },
+        "deepseek-v4-flash": {
+            "name": "DeepSeek V4 Flash",
+            "description": "Fast and cost-effective – great for high-volume translation",
+            "strengths": ["Fast", "Cost-effective", "Multilingual"],
+            "use_case": "Best for large projects where speed and cost matter"
+        }
+    }
+
     # Available OpenRouter models (curated selection)
     # OpenRouter is an API gateway – users can also type any model ID from openrouter.ai/models
     OPENROUTER_MODELS = {
@@ -238,6 +256,18 @@ class LLMClient:
             "description": "Free tier – no cost, good quality",
             "strengths": ["Free", "Multilingual", "100+ languages"],
             "use_case": "Testing or budget-constrained projects"
+        },
+        "deepseek/deepseek-v4-pro": {
+            "name": "DeepSeek V4 Pro",
+            "description": "DeepSeek flagship – strong multilingual, competitive pricing",
+            "strengths": ["Multilingual", "Complex reasoning", "Cost-effective"],
+            "use_case": "General translation via OpenRouter"
+        },
+        "deepseek/deepseek-v4-flash": {
+            "name": "DeepSeek V4 Flash",
+            "description": "DeepSeek fast – great for high-volume translation",
+            "strengths": ["Fast", "Cost-effective", "Multilingual"],
+            "use_case": "High-volume translation via OpenRouter"
         }
     }
 
@@ -548,6 +578,10 @@ class LLMClient:
         if self.provider == "mistral" and not self.base_url:
             self.base_url = "https://api.mistral.ai/v1"
 
+        # For DeepSeek, set the base URL if not already specified
+        if self.provider == "deepseek" and not self.base_url:
+            self.base_url = "https://api.deepseek.com/v1"
+
         # For OpenRouter, set the base URL and extra headers
         if self.provider == "openrouter" and not self.base_url:
             self.base_url = "https://openrouter.ai/api/v1"
@@ -800,6 +834,8 @@ class LLMClient:
             result = self._call_gemini(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
         elif self.provider == "mistral":
             result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
+        elif self.provider == "deepseek":
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
         elif self.provider == "openrouter":
             result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
         elif self.provider == "ollama":
@@ -846,7 +882,7 @@ class LLMClient:
         if images and not self.model_supports_vision(self.provider, self.model):
             images = None
 
-        if self.provider in ("openai", "custom_openai", "mistral", "openrouter"):
+        if self.provider in ("openai", "custom_openai", "mistral", "deepseek", "openrouter"):
             result, usage = self._call_openai_with_usage(prompt, max_tokens=max_tokens, images=images if self.provider in ("openai", "custom_openai") else None, system_prompt=system_prompt)
         elif self.provider == "claude":
             result, usage = self._call_claude_with_usage(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)

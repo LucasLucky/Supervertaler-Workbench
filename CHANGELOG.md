@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.407 (May 1, 2026)
+**Current Version:** v1.9.408 (May 1, 2026)
 
+
+## v1.9.408 - May 1, 2026
+
+### Added
+
+- **DeepSeek V4 Pro and DeepSeek V4 Flash added as a dedicated AI provider.** DeepSeek now appears in the provider list alongside OpenAI, Claude, Gemini, Mistral, and others. The integration uses DeepSeek's OpenAI-compatible API (`api.deepseek.com/v1`). Set your DeepSeek API key in **Settings → AI Settings** to use it. V4 Pro is the default (flagship model); V4 Flash is available for high-volume, cost-sensitive work.
+- **DeepSeek V4 Pro and V4 Flash also available via OpenRouter.** Both models are now listed in the OpenRouter model dropdown under the model IDs `deepseek/deepseek-v4-pro` and `deepseek/deepseek-v4-flash`, enabling access through your existing OpenRouter API key without a separate DeepSeek account.
+
+---
 
 ## v1.9.407 - May 1, 2026
 
