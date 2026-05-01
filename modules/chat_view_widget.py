@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from modules.chat_backend import ChatBackend
 from modules.chat_message_delegate import ChatMessageDelegate
+from modules.trados_bridge_client import TradosBridgeClient, format_context_for_prompt
 
 
 class ChatViewWidget(QWidget):
@@ -305,6 +306,7 @@ class ChatViewWidget(QWidget):
             ("tm",        "\U0001F4BE TMs",          False),
             ("termbase",  "\U0001F4DA Termbases",    False),
             ("files",     "\U0001F4CE Files",        False),
+            ("trados",    "\U0001F517 Trados",        False),
         ]
 
         label = QLabel("Context:")
@@ -327,6 +329,86 @@ class ChatViewWidget(QWidget):
 
         self._context_chips_row.addStretch()
 
+        # Trados Sidekick Bridge integration: detect whether the Trados
+        # plugin is running and auto-light the Trados chip when it is.
+        # The chip is hidden entirely when no bridge has ever been seen,
+        # to avoid cluttering the UI for users who don't have the plugin.
+        self._trados_bridge = TradosBridgeClient()
+        self._trados_bridge_available: bool = False
+        # Per-user preference: "auto" (= follow availability) or "off"
+        # (= user explicitly disabled). Stored on the parent app so all
+        # chat views (Sidekick, AI tab, grid) share one pref – toggling
+        # the chip in any view affects every Trados-context send path,
+        # including the manager-driven _context_aware_send override.
+        # Hide the chip until the first availability check so the chip
+        # only appears for users who actually have the plugin installed.
+        self._context_toggles["trados"].setVisible(False)
+        # Poll the bridge handshake every 3 s while this view is alive.
+        # The probe is cheap (cached against mtime; localhost connection
+        # refused is ~1 ms) so polling at this rate has zero perceptible
+        # cost.
+        self._trados_poll_timer = QTimer(self)
+        self._trados_poll_timer.setInterval(3000)
+        self._trados_poll_timer.timeout.connect(self._poll_trados_bridge)
+        self._trados_poll_timer.start()
+        # Run one immediate check so the chip lights up on widget creation
+        # if the bridge is already running.
+        QTimer.singleShot(0, self._poll_trados_bridge)
+
+    def _poll_trados_bridge(self):
+        """Update the Trados chip's enabled/checked/tooltip state."""
+        try:
+            available = self._trados_bridge.is_available()
+        except Exception:
+            available = False
+
+        # Always keep the chip's checked state in sync with the parent-app
+        # pref + availability, even when availability hasn't changed – another
+        # ChatViewWidget may have toggled the pref since the last poll.
+        chip = self._context_toggles["trados"]
+        pref = self._get_trados_chip_pref()
+        if available:
+            chip.setVisible(True)
+            chip.setEnabled(True)
+            should_be_on = (pref != "off")
+            if chip.isChecked() != should_be_on:
+                chip.blockSignals(True)
+                chip.setChecked(should_be_on)
+                chip.blockSignals(False)
+            chip.setStyleSheet(self._CHIP_ON if should_be_on else self._CHIP_OFF)
+            chip.setToolTip(
+                "Trados plugin detected. Click to toggle whether the active "
+                "Trados project context (segment, TM matches, termbase hits) "
+                "is included in chat messages."
+            )
+        else:
+            # Bridge gone: keep chip visible if we ever saw it, greyed
+            if self._trados_bridge_available:
+                chip.setVisible(True)
+            chip.setEnabled(False)
+            chip.blockSignals(True)
+            chip.setChecked(False)
+            chip.blockSignals(False)
+            chip.setStyleSheet(self._CHIP_OFF)
+            chip.setToolTip(
+                "Trados plugin not detected. Start Trados Studio with the "
+                "Supervertaler plugin to enable Trados-aware chat."
+            )
+
+        self._trados_bridge_available = available
+
+    def _get_trados_chip_pref(self) -> str:
+        """Read the shared 'auto' / 'off' Trados context pref from the parent app."""
+        app = getattr(self._backend, "_parent_app", None)
+        if app is None:
+            return "auto"
+        return getattr(app, "_trados_chip_pref", "auto")
+
+    def _set_trados_chip_pref(self, value: str) -> None:
+        app = getattr(self._backend, "_parent_app", None)
+        if app is not None:
+            app._trados_chip_pref = value
+
     def _on_chip_toggled(self, key: str, checked: bool, btn):
         """Handle context chip toggle (left-click)."""
         btn.setStyleSheet(self._CHIP_ON if checked else self._CHIP_OFF)
@@ -338,6 +420,12 @@ class ChatViewWidget(QWidget):
                 pm.include_tm_data = checked
             elif key == "termbase":
                 pm.include_termbase_data = checked
+
+        # Trados chip: persist the explicit user preference on the parent
+        # app so all chat views (Sidekick, AI tab, grid) and the manager's
+        # _context_aware_send override agree.
+        if key == "trados":
+            self._set_trados_chip_pref("auto" if checked else "off")
 
     def _get_prompt_manager(self):
         return getattr(self._backend._parent_app, 'prompt_manager_qt', None)
@@ -703,6 +791,14 @@ class ChatViewWidget(QWidget):
         prompt = user_text or "Describe this image."
         system_prompt = "You are an AI assistant for Supervertaler, a professional translation tool."
 
+        # Trados-aware mode: prepend the active Trados project context to
+        # the system prompt when the chip is on AND the bridge is reachable.
+        # Network failures here are silently ignored – the user gets a
+        # plain answer instead of being blocked.
+        trados_block = self._fetch_trados_context_for_prompt()
+        if trados_block:
+            system_prompt = trados_block + "\n" + system_prompt
+
         try:
             response, metadata = self._backend.send_ai_request(
                 prompt, system_prompt, images=images or None,
@@ -718,6 +814,32 @@ class ChatViewWidget(QWidget):
                 "system",
                 f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details.",
             )
+
+    def _fetch_trados_context_for_prompt(self) -> str:
+        """
+        If the Trados chip pref is 'auto' AND the bridge is reachable,
+        fetch the active Trados project context and format it as a
+        prompt-ready text block. Returns "" otherwise so callers can
+        unconditionally prepend the result.
+
+        Called on every chat send. The fetch is fast (~30 ms on localhost)
+        and any failure degrades to "" – the user always gets an answer;
+        they just lose the Trados grounding for that message.
+        """
+        if self._get_trados_chip_pref() == "off":
+            return ""
+        if not self._trados_bridge_available:
+            return ""
+        try:
+            ctx = self._trados_bridge.fetch_active_context()
+        except Exception:
+            return ""
+        if not ctx:
+            return ""
+        try:
+            return format_context_for_prompt(ctx)
+        except Exception:
+            return ""
 
     def _clear_chat(self):
         from PyQt6.QtWidgets import QMessageBox

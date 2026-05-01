@@ -2,8 +2,31 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.410 (May 1, 2026)
+**Current Version:** v1.9.411 (May 1, 2026)
 
+
+## v1.9.411 - May 1, 2026
+
+### Added (Sidekick Chat – Trados-aware mode)
+
+- **The floating Sidekick Chat now picks up the active Trados project context automatically when the Supervertaler for Trados plugin is running.** New `🔗 Trados` chip in the chat tab's context-chip row above the input. Behaviour:
+  - **Hidden** until the plugin's localhost bridge is detected for the first time. Users without the Trados plugin never see the chip.
+  - **Lit green** when the bridge is reachable. Click to toggle off (the user pref is shared across all chat views via the parent app).
+  - **Greyed** when the bridge previously responded but is now unreachable (e.g. Trados was closed mid-session). Recovers automatically when Trados restarts.
+  - On chat send, the active Trados segment, surrounding segments, TM matches, termbase hits, and project metadata are fetched via the bridge's `GET /v1/active-context` endpoint and prepended to the system prompt – the same fields the in-Trados Chat itself uses, so answer quality is comparable.
+- **Both the default `_do_send` path and `UnifiedPromptManagerQt._context_aware_send`** (the manager-driven override that powers the Sidekick chat tab) now consult the Trados context. Toggling the chip in any chat view affects every send path.
+- **New module `modules/trados_bridge_client.py`** – tiny synchronous HTTP client. Resolves the user-data root the same way `llm_clients.load_api_keys` does, reads the handshake file (`<root>/trados/runtime/bridge.json`), and uses very short HTTP timeouts so a stuck/dead bridge never blocks the chat send. Polled every 3 s while the chat tab is alive.
+
+### How to use
+
+1. Start Trados Studio with the Supervertaler plugin (v4.19.52 or later) and Assistant access (paid or trial)
+2. Open the **Supervertaler Assistant** panel inside Trados once – this triggers the bridge to start and write its handshake file
+3. Open Sidekick (Alt+K) → Chat tab → the **🔗 Trados** chip appears, lit green
+4. Type your question. The chat will see the segment you're currently editing, its TM matches, termbase hits, and project metadata.
+
+Privacy: the bridge listens only on `127.0.0.1`, requires a per-session Bearer token, and only starts when the user has Assistant access. Hidden setting on the Trados side (`AiSettings.SidekickBridgeEnabled = false`) for users who want to opt out entirely.
+
+---
 
 ## v1.9.410 - May 1, 2026
 
