@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.408 (May 1, 2026)
+**Current Version:** v1.9.409 (May 1, 2026)
 
+
+## v1.9.409 - May 1, 2026
+
+### Fixed
+
+- **DeepSeek now appears in the AI Settings dialog.** v1.9.408 added DeepSeek as a provider in `modules/llm_clients.py` but the Settings dialog UI hadn't been updated, so the option was invisible to users. The Settings dialog now has a **DeepSeek** radio button (between Mistral and OpenRouter) with a model dropdown for V4 Pro and V4 Flash, an API key field in the API Keys section, and a 🐋 status-bar indicator. DeepSeek also appears in QuickTrans's per-provider model list. Reported by a user.
+
+---
 
 ## v1.9.408 - May 1, 2026
 

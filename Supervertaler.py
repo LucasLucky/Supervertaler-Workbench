@@ -7230,6 +7230,8 @@ OUTPUT ONLY THE SEGMENT MARKERS. DO NOT ADD EXPLANATIONS BEFORE OR AFTER."""
                 api_key = self.api_keys.get('gemini', '')
             elif self.provider == 'mistral':
                 api_key = self.api_keys.get('mistral', '')
+            elif self.provider == 'deepseek':
+                api_key = self.api_keys.get('deepseek', '')
             elif self.provider == 'ollama':
                 api_key = self.api_keys.get('ollama', '') or 'not-needed'
             elif self.provider == 'custom_openai':
@@ -9112,6 +9114,9 @@ class SupervertalerQt(QMainWindow):
                 display = f"{icon} {model}"
             elif provider == 'mistral':
                 icon = "🌀"
+                display = f"{icon} {model}"
+            elif provider == 'deepseek':
+                icon = "🐋"
                 display = f"{icon} {model}"
             elif provider == 'openrouter':
                 icon = "🌐"
@@ -11106,6 +11111,7 @@ class SupervertalerQt(QMainWindow):
                 "claude": "claude",
                 "gemini": "gemini",
                 "mistral": "mistral",
+                "deepseek": "deepseek",
                 "custom_openai": "custom_openai"
             }
 
@@ -17529,6 +17535,11 @@ class SupervertalerQt(QMainWindow):
         provider_button_group.addButton(mistral_radio)
         provider_layout.addWidget(mistral_radio)
 
+        deepseek_radio = CustomRadioButton("DeepSeek")
+        deepseek_radio.setChecked(settings.get('provider', 'openai') == 'deepseek')
+        provider_button_group.addButton(deepseek_radio)
+        provider_layout.addWidget(deepseek_radio)
+
         openrouter_radio = CustomRadioButton("🌐 OpenRouter (200+ models)")
         openrouter_radio.setChecked(settings.get('provider', 'openai') == 'openrouter')
         provider_button_group.addButton(openrouter_radio)
@@ -17667,6 +17678,30 @@ class SupervertalerQt(QMainWindow):
                 break
         mistral_combo.setEnabled(mistral_radio.isChecked())
         model_layout.addWidget(mistral_combo)
+
+        model_layout.addSpacing(10)
+
+        # DeepSeek models
+        deepseek_model_label = QLabel("<b>DeepSeek Models:</b>")
+        model_layout.addWidget(deepseek_model_label)
+
+        deepseek_combo = QComboBox()
+        deepseek_combo.addItems([
+            "deepseek-v4-pro (Recommended - Flagship)",
+            "deepseek-v4-flash (Fast & Cost-Effective)"
+        ])
+        deepseek_combo.setToolTip(
+            "DeepSeek V4 Pro: Flagship – top-tier reasoning and multilingual quality.\n"
+            "DeepSeek V4 Flash: Fast and cost-effective, great for high-volume translation.\n\n"
+            "Get an API key at platform.deepseek.com."
+        )
+        current_deepseek_model = settings.get('deepseek_model', 'deepseek-v4-pro')
+        for i in range(deepseek_combo.count()):
+            if current_deepseek_model in deepseek_combo.itemText(i):
+                deepseek_combo.setCurrentIndex(i)
+                break
+        deepseek_combo.setEnabled(deepseek_radio.isChecked())
+        model_layout.addWidget(deepseek_combo)
 
         model_layout.addSpacing(10)
 
@@ -17933,6 +17968,8 @@ class SupervertalerQt(QMainWindow):
             lambda: _update_provider_label(gemini_radio, "Google Gemini", gemini_combo))
         mistral_combo.currentIndexChanged.connect(
             lambda: _update_provider_label(mistral_radio, "Mistral AI", mistral_combo))
+        deepseek_combo.currentIndexChanged.connect(
+            lambda: _update_provider_label(deepseek_radio, "DeepSeek", deepseek_combo))
         openrouter_combo.currentIndexChanged.connect(
             lambda: _update_provider_label(openrouter_radio, "🌐 OpenRouter (200+ models)", openrouter_combo))
 
@@ -17941,6 +17978,7 @@ class SupervertalerQt(QMainWindow):
         _update_provider_label(claude_radio, "Anthropic Claude", claude_combo)
         _update_provider_label(gemini_radio, "Google Gemini", gemini_combo)
         _update_provider_label(mistral_radio, "Mistral AI", mistral_combo)
+        _update_provider_label(deepseek_radio, "DeepSeek", deepseek_combo)
         _update_provider_label(openrouter_radio, "🌐 OpenRouter (200+ models)", openrouter_combo)
 
         # Connect radio buttons to enable/disable combos
@@ -17949,6 +17987,7 @@ class SupervertalerQt(QMainWindow):
             claude_combo.setEnabled(claude_radio.isChecked())
             gemini_combo.setEnabled(gemini_radio.isChecked())
             mistral_combo.setEnabled(mistral_radio.isChecked())
+            deepseek_combo.setEnabled(deepseek_radio.isChecked())
             openrouter_combo.setEnabled(openrouter_radio.isChecked())
             if ollama_status_widget:
                 ollama_status_widget.setEnabled(ollama_radio.isChecked())
@@ -17994,6 +18033,7 @@ class SupervertalerQt(QMainWindow):
         claude_radio.toggled.connect(update_combo_states)
         gemini_radio.toggled.connect(update_combo_states)
         mistral_radio.toggled.connect(update_combo_states)
+        deepseek_radio.toggled.connect(update_combo_states)
         openrouter_radio.toggled.connect(update_combo_states)
         ollama_radio.toggled.connect(update_combo_states)
         ollama_radio.toggled.connect(on_ollama_selected)
@@ -18048,6 +18088,7 @@ class SupervertalerQt(QMainWindow):
             ("Claude (Anthropic):", "claude", "sk-ant-api03-..."),
             ("Gemini (Google AI):", "gemini", "AIza..."),
             ("Mistral AI:", "mistral", "..."),
+            ("DeepSeek:", "deepseek", "sk-..."),
             ("OpenRouter:", "openrouter", "sk-or-..."),
             ("Ollama Endpoint:", "ollama_endpoint", "http://localhost:11434"),
         ]
@@ -18471,6 +18512,7 @@ class SupervertalerQt(QMainWindow):
             custom_profile_combo=custom_profile_combo, custom_key_input=custom_key_input,
             mistral_radio=mistral_radio, mistral_combo=mistral_combo,
             mistral_enable_cb=mistral_enable_cb,
+            deepseek_radio=deepseek_radio, deepseek_combo=deepseek_combo,
             openrouter_radio=openrouter_radio, openrouter_combo=openrouter_combo,
             openrouter_enable_cb=openrouter_enable_cb
         ))
@@ -18711,6 +18753,10 @@ class SupervertalerQt(QMainWindow):
                 ("mistral-large-latest", "Mistral Large (Recommended)"),
                 ("mistral-small-latest", "Mistral Small (Fast)"),
                 ("open-mistral-nemo", "Mistral Nemo (Open)"),
+            ]),
+            ("deepseek", "DeepSeek", "deepseek", [
+                ("deepseek-v4-pro", "DeepSeek V4 Pro (Recommended)"),
+                ("deepseek-v4-flash", "DeepSeek V4 Flash (Fast)"),
             ]),
         ]
 
@@ -20962,23 +21008,27 @@ class SupervertalerQt(QMainWindow):
             return
 
         active = status in ("listening", "waiting", "recording", "processing")
-        if active:
-            tray.setIcon(self._alwayson_tray_icon_red)
-            if status == "recording":
-                tray.setToolTip("AutoFingers – recording speech. Click to stop.")
-            elif status == "processing":
-                tray.setToolTip("AutoFingers – processing speech. Click to stop.")
-            else:
-                tray.setToolTip("AutoFingers – Always-On listening. Click to stop.")
-            action = getattr(self, '_alwayson_tray_toggle_action', None)
-            if action is not None:
-                action.setText("⏹ Stop Always-On")
-        else:
-            tray.setIcon(self._alwayson_tray_icon_normal)
-            tray.setToolTip("AutoFingers – Always-On is OFF. Click to start.")
-            action = getattr(self, '_alwayson_tray_toggle_action', None)
-            if action is not None:
-                action.setText("▶ Start Always-On")
+
+        # Skip every tray API call when the active/inactive state hasn't changed.
+        # setIcon() and setToolTip() both trigger a Windows notification-area
+        # repaint that briefly hides the icon. The VAD cycle emits three status
+        # changes per spoken command (recording → processing → listening), all of
+        # which map to the same "active" state, so we can safely ignore them.
+        if getattr(self, '_alwayson_tray_active', None) == active:
+            return
+        self._alwayson_tray_active = active
+
+        tray.setIcon(
+            self._alwayson_tray_icon_red if active
+            else self._alwayson_tray_icon_normal
+        )
+        tray.setToolTip(
+            "AutoFingers – Always-On listening. Click to stop." if active
+            else "AutoFingers – Always-On is OFF. Click to start."
+        )
+        action = getattr(self, '_alwayson_tray_toggle_action', None)
+        if action is not None:
+            action.setText("⏹ Stop Always-On" if active else "▶ Start Always-On")
 
     def _on_alwayson_speech(self, text: str):
         """Handle raw speech from always-on listener"""
@@ -22176,6 +22226,7 @@ class SupervertalerQt(QMainWindow):
                                    custom_profile_combo=None, custom_key_input=None,
                                    mistral_radio=None, mistral_combo=None,
                                    mistral_enable_cb=None,
+                                   deepseek_radio=None, deepseek_combo=None,
                                    openrouter_radio=None, openrouter_combo=None,
                                    openrouter_enable_cb=None):
         """Save all AI settings from the unified AI Settings tab"""
@@ -22188,6 +22239,8 @@ class SupervertalerQt(QMainWindow):
             provider = 'gemini'
         elif mistral_radio and mistral_radio.isChecked():
             provider = 'mistral'
+        elif deepseek_radio and deepseek_radio.isChecked():
+            provider = 'deepseek'
         elif openrouter_radio and openrouter_radio.isChecked():
             provider = 'openrouter'
         elif ollama_radio.isChecked():
@@ -22228,6 +22281,7 @@ class SupervertalerQt(QMainWindow):
             'claude_model': claude_combo.currentText().split()[0],
             'gemini_model': gemini_combo.currentText().split()[0],
             'mistral_model': mistral_combo.currentText().split()[0] if mistral_combo else 'mistral-large-latest',
+            'deepseek_model': deepseek_combo.currentText().split()[0] if deepseek_combo else 'deepseek-v4-pro',
             'openrouter_model': openrouter_combo.currentText().split()[0] if openrouter_combo else 'anthropic/claude-sonnet-4.6',
             'ollama_model': ollama_model,
             'custom_openai_model': active_model,
