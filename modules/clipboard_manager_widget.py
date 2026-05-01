@@ -18,7 +18,7 @@ from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QAbstractItemView, QApplication,
-    QSplitter, QStackedLayout,
+    QSplitter, QStackedLayout, QMenu,
 )
 
 
@@ -138,6 +138,9 @@ class ClipboardManagerWidget(QWidget):
         self._splitter.setChildrenCollapsible(False)
 
         self._text_list = self._make_list_widget()
+        self._text_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._text_list.customContextMenuRequested.connect(
+            lambda pos: self._on_context_menu(pos, self._text_list))
         self._text_empty = self._make_empty_label(
             "No text snippets yet –\ncopy any text to start.")
         self._text_header = QLabel("📝 Text snippets")
@@ -146,6 +149,9 @@ class ClipboardManagerWidget(QWidget):
         self._splitter.addWidget(text_col)
 
         self._image_list = self._make_list_widget()
+        self._image_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._image_list.customContextMenuRequested.connect(
+            lambda pos: self._on_context_menu(pos, self._image_list))
         self._image_empty = self._make_empty_label(
             "No images yet –\ncopy any image to start.")
         self._image_header = QLabel("🖼 Images")
@@ -164,8 +170,8 @@ class ClipboardManagerWidget(QWidget):
 
         # Footer hint
         hint = QLabel(
-            "Click to paste  •  Pasted items shown in grey  •  "
-            "← / → switches columns")
+            "Click to paste  •  Right-click or Delete key to remove  •  "
+            "Pasted items shown in grey  •  ← / → switches columns")
         hint.setStyleSheet(
             "color: #999; font-size: 7pt; padding: 2px 4px; border: none;"
         )
@@ -275,6 +281,12 @@ class ClipboardManagerWidget(QWidget):
             item = list_widget.currentItem()
             if item:
                 self._on_item_activated(item)
+            return True
+
+        if key == Qt.Key.Key_Delete:
+            item = list_widget.currentItem()
+            if item:
+                self._delete_item(item, list_widget)
             return True
 
         if key == Qt.Key.Key_Right:
@@ -521,6 +533,38 @@ class ClipboardManagerWidget(QWidget):
             db = self._get_db()
             if db:
                 db.mark_clipboard_item_pasted(item_id)
+
+    # ------------------------------------------------------------------
+    # Context menu & item deletion
+    # ------------------------------------------------------------------
+
+    def _on_context_menu(self, pos, list_widget: QListWidget):
+        item = list_widget.itemAt(pos)
+        menu = QMenu(self)
+        act_delete = None
+        if item is not None:
+            act_delete = menu.addAction("🗑 Delete")
+            menu.addSeparator()
+        act_clear = menu.addAction("Clear all")
+        action = menu.exec(list_widget.viewport().mapToGlobal(pos))
+        if action is None:
+            return
+        if action == act_delete and item is not None:
+            self._delete_item(item, list_widget)
+        elif action == act_clear:
+            self._clear_all()
+
+    def _delete_item(self, item: QListWidgetItem, list_widget: QListWidget):
+        """Remove a single clip from the list and from the database."""
+        row = list_widget.row(item)
+        list_widget.takeItem(row)
+        item_id = item.data(_ROLE_DB_ID)
+        if item_id is not None:
+            db = self._get_db()
+            if db:
+                db.delete_clipboard_item(item_id)
+        self._update_empty_state(list_widget)
+        self._update_count()
 
     # ------------------------------------------------------------------
     # Trimming, clearing, count

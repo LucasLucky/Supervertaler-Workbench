@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.406 (May 1, 2026)
+**Current Version:** v1.9.407 (May 1, 2026)
 
+
+## v1.9.407 - May 1, 2026
+
+### Added
+
+- **Delete individual clipboard entries via right-click or Delete key.** Right-clicking any item in the Clipboard tab (text or image column) shows a context menu with a "🗑 Delete" option. Selecting a row and pressing the **Delete** key also removes it. The item is removed from both the list and the database immediately. A "Clear all" option is also available in the same context menu as a convenience shortcut to the existing top-right button. The footer hint has been updated to surface these actions.
+
+---
 
 ## v1.9.406 - May 1, 2026
 
