@@ -255,6 +255,18 @@ class FloatingAssistant(QWidget):
         except Exception:
             pass
 
+        # Maximise to the screen the window is currently on. Most users
+        # who route QuickLauncher to Sidekick want a proper full-screen
+        # reading area for the response (often a multi-paragraph
+        # explanation or a translation comparison), not the default
+        # 850x520 popup. No-op if already maximised so a second
+        # back-to-back QuickLauncher doesn't toggle it back to small.
+        try:
+            if not self._is_maximised:
+                self._toggle_maximise()
+        except Exception:
+            pass
+
         try:
             if hasattr(self, '_left_tabs'):
                 self._left_tabs.setCurrentIndex(0)  # Chat tab
@@ -351,6 +363,16 @@ class FloatingAssistant(QWidget):
             if not hwnd:
                 return
 
+            # If we're already the foreground window, skip the topmost
+            # flip + AttachThreadInput dance entirely. SetWindowPos can
+            # cause a small visual "jump" even when the window is already
+            # on top (the topmost-then-notopmost transition forces a
+            # repaint). When DWM hasn't ghosted us during the LLM call
+            # this work is unnecessary anyway.
+            foreground_hwnd = user32.GetForegroundWindow()
+            if foreground_hwnd == hwnd:
+                return
+
             # ── 1. Topmost flip ────────────────────────────────────
             # SetWindowPos with HWND_TOPMOST forces the window to the
             # front of the Z-order without going through the foreground
@@ -369,7 +391,7 @@ class FloatingAssistant(QWidget):
                                 SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
 
             # ── 2. AttachThreadInput trick ─────────────────────────
-            foreground_hwnd = user32.GetForegroundWindow()
+            # foreground_hwnd was captured above the early-bail guard.
             if foreground_hwnd and foreground_hwnd != hwnd:
                 current_thread_id = kernel32.GetCurrentThreadId()
                 foreground_thread_id = user32.GetWindowThreadProcessId(
