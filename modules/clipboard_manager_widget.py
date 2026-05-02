@@ -250,7 +250,12 @@ class ClipboardManagerWidget(QWidget):
         super().showEvent(event)
         # Default focus is the text list – that's where most clips live.
         self._text_list.setFocus()
-        if self._text_list.count() > 0 and self._text_list.currentRow() < 0:
+        # Always highlight the latest entry (row 0) on show, not just when
+        # there's no selection. The latest clip is what users overwhelmingly
+        # want to paste when they open the manager – preserving a stale
+        # selection from a previous session means an extra arrow-up keystroke
+        # in the common case.
+        if self._text_list.count() > 0:
             self._text_list.setCurrentRow(0)
 
     def eventFilter(self, obj, event):
