@@ -198,6 +198,21 @@ class FloatingAssistant(QWidget):
         # window is already on top.
         self._backend.thinking_finished.connect(self._restore_to_foreground_after_llm)
 
+        # Sidekick Bridge server – inverse of the Trados-side bridge. Lets
+        # the Trados plugin POST a QuickLauncher prompt here for Sidekick
+        # to run, when the user has set their plugin preference to route
+        # QuickLauncher to Workbench rather than the in-Trados Assistant.
+        # See modules/sidekick_bridge_server.py for the wire format.
+        self._bridge_server = None
+        try:
+            from modules.sidekick_bridge_server import SidekickBridgeServer
+            self._bridge_server = SidekickBridgeServer(self)
+            self._bridge_server.run_prompt_requested.connect(self._on_bridge_prompt_request)
+            self._bridge_server.start()
+            QApplication.instance().aboutToQuit.connect(self._bridge_server.stop)
+        except Exception as e:
+            print(f"[FloatingAssistant] Sidekick bridge server failed to start: {e}")
+
 
     def _dismiss_to_tray(self):
         """Hide Sidekick completely – Tool-style windows have no taskbar
@@ -208,6 +223,57 @@ class FloatingAssistant(QWidget):
         Ctrl+Q toggle).
         """
         self.hide()
+
+    def _on_bridge_prompt_request(self, expanded: str, display_prompt: str, prompt_name: str):
+        """Handle a QuickLauncher prompt forwarded by the Trados plugin.
+
+        Connected via Qt::QueuedConnection (cross-thread emit from the
+        bridge's HTTP handler thread) so this always runs on the GUI
+        thread. We:
+
+          1. Show / raise / activate Sidekick so the user sees the chat.
+          2. Switch to the Chat tab.
+          3. Echo the display version of the prompt as a "user" message
+             (the Trados plugin builds a redacted display version – e.g.
+             "[source document — N segments]" instead of the full project
+             text – so the chat doesn't get spammed with kilobytes of
+             context the LLM needs but the user has already seen).
+          4. Send the fully-expanded prompt to the LLM directly via
+             ``ChatBackend.send_ai_request``. We bypass the chat view's
+             ``_context_aware_send`` override because the Trados side has
+             already done all the context substitution; running it again
+             would prepend the *Workbench's* idea of the active context,
+             which would be wrong for a Trados-originated prompt.
+
+        The thinking_finished hook installed in __init__ then re-raises
+        the window after the synchronous LLM call returns, in case
+        Windows DWM ghosted it during the freeze.
+        """
+        try:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, '_left_tabs'):
+                self._left_tabs.setCurrentIndex(0)  # Chat tab
+        except Exception:
+            pass
+
+        label = f"[{prompt_name}] " if prompt_name else ""
+        self._backend.add_message("user", label + (display_prompt or expanded))
+
+        system_prompt = "You are an AI assistant. Follow the instructions precisely."
+        try:
+            response, metadata = self._backend.send_ai_request(expanded, system_prompt)
+            if response and response.strip():
+                self._backend.add_message("assistant", response, metadata=metadata)
+            else:
+                self._backend.add_message("system", "⚠ No response received.")
+        except Exception as e:
+            self._backend.add_message("system", f"⚠ Error: {e}")
 
     def _restore_to_foreground_after_llm(self):
         """Pull Sidekick back to the foreground after the synchronous LLM
