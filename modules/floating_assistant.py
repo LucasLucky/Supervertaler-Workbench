@@ -286,10 +286,12 @@ class FloatingAssistant(QWidget):
         before the response arrives" and have to press Alt+K again just to
         read it.
 
-        Plain show() + raise_() + activateWindow() isn't always enough on
-        Windows because the foreground lock prevents a background process
-        from grabbing focus. We use _force_to_foreground_windows() instead,
-        which uses the AttachThreadInput trick to bypass the lock.
+        Defers the actual re-foreground via QTimer.singleShot so it runs
+        AFTER the chat view's own thinking_finished slot has fired (which
+        hides the Thinking label and triggers a layout pass) and after the
+        caller has had a chance to render the response message. Calling
+        SetForegroundWindow during that flurry of layout activity tends to
+        race the un-ghost; a 50 ms delay lets Windows settle first.
 
         Skipped when the user has explicitly dismissed Sidekick (isVisible()
         returns False because we hid it via _dismiss_to_tray) – the user
@@ -298,7 +300,8 @@ class FloatingAssistant(QWidget):
         """
         if not self.isVisible():
             return
-        self._force_to_foreground_windows()
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(50, self._force_to_foreground_windows)
 
     def _force_to_foreground_windows(self):
         """Bring Sidekick to the front, bypassing the Windows foreground
@@ -306,17 +309,27 @@ class FloatingAssistant(QWidget):
 
         Plain show() + raise_() + activateWindow() doesn't reliably bring a
         window forward on Windows when the calling process isn't the
-        current foreground app – this is the ``foreground lock''. The
-        standard workaround is to attach the calling thread's input queue
-        to the foreground thread's input queue for the duration of the
-        SetForegroundWindow / SetFocus calls, which makes Windows treat
-        them as sharing input and therefore lifts the lock. We detach
-        immediately afterwards so we don't actually share input with the
-        other app long-term.
+        current foreground app – this is the ``foreground lock''.
 
-        Falls back to plain show()/raise_()/activateWindow() on platforms
-        other than Windows or if the ctypes calls fail – on those paths
-        Qt's own activation is usually sufficient anyway.
+        We hammer it from two angles:
+
+          1. **AttachThreadInput trick.** Attach our GUI thread's input
+             queue to the current foreground thread's input queue for the
+             duration of SetForegroundWindow + SetFocus, so Windows treats
+             the calls as coming from an app that shares input with the
+             foreground. Detach immediately afterwards.
+
+          2. **Topmost flip.** Set the window to HWND_TOPMOST then back to
+             HWND_NOTOPMOST. The first call is unconditionally allowed (it
+             doesn't grab focus, just Z-order) and brings the window to
+             the very front of the Z-stack; the second drops the
+             always-on-top attribute so Sidekick behaves like any normal
+             window from then on. This is the classic "force to front"
+             dance every Windows launcher app ends up reaching for once
+             the foreground lock bites them.
+
+        Plain Qt calls run regardless – they're cheap and on platforms
+        other than Windows they're all that's needed.
         """
         # Always start by getting the window into a Qt-visible state.
         self.show()
@@ -328,7 +341,6 @@ class FloatingAssistant(QWidget):
 
         try:
             import ctypes
-            from ctypes import wintypes
 
             user32 = ctypes.windll.user32
             kernel32 = ctypes.windll.kernel32
@@ -339,35 +351,49 @@ class FloatingAssistant(QWidget):
             if not hwnd:
                 return
 
+            # ── 1. Topmost flip ────────────────────────────────────
+            # SetWindowPos with HWND_TOPMOST forces the window to the
+            # front of the Z-order without going through the foreground
+            # lock. Then we drop it back to NOTOPMOST so it doesn't stay
+            # pinned above every other window.
+            HWND_TOPMOST = -1
+            HWND_NOTOPMOST = -2
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_SHOWWINDOW = 0x0040
+            user32.SetWindowPos(hwnd, HWND_TOPMOST,
+                                0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+            user32.SetWindowPos(hwnd, HWND_NOTOPMOST,
+                                0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+
+            # ── 2. AttachThreadInput trick ─────────────────────────
             foreground_hwnd = user32.GetForegroundWindow()
-            if not foreground_hwnd or foreground_hwnd == hwnd:
-                # Already foreground – nothing more to do.
-                return
+            if foreground_hwnd and foreground_hwnd != hwnd:
+                current_thread_id = kernel32.GetCurrentThreadId()
+                foreground_thread_id = user32.GetWindowThreadProcessId(
+                    foreground_hwnd, None
+                )
 
-            current_thread_id = kernel32.GetCurrentThreadId()
-            foreground_thread_id = user32.GetWindowThreadProcessId(
-                foreground_hwnd, None
-            )
+                attached = False
+                if foreground_thread_id and foreground_thread_id != current_thread_id:
+                    attached = bool(user32.AttachThreadInput(
+                        current_thread_id, foreground_thread_id, True
+                    ))
 
-            attached = False
-            if foreground_thread_id and foreground_thread_id != current_thread_id:
-                attached = bool(user32.AttachThreadInput(
-                    current_thread_id, foreground_thread_id, True
-                ))
-
-            try:
-                # If the window is minimised, restore it before activating.
-                SW_RESTORE = 9
-                if user32.IsIconic(hwnd):
-                    user32.ShowWindow(hwnd, SW_RESTORE)
-                user32.BringWindowToTop(hwnd)
-                user32.SetForegroundWindow(hwnd)
-                user32.SetFocus(hwnd)
-            finally:
-                if attached:
-                    user32.AttachThreadInput(
-                        current_thread_id, foreground_thread_id, False
-                    )
+                try:
+                    SW_RESTORE = 9
+                    if user32.IsIconic(hwnd):
+                        user32.ShowWindow(hwnd, SW_RESTORE)
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.SetFocus(hwnd)
+                finally:
+                    if attached:
+                        user32.AttachThreadInput(
+                            current_thread_id, foreground_thread_id, False
+                        )
         except Exception as exc:
             # Best-effort – a failure here just means the user has to
             # Alt+K manually, same as before this fix.
