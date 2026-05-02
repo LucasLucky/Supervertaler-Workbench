@@ -187,6 +187,17 @@ class FloatingAssistant(QWidget):
         self._last_left_pane_focus = None
         QApplication.instance().focusChanged.connect(self._on_focus_changed)
 
+        # When the user clicks Send in the chat, the LLM round-trip blocks
+        # the GUI thread for several seconds. Windows' Desktop Window Manager
+        # treats the frozen Tool window as "Not Responding" and creates a
+        # ghost copy; once the call returns, the original is sometimes left
+        # hidden or pushed behind Trados even though Qt thinks it's visible.
+        # Users then have to press Alt+K again just to see the response.
+        # Re-raise + re-activate the window when the LLM call finishes so
+        # the response is visible without an extra summon. Idempotent if the
+        # window is already on top.
+        self._backend.thinking_finished.connect(self._restore_to_foreground_after_llm)
+
 
     def _dismiss_to_tray(self):
         """Hide Sidekick completely – Tool-style windows have no taskbar
@@ -197,6 +208,31 @@ class FloatingAssistant(QWidget):
         Ctrl+Q toggle).
         """
         self.hide()
+
+    def _restore_to_foreground_after_llm(self):
+        """Pull Sidekick back to the foreground after the synchronous LLM
+        round-trip returns. Wired to ChatBackend.thinking_finished.
+
+        The synchronous send_ai_request blocks the GUI thread for several
+        seconds. Windows DWM treats the frozen Tool window as Not Responding
+        and creates a ghost copy; once the call returns, the original is
+        sometimes left hidden or pushed behind Trados even though Qt's
+        isVisible() still reports True. Users see Sidekick disappear "right
+        before the response arrives" and have to press Alt+K again just to
+        read it. Calling show() + raise_() + activateWindow() unconditionally
+        is harmless when the window is already on top, and reliably restores
+        it when DWM ghosted it.
+
+        Skipped when the user has explicitly dismissed Sidekick (isVisible()
+        returns False because we hid it via _dismiss_to_tray) – the user
+        clearly wanted it gone, so don't pop it back up just because a
+        background response arrived.
+        """
+        if not self.isVisible():
+            return
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _cycle_tab_forward(self):
         """Ctrl+Tab – advance to the next Sidekick tab, wrapping at the end."""
