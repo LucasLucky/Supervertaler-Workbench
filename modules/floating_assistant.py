@@ -15,6 +15,7 @@ so the user can immediately navigate with arrow keys and press Enter.
 """
 
 import json
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
@@ -250,9 +251,7 @@ class FloatingAssistant(QWidget):
         Windows DWM ghosted it during the freeze.
         """
         try:
-            self.show()
-            self.raise_()
-            self.activateWindow()
+            self._force_to_foreground_windows()
         except Exception:
             pass
 
@@ -285,9 +284,12 @@ class FloatingAssistant(QWidget):
         sometimes left hidden or pushed behind Trados even though Qt's
         isVisible() still reports True. Users see Sidekick disappear "right
         before the response arrives" and have to press Alt+K again just to
-        read it. Calling show() + raise_() + activateWindow() unconditionally
-        is harmless when the window is already on top, and reliably restores
-        it when DWM ghosted it.
+        read it.
+
+        Plain show() + raise_() + activateWindow() isn't always enough on
+        Windows because the foreground lock prevents a background process
+        from grabbing focus. We use _force_to_foreground_windows() instead,
+        which uses the AttachThreadInput trick to bypass the lock.
 
         Skipped when the user has explicitly dismissed Sidekick (isVisible()
         returns False because we hid it via _dismiss_to_tray) – the user
@@ -296,9 +298,80 @@ class FloatingAssistant(QWidget):
         """
         if not self.isVisible():
             return
+        self._force_to_foreground_windows()
+
+    def _force_to_foreground_windows(self):
+        """Bring Sidekick to the front, bypassing the Windows foreground
+        lock when necessary.
+
+        Plain show() + raise_() + activateWindow() doesn't reliably bring a
+        window forward on Windows when the calling process isn't the
+        current foreground app – this is the ``foreground lock''. The
+        standard workaround is to attach the calling thread's input queue
+        to the foreground thread's input queue for the duration of the
+        SetForegroundWindow / SetFocus calls, which makes Windows treat
+        them as sharing input and therefore lifts the lock. We detach
+        immediately afterwards so we don't actually share input with the
+        other app long-term.
+
+        Falls back to plain show()/raise_()/activateWindow() on platforms
+        other than Windows or if the ctypes calls fail – on those paths
+        Qt's own activation is usually sufficient anyway.
+        """
+        # Always start by getting the window into a Qt-visible state.
         self.show()
         self.raise_()
         self.activateWindow()
+
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+
+            # Resolve our own HWND – on Windows, QWidget.winId() returns
+            # the native window handle as an int.
+            hwnd = int(self.winId())
+            if not hwnd:
+                return
+
+            foreground_hwnd = user32.GetForegroundWindow()
+            if not foreground_hwnd or foreground_hwnd == hwnd:
+                # Already foreground – nothing more to do.
+                return
+
+            current_thread_id = kernel32.GetCurrentThreadId()
+            foreground_thread_id = user32.GetWindowThreadProcessId(
+                foreground_hwnd, None
+            )
+
+            attached = False
+            if foreground_thread_id and foreground_thread_id != current_thread_id:
+                attached = bool(user32.AttachThreadInput(
+                    current_thread_id, foreground_thread_id, True
+                ))
+
+            try:
+                # If the window is minimised, restore it before activating.
+                SW_RESTORE = 9
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, SW_RESTORE)
+                user32.BringWindowToTop(hwnd)
+                user32.SetForegroundWindow(hwnd)
+                user32.SetFocus(hwnd)
+            finally:
+                if attached:
+                    user32.AttachThreadInput(
+                        current_thread_id, foreground_thread_id, False
+                    )
+        except Exception as exc:
+            # Best-effort – a failure here just means the user has to
+            # Alt+K manually, same as before this fix.
+            print(f"[FloatingAssistant] _force_to_foreground_windows failed: {exc}")
 
     def _cycle_tab_forward(self):
         """Ctrl+Tab – advance to the next Sidekick tab, wrapping at the end."""
