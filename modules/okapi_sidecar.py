@@ -60,6 +60,13 @@ class OkapiSidecar:
     STARTUP_TIMEOUT = 20  # seconds
     SHUTDOWN_TIMEOUT = 5  # seconds
 
+    # Sidecar version this client expects to talk to. If a sidecar from
+    # a previous session is still running on the port with a different
+    # version, start() will ask it to shut down and spawn a fresh one.
+    # Bump this whenever the sidecar JAR is rebuilt with meaningful
+    # changes (keep it in sync with pom.xml / App.java).
+    EXPECTED_VERSION = "0.1.6"
+
     def __init__(self, port: int = DEFAULT_PORT,
                  sidecar_dir: Optional[str] = None):
         """
@@ -95,8 +102,37 @@ class OkapiSidecar:
 
         # Check if already running (e.g. started by a previous session)
         if self.is_running():
-            logger.info("Okapi sidecar already running on port %d", self.port)
-            return True
+            running_version = self.get_version()
+            if running_version == self.EXPECTED_VERSION:
+                logger.info(
+                    "Okapi sidecar v%s already running on port %d – reusing",
+                    running_version, self.port,
+                )
+                return True
+
+            # Version mismatch – almost certainly a stale sidecar from
+            # before a JAR rebuild. Ask it to exit and spawn a fresh one
+            # so the new bytecode actually takes effect.
+            logger.info(
+                "Sidecar version mismatch on port %d (running=%s, expected=%s)"
+                " – restarting", self.port,
+                running_version or "unknown", self.EXPECTED_VERSION,
+            )
+            self._stop_foreign_sidecar()
+
+            # If we couldn't free the port, fall back to using whatever's
+            # there. We deliberately don't loop – if the JAR on disk also
+            # reports the wrong version (e.g. rebuild not run yet), this
+            # avoids thrashing kill/respawn forever.
+            if self.is_running():
+                logger.warning(
+                    "Couldn't restart stale sidecar on port %d – continuing"
+                    " with the existing process. Rebuild the sidecar JAR"
+                    " (cd okapi-sidecar && bash build.sh) if you expected"
+                    " new behaviour.", self.port,
+                )
+                return True
+            # Otherwise fall through to the spawn block.
 
         # Find the JAR
         jar_path = self.sidecar_dir / "okapi-sidecar.jar"
@@ -154,6 +190,17 @@ class OkapiSidecar:
 
         logger.info("Okapi sidecar started on port %d (PID %d)",
                      self.port, self._process.pid)
+
+        # Sanity check: confirm the freshly spawned sidecar matches the
+        # version this Python client expects. If not, the JAR on disk is
+        # out of date and the developer needs to rebuild it.
+        actual_version = self.get_version()
+        if actual_version and actual_version != self.EXPECTED_VERSION:
+            logger.warning(
+                "Sidecar JAR reports v%s but client expects v%s – rebuild"
+                " required (cd okapi-sidecar && bash build.sh)",
+                actual_version, self.EXPECTED_VERSION,
+            )
         return True
 
     def stop(self):
@@ -214,6 +261,99 @@ class OkapiSidecar:
                 return resp.json().get("version")
         except Exception:
             pass
+        return None
+
+    # ═══════════════════════════════════════════════════════════════
+    #  Stale-sidecar handling
+    # ═══════════════════════════════════════════════════════════════
+
+    def _stop_foreign_sidecar(self) -> None:
+        """Stop a sidecar we did not spawn (typically a stale JVM left
+        running from a previous Supervertaler session, holding the port
+        with an outdated JAR loaded into memory).
+
+        Tries the polite POST /shutdown endpoint first; falls back to
+        finding and killing whatever process is listening on the port.
+        Returns once the port is free or after a few seconds of waiting.
+        """
+        # 1) Try polite shutdown (only present on sidecars >= 0.1.1).
+        try:
+            requests.post(f"{self.base_url}/shutdown", timeout=2)
+        except Exception:
+            pass
+
+        # 2) Wait for the port to free up.
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if not self.is_running():
+                logger.info("Stale sidecar exited cleanly")
+                return
+            time.sleep(0.1)
+
+        # 3) Force-kill the process holding the port (older sidecars
+        #    that don't have /shutdown end up here).
+        pid = self._find_port_pid(self.port)
+        if pid is None:
+            logger.warning(
+                "Couldn't identify the process holding port %d – "
+                "the new sidecar may fail to start", self.port,
+            )
+            return
+
+        logger.info("Killing stale sidecar process (PID %d)", pid)
+        try:
+            if platform.system() == "Windows":
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    capture_output=True, timeout=5,
+                )
+            else:
+                import signal
+                os.kill(pid, signal.SIGKILL)
+        except Exception as e:
+            logger.warning("Failed to kill PID %d: %s", pid, e)
+            return
+
+        # Give the OS a moment to release the socket.
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            if not self.is_running():
+                return
+            time.sleep(0.1)
+
+    @staticmethod
+    def _find_port_pid(port: int) -> Optional[int]:
+        """Return the PID of the process listening on TCP `port`, or None."""
+        try:
+            if platform.system() == "Windows":
+                # netstat -ano lists local addr, foreign addr, state, PID.
+                # Look for LISTENING rows on our port.
+                out = subprocess.run(
+                    ["netstat", "-ano", "-p", "TCP"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout
+                needle = f":{port}"
+                for line in out.splitlines():
+                    if needle not in line or "LISTENING" not in line:
+                        continue
+                    parts = line.split()
+                    # The local-address column ends in ":<port>" – verify
+                    # we matched on local, not foreign or just a substring.
+                    if not any(p.endswith(needle) for p in parts):
+                        continue
+                    try:
+                        return int(parts[-1])
+                    except ValueError:
+                        continue
+            else:
+                out = subprocess.run(
+                    ["lsof", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                if out:
+                    return int(out.splitlines()[0])
+        except Exception as e:
+            logger.debug("Port-PID lookup failed: %s", e)
         return None
 
     # Context manager support

@@ -12410,11 +12410,28 @@ class SupervertalerQt(QMainWindow):
                 # Copy original document and replace text - preserves all formatting
                 self.log(f"Using original document as template: {os.path.basename(original_path)}")
                 shutil.copy2(original_path, file_path)
-                
+
                 doc = Document(file_path)
-                
+
+                # Okapi-imported segments wrap text in placeholder tags
+                # (<hyperlink1>, <tags2/>, <g1>, <bpt3>, etc.). When the
+                # Okapi merge endpoint isn't available we have to strip
+                # those too, otherwise nothing matches against python-docx
+                # paragraph text and the export comes out fully untranslated.
+                _is_okapi_project = (
+                    getattr(self.current_project, 'import_engine', '') == 'okapi'
+                )
+
                 # Helper function to strip all formatting tags (for matching only)
                 import re
+                # Match Okapi placeholder tags like <hyperlink1>, <tags2/>, <g3>,
+                # <bpt2>, <ept2>, <ph1/> – any tag name EXCEPT the formatting
+                # tags that apply_formatted_text_to_paragraph knows how to render.
+                _OKAPI_TAG_RE = re.compile(
+                    r'</?(?!(?:b|i|u|bi|sub|sup|li|li-b|li-o)\b)'
+                    r'[A-Za-z][A-Za-z0-9_-]*\s*/?>'
+                )
+
                 def strip_all_tags(text):
                     """Remove all formatting and list tags from text"""
                     text = re.sub(r'</?li-[bo]>', '', text)  # <li-b>, </li-b>, <li-o>, </li-o>
@@ -12423,6 +12440,9 @@ class SupervertalerQt(QMainWindow):
                     text = re.sub(r'</?bi>', '', text)       # <bi>, </bi>
                     text = re.sub(r'</?sub>', '', text)      # <sub>, </sub>
                     text = re.sub(r'</?sup>', '', text)      # <sup>, </sup>
+                    if _is_okapi_project:
+                        # Generic strip for Okapi placeholder tags
+                        text = _OKAPI_TAG_RE.sub('', text)
                     return text.strip()
 
                 def clean_special_chars(text):
@@ -12532,8 +12552,12 @@ class SupervertalerQt(QMainWindow):
                     # Strip tags from source for matching against original DOCX
                     source_clean = strip_all_tags(seg.source) if seg.source else ""
                     source_clean = clean_special_chars(source_clean)
-                    # Keep raw target text WITH tags for formatting
+                    # Keep raw target text WITH formatting tags (b/i/u/sub/sup)
+                    # but strip Okapi placeholder tags – apply_formatted_text_to_paragraph
+                    # would otherwise insert <hyperlink1> etc. as literal text.
                     target_raw = seg.target.strip() if seg.target and seg.target.strip() else seg.source
+                    if _is_okapi_project and target_raw:
+                        target_raw = _OKAPI_TAG_RE.sub('', target_raw)
                     if source_clean and target_raw:
                         text_map[source_clean] = target_raw
                 
@@ -25280,7 +25304,29 @@ class SupervertalerQt(QMainWindow):
     
     def load_project(self, file_path: str):
         """Load project from file"""
+        # ── Progress dialog (indeterminate, modal) ────────────────────
+        # Loading large projects (1000+ segments) takes seconds because
+        # the grid build runs on the main thread. The dialog gives the
+        # user visible feedback and prevents the OS marking the window
+        # "Not Responding".
+        from PyQt6.QtWidgets import QProgressDialog
+        progress = QProgressDialog(
+            f"Opening {os.path.basename(file_path)}…",
+            None,  # no cancel button
+            0, 0, self
+        )
+        progress.setWindowTitle("Opening project")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        QApplication.processEvents()
+
         try:
+            progress.setLabelText("Reading project file…")
+            QApplication.processEvents()
+
             # Try UTF-8 first, fall back to latin-1 if it fails
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -25439,7 +25485,20 @@ class SupervertalerQt(QMainWindow):
                     self.log(f"⚠️ SDLXLIFF source file(s) not found: {', '.join(missing)}")
                     self.sdlxliff_handler = None
 
-            self.load_segments_to_grid()
+            seg_count = len(self.current_project.segments) if self.current_project else 0
+            progress.setLabelText(f"Loading {seg_count:,} segments into grid…")
+            QApplication.processEvents()
+
+            def _grid_progress(done, total):
+                progress.setLabelText(
+                    f"Loading segments into grid… ({done:,} / {total:,})"
+                )
+                QApplication.processEvents()
+
+            self.load_segments_to_grid(progress_callback=_grid_progress)
+
+            progress.setLabelText("Initialising translation memory…")
+            QApplication.processEvents()
             self.initialize_tm_database()  # Initialize TM for this project
             self.update_window_title()
             self.add_to_recent_projects(file_path)
@@ -25652,7 +25711,7 @@ class SupervertalerQt(QMainWindow):
             if len(self.current_project.segments) > 0:
                 prefetch_ids = [seg.id for seg in self.current_project.segments[:50]]
                 self._start_prefetch_worker(prefetch_ids)
-            
+
         except UnicodeDecodeError as e:
             error_msg = (
                 f"Failed to load project - file encoding error:\n\n"
@@ -25666,6 +25725,11 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load project:\n{str(e)}")
             self.log(f"✗ Error loading project: {e}")
+        finally:
+            try:
+                progress.close()
+            except Exception:
+                pass
 
     def _build_termbase_index(self):
         """
@@ -27228,145 +27292,165 @@ class SupervertalerQt(QMainWindow):
 
             self.log(f"Importing: {os.path.basename(file_path)}")
 
-            # ── Determine import engine ───────────────────────────────
-            # If Okapi sidecar is running, let the user choose which
-            # import engine to use.  The Okapi path is experimental and
-            # currently lacks formatting-tag support.
-            used_okapi = False
+            # ── Okapi-only import ─────────────────────────────────────
+            # DOCX import always goes through the Okapi sidecar – the old
+            # engine-choice dialog is gone. If the sidecar isn't available
+            # (Java missing, port conflict, sidecar startup failure, …)
+            # we hard-error with a clear message rather than silently
+            # falling back to the python-docx path, which can't produce
+            # the okapi_tu_id metadata the merge-based export needs.
+            if not (self.okapi_sidecar and self.okapi_sidecar.is_running()):
+                self.log("✗ Okapi sidecar is not running – DOCX import unavailable")
+                QMessageBox.critical(
+                    self,
+                    "Okapi sidecar required",
+                    "DOCX import requires the Okapi sidecar, which is not "
+                    "currently running.\n\n"
+                    "The sidecar is a small local Java service that handles "
+                    "document extraction. It usually starts automatically "
+                    "when Supervertaler launches.\n\n"
+                    "What to try:\n"
+                    "• Restart Supervertaler.\n"
+                    "• Check that Java is available (the bundled JRE lives "
+                    "next to the application).\n"
+                    "• Check the diagnostic log for errors mentioning "
+                    "\"okapi sidecar\".\n\n"
+                    "If the problem persists, please report it."
+                )
+                return
+
             segmented = None
-            use_okapi_engine = False
 
-            if self.okapi_sidecar and self.okapi_sidecar.is_running():
-                engine_dialog = QMessageBox(self)
-                engine_dialog.setWindowTitle("Choose Import Engine")
-                engine_dialog.setText(
-                    f"Two import engines are available for:\n"
-                    f"{os.path.basename(file_path)}"
+            # ── Progress dialog (indeterminate, modal) ────────────────
+            # Covers the whole import: extraction, segmentation, project
+            # build, and grid load. Large DOCX files via the Okapi route
+            # can take a while – this gives the user visible feedback.
+            from PyQt6.QtWidgets import QProgressDialog
+            progress = QProgressDialog(
+                f"Importing {os.path.basename(file_path)}…",
+                None,  # no cancel button – extraction can't be safely interrupted
+                0, 0, self
+            )
+            progress.setWindowTitle("Importing document")
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setAutoClose(False)
+            progress.setAutoReset(False)
+            progress.show()
+            QApplication.processEvents()
+
+            try:
+                # Detect source language from current settings
+                src_lang = getattr(self, '_last_import_source_lang', 'en') or 'en'
+                trg_lang = getattr(self, '_last_import_target_lang', 'en') or 'en'
+
+                progress.setLabelText(
+                    f"Extracting with Okapi ({src_lang.upper()} → {trg_lang.upper()})…\n"
+                    f"This may take a while for large documents."
                 )
-                engine_dialog.setInformativeText(
-                    "<b>Standard</b><br>"
-                    "The built-in import engine. Preserves formatting tags "
-                    "(bold, italic, lists).<br><br>"
-                    "<b>Okapi Framework</b><br>"
-                    "Industrial-strength extraction via the Okapi sidecar. "
-                    "Better paragraph detection, SRX segmentation, and "
-                    "inline formatting tags. Supports faithful round-trip "
-                    "export back to the original document format."
-                )
-                standard_btn = engine_dialog.addButton(
-                    "Standard", QMessageBox.ButtonRole.AcceptRole)
-                okapi_btn = engine_dialog.addButton(
-                    "Okapi", QMessageBox.ButtonRole.ActionRole)
-                cancel_btn = engine_dialog.addButton(QMessageBox.StandardButton.Cancel)
+                QApplication.processEvents()
 
-                engine_dialog.exec()
-                clicked = engine_dialog.clickedButton()
-                if clicked == cancel_btn:
-                    return
-                use_okapi_engine = (clicked == okapi_btn)
+                self.log(f"🔧 Extracting via Okapi sidecar ({src_lang} → {trg_lang})...")
 
-            if use_okapi_engine:
+                # Run extraction on a worker thread and pump the Qt event
+                # loop on the main thread so the dialog stays animated and
+                # the OS doesn't mark the window "Not Responding".
+                import threading, time as _time
+                _result_holder: dict = {}
+                _exc_holder: dict = {}
+
+                def _okapi_worker():
+                    try:
+                        _result_holder['v'] = self.okapi_sidecar.extract(
+                            file_path,
+                            source_lang=src_lang,
+                            target_lang=trg_lang,
+                            segment=True,
+                        )
+                    except Exception as _e:
+                        _exc_holder['e'] = _e
+
+                _t = threading.Thread(target=_okapi_worker, daemon=True)
+                _t.start()
+                _start = _time.monotonic()
+                while _t.is_alive():
+                    QApplication.processEvents()
+                    _t.join(0.05)
+                    _elapsed = int(_time.monotonic() - _start)
+                    progress.setLabelText(
+                        f"Extracting with Okapi ({src_lang.upper()} → {trg_lang.upper()})…\n"
+                        f"Working on the document – {_elapsed}s elapsed."
+                    )
+
+                if 'e' in _exc_holder:
+                    raise _exc_holder['e']
+                result = _result_holder['v']
+
+                # Convert Okapi segments → (para_id, text) tuples
+                # Filter out non-body content (headers, footers, textbox
+                # names) and use formatting tags when available.
+                tu_id_to_para = {}
+                next_para = 0
+                segmented = []
+                skipped_count = 0
+
+                for seg in result.get('segments', []):
+                    tu_id = seg.get('id', '')
+                    sub_doc = (seg.get('subDocument') or '').lower()
+                    text = seg.get('source', '').strip()
+                    tagged_text = (seg.get('sourceWithTags') or '').strip()
+
+                    # ── Filter: skip header/footer content ─────────
+                    # Okapi names subdocuments after the XML part
+                    # (e.g. "document.xml", "header1.xml", "footer2.xml").
+                    # Keep everything except headers and footers.
+                    if sub_doc.startswith(('header', 'footer')):
+                        skipped_count += 1
+                        continue
+
+                    # Skip empty segments
+                    if not text:
+                        skipped_count += 1
+                        continue
+
+                    # Assign paragraph IDs (same TU = same paragraph)
+                    if tu_id not in tu_id_to_para:
+                        tu_id_to_para[tu_id] = next_para
+                        next_para += 1
+                    para_id = tu_id_to_para[tu_id]
+
+                    # Use tagged text (with <b>/<i> etc.) if available,
+                    # otherwise use plain text.
+                    display_text = tagged_text if tagged_text else text
+                    segmented.append((para_id, display_text, tu_id, seg.get('segmentIndex', 0)))
+
+                self.log(f"✅ Okapi extracted {len(segmented)} segments "
+                         f"from {result.get('textUnitCount', '?')} text units "
+                         f"(filter: {result.get('filterUsed', '?')}"
+                         f"{f', skipped {skipped_count} non-body' if skipped_count else ''})")
+
+            except Exception as e:
+                # Hard-fail – the python-docx fallback is gone.
                 try:
-                    # Detect source language from current settings
-                    src_lang = getattr(self, '_last_import_source_lang', 'en') or 'en'
-                    trg_lang = getattr(self, '_last_import_target_lang', 'en') or 'en'
-
-                    self.log(f"🔧 Extracting via Okapi sidecar ({src_lang} → {trg_lang})...")
-                    result = self.okapi_sidecar.extract(
-                        file_path,
-                        source_lang=src_lang,
-                        target_lang=trg_lang,
-                        segment=True
-                    )
-
-                    # Convert Okapi segments → (para_id, text) tuples
-                    # Filter out non-body content (headers, footers, textbox
-                    # names) and use formatting tags when available.
-                    tu_id_to_para = {}
-                    next_para = 0
-                    segmented = []
-                    skipped_count = 0
-
-                    for seg in result.get('segments', []):
-                        tu_id = seg.get('id', '')
-                        sub_doc = (seg.get('subDocument') or '').lower()
-                        text = seg.get('source', '').strip()
-                        tagged_text = (seg.get('sourceWithTags') or '').strip()
-
-                        # ── Filter: skip header/footer content ─────────
-                        # Okapi names subdocuments after the XML part
-                        # (e.g. "document.xml", "header1.xml", "footer2.xml").
-                        # Keep everything except headers and footers.
-                        if sub_doc.startswith(('header', 'footer')):
-                            skipped_count += 1
-                            continue
-
-                        # Skip empty segments
-                        if not text:
-                            skipped_count += 1
-                            continue
-
-                        # Assign paragraph IDs (same TU = same paragraph)
-                        if tu_id not in tu_id_to_para:
-                            tu_id_to_para[tu_id] = next_para
-                            next_para += 1
-                        para_id = tu_id_to_para[tu_id]
-
-                        # Use tagged text (with <b>/<i> etc.) if available,
-                        # otherwise use plain text.
-                        display_text = tagged_text if tagged_text else text
-                        segmented.append((para_id, display_text, tu_id, seg.get('segmentIndex', 0)))
-
-                    used_okapi = True
-                    self.log(f"✅ Okapi extracted {len(segmented)} segments "
-                             f"from {result.get('textUnitCount', '?')} text units "
-                             f"(filter: {result.get('filterUsed', '?')}"
-                             f"{f', skipped {skipped_count} non-body' if skipped_count else ''})")
-
-                except Exception as e:
-                    self.log(f"⚠️ Okapi extraction failed, falling back to built-in: {e}")
-                    segmented = None
-
-            # ── Standard: built-in python-docx handler ────────────────
-            if segmented is None:
-                if not hasattr(self, 'docx_handler'):
-                    from modules.docx_handler import DOCXHandler
-                    self.docx_handler = DOCXHandler()
-
-                paragraphs = self.docx_handler.import_docx(file_path)
-
-                # Word-count safety check (only for built-in handler)
-                raw_wc = self.docx_handler.get_raw_word_count()
-                imported_wc = self.docx_handler.get_imported_word_count(paragraphs)
-                wc_diff = raw_wc - imported_wc
-                wc_pct = (abs(wc_diff) / raw_wc * 100) if raw_wc > 0 else 0
-                self.log(f"📊 Word count check: DOCX={raw_wc}, imported={imported_wc} "
-                         f"(Δ {wc_diff:+d}, {wc_pct:.1f}%)")
-                if wc_pct > 5:
-                    QMessageBox.warning(
-                        self,
-                        "Import Word Count Mismatch",
-                        f"⚠️ The imported text may be incomplete.\n\n"
-                        f"Word count in DOCX file: {raw_wc:,}\n"
-                        f"Word count after import: {imported_wc:,}\n"
-                        f"Difference: {abs(wc_diff):,} words ({wc_pct:.1f}%)\n\n"
-                        f"If the difference is large, some text may have been "
-                        f"lost during import. Please verify the imported segments."
-                    )
-
-                # Segment paragraphs
-                self.log("Segmenting text...")
-                if hasattr(self, 'segmenter'):
-                    segmented = self.segmenter.segment_paragraphs(paragraphs)
-                else:
-                    from modules.simple_segmenter import SimpleSegmenter
-                    segmenter = SimpleSegmenter()
-                    segmented = segmenter.segment_paragraphs(paragraphs)
-                # Normalize to 4-tuples (no Okapi metadata for standard engine)
-                segmented = [(pid, text, "", -1) for pid, text in segmented]
+                    progress.close()
+                except Exception:
+                    pass
+                self.log(f"✗ Okapi extraction failed: {e}")
+                QMessageBox.critical(
+                    self,
+                    "DOCX import failed",
+                    f"Okapi extraction failed for:\n"
+                    f"{os.path.basename(file_path)}\n\n"
+                    f"Details: {e}\n\n"
+                    "Check the diagnostic log for the full traceback."
+                )
+                return
 
             self.original_docx = file_path
-            
+
+            progress.setLabelText("Building project…")
+            QApplication.processEvents()
+
             # Create new project with the imported segments
             from dataclasses import dataclass
             from typing import List, Dict, Any, Optional
@@ -27391,11 +27475,12 @@ class SupervertalerQt(QMainWindow):
             # Convert segments
             imported_segments = []
             for seg_id, (para_id, text, okapi_tu_id, okapi_seg_idx) in enumerate(segmented, 1):
-                # Get paragraph info if available (only from built-in handler)
+                # Okapi import: no per-paragraph metadata (table info, styles
+                # like Heading1) is currently piped through. Style detection
+                # could be added later by extending the sidecar /extract
+                # response with a per-segment style hint.
                 para_info = None
-                if not used_okapi and hasattr(self, 'docx_handler') and hasattr(self.docx_handler, '_get_para_info'):
-                    para_info = self.docx_handler._get_para_info(para_id)
-                
+
                 is_table = False
                 table_info = None
                 style = "Normal"
@@ -27412,10 +27497,10 @@ class SupervertalerQt(QMainWindow):
                             getattr(para_info, 'cell_index', 0)
                         )
                 
-                # For Okapi imports, set type to "¶" so the preview
-                # renderer recognises paragraph boundaries (it checks
-                # paragraph_id changes only when type is "¶" or "para").
-                seg_type = "¶" if used_okapi else "#"
+                # Set type to "¶" so the preview renderer recognises
+                # paragraph boundaries (it checks paragraph_id changes
+                # only when type is "¶" or "para").
+                seg_type = "¶"
 
                 segment = ImportedSegment(
                     id=seg_id,
@@ -27466,9 +27551,9 @@ class SupervertalerQt(QMainWindow):
                 segments=segments
             )
 
-            # Tag project with import engine for Okapi round-trip export
-            if used_okapi:
-                project.import_engine = "okapi"
+            # Tag project as Okapi-imported – the export path branches on
+            # this to call the sidecar's /merge endpoint.
+            project.import_engine = "okapi"
 
             # If re-importing, restore the preserved project ID and settings
             if reimport_mode and preserved_project_id is not None:
@@ -27491,7 +27576,16 @@ class SupervertalerQt(QMainWindow):
             # This prevents old segments from being saved instead of new ones
             self._original_segment_order = self.current_project.segments.copy()
 
-            self.load_segments_to_grid()
+            progress.setLabelText(f"Loading {len(segments):,} segments into grid…")
+            QApplication.processEvents()
+
+            def _grid_progress(done, total):
+                progress.setLabelText(
+                    f"Loading segments into grid… ({done:,} / {total:,})"
+                )
+                QApplication.processEvents()
+
+            self.load_segments_to_grid(progress_callback=_grid_progress)
 
             # Initialize TM for this project
             self.initialize_tm_database()
@@ -27511,7 +27605,7 @@ class SupervertalerQt(QMainWindow):
             self.auto_resize_rows()
 
             # Update status
-            para_count = len(paragraphs) if not used_okapi else len(set(s[0] for s in segmented))
+            para_count = len(set(s[0] for s in segmented))
             self.log(f"✓ Loaded {len(segments)} segments from {para_count} paragraphs")
             self.log(f"📍 Project language pair: {project.source_lang.upper()} → {project.target_lang.upper()}")
             self.update_window_title()  # Update window title to show project is loaded
@@ -27527,19 +27621,25 @@ class SupervertalerQt(QMainWindow):
             # Refresh AI Assistant context
             if hasattr(self, 'prompt_manager_qt'):
                 self.prompt_manager_qt.refresh_context()
-            
+
+            progress.close()
+
             QMessageBox.information(
-                self, 
-                "Import Complete", 
+                self,
+                "Import Complete",
                 f"Successfully imported {len(segments)} segments from:\n{os.path.basename(file_path)}\n\n"
                 f"📍 Language pair: {source_lang.upper()} → {target_lang.upper()}"
             )
-            
+
         except Exception as e:
+            try:
+                progress.close()
+            except Exception:
+                pass
             self.log(f"✗ Import failed: {str(e)}")
             QMessageBox.critical(
-                self, 
-                "Import Error", 
+                self,
+                "Import Error",
                 f"Failed to import DOCX:\n\n{str(e)}"
             )
     
@@ -29133,10 +29233,35 @@ class SupervertalerQt(QMainWindow):
         """
         from datetime import datetime
         import shutil
-        
+
         self.log(f"📁 Importing multi-file project from: {os.path.basename(folder_path)}")
         self.log(f"   Files to import: {len(files)}")
-        
+
+        # ── Okapi sidecar pre-flight ──────────────────────────────────
+        # DOCX files in this batch always go through the Okapi sidecar.
+        # If any DOCX is selected we need the sidecar running before the
+        # loop starts; failing fast here is much friendlier than failing
+        # halfway through importing a multi-file project.
+        has_docx = any(f.get('type') == 'docx' for f in files)
+        if has_docx and not (self.okapi_sidecar and self.okapi_sidecar.is_running()):
+            self.log("✗ Okapi sidecar is not running – multi-file DOCX import unavailable")
+            QMessageBox.critical(
+                self,
+                "Okapi sidecar required",
+                "Multi-file import includes DOCX files, which require the "
+                "Okapi sidecar. The sidecar is not currently running.\n\n"
+                "The sidecar is a small local Java service that handles "
+                "document extraction. It usually starts automatically "
+                "when Supervertaler launches.\n\n"
+                "What to try:\n"
+                "• Restart Supervertaler.\n"
+                "• Check that Java is available (the bundled JRE lives "
+                "next to the application).\n"
+                "• Check the diagnostic log for errors mentioning "
+                "\"okapi sidecar\"."
+            )
+            return
+
         # Create _source_files folder to store copies of original files
         # This ensures we always have the originals for format-preserving export
         source_backup_folder = os.path.join(folder_path, "_source_files")
@@ -29146,12 +29271,7 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"   ⚠️ Could not create backup folder: {str(e)}")
             source_backup_folder = None
-        
-        # Initialize handlers
-        if not hasattr(self, 'docx_handler'):
-            from modules.docx_handler import DOCXHandler
-            self.docx_handler = DOCXHandler()
-        
+
         if not hasattr(self, 'segmenter'):
             from modules.simple_segmenter import SimpleSegmenter
             self.segmenter = SimpleSegmenter()
@@ -29241,23 +29361,65 @@ class SupervertalerQt(QMainWindow):
                             current_segment_id += 1
                 
                 elif file_type == 'docx':
-                    # Import DOCX file
-                    paragraphs = self.docx_handler.import_docx(file_path)
-                    segmented = self.segmenter.segment_paragraphs(paragraphs)
-                    
-                    for para_id, text in segmented:
-                        if text.strip():
-                            segment = Segment(
-                                id=current_segment_id,
-                                source=text,
-                                target="",
-                                status=DEFAULT_STATUS.key,
-                                paragraph_id=para_id if para_id else 0,
-                                file_id=file_id,
-                                file_name=file_name
-                            )
-                            file_segments.append(segment)
-                            current_segment_id += 1
+                    # ── Okapi extraction ─────────────────────────────
+                    # Calls the sidecar's /extract endpoint and converts
+                    # the result into Segment objects that carry the
+                    # okapi_tu_id / okapi_segment_index metadata required
+                    # by the round-trip /merge endpoint at export time.
+                    self.log(f"      🔧 Extracting via Okapi sidecar…")
+                    result = self.okapi_sidecar.extract(
+                        file_path,
+                        source_lang=source_lang,
+                        target_lang=target_lang,
+                        segment=True,
+                    )
+
+                    tu_id_to_para = {}
+                    next_para = 0
+                    skipped_count = 0
+
+                    for seg in result.get('segments', []):
+                        tu_id = seg.get('id', '')
+                        sub_doc = (seg.get('subDocument') or '').lower()
+                        text = seg.get('source', '').strip()
+                        tagged_text = (seg.get('sourceWithTags') or '').strip()
+
+                        # Skip header/footer subdocuments and empty segs.
+                        if sub_doc.startswith(('header', 'footer')):
+                            skipped_count += 1
+                            continue
+                        if not text:
+                            skipped_count += 1
+                            continue
+
+                        # Same-TU segments share a paragraph id.
+                        if tu_id not in tu_id_to_para:
+                            tu_id_to_para[tu_id] = next_para
+                            next_para += 1
+                        para_id = tu_id_to_para[tu_id]
+
+                        # Prefer the tagged form so inline formatting is
+                        # visible in the editor (matches single-file path).
+                        display_text = tagged_text if tagged_text else text
+
+                        segment = Segment(
+                            id=current_segment_id,
+                            source=display_text,
+                            target="",
+                            status=DEFAULT_STATUS.key,
+                            type="¶",
+                            paragraph_id=para_id,
+                            file_id=file_id,
+                            file_name=file_name,
+                            okapi_tu_id=tu_id,
+                            okapi_segment_index=seg.get('segmentIndex', 0),
+                        )
+                        file_segments.append(segment)
+                        current_segment_id += 1
+
+                    self.log(f"      ✅ Okapi: {len(file_segments)} segments "
+                             f"from {result.get('textUnitCount', '?')} TUs"
+                             f"{f', skipped {skipped_count} non-body' if skipped_count else ''}")
                 
                 # Track file metadata - use backup path if available, otherwise original
                 stored_path = backup_path if backup_path and os.path.exists(backup_path) else file_path
@@ -29299,7 +29461,14 @@ class SupervertalerQt(QMainWindow):
             is_multifile=True,
             files=file_metadata
         )
-        
+
+        # Tag the project as Okapi-imported when at least one DOCX was
+        # imported. Mixed projects (DOCX + TXT/MD) still get the tag –
+        # the export path routes per-file by file_type, so TXT/MD files
+        # use their normal text-based export.
+        if has_docx:
+            project.import_engine = "okapi"
+
         # Set as current project
         self.current_project = project
         self.current_document_path = folder_path
@@ -29818,9 +29987,13 @@ class SupervertalerQt(QMainWindow):
     def _export_file_as_docx(self, segments: list, output_path: str, original_path: str = None):
         """
         Export segments to a DOCX file, preserving original formatting if original file exists.
-        
-        Uses the DOCXHandler to properly match paragraphs and preserve formatting.
-        
+
+        For Okapi-imported projects (the standard path for new projects)
+        this calls the sidecar's /merge endpoint, which gives a faithful
+        round-trip via the Okapi Framework filter writers. For legacy
+        standard-imported projects we fall back to the python-docx
+        DOCXHandler, which preserves formatting by paragraph-text match.
+
         Args:
             segments: List of Segment objects for this file
             output_path: Path to save the exported file
@@ -29829,6 +30002,58 @@ class SupervertalerQt(QMainWindow):
         from docx import Document
         from docx.shared import Pt
         import re
+
+        # ── Okapi merge path ──────────────────────────────────────────
+        # If this project was imported via Okapi AND we have the original
+        # file, route through the sidecar's /merge endpoint. The segments
+        # carry okapi_tu_id / okapi_segment_index that the merge needs.
+        is_okapi_project = (
+            self.current_project is not None
+            and getattr(self.current_project, 'import_engine', '') == 'okapi'
+        )
+        if (is_okapi_project and original_path and os.path.exists(original_path)
+                and self.okapi_sidecar and self.okapi_sidecar.is_running()
+                and any(getattr(s, 'okapi_tu_id', '') for s in segments)):
+            try:
+                translations = []
+                skipped = 0
+                for seg in segments:
+                    tu_id = getattr(seg, 'okapi_tu_id', '') or ''
+                    seg_idx = getattr(seg, 'okapi_segment_index', -1)
+                    if not tu_id or seg_idx is None or seg_idx < 0:
+                        skipped += 1
+                        continue
+                    translation = (seg.target.strip()
+                                   if seg.target and seg.target.strip()
+                                   else seg.source)
+                    # Strip Supervertaler-only tags Okapi wouldn't know.
+                    translation = re.sub(r'</?(?:bi|li-[bo]|li)>', '',
+                                         translation)
+                    translations.append({
+                        'id': tu_id,
+                        'segmentIndex': seg_idx,
+                        'translation': translation,
+                    })
+
+                if translations:
+                    src_lang = self.current_project.source_lang
+                    trg_lang = self.current_project.target_lang
+                    self.log(f"      🔧 Okapi merge ({len(translations)} segments)…")
+                    self.okapi_sidecar.merge(
+                        original_path=original_path,
+                        translations=translations,
+                        source_lang=src_lang,
+                        target_lang=trg_lang,
+                        output_path=output_path,
+                    )
+                    if skipped:
+                        self.log(f"      ⚠️ {skipped} segments without Okapi metadata "
+                                 f"used source text in merge")
+                    return
+                # else: no segments had Okapi metadata – fall through.
+            except Exception as e:
+                self.log(f"      ⚠️ Okapi merge failed, falling back to standard: {e}")
+                # Fall through to the python-docx path below.
         
         def strip_tags(text: str) -> str:
             """Remove formatting tags from text."""
@@ -34031,8 +34256,13 @@ class SupervertalerQt(QMainWindow):
     # GRID MANAGEMENT
     # ========================================================================
     
-    def load_segments_to_grid(self):
-        """Load segments into the grid with termbase highlighting"""
+    def load_segments_to_grid(self, progress_callback=None):
+        """Load segments into the grid with termbase highlighting.
+
+        progress_callback: optional callable(rows_done, total_rows). Called every
+        ~25 rows during the build loop so callers can update a progress dialog
+        and pump the Qt event loop, keeping the UI responsive on large imports.
+        """
         self.log(f"🔄🔄🔄 load_segments_to_grid CALLED - this will RELOAD grid from segment data!")
 
         # Ensure original segment order is stored (for Document Order sort)
@@ -34098,7 +34328,16 @@ class SupervertalerQt(QMainWindow):
                 list_counter = 0
 
         try:
+            _total_rows = len(self.current_project.segments)
             for row, segment in enumerate(self.current_project.segments):
+                # Yield to the Qt event loop every ~25 rows so the window
+                # repaints and the OS doesn't mark it "Not Responding".
+                if progress_callback is not None and row % 25 == 0:
+                    try:
+                        progress_callback(row, _total_rows)
+                    except Exception:
+                        pass
+
                 # Clear any previous cell widgets
                 self.table.removeCellWidget(row, 2)  # Source
                 self.table.removeCellWidget(row, 3)  # Target
@@ -37710,8 +37949,38 @@ class SupervertalerQt(QMainWindow):
             if self.debug_mode_enabled:
                 self.log(f"Error in glossary-only cell selection: {e}")
 
+    def _pcs(self, label: str):
+        """Context manager that logs elapsed time for a named block during
+        cell-selection. Always active – the timer itself is cheap, and we
+        only call self.log() when a block exceeds 50 ms, so normal fast
+        clicks produce no log output. Used to pinpoint which lookups in
+        `_on_cell_selected_full` are responsible for the multi-second UI
+        freezes that some users hit after clicking a segment.
+        """
+        from contextlib import contextmanager
+        import time as _t
+
+        @contextmanager
+        def _timer():
+            t0 = _t.perf_counter()
+            try:
+                yield
+            finally:
+                elapsed_ms = (_t.perf_counter() - t0) * 1000.0
+                if elapsed_ms > 50.0:
+                    self.log(f"⏱️ [cell-select] {label}: {elapsed_ms:.1f} ms")
+
+        return _timer()
+
     def _on_cell_selected_full(self, current_row, current_col, previous_row, previous_col):
         """Full cell selection handler with lookups and highlighting"""
+        # Top-level stopwatch – any total over ~250 ms is logged so the
+        # multi-second freezes that some users hit show up in the log
+        # without needing debug mode enabled. Fine-grained `self._pcs("…")`
+        # blocks below show which step ate the time.
+        import time as _profile_time
+        _profile_t0 = _profile_time.perf_counter()
+
         # Clear text selections in previous row's source and target cells
         if previous_row >= 0 and previous_row < self.table.rowCount():
             # Clear source cell selection (column 2)
@@ -37906,13 +38175,16 @@ class SupervertalerQt(QMainWindow):
                                 for match in cached_matches.get("Termbases", [])
                             ]
                             # Also get NT matches (fresh, not cached - they may have changed)
-                            nt_matches = self.find_nt_matches_in_source(segment.source)
+                            with self._pcs("find_nt_matches_in_source (cache-hit)"):
+                                nt_matches = self.find_nt_matches_in_source(segment.source)
 
                             # Get status hint for termbase activation
-                            status_hint = self._get_termbase_status_hint()
+                            with self._pcs("_get_termbase_status_hint (cache-hit)"):
+                                status_hint = self._get_termbase_status_hint()
 
                             # Update both TermLens widgets (left and right)
-                            self._update_both_termlens(segment.source, termbase_matches, nt_matches, status_hint)
+                            with self._pcs("_update_both_termlens (cache-hit)"):
+                                self._update_both_termlens(segment.source, termbase_matches, nt_matches, status_hint)
                         except Exception as e:
                             self.log(f"Error updating termlens from cache: {e}")
                     
@@ -37975,7 +38247,8 @@ class SupervertalerQt(QMainWindow):
                                     with self.termbase_cache_lock:
                                         self.termbase_cache[segment_id] = tb_dict
                         if tb_dict:
-                            self.highlight_source_with_termbase(current_row, segment.source, tb_dict)
+                            with self._pcs("highlight_source_with_termbase (cache-hit)"):
+                                self.highlight_source_with_termbase(current_row, segment.source, tb_dict)
 
                     # Skip the slow TERMBASE lookup below, we already have termbase matches cached
                     # But TM lookup was skipped in prefetch (not thread-safe), so schedule it now
@@ -38042,7 +38315,8 @@ class SupervertalerQt(QMainWindow):
                                         cache_checked = True
                             
                             if not cache_checked and source_widget:
-                                stored_matches = self.find_termbase_matches_in_source(segment.source)
+                                with self._pcs("find_termbase_matches_in_source"):
+                                    stored_matches = self.find_termbase_matches_in_source(segment.source)
 
                                 # Store in cache for future access (thread-safe) - EVEN IF EMPTY
                                 # BUT skip cache storage if cache kill switch is enabled
@@ -38068,13 +38342,16 @@ class SupervertalerQt(QMainWindow):
                                         for match_data in stored_matches.values()
                                     ] if stored_matches else []
                                     # Also get NT matches
-                                    nt_matches = self.find_nt_matches_in_source(segment.source)
+                                    with self._pcs("find_nt_matches_in_source (miss)"):
+                                        nt_matches = self.find_nt_matches_in_source(segment.source)
 
                                     # Get status hint for termbase activation
-                                    status_hint = self._get_termbase_status_hint()
+                                    with self._pcs("_get_termbase_status_hint (miss)"):
+                                        status_hint = self._get_termbase_status_hint()
 
                                     # Update both TermLens widgets (left and right)
-                                    self._update_both_termlens(segment.source, termbase_matches, nt_matches, status_hint)
+                                    with self._pcs("_update_both_termlens (miss)"):
+                                        self._update_both_termlens(segment.source, termbase_matches, nt_matches, status_hint)
                                 except Exception as e:
                                     self.log(f"Error refreshing termlens: {e}")
 
@@ -38084,7 +38361,8 @@ class SupervertalerQt(QMainWindow):
                             
                             # Highlight termbase matches and NT matches in source cell (if enabled)
                             if self.enable_termbase_grid_highlighting:
-                                self.highlight_source_with_termbase(current_row, segment.source, stored_matches)
+                                with self._pcs("highlight_source_with_termbase (miss)"):
+                                    self.highlight_source_with_termbase(current_row, segment.source, stored_matches)
                         else:
                             self.log("⏭️ Termbase matching disabled - skipping termbase lookup")
 
@@ -38287,10 +38565,14 @@ class SupervertalerQt(QMainWindow):
 
                     if next_segment_ids:
                         self._start_prefetch_worker(next_segment_ids)
-                        
+
         except Exception as e:
             self.log(f"Critical error in on_cell_selected: {e}")
-    
+        finally:
+            _total_ms = (_profile_time.perf_counter() - _profile_t0) * 1000.0
+            if _total_ms > 250.0:
+                self.log(f"⏱️ [cell-select] TOTAL: {_total_ms:.1f} ms")
+
     def on_selection_changed(self):
         """Handle selection change for row-based selection mode"""
         try:
@@ -49722,20 +50004,29 @@ class SupervertalerQt(QMainWindow):
                     self.translation_matches_cache.clear()
                 self.log(f"   Cache cleared after batch pre-translation")
 
-            # Step 4: Reload entire grid from updated segment data
-            progress.setLabelText(f"Updating grid ({success_count} translated)...")
-            progress.setValue(90)
-            QApplication.processEvents()
-
             elapsed = time.time() - start_time
             elapsed_str = f"{elapsed:.1f}s"
 
-            progress.setValue(100)
-            progress.close()
+            # Step 4: Reload entire grid from updated segment data.
+            # The grid build is the slowest step on large projects (it
+            # creates a custom widget per row and sometimes ran for 30s+
+            # with the title bar saying "Not Responding"). Switch the
+            # dialog to indeterminate, hand the row loop a progress
+            # callback so it yields to the Qt event loop every 25 rows,
+            # and close only when the rebuild is actually done.
+            progress.setRange(0, 0)
+            progress.setLabelText(
+                f"Reloading grid ({success_count} translated)…")
+            QApplication.processEvents()
 
-            # Full grid reload ensures all status icons, match percentages,
-            # and target texts are correctly displayed
-            self.load_segments_to_grid()
+            def _grid_progress(done, total):
+                progress.setLabelText(
+                    f"Reloading grid… ({done:,} / {total:,})"
+                )
+                QApplication.processEvents()
+
+            self.load_segments_to_grid(progress_callback=_grid_progress)
+            progress.close()
 
             # Show completion message
             self.log(f"═══════════════════════════════════════════════════════════")
@@ -51567,9 +51858,10 @@ class SupervertalerQt(QMainWindow):
                 return
                 
             segment = self._pending_mt_llm_segment
-            
+
             # Call the actual lookup method (now includes TM, MT, and LLM)
-            self._search_mt_and_llm_matches(segment)
+            with self._pcs("_search_mt_and_llm_matches (TM+MT+LLM lookup)"):
+                self._search_mt_and_llm_matches(segment)
                 
         except Exception as e:
             self.log(f"Error executing MT/LLM lookup: {e}")

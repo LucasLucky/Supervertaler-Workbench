@@ -226,6 +226,10 @@ public class FilterService {
             writer.setOptions(targetLocale, "UTF-8");
             writer.setOutput(outputPath.toString());
 
+            String lastTuId = "<none>";
+            String lastTuSourceText = "";
+            String lastTuTargetText = "";
+            String lastTuCodes = "";
             while (filter.hasNext()) {
                 Event event = filter.next();
 
@@ -234,24 +238,72 @@ public class FilterService {
 
                     List<MergeSegment> segs = txMap.get(tu.getId());
                     if (segs != null && !segs.isEmpty()) {
-                        // Concatenate all segment translations for this TU
-                        StringBuilder combined = new StringBuilder();
-                        for (MergeSegment seg : segs) {
-                            if (seg.translation != null) {
-                                if (combined.length() > 0) combined.append(" ");
-                                combined.append(seg.translation);
-                            }
-                        }
-                        // Set translation as the target, preserving inline codes
+                        // ── Per-segment target population ─────────────
+                        // Earlier versions concatenated all segment
+                        // translations and called target.setContent(...)
+                        // which collapses the multi-segment target into
+                        // a single segment. That broke the OOXML writer's
+                        // run-properties stack on SRX-segmented TUs.
+                        // Now we preserve the original segmentation and
+                        // set each target segment individually using the
+                        // matching source segment's codes for context.
                         TextContainer target = tu.createTarget(
                                 targetLocale, false, IResource.COPY_ALL);
-                        TextFragment sourceContent = tu.getSource().getFirstContent();
-                        target.setContent(
-                            buildTargetFragment(combined.toString(), sourceContent));
+                        ISegments srcSegments = tu.getSource().getSegments();
+                        ISegments tgtSegments = target.getSegments();
+                        int totalSegs = srcSegments.count();
+
+                        StringBuilder combinedDiagnostic = new StringBuilder();
+                        StringBuilder codeDump = new StringBuilder();
+
+                        for (MergeSegment mergeSeg : segs) {
+                            int idx = mergeSeg.segmentIndex;
+                            if (idx < 0 || idx >= totalSegs) continue;
+                            if (mergeSeg.translation == null) continue;
+
+                            Segment srcSeg = srcSegments.get(idx);
+                            Segment tgtSeg = tgtSegments.get(idx);
+                            if (srcSeg == null || tgtSeg == null) continue;
+
+                            TextFragment srcContent = srcSeg.getContent();
+                            TextFragment newContent = buildTargetFragment(
+                                    mergeSeg.translation, srcContent);
+                            tgtSeg.setContent(newContent);
+
+                            // Per-segment diagnostic dump (only used if
+                            // the writer throws below).
+                            if (combinedDiagnostic.length() > 0) {
+                                combinedDiagnostic.append(" | ");
+                            }
+                            combinedDiagnostic.append("[seg ")
+                                    .append(idx).append("] ")
+                                    .append(mergeSeg.translation);
+                            if (srcContent != null) {
+                                for (Code c : srcContent.getCodes()) {
+                                    codeDump.append(String.format(
+                                            "[seg=%d id=%d type=%s tagType=%s data=%s] ",
+                                            idx, c.getId(), c.getType(),
+                                            c.getTagType(), c.getData()));
+                                }
+                            }
+                        }
+
+                        lastTuId = tu.getId();
+                        lastTuSourceText = tu.getSource().toString();
+                        lastTuTargetText = combinedDiagnostic.toString();
+                        lastTuCodes = codeDump.toString();
                     }
                 }
 
-                writer.handleEvent(event);
+                try {
+                    writer.handleEvent(event);
+                } catch (RuntimeException e) {
+                    log.error("Merge failed at TU id={}", lastTuId);
+                    log.error("  Source first-segment text: {}", lastTuSourceText);
+                    log.error("  Source first-segment codes: {}", lastTuCodes);
+                    log.error("  Combined translation: {}", lastTuTargetText);
+                    throw e;
+                }
             }
 
             writer.close();
@@ -706,10 +758,22 @@ public class FilterService {
     //  MERGE — reconstruct inline codes from display tags
     // ═══════════════════════════════════════════════════════════════
 
-    /** Regex that matches our display tags: {@code <b>}, {@code </b>},
-     *  {@code <cf color="#FF0000">}, {@code </cf>}, etc. */
+    /** Regex that matches our display tags. Covers:
+     *   <ul>
+     *     <li>formatting tags this code understands: {@code <b>}, {@code </b>},
+     *         {@code <cf color="#FF0000">}, {@code </cf>}</li>
+     *     <li>placeholder tags emitted by older sidecar versions and/or other
+     *         tools, e.g. {@code <hyperlink1>}, {@code </hyperlink1>},
+     *         {@code <tags2/>}, {@code <run1>}, {@code </run1>}. These get
+     *         stripped silently in {@link #buildTargetFragment} so they don't
+     *         end up as literal text in the merged output.</li>
+     *   </ul>
+     *  Group 1 = leading {@code /} (closing tag), Group 2 = tag name (may
+     *  contain digits/underscores), Group 3 = trailing {@code /} (self-closing).
+     */
     private static final Pattern TAG_RE = Pattern.compile(
-            "<(/?)([a-z]+)(\\s[^>]*)?>", Pattern.CASE_INSENSITIVE);
+            "<(/?)([a-z][a-z0-9_-]*)(?:\\s[^>]*)?\\s*(/?)>",
+            Pattern.CASE_INSENSITIVE);
 
     /**
      * Determine the primary HTML-like tag name for a source Code, based
@@ -752,11 +816,22 @@ public class FilterService {
             return new TextFragment(TAG_RE.matcher(taggedTranslation).replaceAll(""));
         }
 
-        // ── Step 1: classify source codes by tag name ──────────────
-        // tag name → FIFO queue of code IDs
+        // ── Step 1: classify source codes ──────────────────────────
+        // Two indexes are built:
+        //
+        //   tagQueues  – FIFO of code IDs keyed by formatting tag name
+        //                ("b", "i", "u", "cf", …). Used for AI-friendly
+        //                tags this client knows how to render.
+        //   codesByData – FIFO of Codes keyed by their raw getData()
+        //                string ("<hyperlink1>", "</hyperlink1>",
+        //                "<tags2/>", "<run1>", …). Used to round-trip
+        //                structural OOXML codes that we don't have a
+        //                named formatting tag for. Crucial for keeping
+        //                hyperlinks in the merged output.
         Map<String, Queue<Integer>> tagQueues = new LinkedHashMap<>();
         Map<Integer, Code> openingById = new LinkedHashMap<>();
         Map<Integer, Code> closingById = new LinkedHashMap<>();
+        Map<String, Deque<Code>> codesByData = new LinkedHashMap<>();
 
         for (Code c : srcCodes) {
             if (c.getTagType() == TextFragment.TagType.OPENING) {
@@ -767,6 +842,11 @@ public class FilterService {
                 }
             } else if (c.getTagType() == TextFragment.TagType.CLOSING) {
                 closingById.put(c.getId(), c);
+            }
+
+            String data = c.getData();
+            if (data != null && !data.isEmpty()) {
+                codesByData.computeIfAbsent(data, k -> new ArrayDeque<>()).add(c);
             }
         }
 
@@ -783,9 +863,31 @@ public class FilterService {
             }
 
             boolean isClosing = "/".equals(m.group(1));
+            boolean isSelfClosing = "/".equals(m.group(3));
             String tagName = m.group(2).toLowerCase();
+            String fullTag = m.group(0);
 
-            if (!isClosing) {
+            // ── Step 2a: round-trip via raw code data (structural codes) ──
+            // For tags emitted by Okapi's TextFragment.toText() (hyperlinks,
+            // runs, OOXML placeholders) the source has a Code whose
+            // getData() equals the literal tag string. Match those first
+            // and emit a clone of the source code so the structure
+            // (e.g. hyperlink anchors) is preserved end-to-end.
+            //
+            // Code.clone() preserves all fields (outerData, originalId,
+            // mergeable, …) that the OpenXML filter writer needs for
+            // proper open/close pairing. Per-segment merge in the caller
+            // ensures the codes within each segment are balanced, so the
+            // writer's run-properties stack can't underflow.
+            Deque<Code> dataQueue = codesByData.get(fullTag);
+            if (dataQueue != null && !dataQueue.isEmpty()) {
+                Code src = dataQueue.poll();
+                result.append(src.clone());
+            } else if (isSelfClosing) {
+                // Self-closing placeholder with no matching source code
+                // (e.g. AI hallucinated a tag) – drop silently so it
+                // doesn't end up as literal text in the output.
+            } else if (!isClosing) {
                 // ── OPENING tag ─────────────────────────────────
                 Queue<Integer> queue = tagQueues.get(tagName);
                 if (queue != null && !queue.isEmpty()) {

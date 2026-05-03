@@ -2,8 +2,68 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.411 (May 1, 2026)
+**Current Version:** v1.9.413 (May 3, 2026)
 
+
+## v1.9.413 - May 3, 2026
+
+### Added (Batch pre-translation)
+
+- **Progress dialog now stays open through the post-batch grid rebuild.** Previously the TM batch pre-translation closed its progress dialog at 100 % and *then* called `load_segments_to_grid()` synchronously – on the 2,588-segment test project this locked the UI for ~3 minutes with the title bar saying "Not Responding" and no visible feedback. The dialog now switches to indeterminate mode for the rebuild phase, shows a live row counter (`Reloading grid… (1,250 / 2,588)`), and yields to the Qt event loop every 25 rows.
+
+### Added (Cell-select timing instrumentation)
+
+- **The cell-selection handler now logs timings for any block that exceeds 50 ms, and the total click cost when it exceeds 250 ms** (look for `⏱️ [cell-select] …` in `supervertaler.log`). Some users have reported multi-minute UI freezes when clicking a segment after a fresh import or batch pre-translation; the freeze is intermittent and hard to reproduce, so the next time it bites the log will show exactly which lookup (`find_termbase_matches_in_source`, `find_nt_matches_in_source`, `_update_both_termlens`, `highlight_source_with_termbase`, `_search_mt_and_llm_matches`, …) ate the time. Cheap when nothing is slow; only logs on actual slowness.
+
+### Note
+
+- The async-lookup rewrite that would actually *fix* the cell-select freeze (move TM/MT/LLM/termbase lookups onto a worker thread, cancel stale lookups on rapid navigation, post per-result UI updates) is parked as a separate task. The instrumentation in this release is only the diagnostic step; it doesn't change behaviour beyond extra log lines when something is genuinely slow.
+
+---
+
+## v1.9.412 - May 3, 2026
+
+### Changed (DOCX import is now Okapi-only)
+
+- **The "Choose Import Engine" dialog is gone.** DOCX import always goes through the Okapi sidecar. The dialog and the python-docx import path created a class of bugs where users could end up unable to round-trip exports cleanly, plus the python-docx fallback couldn't produce the `okapi_tu_id` / `okapi_segment_index` metadata the merge endpoint needs at export time.
+- **Sidecar pre-flight check.** If the sidecar isn't running when DOCX import is attempted (Java missing, port conflict, sidecar startup failure, …) the user now sees a clear "Okapi sidecar required" dialog with troubleshooting steps, instead of a silent fallback.
+- **Multi-file batch DOCX import** at `_import_multifile_project` now also uses the Okapi sidecar per file. Previously this path was *unconditionally* on the python-docx engine with no Okapi option – meaning translators working with multiple complex DOCX files in one project couldn't get the faithful round-trip the single-file path offered. Same pre-flight check applies before any file is touched.
+- **Multi-file batch DOCX export** routes by project's `import_engine`. New (Okapi-imported) projects use the sidecar's `/merge` endpoint per file; legacy standard-imported projects keep the python-docx export path so existing on-disk projects still export correctly.
+
+### Fixed (Okapi import/export)
+
+- **Okapi merge no longer silently fails on large projects.** Jetty's default form-content limit (200 KB) caused `POST /merge` to reject the `translations` JSON for any project with more than a few hundred segments – the export then fell back to the standard python-docx path and, for Okapi-imported projects, produced output entirely in the source language because the fallback couldn't match Okapi's tagged source segments against the original DOCX paragraphs. The sidecar now raises the form limit to 100 MB.
+- **Hardened the python-docx fallback** so that even if the Okapi merge ever fails for an Okapi-imported project, placeholder tags (`<hyperlink1>`, `<tags2/>`, `<run1>`, `</run1>`, etc.) are stripped from both the source-matching keys and the target text before substitution. Previously these tags broke matching and ended up as literal text in the output.
+- **Faithful round-trip for structural codes.** The merge code now indexes every source code by its raw `getData()` string and looks up translation tags by full literal form before falling back to the formatting-tag (`<b>`, `<i>`, `<cf>`) logic. Hyperlinks, runs and placeholder codes that the AI preserved in the translation now reach the exported document as proper Okapi codes – the output document is structurally identical to the source.
+- **Tag regex broadened.** The merge regex previously only matched lowercase letters, so `<hyperlink1>`, `<run2>`, `<tags2/>` etc. silently passed through as literal text. Now matches digit-suffixed names and self-closing tags. Self-closing placeholders without a matching source code are dropped silently instead of corrupting the open/close stack.
+
+### Fixed (Okapi sidecar lifecycle)
+
+- **No more manual `java.exe` kills after a sidecar update.** When Supervertaler exited it left the sidecar JVM running on port 8090; on next launch it would reuse the stale JVM, which had the previous JAR's bytecode loaded into memory – any update to the sidecar (new bytecode on disk) had no effect until the user manually killed the process from Task Manager. The Python client now does a version handshake against the sidecar's `/health` endpoint at startup. If the running version doesn't match `EXPECTED_VERSION`, it asks the sidecar to exit via the new `POST /shutdown` endpoint, then force-kills the port-holder process if the polite shutdown fails or is unavailable. New behaviour kicks in exactly once per launch – no respawn loops if the JAR on disk also reports the old version.
+
+### Added (Okapi sidecar)
+
+- **`POST /shutdown` endpoint** for clean restart on version mismatch. Returns `{"status":"shutting down"}` then exits the JVM 150 ms later so the response actually flushes back to the client.
+- **Cross-platform port-holder kill** via `netstat -ano` on Windows and `lsof` on POSIX, used as the force-restart fallback when `/shutdown` isn't reachable.
+
+### Added (Project loading)
+
+- **Progress dialog when opening a project from the recent menu** or from `File → Open`. Large projects (1,000+ segments) used to lock the UI thread for several seconds while `load_segments_to_grid()` built widgets per row, and Windows would mark the window "Not Responding". The new dialog shows live progress (`Loading segments into grid… (1,250 / 2,588)`) and yields to the Qt event loop every 25 rows so the window stays responsive.
+- **Same progress treatment during DOCX import** via the Okapi route – the dialog now stays animated during extraction (run on a background thread) and during the segment-into-grid build.
+
+### Added (faithful hyperlink round-trip)
+
+- **Hyperlinks, runs and OOXML placeholder codes now round-trip end-to-end through the Okapi merge.** Previously these structural tags (`<hyperlink1>…</hyperlink1>`, `<run1>…</run1>`, `<tags2/>`) were stripped silently from the translation – the exported document came out without hyperlinks, and broken-but-present links in the source disappeared from the target.
+- The merge in `FilterService.java` was rewritten to populate the target **per source segment** (`tu.getSource().getSegments()` paired with `target.getSegments()` by `segmentIndex`) instead of concatenating all segment translations into one string and calling `target.setContent(...)`, which collapsed the multi-segment target into one segment and broke the OpenXML filter writer's run-properties stack on SRX-segmented TUs (455 of 1,960 TUs in the test project). This was the missing piece behind the `NoSuchElementException` failures in 0.1.3/0.1.4.
+- `buildTargetFragment` now indexes source codes by their raw `getData()` string (`<hyperlink1>`, `</hyperlink1>`, `<tags2/>`, …) and emits `Code.clone()` copies when the AI's translation contains the same literal tag. `clone()` preserves all fields – `outerData`, `originalId`, `mergeable`, … – that the OpenXML filter writer needs for proper open/close pairing.
+- Verified end-to-end on a 2,588-segment / 1,960-TU project (LFENIM0002): hyperlinks present in the exported document, formatting and layout identical to the source.
+
+### Sidecar version
+
+- Sidecar JAR bumped from **0.1.0** to **0.1.6** (Jetty form limit, `/shutdown` endpoint, broadened merge regex, diagnostic logging on merge failure, per-segment merge, faithful hyperlink/run/placeholder round-trip via `Code.clone()`).
+- `FilterService.merge` keeps a per-segment diagnostic dump (TU id, source segment text, code list with id/type/tagType/data, combined translation) that is logged whenever the writer throws – future structural-code regressions can be diagnosed from `supervertaler.log` without re-instrumenting.
+
+---
 
 ## v1.9.411 - May 1, 2026
 

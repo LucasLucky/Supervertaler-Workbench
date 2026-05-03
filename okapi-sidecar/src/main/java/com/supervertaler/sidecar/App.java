@@ -27,6 +27,7 @@ import java.util.*;
  *   POST /tmx/read         → upload TMX, get TUs as JSON
  *   POST /tmx/validate     → upload TMX, get validation report
  *   POST /segment          → send text + SRX rules, get segmented result
+ *   POST /shutdown         → request graceful shutdown of the sidecar
  */
 public class App {
 
@@ -53,6 +54,26 @@ public class App {
             config.jetty.multipartConfig.maxFileSize(100, SizeUnit.MB);
             config.jetty.multipartConfig.maxTotalRequestSize(100, SizeUnit.MB);
 
+            // Raise Jetty's form-content limit. The default is 200 KB,
+            // which is too small for /merge requests on large projects
+            // (the 'translations' field is JSON containing every segment –
+            // a 2500-segment project easily exceeds 200 KB and merge fails
+            // with "Form is larger than max length 200000").
+            final int MAX_FORM_BYTES = 100 * 1024 * 1024; // 100 MB
+            final int MAX_FORM_KEYS  = 10_000;
+            config.jetty.modifyServletContextHandler(handler -> {
+                handler.setMaxFormContentSize(MAX_FORM_BYTES);
+                handler.setMaxFormKeys(MAX_FORM_KEYS);
+            });
+            config.jetty.modifyServer(server -> {
+                server.setAttribute(
+                        "org.eclipse.jetty.server.Request.maxFormContentSize",
+                        MAX_FORM_BYTES);
+                server.setAttribute(
+                        "org.eclipse.jetty.server.Request.maxFormKeys",
+                        MAX_FORM_KEYS);
+            });
+
             // CORS for local development — only localhost origins
             config.bundledPlugins.enableCors(cors -> {
                 cors.addRule(rule -> {
@@ -66,7 +87,7 @@ public class App {
             Map<String, Object> health = new LinkedHashMap<>();
             health.put("status", "ok");
             health.put("service", "supervertaler-okapi-sidecar");
-            health.put("version", "0.1.0");
+            health.put("version", "0.1.6");
             health.put("okapi_version", filterService.getOkapiVersion());
             ctx.json(health);
         });
@@ -90,6 +111,23 @@ public class App {
 
         // ── Segment text using SRX rules ─────────────────────────
         app.post("/segment", App::handleSegment);
+
+        // ── Graceful shutdown ────────────────────────────────────
+        // Lets the Python client ask the sidecar to exit when it
+        // detects a version mismatch after a JAR rebuild. We respond
+        // before stopping so the client gets a clean 200.
+        app.post("/shutdown", ctx -> {
+            ctx.json(Map.of("status", "shutting down"));
+            new Thread(() -> {
+                try {
+                    // Small delay so the response actually flushes
+                    // back to the client before we kill the JVM.
+                    Thread.sleep(150);
+                } catch (InterruptedException ignored) {}
+                log.info("Shutdown requested via /shutdown – exiting");
+                System.exit(0);
+            }, "okapi-shutdown").start();
+        });
 
         // ── Error handling ───────────────────────────────────────
         app.exception(Exception.class, (e, ctx) -> {
