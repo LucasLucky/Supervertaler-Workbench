@@ -27251,6 +27251,146 @@ class SupervertalerQt(QMainWindow):
 
         self.import_docx_from_path(file_path)
     
+    def _ensure_okapi_sidecar(self) -> bool:
+        """Make sure the Okapi sidecar is up. Returns True on success.
+
+        Handles three scenarios:
+
+        1. Sidecar is already running – return True immediately.
+        2. Sidecar is installed (JAR present) but not running – start it.
+        3. Sidecar is not installed (typical for pip-installed users
+           without the bundled JRE) – offer a one-click download from
+           the GitHub release, with a progress dialog. After the download
+           completes, start the sidecar and verify.
+
+        Shows a clear error dialog and returns False if any step fails
+        or the user declines the download.
+        """
+        if not self.okapi_sidecar:
+            QMessageBox.critical(
+                self,
+                "Okapi sidecar unavailable",
+                "The Okapi sidecar client is not initialised. This is "
+                "usually caused by a missing 'requests' Python package. "
+                "Please reinstall Supervertaler."
+            )
+            return False
+
+        # Fast path: already running.
+        if self.okapi_sidecar.is_running():
+            return True
+
+        # Path 2: installed but not running. Try to start it.
+        if self.okapi_sidecar.is_installed():
+            self.log("Starting Okapi sidecar…")
+            if self.okapi_sidecar.start() and self.okapi_sidecar.is_running():
+                return True
+            QMessageBox.critical(
+                self,
+                "Okapi sidecar failed to start",
+                "DOCX import requires the Okapi sidecar, but it failed "
+                "to start.\n\n"
+                "What to try:\n"
+                "• Restart Supervertaler.\n"
+                "• Check that port 8090 isn't taken by another app.\n"
+                "• Check the diagnostic log for errors mentioning "
+                "\"okapi sidecar\"."
+            )
+            return False
+
+        # Path 3: not installed at all – offer a download.
+        if platform.system() != "Windows":
+            QMessageBox.critical(
+                self,
+                "Okapi sidecar required",
+                "DOCX import requires the Okapi sidecar (a Java service "
+                "for industrial-grade document extraction).\n\n"
+                "Automatic download is currently only available on "
+                "Windows. On macOS/Linux you'll need to install Java and "
+                "build the sidecar JAR from source – see the project "
+                "README for instructions."
+            )
+            return False
+
+        reply = QMessageBox.question(
+            self,
+            "Download Okapi sidecar?",
+            "DOCX import requires the Okapi sidecar – a small Java "
+            "service that handles document extraction.\n\n"
+            "Supervertaler can download and install it for you "
+            "(about 70 MB, one-time download). It will be saved to "
+            "your local app data folder.\n\n"
+            "Download now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return False
+
+        progress = QProgressDialog(
+            "Downloading Okapi sidecar…",
+            None,  # not cancellable mid-download (extraction would leave a mess)
+            0, 100, self
+        )
+        progress.setWindowTitle("Installing Okapi sidecar")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        QApplication.processEvents()
+
+        def _dl_progress(done, total):
+            if total > 0:
+                pct = int(done * 100 / total)
+                progress.setValue(pct)
+                progress.setLabelText(
+                    f"Downloading Okapi sidecar… "
+                    f"({done // (1024*1024)} / {total // (1024*1024)} MB)"
+                )
+            else:
+                progress.setLabelText(
+                    f"Downloading Okapi sidecar… "
+                    f"({done // (1024*1024)} MB)"
+                )
+            QApplication.processEvents()
+
+        try:
+            ok = self.okapi_sidecar.download_install(progress_callback=_dl_progress)
+        finally:
+            try:
+                progress.close()
+            except Exception:
+                pass
+
+        if not ok:
+            QMessageBox.critical(
+                self,
+                "Sidecar download failed",
+                "The Okapi sidecar could not be downloaded. Check your "
+                "internet connection and try again.\n\n"
+                "If the problem persists, you can download the full "
+                "Supervertaler release zip from GitHub – it ships with "
+                "the sidecar bundled."
+            )
+            return False
+
+        # Now try to start the freshly-installed sidecar.
+        self.log("Starting freshly-installed Okapi sidecar…")
+        if self.okapi_sidecar.start() and self.okapi_sidecar.is_running():
+            self.log(f"✅ Okapi sidecar v{self.okapi_sidecar.get_version() or '?'} ready")
+            return True
+
+        QMessageBox.critical(
+            self,
+            "Sidecar installed but failed to start",
+            "The Okapi sidecar was downloaded successfully, but it "
+            "failed to launch.\n\n"
+            "Check the diagnostic log for errors. You may need to "
+            "restart Supervertaler."
+        )
+        return False
+
     def import_docx_from_path(self, file_path):
         """Import a monolingual DOCX document from a given path"""
         try:
@@ -27293,30 +27433,11 @@ class SupervertalerQt(QMainWindow):
             self.log(f"Importing: {os.path.basename(file_path)}")
 
             # ── Okapi-only import ─────────────────────────────────────
-            # DOCX import always goes through the Okapi sidecar – the old
-            # engine-choice dialog is gone. If the sidecar isn't available
-            # (Java missing, port conflict, sidecar startup failure, …)
-            # we hard-error with a clear message rather than silently
-            # falling back to the python-docx path, which can't produce
-            # the okapi_tu_id metadata the merge-based export needs.
-            if not (self.okapi_sidecar and self.okapi_sidecar.is_running()):
-                self.log("✗ Okapi sidecar is not running – DOCX import unavailable")
-                QMessageBox.critical(
-                    self,
-                    "Okapi sidecar required",
-                    "DOCX import requires the Okapi sidecar, which is not "
-                    "currently running.\n\n"
-                    "The sidecar is a small local Java service that handles "
-                    "document extraction. It usually starts automatically "
-                    "when Supervertaler launches.\n\n"
-                    "What to try:\n"
-                    "• Restart Supervertaler.\n"
-                    "• Check that Java is available (the bundled JRE lives "
-                    "next to the application).\n"
-                    "• Check the diagnostic log for errors mentioning "
-                    "\"okapi sidecar\".\n\n"
-                    "If the problem persists, please report it."
-                )
+            # DOCX import always goes through the Okapi sidecar – the
+            # old engine-choice dialog is gone. _ensure_okapi_sidecar()
+            # handles the three scenarios (already running, installed
+            # but not yet started, not installed → offer download).
+            if not self._ensure_okapi_sidecar():
                 return
 
             segmented = None
@@ -29243,23 +29364,7 @@ class SupervertalerQt(QMainWindow):
         # loop starts; failing fast here is much friendlier than failing
         # halfway through importing a multi-file project.
         has_docx = any(f.get('type') == 'docx' for f in files)
-        if has_docx and not (self.okapi_sidecar and self.okapi_sidecar.is_running()):
-            self.log("✗ Okapi sidecar is not running – multi-file DOCX import unavailable")
-            QMessageBox.critical(
-                self,
-                "Okapi sidecar required",
-                "Multi-file import includes DOCX files, which require the "
-                "Okapi sidecar. The sidecar is not currently running.\n\n"
-                "The sidecar is a small local Java service that handles "
-                "document extraction. It usually starts automatically "
-                "when Supervertaler launches.\n\n"
-                "What to try:\n"
-                "• Restart Supervertaler.\n"
-                "• Check that Java is available (the bundled JRE lives "
-                "next to the application).\n"
-                "• Check the diagnostic log for errors mentioning "
-                "\"okapi sidecar\"."
-            )
+        if has_docx and not self._ensure_okapi_sidecar():
             return
 
         # Create _source_files folder to store copies of original files

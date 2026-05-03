@@ -2,8 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.414 (May 3, 2026)
+**Current Version:** v1.9.415 (May 3, 2026)
 
+
+## v1.9.415 - May 3, 2026
+
+### Added (Lazy-download for the Okapi sidecar)
+
+- **The Okapi sidecar is now lazy-downloaded on first use** when running from a `pip install supervertaler` (the desktop EXE release continues to ship the sidecar JAR + JRE bundled inside `_internal/okapi-sidecar/`, so it doesn't trigger this path). Required because v1.9.413 made DOCX import Okapi-only – pip users without the sidecar would otherwise just hit a hard-error dialog whenever they tried to import a `.docx`.
+- On first DOCX import attempt, if the sidecar isn't installed locally, Supervertaler shows a one-click prompt: *"Download Okapi sidecar (~70 MB)?"*. On accept it fetches a Windows-specific bundle (JAR + bundled JRE so no system Java needed) from the v1.9.415 GitHub release into `%LOCALAPPDATA%\Supervertaler\okapi-sidecar\`, with a live progress dialog. The next launch finds the sidecar there automatically (no further downloads).
+- New `OkapiSidecar.is_installed()` and `OkapiSidecar.download_install(progress_callback=…)` API.
+- `_ensure_okapi_sidecar()` helper in the main app handles the three scenarios (already running, installed-but-not-yet-started, not installed → offer download) cleanly and is shared between the single-file and multi-file DOCX import paths.
+- macOS / Linux pip users: lazy-download isn't supported yet on those platforms (they need a different JRE bundle). They'll see a clear message pointing at the build-from-source instructions. Adding macOS / Linux bundles is a future improvement.
+
+---
 
 ## v1.9.414 - May 3, 2026
 
