@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.413 (May 3, 2026)
+**Current Version:** v1.9.414 (May 3, 2026)
 
+
+## v1.9.414 - May 3, 2026
+
+### Fixed (packaging)
+
+- **Okapi sidecar is now found in PyInstaller bundles.** v1.9.413's Windows release shipped the sidecar JAR + JRE inside `_internal/okapi-sidecar/` (PyInstaller's standard data-file location for `--onedir` builds), but the lookup logic in `modules/okapi_sidecar.py` only looked next to the EXE itself, never inside `_internal/`. End result: users on the v1.9.413 release saw "Okapi sidecar not installed – using built-in filters" at start-up and DOCX import didn't have the new Okapi-only path available. `_find_sidecar_dir` now also checks `sys._MEIPASS / okapi-sidecar` and `<exe-dir>/_internal/okapi-sidecar` when frozen.
+
+---
 
 ## v1.9.413 - May 3, 2026
 

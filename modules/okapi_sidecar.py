@@ -591,6 +591,15 @@ class OkapiSidecar:
         if getattr(sys, 'frozen', False):
             # Running as compiled exe (PyInstaller)
             app_dir = Path(sys.executable).parent
+
+            # PyInstaller --onedir places bundled data files under
+            # _internal/ next to the exe (or inside sys._MEIPASS for
+            # --onefile). Both candidates need checking before falling
+            # back to the EXE-adjacent layout that source builds use.
+            meipass = getattr(sys, '_MEIPASS', None)
+            if meipass:
+                candidates.append(Path(meipass) / "okapi-sidecar")
+            candidates.append(app_dir / "_internal" / "okapi-sidecar")
         else:
             # Running from source
             app_dir = Path(__file__).parent.parent
