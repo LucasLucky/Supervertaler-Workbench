@@ -2,8 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.421 (May 4, 2026)
+**Current Version:** v1.9.422 (May 4, 2026)
 
+
+## v1.9.422 - May 4, 2026
+
+### Changed (Top-level tabs: TMs and Termbases promoted out of Resources)
+
+- **TMs and Termbases are now their own top-level tabs.** The main tab strip changes from `Editor – Resources – AI – Tools – Settings` (5 tabs) to `Editor – TMs – Termbases – AI – Tools – Settings` (6 tabs). Both used to be sub-tabs nested inside the Resources wrapper, requiring two clicks to reach; promoting them gives each one a permanent slot on the main bar and brings every commonly-used view to one click.
+- The old wrapper QTabWidget (`resources_tabs`) and its `create_resources_tab()` method are gone. Construction now calls `create_translation_memories_tab()` and `create_termbases_tab()` directly and adds each as a peer to Editor / AI / Tools / Settings on `main_tabs`. The TMs tab inherits the `TM_BASICS` help topic; the Termbases tab gets `GLOSSARY_BASICS`.
+- View → Navigate To submenu updated: "Project resources" entry replaced with "TMs" and "Termbases" entries pointing at indices 1 and 2 respectively. AI / Tools / Settings entries shift to indices 3 / 4 / 5.
+- All hard-coded tab indices in helpers updated: `_navigate_to_tool()` now uses 4 (was 3), `_navigate_to_settings()` uses 5 (was 4), Sidekick "go to glossary" navigates to the Termbases top-level tab by name match instead of drilling through a wrapper, MT-settings navigation in SuperLookup uses Settings = 5, AI-tab navigation uses 3 (was 2).
+- Backward compatibility: `self.resources_tabs` is kept as an alias for `self.main_tabs` so any third-party / legacy nav code that did `setCurrentIndex` on it doesn't crash – but the index it expects (0 = TMs, 1 = Termbases inside the old wrapper) no longer matches; callers should switch to `self.main_tabs.setCurrentIndex(<top-level index>)` and target TMs (1) or Termbases (2) directly.
+
+---
 
 ## v1.9.421 - May 4, 2026
 

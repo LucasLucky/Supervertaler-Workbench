@@ -8051,7 +8051,7 @@ class SupervertalerQt(QMainWindow):
             dialog.exec()
             
             # Navigate to Settings → Features tab
-            self.main_tabs.setCurrentIndex(4)  # Settings tab
+            self.main_tabs.setCurrentIndex(5)  # Settings tab (5 in the post-v1.9.422 layout: Editor/TMs/Termbases/AI/Tools/Settings)
             if hasattr(self, 'settings_tabs'):
                 # Find the Features tab index
                 for i in range(self.settings_tabs.count()):
@@ -8310,7 +8310,7 @@ class SupervertalerQt(QMainWindow):
 
                 # Navigate to Features tab if checkbox is checked
                 if open_features_checkbox.isChecked():
-                    self.main_tabs.setCurrentIndex(4)  # Settings tab
+                    self.main_tabs.setCurrentIndex(5)  # Settings tab
                     if hasattr(self, 'settings_tabs'):
                         for i in range(self.settings_tabs.count()):
                             if "Features" in self.settings_tabs.tabText(i):
@@ -9714,21 +9714,25 @@ class SupervertalerQt(QMainWindow):
         go_editor_action = QAction("📝 &Grid", self)
         go_editor_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(0) if hasattr(self, 'main_tabs') else None)
         nav_menu.addAction(go_editor_action)
-        
-        go_resources_action = QAction("🗂️ Project &resources", self)
-        go_resources_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(1) if hasattr(self, 'main_tabs') else None)
-        nav_menu.addAction(go_resources_action)
-        
+
+        go_tms_action = QAction("💾 &TMs", self)
+        go_tms_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(1) if hasattr(self, 'main_tabs') else None)
+        nav_menu.addAction(go_tms_action)
+
+        go_termbases_action = QAction("🏷️ Term&bases", self)
+        go_termbases_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(2) if hasattr(self, 'main_tabs') else None)
+        nav_menu.addAction(go_termbases_action)
+
         go_prompt_manager_action = QAction("⚡ &QuickLauncher", self)
-        go_prompt_manager_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(2) if hasattr(self, 'main_tabs') else None)
+        go_prompt_manager_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(3) if hasattr(self, 'main_tabs') else None)
         nav_menu.addAction(go_prompt_manager_action)
-        
+
         go_tools_action = QAction("🛠️ &Tools", self)
-        go_tools_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(3) if hasattr(self, 'main_tabs') else None)
+        go_tools_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(4) if hasattr(self, 'main_tabs') else None)
         nav_menu.addAction(go_tools_action)
-        
+
         go_settings_action = QAction("⚙️ &Settings", self)
-        go_settings_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(4) if hasattr(self, 'main_tabs') else None)
+        go_settings_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(5) if hasattr(self, 'main_tabs') else None)
         nav_menu.addAction(go_settings_action)
         
         view_menu.addSeparator()
@@ -10198,11 +10202,29 @@ class SupervertalerQt(QMainWindow):
         grid_widget = self.create_grid_view_widget_for_home()
         self.main_tabs.addTab(grid_widget, "📝 Editor")
         
-        # ===== 2. PROJECT RESOURCES TAB =====
-        # Contains TM, Termbases, Non-Translatables
-        resources_tab = self.create_resources_tab()
-        set_help_topic(resources_tab, HelpTopics.TM_BASICS)
-        self.main_tabs.addTab(resources_tab, "🗂️ Resources")
+        # ===== 2. TMs TAB =====
+        # Promoted to a top-level tab in v1.9.422 (was previously nested
+        # under "Resources" together with Termbases). Exposing TMs and
+        # Termbases as siblings of Editor / AI / Tools / Settings makes
+        # them reachable in one click instead of two and gives each one
+        # a permanent slot on the tab bar.
+        tm_tab_top = self.create_translation_memories_tab()
+        set_help_topic(tm_tab_top, HelpTopics.TM_BASICS)
+        self.main_tabs.addTab(tm_tab_top, "💾 TMs")
+
+        # ===== 3. TERMBASES TAB =====
+        # Promoted to a top-level tab in v1.9.422 (see TMs comment above).
+        termbase_tab_top = self.create_termbases_tab()
+        set_help_topic(termbase_tab_top, HelpTopics.GLOSSARY_BASICS)
+        self.main_tabs.addTab(termbase_tab_top, "🏷️ Termbases")
+
+        # Backward-compat: a few helpers (Sidekick "Go to glossary",
+        # external nav code) still expect self.resources_tabs to exist.
+        # The old wrapper QTabWidget is gone, so point this attribute at
+        # main_tabs itself; callers that did
+        # resources_tabs.setCurrentIndex(<index of Termbases inside the
+        # old wrapper>) need updating to navigate via main_tabs directly.
+        self.resources_tabs = self.main_tabs
         
         # ===== 3. AI TAB =====
         # Houses everything that exists purely for the AI translation flow:
@@ -11584,37 +11606,14 @@ class SupervertalerQt(QMainWindow):
         
         self.log("Superlookup re-attached to Home tab")
     
-    def create_resources_tab(self):
-        """Create the Project resources tab with horizontal tab navigation"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    # create_resources_tab() was removed in v1.9.422.
+    # TMs and Termbases used to share a wrapper "Resources" tab on the
+    # main_tabs strip with their own inner QTabWidget (the resources_tabs
+    # widget). Both have been promoted to peers of Editor / AI / Tools /
+    # Settings on main_tabs directly – construction now calls
+    # create_translation_memories_tab() and create_termbases_tab()
+    # directly. The wrapper widget and its method are gone.
 
-        # Horizontal tabs (only 4 items – vertical sidebar wastes space)
-        resources_tabs = QTabWidget()
-        self.resources_tabs = resources_tabs  # Store for navigation
-
-        # Add resource tabs
-        tm_tab = self.create_translation_memories_tab()
-        resources_tabs.addTab(tm_tab, "💾 TMs")
-
-        termbase_tab = self.create_termbases_tab()
-        resources_tabs.addTab(termbase_tab, "🏷️ Termbases")
-
-        # The standalone Non-Translatables tab was removed in v1.9.393.
-        # NTs are now flagged on individual termbase entries (the Trados
-        # plugin already worked this way). Mark a term as NT in the term
-        # editor or via the grid right-click "Add to Non-Translatables".
-
-        # Image Context moved to the AI tab in v1.9.395 – it isn't a
-        # translation aid (TM / termbase) but an AI input, so it lives
-        # alongside the Prompt Manager now.
-
-        layout.addWidget(resources_tabs)
-
-        return tab
-    
     def create_specialised_tools_tab(self):
         """Create the Specialised Tools tab with horizontal tab navigation"""
         tab = QWidget()
@@ -47405,9 +47404,9 @@ class SupervertalerQt(QMainWindow):
             subtab_name: Name of the sub-tab to navigate to (e.g., "AI Settings")
         """
         if hasattr(self, 'main_tabs'):
-            # Main tabs: Grid=0, Resources=1, QuickLauncher=2, Tools=3, Settings=4
-            self.main_tabs.setCurrentIndex(4)
-            
+            # Main tabs (post-v1.9.422): Grid=0, TMs=1, Termbases=2, AI=3, Tools=4, Settings=5
+            self.main_tabs.setCurrentIndex(5)
+
             # Navigate to specific sub-tab if requested
             if subtab_name and hasattr(self, 'settings_tabs'):
                 for i in range(self.settings_tabs.count()):
@@ -47451,8 +47450,8 @@ class SupervertalerQt(QMainWindow):
     def _navigate_to_tool(self, tool_name: str):
         """Navigate to a specific tool in the Tools tab"""
         if hasattr(self, 'main_tabs'):
-            # Main tabs: Grid=0, Resources=1, QuickLauncher=2, Tools=3, Settings=4
-            self.main_tabs.setCurrentIndex(3)  # Switch to Tools tab
+            # Main tabs (post-v1.9.422): Grid=0, TMs=1, Termbases=2, AI=3, Tools=4, Settings=5
+            self.main_tabs.setCurrentIndex(4)  # Switch to Tools tab
             # Then switch to the specific tool sub-tab
             if hasattr(self, 'modules_tabs'):
                 for i in range(self.modules_tabs.count()):
@@ -53426,9 +53425,10 @@ class SuperlookupTab(QWidget):
     def _open_mt_settings(self):
         """Navigate to Settings → MT Settings tab"""
         if self.main_window:
-            # Go to main Settings tab (index 3)
+            # Go to main Settings tab (Settings is index 5 in the
+            # post-v1.9.422 layout: Editor/TMs/Termbases/AI/Tools/Settings)
             if hasattr(self.main_window, 'main_tabs'):
-                self.main_window.main_tabs.setCurrentIndex(3)
+                self.main_window.main_tabs.setCurrentIndex(5)
             # Go to MT Settings sub-tab (index 3: General=0, AI=1, Language=2, MT=3)
             if hasattr(self.main_window, 'settings_tabs'):
                 self.main_window.settings_tabs.setCurrentIndex(3)
@@ -55978,16 +55978,16 @@ class SuperlookupTab(QWidget):
                     except Exception:
                         pass
 
-                # Switch to Project resources tab (index 1)
+                # Switch to the Termbases tab (index 2 in the post-v1.9.422
+                # top-level layout: Editor/TMs/Termbases/AI/Tools/Settings).
+                # Termbases used to be a sub-tab under "Resources" – it was
+                # promoted to a peer of Editor/AI/Tools/Settings in v1.9.422,
+                # so this nav doesn't need to drill through resources_tabs
+                # any more.
                 if hasattr(main, 'main_tabs'):
-                    main.main_tabs.setCurrentIndex(1)
-                
-                # Switch to Glossaries sub-tab within Project resources
-                if hasattr(main, 'resources_tabs'):
-                    # Find the Glossaries tab index
-                    for i in range(main.resources_tabs.count()):
-                        if 'Glossar' in main.resources_tabs.tabText(i):
-                            main.resources_tabs.setCurrentIndex(i)
+                    for i in range(main.main_tabs.count()):
+                        if 'Termbases' in main.main_tabs.tabText(i):
+                            main.main_tabs.setCurrentIndex(i)
                             break
                 
                 # Find and select the termbase in the list
@@ -57508,9 +57508,10 @@ class SuperlookupTab(QWidget):
                 main_window.raise_()
                 main_window.activateWindow()
 
-            # Switch to AI tab (index 2)
+            # Switch to AI tab (index 3 in the post-v1.9.422 layout:
+            # Editor/TMs/Termbases/AI/Tools/Settings)
             if hasattr(main_window, 'main_tabs'):
-                main_window.main_tabs.setCurrentIndex(2)
+                main_window.main_tabs.setCurrentIndex(3)
 
             # Switch to Supervertaler Sidekick sub-tab and insert text
             if hasattr(main_window, 'prompt_manager_qt') and main_window.prompt_manager_qt:
@@ -57782,12 +57783,12 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Main window type: {type(main_window).__name__}")
             print(f"[Superlookup] Has main_tabs: {hasattr(main_window, 'main_tabs')}")
             
-            # Switch to Tools tab (main_tabs index 3)
-            # Tab structure: Grid=0, Resources=1, QuickLauncher=2, Tools=3, Settings=4
+            # Switch to Tools tab (main_tabs index 4 in the post-v1.9.422 layout:
+            # Grid=0, TMs=1, Termbases=2, AI=3, Tools=4, Settings=5)
             if hasattr(main_window, 'main_tabs'):
                 print(f"[Superlookup] Current main_tab index: {main_window.main_tabs.currentIndex()}")
-                main_window.main_tabs.setCurrentIndex(3)  # Tools tab
-                print(f"[Superlookup] Switched to Tools tab (index 2)")
+                main_window.main_tabs.setCurrentIndex(4)  # Tools tab
+                print(f"[Superlookup] Switched to Tools tab (index 4)")
                 QApplication.processEvents()  # Force GUI update
             else:
                 print(f"[Superlookup] WARNING: Main window has no main_tabs attribute!")
