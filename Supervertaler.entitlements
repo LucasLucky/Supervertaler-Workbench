@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- PyQt6-WebEngine embeds Chromium's V8 JavaScript engine,
+         which requires JIT compilation to function. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- V8 also needs writable+executable memory pages (separate from JIT). -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- PyInstaller bundles libraries signed by different authorities
+         (Python.org, Qt, Pillow, onnxruntime, etc.). Without this the
+         hardened runtime refuses to load them. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Microphone access for voice dictation (sounddevice + Whisper). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- AppleScript automation via osascript / System Events.
+         Used for global hotkeys (Superlookup, QuickTrans). -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>
