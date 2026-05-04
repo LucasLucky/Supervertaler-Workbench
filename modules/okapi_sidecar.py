@@ -86,6 +86,13 @@ class OkapiSidecar:
         "https://github.com/Supervertaler/Supervertaler-Workbench/"
         "releases/download/v1.9.416/okapi-sidecar-windows-v0.1.6.zip"
     )
+    # The macOS bundle is currently arm64-only (Apple Silicon). Intel
+    # Macs fall through to the JAR-only path (with the user's system
+    # Java) – same as Linux. Tracked as a future improvement.
+    INSTALLER_URL_MACOS_ARM64 = (
+        "https://github.com/Supervertaler/Supervertaler-Workbench/"
+        "releases/download/v1.9.416/okapi-sidecar-macos-v0.1.6.zip"
+    )
     INSTALLER_URL_JAR_ONLY = (
         "https://github.com/Supervertaler/Supervertaler-Workbench/"
         "releases/download/v1.9.416/okapi-sidecar-v0.1.6.jar"
@@ -719,8 +726,14 @@ class OkapiSidecar:
         if platform.system() == "Windows":
             return self._download_install_zip_bundle(
                 self.INSTALLER_URL_WINDOWS, target_dir, progress_callback)
+        elif platform.system() == "Darwin" and platform.machine() == "arm64":
+            # Apple Silicon: bundle includes an arm64 JRE built via
+            # jlink, so no system Java needed.
+            return self._download_install_zip_bundle(
+                self.INSTALLER_URL_MACOS_ARM64, target_dir, progress_callback)
         else:
-            # macOS / Linux: JAR only, system Java required.
+            # Intel Mac / Linux: JAR only, system Java required.
+            # (No platform-specific JRE bundle yet for these targets.)
             return self._download_install_jar_only(
                 self.INSTALLER_URL_JAR_ONLY, target_dir, progress_callback)
 

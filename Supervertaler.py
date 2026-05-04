@@ -27299,21 +27299,24 @@ class SupervertalerQt(QMainWindow):
             return False
 
         # Path 3: not installed at all – offer a download.
-        # Two flavours by platform:
-        #  - Windows: fetch a ~70 MB bundle (JAR + bundled JRE), no
-        #    system Java required.
-        #  - macOS / Linux: fetch the ~28 MB JAR alone, requires the
-        #    user to have Java available (JAVA_HOME or `java` on PATH).
-        is_windows = (platform.system() == "Windows")
+        # Four flavours by platform + arch:
+        #  - Windows:        ~70 MB bundle (JAR + bundled Windows JRE).
+        #  - Apple Silicon:  ~50 MB bundle (JAR + bundled arm64 JRE).
+        #  - Intel Mac:      ~28 MB JAR; requires system Java.
+        #  - Linux:          ~28 MB JAR; requires system Java.
+        sysname = platform.system()
+        is_apple_silicon = (sysname == "Darwin"
+                            and platform.machine() == "arm64")
+        has_bundled_jre = (sysname == "Windows") or is_apple_silicon
 
-        if not is_windows:
-            # On macOS / Linux, verify Java is reachable before we even
-            # offer the download – otherwise we'd download the JAR and
-            # then fail to launch it, which is a worse experience than
+        if not has_bundled_jre:
+            # Intel Mac / Linux: verify Java is reachable before
+            # downloading the JAR. Otherwise we'd download 28 MB and
+            # then fail to launch, which is a worse experience than
             # telling the user up-front what's missing.
             java_path = self.okapi_sidecar._find_java()
             if java_path is None:
-                if platform.system() == "Darwin":
+                if sysname == "Darwin":
                     install_hint = (
                         "Install Java first (one-time setup):\n"
                         "  • Homebrew: brew install openjdk\n"
@@ -27338,8 +27341,8 @@ class SupervertalerQt(QMainWindow):
                 )
                 return False
 
-        if is_windows:
-            size_text = "about 70 MB"
+        if has_bundled_jre:
+            size_text = "about 50 MB" if is_apple_silicon else "about 70 MB"
             extra_note = ""
         else:
             size_text = "about 28 MB"

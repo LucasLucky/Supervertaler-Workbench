@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.416 (May 4, 2026)
+**Current Version:** v1.9.417 (May 4, 2026)
 
+
+## v1.9.417 - May 4, 2026
+
+### Added (Apple Silicon pip users now get a bundled JRE)
+
+- **Apple Silicon (arm64) Mac pip users no longer need to install Java themselves.** v1.9.416 added macOS lazy-download but only as a JAR-only flavour requiring system Java; this release ships an arm64-specific bundle (~50 MB, JAR + JRE built via `jlink` on the bundled-JRE machine) on the v1.9.416 GitHub release, and `download_install()` now picks it on Apple Silicon Macs.
+- **Intel Macs and Linux** still use the JAR-only flow with system Java required (the "Java required" pre-flight still fires for those two combinations). Tracked as a future improvement: an x86_64 Mac bundle and a Linux bundle. The current release detects the architecture via `platform.machine() == "arm64"` so Intel Mac users automatically fall through to the JAR-only path rather than downloading an unrunnable arm64 JRE.
+- `INSTALLER_URL_MACOS_ARM64` constant added (`okapi-sidecar-macos-v0.1.6.zip` on the v1.9.416 release). The Mac standalone `.app` (`Supervertaler-v1.9.416-macOS.zip`, also Apple Silicon only) was uploaded to the v1.9.414 / v1.9.415 / v1.9.416 GitHub releases for users who prefer a standalone download to a pip install.
+
+---
 
 ## v1.9.416 - May 4, 2026
 
