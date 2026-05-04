@@ -2,8 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.418 (May 4, 2026)
+**Current Version:** v1.9.419 (May 4, 2026)
 
+
+## v1.9.419 - May 4, 2026
+
+### Fixed (CRITICAL: Mac global hotkeys crashed the entire app)
+
+- **The Cmd+K Sidekick hotkey (and every other global hotkey) crashed Supervertaler on macOS 26 (Sequoia).** Reported by a Mac DMG user with Accessibility + Input Monitoring permissions correctly granted: the very first press of Cmd+K reliably aborted the process with `EXC_BREAKPOINT` (SIGTRAP) inside `libdispatch`'s `_dispatch_assert_queue_fail`. The crash dump pointed at Thread-2 (pynput's keyboard listener) calling Carbon's `TSMGetInputSourceProperty` via `ffi_call` → `ctypes`. Root cause: pynput's macOS listener runs on a background CFRunLoop thread, and macOS 26 hard-asserts that Text Services Manager calls happen on the main thread. The assertion fires the moment a registered hotkey is pressed.
+- **The fix:** disable the pynput-based global-hotkey backend on macOS (`platform_helpers.GlobalHotkeyManager._start_pynput`). This prevents the crash but means there are currently no global hotkeys on Mac — Sidekick / SuperLookup / QuickTrans are still reachable via the menu-bar tray icon, which is where Mac users were summoning them anyway. Windows and Linux are unaffected (Windows uses RegisterHotKey on a dedicated message-pump thread; Linux's X11 doesn't have the TSM constraint).
+- A proper Cocoa-native replacement (NSEvent.addGlobalMonitorForEvents or Carbon's RegisterEventHotKey, both running on the main thread) is tracked as a follow-up.
+
+### Fixed (Mac UI: tab labels truncated to ellipsis)
+
+- **Sidekick tab labels (Clipboard, AutoFingers, SuperLookup, …) were clipped to "Clipb…", "AutoFi…", "SuperLo…" on macOS** even when there was plenty of horizontal space available. Same issue on the SuperLookup sub-tabs ("QuickTrans" → "QuickT…", "Web Resources" → "Web Reso…"). Qt's default `ElideRight` on `QTabBar` is too aggressive on Mac because the tab-width metric calculation differs from Windows. Fix: explicitly set `ElideNone` and `setUsesScrollButtons(False)` on the affected tab bars (`modules/floating_assistant.py` for Sidekick's left tabs, `Supervertaler.py`'s `SuperlookupTab` for the results sub-tabs). Cosmetic only, no functional change.
+
+### Note on Mac DMG
+
+- This release is being shipped on PyPI first so the Mac user can re-test via `pip install --upgrade supervertaler` without waiting for a new signed/notarized DMG. The Mac DMG will be rebuilt for v1.9.419 (or a later version) once both fixes are confirmed working in the wild.
+
+---
 
 ## v1.9.418 - May 4, 2026
 

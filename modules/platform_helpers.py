@@ -505,6 +505,28 @@ class GlobalHotkeyManager:
 
     def _start_pynput(self) -> bool:
         """Register hotkeys using pynput GlobalHotKeys."""
+        if IS_MACOS:
+            # pynput's macOS keyboard listener runs on a background CFRunLoop
+            # thread that calls into Carbon's TSMGetInputSourceProperty when a
+            # registered hotkey fires. Starting with macOS 26 (Sequoia), the
+            # Text Services Manager hard-asserts that those calls happen on
+            # the main thread and aborts the process with EXC_BREAKPOINT in
+            # libdispatch's _dispatch_assert_queue_fail when they don't.
+            # Net effect: the very first time the user presses the hotkey,
+            # the entire app crashes. This was reported on a v1.9.418
+            # signed/notarized DMG with macOS Accessibility + Input
+            # Monitoring permissions granted; the crash dump pointed at
+            # Thread-2 (pynput's listener) inside HIToolbox →
+            # TSMGetInputSourceProperty → ffi_call → ctypes.
+            # Disable global hotkeys on macOS until we have a Cocoa-native
+            # (NSEvent.addGlobalMonitorForEvents / Carbon RegisterEventHotKey
+            # on the main thread) replacement. Sidekick + SuperLookup are
+            # still reachable via the menu-bar tray icon.
+            print("[GlobalHotkeyManager] macOS: global hotkeys disabled "
+                  "(pynput's TSM call from a background thread crashes the "
+                  "process on macOS 26+). Use the menu-bar tray icon to "
+                  "summon Sidekick / SuperLookup.")
+            return False
         try:
             from pynput.keyboard import GlobalHotKeys
         except ImportError:

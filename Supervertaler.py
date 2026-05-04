@@ -53123,6 +53123,12 @@ class SuperlookupTab(QWidget):
         self.results_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.results_tabs.tabBar().setDrawBase(False)
         self.results_tabs.tabBar().setExpanding(False)
+        # Force tabs to fit their full text. Without this macOS clips the
+        # SuperLookup sub-tabs ("QuickTrans" → "QuickT…", "Web Resources"
+        # → "Web Reso…", etc.) even when there's plenty of horizontal
+        # space — Qt's default ElideRight is too aggressive on Mac.
+        self.results_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        self.results_tabs.tabBar().setUsesScrollButtons(False)
         self.results_tabs.setStyleSheet("QTabBar::tab { outline: 0; } QTabBar::tab:focus { outline: none; } QTabBar::tab:selected { border-bottom: 1px solid #2196F3; background-color: rgba(33, 150, 243, 0.08); }")
         
         # TM Results tab

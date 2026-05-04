@@ -620,6 +620,13 @@ class FloatingAssistant(QWidget):
             }
         """)
         self._left_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # Force tabs to fit their full text instead of clipping to ellipsis.
+        # On macOS the default ElideRight kicks in even with plenty of width
+        # available because the QTabBar's metric calculation differs from
+        # Windows; without this, tabs like "Clipboard", "AutoFingers",
+        # "SuperLookup" all get clipped to "Clipb…", "AutoFi…", "SuperLo…".
+        self._left_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        self._left_tabs.tabBar().setUsesScrollButtons(False)
 
         # Right-click on any tab → "Open here by default"
         self._left_tabs.tabBar().setContextMenuPolicy(
