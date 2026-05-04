@@ -2,8 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.422 (May 4, 2026)
+**Current Version:** v1.9.423 (May 4, 2026)
 
+
+## v1.9.423 - May 4, 2026
+
+### Fixed (Freshly imported DOCX → 20-second cell-select freezes in filtered mode)
+
+- **Clicking a segment after applying a source/target filter on a freshly-imported DOCX could freeze the app for 20+ seconds.** Reported by Michael with a full instrumentation log: a single cell-select burned **19,822 ms** inside `find_termbase_matches_in_source` (a 4 100-term database, even though all termbases were deactivated for the new project), with the rest of the cell-select cost negligible by comparison.
+- Root cause: `import_docx_from_path` (the fresh-import code path) ended without calling `_start_termbase_batch_worker()`, so the in-memory termbase index was never built for the imported project. Without the index, `find_termbase_matches_in_source` falls back to a brute-force scan over every term across every termbase in the database, which on a fairly modest 40-termbase / 4 100-term collection takes about 1 second cold and gets dramatically worse on the synchronous fall-through that fires from `_on_cell_selected_glossary_only` in filtered mode (the path runs every click, so any locking / re-entrancy makes it cumulatively much slower than a single isolated call). The same project loaded via `Open Project…` (the saved `.svproj` path) was fine because the project-load code at line 25720 already called `_start_termbase_batch_worker()`. Two doors into the same room; only the saved-project door was wired up.
+- Fix: `import_docx_from_path` now calls `_start_termbase_batch_worker()` (which builds the index and starts the background match-cache fill) and `_start_prefetch_worker(first_50)` at the end of the import, mirroring the saved-project load path. Both calls are wrapped in try/except so a background-worker failure doesn't block the visible grid load. After the fix, the user's reproduction shipped this log line on import:
+
+  ```
+  ✅ Built termbase index: 4 100 terms in 0.49 s
+  🔄 Starting background termbase batch processor for 276 segments...
+  ✅ Termbase batch worker complete: 276 segments in 0.42 s
+  ```
+
+  …and the subsequent filtered-mode cell-select dropped from 19,822 ms to ~300 ms (cache miss with index built) or ~70 ms (cache hit).
+- Note on the synchronous fall-through itself: `_on_cell_selected_glossary_only`'s `else` branch at `Supervertaler.py:38087-38090` is labelled *"do a fresh (cheap) termbase-only lookup"*. It's cheap *with the index built*, expensive without. With the index now reliably built on import, the fall-through stays cheap. A future hardening pass could move that fall-through onto a worker so even an index-less path stays UI-responsive, but it's no longer urgent.
+
+---
 
 ## v1.9.422 - May 4, 2026
 

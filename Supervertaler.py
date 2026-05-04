@@ -27795,7 +27795,7 @@ class SupervertalerQt(QMainWindow):
             self.log(f"✓ Loaded {len(segments)} segments from {para_count} paragraphs")
             self.log(f"📍 Project language pair: {project.source_lang.upper()} → {project.target_lang.upper()}")
             self.update_window_title()  # Update window title to show project is loaded
-            
+
             # Initialize spellcheck for target language
             self._initialize_spellcheck_for_target_language(target_lang)
 
@@ -27807,6 +27807,33 @@ class SupervertalerQt(QMainWindow):
             # Refresh AI Assistant context
             if hasattr(self, 'prompt_manager_qt'):
                 self.prompt_manager_qt.refresh_context()
+
+            # Build the in-memory termbase index and pre-fill the match
+            # cache the same way the saved-project load path does. Without
+            # this, the first cell-select on a freshly-imported DOCX falls
+            # through to a brute-force termbase scan – fine on a small
+            # database but reproducibly produces multi-second freezes
+            # (one user reported 20s on a 4 100-term database, all 40
+            # termbases technically present even though deactivated for
+            # the new project). The save/load path was already wired up
+            # via _start_termbase_batch_worker() (line 25720); the fresh-
+            # import path was missing the same call. v1.9.423.
+            try:
+                self._start_termbase_batch_worker()
+            except Exception as _e:
+                # Don't let a background-worker failure block the import
+                # itself – the grid is already loaded and visible by now.
+                self.log(f"⚠ Failed to start termbase batch worker after import: {_e}")
+
+            # Prefetch TM/MT/LLM matches for the first 50 segments so
+            # initial cell-clicks land on cached results instead of a
+            # cold lookup. Mirrors the saved-project load path.
+            try:
+                if len(self.current_project.segments) > 0:
+                    prefetch_ids = [seg.id for seg in self.current_project.segments[:50]]
+                    self._start_prefetch_worker(prefetch_ids)
+            except Exception as _e:
+                self.log(f"⚠ Failed to start prefetch worker after import: {_e}")
 
             progress.close()
 
