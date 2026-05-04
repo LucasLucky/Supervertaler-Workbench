@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.415 (May 3, 2026)
+**Current Version:** v1.9.416 (May 4, 2026)
 
+
+## v1.9.416 - May 4, 2026
+
+### Fixed (macOS / Linux DOCX import)
+
+- **macOS and Linux pip users can now lazy-download the Okapi sidecar.** v1.9.415 only supported lazy-download on Windows (it ships a JAR + bundled JRE so no system Java is needed); on macOS / Linux it showed an unhelpful "build from source" message that effectively blocked DOCX import for any user not on Windows. Reported by a Mac user.
+- The Mac/Linux flow is JAR-only (~28 MB instead of ~70 MB) and requires the user to have Java on their system. `_ensure_okapi_sidecar()` now checks for Java *before* offering the download, so users without Java see a clear platform-specific install hint (`brew install openjdk` on macOS, `apt install default-jre` etc. on Linux) instead of downloading the JAR and then failing to launch it.
+- New helper methods on `OkapiSidecar`: `_download_install_zip_bundle()` (Windows: JAR + JRE bundle), `_download_install_jar_only()` (macOS/Linux: JAR alone), and a shared `_stream_to_file()` helper.
+- Future improvement: ship platform-specific JRE bundles for macOS and Linux too so those users don't need their own Java install. Tracked separately.
+
+---
 
 ## v1.9.415 - May 3, 2026
 

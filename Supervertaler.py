@@ -27299,18 +27299,54 @@ class SupervertalerQt(QMainWindow):
             return False
 
         # Path 3: not installed at all – offer a download.
-        if platform.system() != "Windows":
-            QMessageBox.critical(
-                self,
-                "Okapi sidecar required",
-                "DOCX import requires the Okapi sidecar (a Java service "
-                "for industrial-grade document extraction).\n\n"
-                "Automatic download is currently only available on "
-                "Windows. On macOS/Linux you'll need to install Java and "
-                "build the sidecar JAR from source – see the project "
-                "README for instructions."
+        # Two flavours by platform:
+        #  - Windows: fetch a ~70 MB bundle (JAR + bundled JRE), no
+        #    system Java required.
+        #  - macOS / Linux: fetch the ~28 MB JAR alone, requires the
+        #    user to have Java available (JAVA_HOME or `java` on PATH).
+        is_windows = (platform.system() == "Windows")
+
+        if not is_windows:
+            # On macOS / Linux, verify Java is reachable before we even
+            # offer the download – otherwise we'd download the JAR and
+            # then fail to launch it, which is a worse experience than
+            # telling the user up-front what's missing.
+            java_path = self.okapi_sidecar._find_java()
+            if java_path is None:
+                if platform.system() == "Darwin":
+                    install_hint = (
+                        "Install Java first (one-time setup):\n"
+                        "  • Homebrew: brew install openjdk\n"
+                        "  • Or download from https://www.java.com\n\n"
+                        "Then re-try the import."
+                    )
+                else:
+                    install_hint = (
+                        "Install Java first (one-time setup):\n"
+                        "  • Debian/Ubuntu: sudo apt install default-jre\n"
+                        "  • Fedora/RHEL:  sudo dnf install java-latest-openjdk\n"
+                        "  • Arch:         sudo pacman -S jre-openjdk\n"
+                        "  • Or download from https://www.java.com\n\n"
+                        "Then re-try the import."
+                    )
+                QMessageBox.critical(
+                    self,
+                    "Java required",
+                    "DOCX import requires the Okapi sidecar, a small "
+                    "Java service. No Java runtime was found on your "
+                    "system.\n\n" + install_hint
+                )
+                return False
+
+        if is_windows:
+            size_text = "about 70 MB"
+            extra_note = ""
+        else:
+            size_text = "about 28 MB"
+            extra_note = (
+                "Java was detected on your system, so no separate "
+                "Java install is needed.\n\n"
             )
-            return False
 
         reply = QMessageBox.question(
             self,
@@ -27318,8 +27354,9 @@ class SupervertalerQt(QMainWindow):
             "DOCX import requires the Okapi sidecar – a small Java "
             "service that handles document extraction.\n\n"
             "Supervertaler can download and install it for you "
-            "(about 70 MB, one-time download). It will be saved to "
+            f"({size_text}, one-time download). It will be saved to "
             "your local app data folder.\n\n"
+            f"{extra_note}"
             "Download now?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
