@@ -17,7 +17,7 @@ from PyQt6.QtCore import Qt, QEvent, QSize, QBuffer, QIODevice
 from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QAbstractItemView, QApplication,
+    QListWidget, QListWidgetItem, QListView, QAbstractItemView, QApplication,
     QSplitter, QStackedLayout, QMenu,
 )
 
@@ -185,9 +185,25 @@ class ClipboardManagerWidget(QWidget):
         lst.setStyleSheet(self._LIST_STYLESHEET)
         lst.setIconSize(self._THUMB_SIZE)
         lst.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        lst.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        # ScrollPerItem (the default before we switched to ScrollPerPixel)
+        # keeps held-down arrow keys snappy: each Up/Down snaps directly to
+        # the next row instead of animating a per-pixel smooth-scroll. With
+        # ScrollPerPixel, key auto-repeat fires faster than the smooth-
+        # scroll animation can complete, producing visible stalls when the
+        # user holds Down for several rows at a time. Reported by Michael.
+        lst.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerItem)
         lst.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         lst.setWordWrap(False)
+        # Tell Qt every row has the same height (single-line text items, or
+        # all 48x48-icon image items). Lets Qt cache item geometry and skip
+        # measure-each-row passes during paint and scroll. Safe because the
+        # widget enforces setWordWrap(False) above and image-list items are
+        # all sized to the icon dimensions.
+        lst.setUniformItemSizes(True)
+        # Batched layout dramatically reduces work when the user holds an
+        # arrow key – Qt processes layout in chunks instead of per-row.
+        lst.setLayoutMode(QListView.LayoutMode.Batched)
+        lst.setBatchSize(50)
         lst.itemActivated.connect(self._on_item_activated)
         lst.itemClicked.connect(self._on_item_activated)
         lst.installEventFilter(self)

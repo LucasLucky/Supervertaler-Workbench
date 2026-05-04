@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.424 (May 5, 2026)
+**Current Version:** v1.9.425 (May 5, 2026)
 
+
+## v1.9.425 - May 5, 2026
+
+### Fixed (Held arrow keys snagged when navigating the Clipboard list)
+
+- **Holding Up or Down to scroll through the Sidekick Clipboard list produced visible stalls every few rows.** Single key taps were fast; only key auto-repeat tripped the hitch. Reported by Michael with 250-item history (200 text snippets, 50 image thumbnails).
+- Root cause: the list widgets were configured with `QAbstractItemView.ScrollMode.ScrollPerPixel`. That mode animates a smooth pixel-level scroll on every selection change. Mouse-wheel scroll feels nice with it; key auto-repeat does not – Qt fires KeyDown events faster than the smooth-scroll animation can complete, so each new event has to wait for the in-flight animation. Once a queue forms, the user sees stalls, then a sudden burst as the queue drains. Compounded by the lack of `setUniformItemSizes(True)`, which forced Qt to remeasure every row's geometry on each paint pass.
+- Fix at [clipboard_manager_widget.py `_make_list_widget`](modules/clipboard_manager_widget.py): switch the vertical scroll mode to `ScrollPerItem` (snaps directly to the next row, no animation), enable `setUniformItemSizes(True)` (text items are single-line via `setWordWrap(False)`, image items are all 48×48 thumbs – the invariant Qt needs to cache row heights and skip per-row measurement), and switch the layout mode to `QListView.LayoutMode.Batched` with a 50-item batch size (Qt processes layout in chunks instead of one row at a time).
+- Net effect for held-key navigation: each Up/Down now does `selection += 1` and a single snap-scroll repaint instead of `selection += 1` + queued smooth-scroll animation + per-row geometry recalc. Mouse-wheel scrolling switches from animated to snap, which is a small loss in feel but is the same behaviour every other application list uses (Outlook, Explorer, Trados Studio's grid).
+
+---
 
 ## v1.9.424 - May 5, 2026
 
