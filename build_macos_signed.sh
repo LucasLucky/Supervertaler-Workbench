@@ -225,6 +225,33 @@ find "$APP_PATH/Contents/Frameworks" -path "*/Versions/Resources" -type d \
     -exec rm -rf {} + 2>/dev/null || true
 echo "  ✓ Framework structure cleaned"
 
+# ── Copy bundled JRE post-PyInstaller, pre-signing ───────────────────────────
+# We deliberately copy the JRE AFTER PyInstaller has finished its build,
+# instead of listing it in Supervertaler_macOS.spec's datas. PyInstaller's
+# macOS binary-relocation pass extracts libjli.dylib from the JRE tree out
+# to Contents/Frameworks/libjli.dylib and rewrites its load commands; the
+# launcher (libjli) is then incompatible with the unmodified libjvm.dylib
+# still inside the JRE, the JLI→JVM call dispatches into a null function
+# pointer, and the JVM crashes at init with SIGSEGV in libjli's launcher
+# code (verified against hs_err_pid logs from v1.9.417's broken DMG).
+#
+# By copying the JRE after PyInstaller is done, both libjli and libjvm stay
+# paired with their original install_names. The signing pass below picks
+# up the JRE Mach-O binaries via the same find-based discovery as before.
+echo ""
+echo "=== Copying bundled JRE (post-PyInstaller) ==="
+SRC_JRE="okapi-sidecar/dist/jre"
+DST_JRE="$APP_PATH/Contents/Frameworks/okapi-sidecar/jre"
+if [ -d "$SRC_JRE" ]; then
+    rm -rf "$DST_JRE"
+    cp -R "$SRC_JRE" "$DST_JRE"
+    echo "  ✓ JRE copied to Contents/Frameworks/okapi-sidecar/jre/"
+else
+    echo "ERROR: Bundled JRE not found at $SRC_JRE."
+    echo "       Run 'cd okapi-sidecar && bash build.sh --jlink' first."
+    exit 1
+fi
+
 # ── Code signing (inside-out, hardened runtime) ──────────────────────────────
 echo ""
 echo "=== Code Signing ==="

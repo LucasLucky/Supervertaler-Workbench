@@ -22,10 +22,19 @@ a = Analysis(
         ('README.md', '.'),
         ('CHANGELOG.md', '.'),
         ('FAQ.md', '.'),
-        # Okapi sidecar (Java-based file filter service)
-        # Note: macOS build needs a macOS JRE bundle (built on Mac with jlink)
+        # Okapi sidecar JAR (Java sidecar service)
+        # The bundled JRE is intentionally NOT listed here. PyInstaller's
+        # macOS binary-relocation pass extracts libjli.dylib from the JRE
+        # tree out to Contents/Frameworks/libjli.dylib and rewrites its
+        # load commands. The launcher then becomes incompatible with the
+        # unmodified libjvm.dylib still inside the JRE — the JLI→JVM call
+        # dispatches into a null function pointer and the JVM crashes at
+        # init with SIGSEGV in libjli's launcher code.
+        # Workaround: build_macos_signed.sh copies the JRE into the
+        # bundle AFTER PyInstaller has finished, before code signing, so
+        # PyInstaller never sees it. Both libjli and libjvm stay paired
+        # and the JVM launches correctly. See changelog for v1.9.418.
         ('okapi-sidecar/dist/okapi-sidecar.jar', 'okapi-sidecar'),
-        ('okapi-sidecar/dist/jre', 'okapi-sidecar/jre'),
     ],
     hiddenimports=[
         'PyQt6.QtCore',

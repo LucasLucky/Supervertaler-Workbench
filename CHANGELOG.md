@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.417 (May 4, 2026)
+**Current Version:** v1.9.418 (May 4, 2026)
 
+
+## v1.9.418 - May 4, 2026
+
+### Fixed (CRITICAL: Mac standalone Okapi sidecar broken in v1.9.417)
+
+- **The signed v1.9.417 Mac DMG shipped a JVM that crashed immediately on launch**, so DOCX import via Okapi was unavailable on the standalone Mac build (the in-app log showed *"⚠️ Okapi sidecar failed to start – using built-in filters"* on every launch). Diagnosis (huge thanks to thorough crash-log forensics): PyInstaller's macOS binary-relocation pass extracts `libjli.dylib` from inside the JRE tree out to `Contents/Frameworks/libjli.dylib` and rewrites its `LC_LOAD_DYLIB` / `LC_RPATH` commands. `libjvm.dylib` stays inside the JRE at its original path, untouched. The launcher (rewritten libjli) is then incompatible with the unmodified VM (libjvm), the JLI→JVM call dispatches into a null function pointer, and the JVM crashes with SIGSEGV at `0x0` inside `libjli`'s launcher code. Verified against `hs_err_pid*.log` produced by the broken build.
+- **The fix:** copy the bundled JRE into the .app *after* PyInstaller has finished, before code signing, instead of listing it in `Supervertaler_macOS.spec`'s `datas=`. PyInstaller never sees the JRE, never relocates `libjli`, both launcher and VM stay paired with their original install_names. The existing signing pass already discovers JRE Mach-O binaries via `find` and signs them with the full JIT entitlements (`cs.allow-jit`, `cs.allow-unsigned-executable-memory`, `cs.disable-library-validation`), so no signing changes are needed.
+- Two file changes: `Supervertaler_macOS.spec` drops the JRE entry from `datas=` (keeps the JAR); `build_macos_signed.sh` adds a post-PyInstaller `cp -R` between the framework-fix step and the code-signing step. The Windows build is unaffected (the issue is specific to PyInstaller's macOS binary-relocation pass).
+- v1.9.417 Mac DMG users: please upgrade to v1.9.418. The v1.9.417 standalone Mac build is unfortunately functionally broken for DOCX import; pip users on macOS were unaffected because the lazy-download path doesn't go through PyInstaller.
+
+---
 
 ## v1.9.417 - May 4, 2026
 
