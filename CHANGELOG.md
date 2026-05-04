@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.420 (May 4, 2026)
+**Current Version:** v1.9.421 (May 4, 2026)
 
+
+## v1.9.421 - May 4, 2026
+
+### Fixed (CRITICAL: Monolingual DOCX import via Okapi ignored the user's language choice)
+
+- **Importing a monolingual DOCX via Okapi always sent the file to the sidecar as English-to-English, regardless of what source/target languages the user picked in the Import DOCX Options dialog.** Reported by Michael: he selected Dutch → English in the dialog, but the import-progress popup briefly flashed the wrong direction and Okapi was effectively segmenting the Dutch text using English rules. Project metadata (the `Project` constructor at line 27718-27719) was correct because that code reads the right attribute names, but the actual call to `okapi_sidecar.extract(...)` at line 27538-27542 read attributes that don't exist anywhere in the codebase and silently fell through to the default `'en'`.
+- Root cause: a two-line typo at [Supervertaler.py:27518-27519](Supervertaler.py). The dialog stores the user's choice on `self._import_source_lang` / `self._import_target_lang`, but those two lines read `self._last_import_source_lang` / `self._last_import_target_lang` – names that are never assigned anywhere in the codebase. Both `getattr` calls hit the `'en'` fallback every single import, so the Okapi sidecar received `source_lang='en', target_lang='en'` and applied English segmentation rules to whatever was in the document.
+- Real-world impact: Okapi's segmenter uses different SRX rules per language (different sentence-boundary heuristics, abbreviation lists, quotation handling). Forcing English rules on Dutch / German / French / Japanese / Chinese source texts can produce subtly different segment boundaries than expected. The visible symptom – the wrong-direction flash in the progress dialog – is what surfaced this, but the underlying segmentation issue is the more important fix.
+- Fix: read `_import_source_lang` / `_import_target_lang` (the names actually used by the dialog) in the Okapi extraction path, defaulting to `'en'` only as a last resort. The progress dialog now shows the correct direction (e.g. "NL → EN" when the user picks Dutch → English). `import_docx_from_path` already used the correct attributes for project construction, so projects created since this code shipped have the right `source_lang` / `target_lang` metadata even though Okapi was being misled – no data corruption, just wrong segmentation. Also added a missing `QApplication.processEvents()` call inside the elapsed-time progress-update loop so the dialog stays responsive while Okapi runs.
+
+---
 
 ## v1.9.420 - May 4, 2026
 

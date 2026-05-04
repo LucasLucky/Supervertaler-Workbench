@@ -27514,9 +27514,21 @@ class SupervertalerQt(QMainWindow):
             QApplication.processEvents()
 
             try:
-                # Detect source language from current settings
-                src_lang = getattr(self, '_last_import_source_lang', 'en') or 'en'
-                trg_lang = getattr(self, '_last_import_target_lang', 'en') or 'en'
+                # Read the language pair the user just selected in the
+                # Import DOCX Options dialog. The dialog stores them on
+                # self as _import_source_lang / _import_target_lang (set
+                # at lines 27256-27257). Earlier versions of this code
+                # accidentally read self._last_import_source_lang /
+                # _last_import_target_lang – attribute names that are
+                # never assigned anywhere – which silently fell through
+                # to the default 'en' for both source and target. End
+                # result: regardless of what the user picked in the
+                # dialog, Okapi was always asked to extract as English-
+                # to-English, applying English segmentation rules to
+                # non-English source texts and showing the wrong
+                # direction in the progress dialog. Fixed in v1.9.421.
+                src_lang = getattr(self, '_import_source_lang', None) or 'en'
+                trg_lang = getattr(self, '_import_target_lang', None) or 'en'
 
                 progress.setLabelText(
                     f"Extracting with Okapi ({src_lang.upper()} → {trg_lang.upper()})…\n"
@@ -27555,6 +27567,7 @@ class SupervertalerQt(QMainWindow):
                         f"Extracting with Okapi ({src_lang.upper()} → {trg_lang.upper()})…\n"
                         f"Working on the document – {_elapsed}s elapsed."
                     )
+                    QApplication.processEvents()
 
                 if 'e' in _exc_holder:
                     raise _exc_holder['e']
