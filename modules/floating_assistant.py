@@ -214,6 +214,37 @@ class FloatingAssistant(QWidget):
         except Exception as e:
             print(f"[FloatingAssistant] Sidekick bridge server failed to start: {e}")
 
+        # Schedule a warm-up of the lazy-built tabs (Superlookup,
+        # Clipboard, AutoFingers) shortly after the main window has had
+        # a chance to finish its own initialisation.
+        #
+        # Without this, the very first press of Alt+K / Ctrl+Shift+C
+        # spent 4-5 seconds constructing the SuperlookupTab widget
+        # (heavy: it brings up TM / termbase managers, MT engines, web
+        # resources) plus the Clipboard tab + AutoFingers tab. Reported
+        # as a noticeable hitch on every cold-start hotkey press.
+        # 2 500 ms gives the main window time to paint, the Okapi
+        # sidecar to hand over, and the database to settle, then we
+        # build the lazy tabs in the background while the user is
+        # reading the welcome message or loading a project. By the time
+        # the user presses a hotkey, everything's ready.
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(2500, self._warm_up_lazy_tabs)
+
+    def _warm_up_lazy_tabs(self):
+        """Pre-build the Superlookup / Clipboard / AutoFingers tabs so
+        the first hotkey press doesn't pay the construction cost.
+
+        Idempotent: safe to call repeatedly. Each individual ``_ensure_*``
+        helper is already guarded by an ``_added`` flag, so a second
+        call on first-show is a no-op. Also safe to fail – any
+        exception is swallowed so the user can still summon Sidekick
+        manually (the lazy paths still run on first show as a fallback).
+        """
+        try:
+            self._ensure_superlookup_tab()  # also cascades into clipboard + autofingers
+        except Exception as e:
+            print(f"[FloatingAssistant] Warm-up failed (lazy paths still active): {e}")
 
     def _dismiss_to_tray(self):
         """Hide Sidekick completely – Tool-style windows have no taskbar

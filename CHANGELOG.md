@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.423 (May 4, 2026)
+**Current Version:** v1.9.424 (May 5, 2026)
 
+
+## v1.9.424 - May 5, 2026
+
+### Fixed (First Alt+K / Ctrl+Shift+C hotkey press took 4-5 seconds)
+
+- **The very first press of Alt+K (Sidekick) or Ctrl+Shift+C (Clipboard) after launching Supervertaler stalled for 4-5 seconds before the window appeared.** Subsequent presses were near-instant. Reported by Michael as a consistent cold-start hitch.
+- Root cause: `FloatingAssistant._ensure_superlookup_tab()` ran lazily on the first `show_at_cursor()` call. That single function constructs the entire SuperlookupTab widget (which itself brings up TM lookup wiring, termbase managers, MT engines, and the Web Resources tabs), the Clipboard tab, and the AutoFingers tab in one synchronous burst on the GUI thread. The deferral was originally chosen because the FloatingAssistant is constructed during `create_main_layout()`, before the database / termbase managers are fully wired – building the lazy tabs at construction time would have crashed.
+- Fix: `FloatingAssistant.__init__` now schedules a `QTimer.singleShot(2500, self._warm_up_lazy_tabs)` at the end of construction. By 2.5 s after start-up, the main window has painted, the Okapi sidecar has handed over, the database has settled, and everything the lazy tabs need is in place – so the warm-up calls `_ensure_superlookup_tab()` (which cascades into the Clipboard + AutoFingers ensure-helpers) in the background while the user is reading the welcome message or loading their project. By the time the user presses Alt+K or Ctrl+Shift+C, all three tabs are already constructed and the hotkey path becomes the fast `isVisible()` / `raise_()` path.
+- Idempotent: the `_ensure_*` helpers are all guarded by `_added` flags, so the warm-up + first-show pair is a no-op the second time around. Also failure-safe: any exception during warm-up is swallowed; the lazy paths still run on first show as a fallback. No change to subsequent-hotkey latency – this only collapses the first-time hitch.
+
+---
 
 ## v1.9.423 - May 4, 2026
 
