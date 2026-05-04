@@ -23690,6 +23690,10 @@ class SupervertalerQt(QMainWindow):
         from modules.termlens_widget import TermLensWidget
         
         bottom_tabs = QTabWidget()
+        # Same Mac-elide fix as right_tabs: stop QTabBar from truncating
+        # labels to "Term…" / "Sessio…" when there's plenty of room.
+        bottom_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        bottom_tabs.tabBar().setUsesScrollButtons(True)
         bottom_tabs.setStyleSheet("QTabBar::tab { outline: 0; } QTabBar::tab:focus { outline: none; } QTabBar::tab:selected { border-bottom: 1px solid #2196F3; background-color: rgba(33, 150, 243, 0.08); }")
         
         # TermLens tab
@@ -23838,6 +23842,15 @@ class SupervertalerQt(QMainWindow):
         right_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         right_tabs.tabBar().setDrawBase(False)
         right_tabs.tabBar().setExpanding(False)
+        # macOS clips tab labels to ellipsis ("Match...", "AI Ass...",
+        # "Proofreadin...", "Sessio...", "Scrat...") even when there is
+        # plenty of horizontal space, because Qt's default ElideRight is
+        # too aggressive on Mac. Force the tab bar to size each tab to its
+        # full label and offer scroll buttons if the bar overflows the
+        # available width — that way every label stays readable on Mac
+        # and the layout is unchanged on Windows.
+        right_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        right_tabs.tabBar().setUsesScrollButtons(True)
         right_tabs.setStyleSheet("QTabBar::tab { outline: 0; } QTabBar::tab:focus { outline: none; } QTabBar::tab:selected { border-bottom: 1px solid #2196F3; background-color: rgba(33, 150, 243, 0.08); }")
 
         # NOTE: Translation Results panel is deprecated - MT/LLM is now only via QuickTrans (Ctrl+M)

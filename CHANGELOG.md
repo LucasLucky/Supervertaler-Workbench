@@ -2,8 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.419 (May 4, 2026)
+**Current Version:** v1.9.420 (May 4, 2026)
 
+
+## v1.9.420 - May 4, 2026
+
+### Fixed (more Mac tab clipping)
+
+- **The main-window right-side panel tabs were also being truncated on macOS** ("Match Panel" → "Match…", "AI Assistant" → "AI Ass…", "Preview" → "Pr…", "Segment note" → "Segment…", "Proofreading" → "Proofreadin…", "Session log" → "Sessio…", "Scratchpad" → "Scrat…"). v1.9.419 only addressed the Sidekick + SuperLookup tab bars; the main `right_tabs` (and the lower-left `bottom_tabs` containing TermLens / Session log) still had Qt's default `ElideRight` and clipped on Mac even with plenty of horizontal space. Fix: same `setElideMode(ElideNone)` treatment applied to both. `setUsesScrollButtons(True)` is left on so a narrow window falls back to scroll arrows instead of overflowing — readable labels in the common case, no overflow in the edge case.
+- Cosmetic only, no functional change. Windows behaviour unchanged (it never elided to begin with).
+
+### Note on Mac global hotkeys (still pending)
+
+- The in-app **Cmd+K** binding now correctly opens Sidekick when Supervertaler is the focused app (this is the regular Qt key sequence, unchanged by v1.9.419). However, **global Cmd+K from another app does not summon Sidekick on macOS** because the v1.9.419 fix disables the pynput backend entirely on Darwin to prevent the TSM crash. A Cocoa-native replacement (NSEvent.addGlobalMonitorForEvents or main-thread Carbon `RegisterEventHotKey`) is the proper solution and is tracked separately. For now Mac users should bring Supervertaler to the foreground first (or use the menu-bar tray icon) to summon Sidekick. Note also that Cmd+K is "Connect to Server…" in Finder, so even with a future global binding the choice of shortcut may need revisiting.
+
+---
 
 ## v1.9.419 - May 4, 2026
 
