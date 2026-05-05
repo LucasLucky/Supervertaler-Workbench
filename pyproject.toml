@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.434"
+version = "1.9.435"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -112,15 +112,22 @@ dependencies = [
     # Windows-only AutoHotkey support for Dicta keystroke commands
     "ahk>=1.0.0; platform_system == 'Windows'",
     "psutil>=5.9.0",
+
+    # Voice recognition – both engines are now core deps so AutoFingers
+    # works out of the box without any "[local-whisper]" extra dance.
+    # Vosk is the default always-on engine (lightweight, free, commands-only,
+    # ~15 MB wheel + ~40 MB model on first use). faster-whisper handles
+    # free-text dictation (push-to-talk) and the optional always-on
+    # Whisper backend (~30 MB ctranslate2 wheel + model on first use).
+    "vosk>=0.3.45",
+    "faster-whisper>=1.0.0",
 ]
 
 [project.optional-dependencies]
-# Local Whisper is intentionally optional because it pulls in heavy PyTorch wheels.
-# Voice dictation/commands still work via the OpenAI Whisper API without it.
-local-whisper = ["faster-whisper>=1.0.0"]
-
-# Legacy extras (kept for backward compatibility).
-# Some extras are still listed for historical reasons and may be no-ops.
+# All extras kept as no-ops for backward compatibility – installing
+# ``supervertaler[local-whisper]`` is harmless on existing setups but
+# the underlying package is now a core dep.
+local-whisper = []
 voice = []
 web = []
 pdf = []

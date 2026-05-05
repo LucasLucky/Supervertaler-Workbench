@@ -191,25 +191,18 @@ class QuickDictationThread(QThread):
             return ""
 
     def _transcribe_with_local(self, audio_path: str) -> str:
-        """Transcribe using local faster-whisper (requires optional dependency)."""
+        """Transcribe using local faster-whisper (now a core dependency)."""
         try:
             # Lazy import to avoid loading the C++ engine until needed.
             try:
                 from faster_whisper import WhisperModel
             except ImportError:
-                if getattr(sys, 'frozen', False):
-                    msg = (
-                        "Local Whisper is not available in the Windows EXE build.\n\n"
-                        "Switch to 'OpenAI Whisper API' in Sidekick → AutoFingers\n"
-                        "(requires an OpenAI API key)."
-                    )
-                else:
-                    msg = (
-                        "Local Whisper is not installed.\n\n"
-                        "Install it with:\n"
-                        "  pip install supervertaler[local-whisper]\n\n"
-                        "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
-                    )
+                msg = (
+                    "faster-whisper is not installed in this environment.\n\n"
+                    "Re-install Supervertaler:\n"
+                    "  pip install --upgrade supervertaler\n\n"
+                    "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
+                )
                 self.error_occurred.emit(msg)
                 return ""
 

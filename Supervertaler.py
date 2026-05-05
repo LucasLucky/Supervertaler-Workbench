@@ -20704,43 +20704,27 @@ class SupervertalerQt(QMainWindow):
                 dictation_settings = self.load_dictation_settings()
                 model_name = dictation_settings.get('model', 'base')
                 
-                # Check recognition engine setting
-                use_api = dictation_settings.get('recognition_engine', 'local') == 'api'
-                
-                # If using API, check if we have an OpenAI key
+                # Recognition engine setting. Legacy 'local' maps to
+                # 'faster_whisper' for users upgrading from pre-Vosk versions.
+                engine = dictation_settings.get('recognition_engine', 'vosk')
+                if engine == 'local':
+                    engine = 'faster_whisper'
+
+                # If using API, check if we have an OpenAI key. If not,
+                # fall back to Vosk (the new safe default) rather than
+                # forcing the user into a dialog about installing extras.
                 api_key = None
-                if use_api:
+                if engine == 'api':
                     api_keys = self.load_api_keys()
                     api_key = api_keys.get('openai') or api_keys.get('openai_api_key')
                     if not api_key:
-                        # If no API key, only fall back if Local Whisper is actually installed.
-                        try:
-                            import faster_whisper  # noqa: F401
-                        except ImportError:
-                            if getattr(sys, 'frozen', False):
-                                extra = (
-                                    "Local Whisper is also not available in the Windows EXE build."
-                                )
-                            else:
-                                extra = (
-                                    "Local Whisper is also not installed.\n\n"
-                                    "Install offline Local Whisper with:\n"
-                                    "  pip install supervertaler[local-whisper]"
-                                )
-                            QMessageBox.warning(
-                                self, "OpenAI API Key Required",
-                                "To use OpenAI Whisper API, please set your OpenAI API key in:\n\n"
-                                "Settings → AI Settings → OpenAI API Key\n\n"
-                                + extra
-                            )
-                            return
                         QMessageBox.warning(
                             self, "OpenAI API Key Required",
                             "To use OpenAI Whisper API, please set your OpenAI API key in:\n\n"
                             "Settings → AI Settings → OpenAI API Key\n\n"
-                            "Falling back to local Whisper model."
+                            "Falling back to Vosk (offline, free, commands-only)."
                         )
-                        use_api = False
+                        engine = 'vosk'
                 
                 # Get language setting
                 lang_setting = dictation_settings.get('language', 'Auto (use project target language)')
@@ -20757,13 +20741,15 @@ class SupervertalerQt(QMainWindow):
                 else:
                     lang_code = lang_setting.lower()[:2]
                 
-                # Create listener
+                # Create listener. user_data_path is needed by the Vosk
+                # engine to locate / download the Vosk model on demand.
                 self.voice_listener = ContinuousVoiceListener(
                     command_manager=self.voice_command_manager,
                     model_name=model_name,
                     language=lang_code,
-                    use_api=use_api,
-                    api_key=api_key
+                    engine=engine,
+                    api_key=api_key,
+                    user_data_path=str(self.user_data_path) if hasattr(self, 'user_data_path') else None,
                 )
                 
                 # Set sensitivity from persisted settings (the AutoFingers tab
@@ -20783,10 +20769,12 @@ class SupervertalerQt(QMainWindow):
                 self.voice_listener.listening_stopped.connect(lambda: self._update_alwayson_ui("stopped"))
                 
                 # Log which engine we're using
-                if use_api:
-                    self.log("🎧 Always-on listening started (OpenAI API - fast & accurate)")
+                if engine == 'api':
+                    self.log("🎧 Always-on listening started (OpenAI API – fast & accurate)")
+                elif engine == 'vosk':
+                    self.log("🎧 Always-on listening started (Vosk – offline, commands-only)")
                 else:
-                    self.log(f"🎧 Always-on listening started (local Whisper '{model_name}')")
+                    self.log(f"🎧 Always-on listening started (faster-whisper '{model_name}')")
                 
                 # Start
                 self.voice_listener.start()
@@ -45444,8 +45432,14 @@ class SupervertalerQt(QMainWindow):
             max_duration = dictation_settings.get('max_duration', 10)
             lang_setting = dictation_settings.get('language', 'Auto (use project target language)')
 
-            # Recognition engine: local vs OpenAI API
-            use_api = dictation_settings.get('recognition_engine', 'local') == 'api'
+            # Recognition engine. Push-to-talk dictation produces free-text,
+            # which Vosk's grammar-constrained mode is not built for – so we
+            # silently route Vosk users to faster-whisper for THIS path
+            # while still respecting their explicit API selection.
+            engine = dictation_settings.get('recognition_engine', 'vosk')
+            if engine in ('vosk', 'local'):  # 'local' is the legacy alias
+                engine = 'faster_whisper'
+            use_api = engine == 'api'
             api_key = None
             if use_api:
                 api_keys = self.load_api_keys()

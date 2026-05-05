@@ -127,12 +127,25 @@ class AutoFingersTab(QWidget):
         engine_row = QHBoxLayout()
         engine_row.addWidget(QLabel("Engine:"))
         self._engine_combo = QComboBox()
+        # Order matters – first item is the default for fresh installs.
+        # Item index → engine string mapping is fixed below in
+        # _on_engine_changed and _engine_at_index.
         self._engine_combo.addItems([
-            "Local Whisper (offline, slower)",
-            "OpenAI Whisper API (online, fast)",
+            "Vosk (offline, free, commands only) — recommended",
+            "faster-whisper (offline, free-text dictation)",
+            "OpenAI Whisper API (online, fast, free-text)",
         ])
-        if settings.get('recognition_engine', 'local') == 'api':
-            self._engine_combo.setCurrentIndex(1)
+        # Default to Vosk on fresh installs. Migrate the legacy
+        # ``recognition_engine='local'`` setting to ``'faster_whisper'``.
+        eng = settings.get('recognition_engine', 'vosk')
+        if eng == 'local':
+            eng = 'faster_whisper'
+        idx_for_engine = {
+            'vosk': 0,
+            'faster_whisper': 1,
+            'api': 2,
+        }
+        self._engine_combo.setCurrentIndex(idx_for_engine.get(eng, 0))
         self._engine_combo.currentIndexChanged.connect(self._on_engine_changed)
         engine_row.addWidget(self._engine_combo, stretch=1)
         ao_layout.addLayout(engine_row)
@@ -692,8 +705,10 @@ class AutoFingersTab(QWidget):
             return False
 
     def _on_engine_changed(self, idx: int):
+        # Mirrors the order of items added in __init__'s engine_combo block.
+        engine_at_index = {0: 'vosk', 1: 'faster_whisper', 2: 'api'}
         self._set_dictation_keys(
-            recognition_engine='api' if idx == 1 else 'local')
+            recognition_engine=engine_at_index.get(idx, 'vosk'))
 
     def _on_sensitivity_changed(self, idx: int):
         sensitivity = ['low', 'medium', 'high'][idx]

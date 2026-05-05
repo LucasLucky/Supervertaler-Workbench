@@ -95,21 +95,14 @@ class TranscriptionThread(QThread):
             import os
 
             try:
-                from faster_whisper import WhisperModel  # Local Whisper (optional)
+                from faster_whisper import WhisperModel  # Now a core dep
             except ImportError:
-                if getattr(sys, 'frozen', False):
-                    msg = (
-                        "Local Whisper is not available in the Windows EXE build.\n\n"
-                        "Switch to 'OpenAI Whisper API' in Sidekick → AutoFingers\n"
-                        "(requires an OpenAI API key)."
-                    )
-                else:
-                    msg = (
-                        "Local Whisper is not installed.\n\n"
-                        "To use offline speech recognition, install:\n"
-                        "  pip install supervertaler[local-whisper]\n\n"
-                        "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
-                    )
+                msg = (
+                    "faster-whisper is not installed in this environment.\n\n"
+                    "Re-install Supervertaler:\n"
+                    "  pip install --upgrade supervertaler\n\n"
+                    "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
+                )
                 self.error.emit(msg)
                 return
 

@@ -667,18 +667,36 @@ class ContinuousVoiceListener(QObject):
     error_occurred = pyqtSignal(str)
     vad_status_changed = pyqtSignal(str)  # "listening", "recording", "processing"
     
-    def __init__(self, command_manager: VoiceCommandManager, 
+    # Recognition engine identifiers. ``'vosk'`` is the default and is
+    # purpose-built for command recognition (fixed-vocabulary, ~30 ms
+    # latency, free, no cloud round-trip). ``'faster_whisper'`` covers
+    # the free-text dictation case. ``'api'`` uses OpenAI Whisper's
+    # cloud endpoint for users who prefer it.
+    ENGINE_VOSK = "vosk"
+    ENGINE_FASTER_WHISPER = "faster_whisper"
+    ENGINE_API = "api"
+
+    def __init__(self, command_manager: VoiceCommandManager,
                  model_name: str = "base",
                  language: str = "auto",
-                 use_api: bool = False,
-                 api_key: str = None):
+                 engine: str = ENGINE_VOSK,
+                 api_key: str = None,
+                 user_data_path=None,
+                 vosk_model_key: str = None):
         super().__init__()
         self.command_manager = command_manager
         self.model_name = model_name
         self.language = None if language == "auto" else language
-        self.use_api = use_api
+        # Backward-compat: legacy callers may still pass ``use_api=True``;
+        # we map that to the API engine if ``engine`` was left at default.
+        # New callers should pass the engine string directly.
+        if engine not in (self.ENGINE_VOSK, self.ENGINE_FASTER_WHISPER, self.ENGINE_API):
+            engine = self.ENGINE_VOSK
+        self.engine = engine
         self.api_key = api_key
-        
+        self.user_data_path = user_data_path  # required for Vosk model storage
+        self.vosk_model_key = vosk_model_key  # auto-resolved from language if None
+
         # VAD settings
         self.speech_threshold = 0.02  # RMS threshold to detect speech (adjustable)
         self.silence_duration = 0.8  # Seconds of silence before stopping recording
@@ -687,6 +705,11 @@ class ContinuousVoiceListener(QObject):
         self.is_listening = False
         self._thread = None
         self._whisper_model = None  # Cached Whisper model
+
+    @property
+    def use_api(self) -> bool:
+        """Backward-compat shim for older code that asks ``use_api``."""
+        return self.engine == self.ENGINE_API
         
     def start(self):
         """Start continuous listening"""
@@ -785,34 +808,106 @@ class _VADListenerThread(QObject):
             min_speech_duration = self.listener.min_speech_duration
             max_speech_duration = self.listener.max_speech_duration
 
-            if self.listener.use_api and self.listener.api_key:
+            engine = self.listener.engine
+
+            if engine == ContinuousVoiceListener.ENGINE_API and self.listener.api_key:
                 self.status_update.emit("🎤 Using OpenAI Whisper API (fast & accurate)")
                 self._model = None
+
+            elif engine == ContinuousVoiceListener.ENGINE_VOSK:
+                self.status_update.emit("🎤 Loading Vosk recognizer (commands-only, free)...")
+                self.vad_status.emit("loading")
+                try:
+                    from vosk import Model as VoskModel, KaldiRecognizer
+                except ImportError:
+                    self.error_occurred.emit(
+                        "Vosk is not installed.\n\n"
+                        "Re-install Supervertaler:\n"
+                        "  pip install --upgrade supervertaler\n\n"
+                        "Or switch the AutoFingers engine to 'OpenAI Whisper API' / "
+                        "'faster-whisper' in the meantime."
+                    )
+                    self._running = False
+                    return
+
+                # Resolve which Vosk model to use. If the caller didn't pin a
+                # specific model, pick one based on the listener's language hint.
+                from modules.vosk_model_manager import (
+                    DEFAULT_MODEL_KEY, get_model_path,
+                    download_and_extract, pick_model_for_language,
+                )
+                model_key = (self.listener.vosk_model_key
+                             or pick_model_for_language(self.listener.language)
+                             or DEFAULT_MODEL_KEY)
+
+                user_data = self.listener.user_data_path
+                if not user_data:
+                    self.error_occurred.emit(
+                        "Vosk needs a user-data path to install the model into. "
+                        "This is a configuration bug – please report it."
+                    )
+                    self._running = False
+                    return
+
+                model_dir = get_model_path(model_key, user_data)
+                if model_dir is None:
+                    # First-time fetch. Stream the ZIP, extract, then load.
+                    self.status_update.emit(
+                        f"📥 Downloading Vosk model '{model_key}' (~40 MB, one-time)..."
+                    )
+
+                    def _vosk_progress(done, total):
+                        if total > 0:
+                            mb_d = done // (1024 * 1024)
+                            mb_t = total // (1024 * 1024)
+                            self.status_update.emit(
+                                f"📥 Vosk model: {mb_d} / {mb_t} MB"
+                            )
+
+                    model_dir = download_and_extract(
+                        model_key, user_data, progress_callback=_vosk_progress)
+                    if model_dir is None:
+                        self.error_occurred.emit(
+                            "Failed to download the Vosk model. Check your internet "
+                            "connection and try again."
+                        )
+                        self._running = False
+                        return
+
+                # Build a phrase grammar from the user's active commands so
+                # Vosk biases its recogniser toward those phrases. Free-form
+                # speech that doesn't match anything in the grammar still
+                # gets classified, just much faster (and "[unk]" returned).
+                command_phrases = self._collect_vosk_grammar()
+
+                vmodel = VoskModel(str(model_dir))
+                # KaldiRecognizer accepts (model, sample_rate, grammar_json).
+                # Grammar is a JSON-encoded list of permitted phrases; we
+                # always include "[unk]" as the catch-all for non-command
+                # speech so out-of-grammar utterances don't error out.
+                import json as _json
+                grammar = _json.dumps(command_phrases + ["[unk]"])
+                self._model = KaldiRecognizer(vmodel, 16000, grammar)
+                # Stash the underlying VoskModel so it isn't GC'd before
+                # the recognizer is done with it.
+                self._vosk_model_obj = vmodel
+
             else:
-                self.status_update.emit("🎤 Loading local speech model...")
+                # faster_whisper path (default for free-text dictation).
+                self.status_update.emit("🎤 Loading faster-whisper model...")
                 self.vad_status.emit("loading")
                 try:
                     from faster_whisper import WhisperModel
                 except ImportError:
-                    if getattr(sys, 'frozen', False):
-                        msg = (
-                            "Local Whisper is not available in the Windows EXE build.\n\n"
-                            "To use Always-On dictation, switch to 'OpenAI Whisper API' in\n"
-                            "Sidekick → AutoFingers (requires an OpenAI API key)."
-                        )
-                    else:
-                        msg = (
-                            "Local Whisper is not installed.\n\n"
-                            "Option A (recommended): Choose 'OpenAI Whisper API' in Sidekick → AutoFingers (requires OpenAI API key).\n"
-                            "Option B: Install Local Whisper (faster-whisper backend):\n"
-                            "  pip install supervertaler[local-whisper]"
-                        )
-                    self.error_occurred.emit(msg)
+                    self.error_occurred.emit(
+                        "faster-whisper is not installed.\n\n"
+                        "Re-install Supervertaler:\n"
+                        "  pip install --upgrade supervertaler\n\n"
+                        "Or switch the AutoFingers engine to 'Vosk' or "
+                        "'OpenAI Whisper API'."
+                    )
                     self._running = False
                     return
-                # faster-whisper / CTranslate2 backend on CPU with int8 quantisation –
-                # roughly 4× faster than openai-whisper at ~equal quality, much lower
-                # RAM, and no ffmpeg subprocess (libsndfile-based audio decode).
                 self._model = WhisperModel(
                     self.listener.model_name,
                     device="cpu",
@@ -937,9 +1032,12 @@ class _VADListenerThread(QObject):
                 wf.setframerate(sample_rate)
                 wf.writeframes(audio_int16.tobytes())
             
-            # Transcribe using API or local model
-            if self.listener.use_api and self.listener.api_key:
+            # Transcribe using whichever engine is active.
+            engine = self.listener.engine
+            if engine == ContinuousVoiceListener.ENGINE_API and self.listener.api_key:
                 text = self._transcribe_with_api(temp_path)
+            elif engine == ContinuousVoiceListener.ENGINE_VOSK:
+                text = self._transcribe_with_vosk(temp_path)
             else:
                 text = self._transcribe_with_local(temp_path)
             
@@ -1003,6 +1101,80 @@ class _VADListenerThread(QObject):
             return text.strip()
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
+            return ""
+
+    def _collect_vosk_grammar(self) -> List[str]:
+        """Return the list of phrases Vosk should bias its recogniser
+        toward – i.e. the user's currently-active voice commands.
+
+        Vosk's grammar mode dramatically improves both accuracy and speed
+        when the recognition target is a fixed-vocabulary command set.
+        Each command's primary phrase plus all its aliases is included.
+        We always append ``"[unk]"`` outside this method so non-command
+        speech can be classified as unknown rather than misrecognised as
+        a command.
+        """
+        try:
+            phrases: List[str] = []
+            for cmd in (self.listener.command_manager.commands or []):
+                if not getattr(cmd, "enabled", True):
+                    continue
+                if cmd.phrase:
+                    phrases.append(cmd.phrase.lower().strip())
+                for alias in (cmd.aliases or []):
+                    if alias:
+                        phrases.append(alias.lower().strip())
+            # Deduplicate while preserving order.
+            seen = set()
+            out = []
+            for p in phrases:
+                if p and p not in seen:
+                    seen.add(p)
+                    out.append(p)
+            return out or ["yes", "no"]  # always provide *something*
+        except Exception:
+            return ["yes", "no"]
+
+    def _transcribe_with_vosk(self, audio_path: str) -> str:
+        """Transcribe a recorded utterance using a Vosk KaldiRecognizer.
+
+        The recognizer was built in :meth:`_run` with a JSON grammar
+        derived from the user's active command phrases, so the result
+        is biased toward known commands and out-of-grammar speech is
+        returned as ``[unk]`` (which we filter out).
+
+        Vosk works on raw 16-bit PCM audio at 16 kHz mono, which matches
+        the WAV file we already wrote to disk. We feed the bytes in
+        chunks rather than loading the whole file at once – this scales
+        to longer utterances without spiking memory.
+        """
+        try:
+            import wave
+            recognizer = self._model
+            if recognizer is None:
+                return ""
+            recognizer.Reset()  # clear any state from the previous utterance
+
+            with wave.open(audio_path, "rb") as wf:
+                # The recognizer expects mono 16-bit PCM; sounddevice gives
+                # us float32, but our _process_audio step already converted
+                # to int16 before writing the WAV.
+                while True:
+                    data = wf.readframes(4000)
+                    if len(data) == 0:
+                        break
+                    recognizer.AcceptWaveform(data)
+
+            import json as _json
+            result = _json.loads(recognizer.FinalResult())
+            text = (result.get("text") or "").strip()
+            # Vosk emits "[unk]" (sometimes wrapped) when the speech didn't
+            # match anything in our grammar. Treat that as silence.
+            if text in ("[unk]", "unk", ""):
+                return ""
+            return text
+        except Exception as e:
+            self.error_occurred.emit(f"Vosk transcription error: {e}")
             return ""
 
 

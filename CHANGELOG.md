@@ -2,8 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.434 (May 5, 2026)
+**Current Version:** v1.9.435 (May 5, 2026)
 
+
+## v1.9.435 - May 5, 2026
+
+### Added (Vosk as the new default Always-On engine — free, instant, commands-only)
+
+- **AutoFingers always-on listening now defaults to Vosk** instead of cloud Whisper. Vosk is a Kaldi-based, offline, lattice-decoding recogniser purpose-built for fixed-vocabulary command recognition. With your active command phrases passed in as a JSON grammar, recognition latency drops from ~1–3 seconds (Whisper-class) to ~30 ms, accuracy improves (the recogniser is biased toward your phrase list and rejects unrelated speech as `[unk]`), and per-utterance cost is exactly zero. The CPU spike per command is ~15–30% on one core for a fraction of a second – inaudible-fan-noise territory.
+- **Engine selector in [Sidekick → AutoFingers settings](modules/autofingers_tab.py)** is now three-way: **Vosk (offline, free, commands-only) — recommended**, **faster-whisper (offline, free-text dictation)**, **OpenAI Whisper API (online, fast, free-text)**. Legacy `recognition_engine='local'` setting auto-migrates to `'faster_whisper'`. Vosk is the default for fresh installs.
+- **Push-to-talk dictation (F9 / Ctrl+Alt+D) keeps using faster-whisper** for free-text capability. If a user has Vosk selected as the always-on engine but triggers push-to-talk, the dictation path silently routes to faster-whisper (Vosk's grammar mode isn't built for free-form transcription). This matches the natural split: continuous always-on listening is commands-only and free, intentional push-to-talk dictation is free-text and uses Whisper.
+- **Auto-download on first use** at [`modules/vosk_model_manager.py`](modules/vosk_model_manager.py): the small English (~40 MB) and small Dutch models are mirrored from alphacephei.com to `<user_data>/vosk-models/<model-name>/` on first activation, similar to the Okapi sidecar download pattern. Model selection is auto-resolved from the user's language hint, falling back to small-en-us.
+- New `ContinuousVoiceListener.engine` field replaces the old `use_api: bool`, with class constants `ENGINE_VOSK`, `ENGINE_FASTER_WHISPER`, `ENGINE_API`. The old `use_api` is kept as a backward-compat property.
+- Vosk grammar is built from the user's *enabled* commands (each command's phrase plus its aliases), with `"[unk]"` always appended as the catch-all so out-of-grammar speech doesn't error.
+
+### Changed (Local Whisper / faster-whisper / Vosk are now CORE dependencies, not optional extras)
+
+- **Removed the `[local-whisper]` extra dance.** Both `vosk>=0.3.45` and `faster-whisper>=1.0.0` are now listed in core `dependencies` in [`pyproject.toml`](pyproject.toml). A plain `pip install supervertaler` gets you all three voice engines out of the box. Adds ~50 MB to the wheel install (mostly ctranslate2's C++ engine), ~100 MB to the standalone Windows ZIP.
+- The legacy `[local-whisper]` extra is kept as an empty no-op for backward compatibility – any existing install scripts that include it still resolve cleanly.
+- Error messages and install-doc snippets across [`modules/voice_dictation.py`](modules/voice_dictation.py), [`modules/voice_dictation_lite.py`](modules/voice_dictation_lite.py), and [`modules/voice_commands.py`](modules/voice_commands.py) updated to drop all `pip install supervertaler[local-whisper]` advice.
+
+---
 
 ## v1.9.434 - May 5, 2026
 
