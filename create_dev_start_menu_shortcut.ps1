@@ -1,4 +1,4 @@
-# Create Windows Start Menu shortcuts for Supervertaler (Developer Version)
+﻿# Create Windows Start Menu shortcuts for Supervertaler (Developer Version)
 #
 # Creates TWO shortcuts pointing at this source tree:
 #
@@ -13,7 +13,7 @@
 #      diagnostics use Help → Open Diagnostic Log inside the app, which
 #      reads %USERPROFILE%\Supervertaler\workbench\logs\supervertaler.log.
 #
-# Re-run this script after moving the source directory — both shortcuts
+# Re-run this script after moving the source directory – both shortcuts
 # embed absolute paths and need to be regenerated when the tree moves.
 
 $ErrorActionPreference = 'Stop'
@@ -57,7 +57,7 @@ $StartMenuPath = [Environment]::GetFolderPath("StartMenu")
 $WshShell = New-Object -ComObject WScript.Shell
 
 # Clean up legacy dev shortcut names from previous versions of this script.
-# Only remove shortcuts whose target matches this source directory — never
+# Only remove shortcuts whose target matches this source directory – never
 # touch a "Supervertaler Workbench.lnk" belonging to an installed end-user build.
 $LegacyShortcutNames = @(
     "Supervertaler (Dev).lnk",
@@ -95,7 +95,7 @@ if ($PythonwPath) {
     $Shortcut.TargetPath       = $PythonwPath
     $Shortcut.Arguments        = '"' + $ScriptPath + '"'
     $Shortcut.WorkingDirectory = $SupervertalerDir
-    $Shortcut.Description      = "Supervertaler - AI Translation Tool (Dev build, no terminal — quiet launch)"
+    $Shortcut.Description      = "Supervertaler - AI Translation Tool (Dev build, no terminal – quiet launch)"
     if (Test-Path $IconPath) { $Shortcut.IconLocation = $IconPath }
     $Shortcut.Save()
     Write-Host ("Created: " + $SilentShortcutPath) -ForegroundColor Green
@@ -108,7 +108,7 @@ if ($PythonwPath) {
 }
 
 Write-Host ""
-Write-Host "Both dev shortcuts live in your Start Menu — type 'Supervertaler' to find them." -ForegroundColor Cyan
+Write-Host "Both dev shortcuts live in your Start Menu – type 'Supervertaler' to find them." -ForegroundColor Cyan
 Write-Host "Right-click either to pin it to the taskbar." -ForegroundColor Cyan
 Write-Host ""
 $null = Read-Host "Press Enter to close"
