@@ -18,17 +18,21 @@
 
 $ErrorActionPreference = 'Stop'
 
-# Get the directory where this script is located
-$SupervertalerDir = $PSScriptRoot
-$RunCmdPath = Join-Path $SupervertalerDir "run.cmd"
-$IconPath = Join-Path $SupervertalerDir "assets\icon.ico"
-$ScriptPath = Join-Path $SupervertalerDir "Supervertaler.py"
+# This script lives in <repo>/scripts/. The shortcuts it creates need
+# to point at things at the source ROOT (Supervertaler.py, assets/
+# icon.ico, the .venv) – which is one level up. Only run.cmd / run-silent.cmd
+# also live in scripts/, so those use $PSScriptRoot directly.
+$ScriptsDir       = $PSScriptRoot
+$SupervertalerDir = Split-Path $ScriptsDir -Parent
+$RunCmdPath       = Join-Path $ScriptsDir "run.cmd"
+$IconPath         = Join-Path $SupervertalerDir "assets\icon.ico"
+$ScriptPath       = Join-Path $SupervertalerDir "Supervertaler.py"
 
 # Verify the source tree looks right
 if (!(Test-Path $RunCmdPath)) {
     Write-Host ""
-    Write-Host "ERROR: run.cmd not found in $SupervertalerDir" -ForegroundColor Red
-    Write-Host "Make sure you're running this script from the Supervertaler source directory." -ForegroundColor Yellow
+    Write-Host "ERROR: run.cmd not found in $ScriptsDir" -ForegroundColor Red
+    Write-Host "Make sure you're running this script from <repo>/scripts/." -ForegroundColor Yellow
     Write-Host ""
     $null = Read-Host "Press Enter to exit"
     exit 1
@@ -36,7 +40,7 @@ if (!(Test-Path $RunCmdPath)) {
 if (!(Test-Path $ScriptPath)) {
     Write-Host ""
     Write-Host "ERROR: Supervertaler.py not found in $SupervertalerDir" -ForegroundColor Red
-    Write-Host "Make sure you're running this script from the Supervertaler source directory." -ForegroundColor Yellow
+    Write-Host "Expected layout: <repo>/Supervertaler.py and <repo>/scripts/<this-file>." -ForegroundColor Yellow
     Write-Host ""
     $null = Read-Host "Press Enter to exit"
     exit 1

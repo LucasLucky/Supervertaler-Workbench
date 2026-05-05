@@ -115,12 +115,15 @@ if (Test-Path "$userDataSrc\voice_scripts") {
 # Bypass so they don't have to fiddle with right-click "Run with PowerShell"
 # or change any system policy.
 Write-Host "=== Copying Start Menu shortcut helpers ===" -ForegroundColor Cyan
-if (Test-Path "create_start_menu_shortcut.ps1") {
-  Copy-Item "create_start_menu_shortcut.ps1" "$distDir\create_start_menu_shortcut.ps1"
+# These two live in scripts/ in source, but ship at the ROOT of the ZIP so
+# end users see them immediately on extraction (no digging into a subfolder
+# to find the install helper).
+if (Test-Path "scripts\create_start_menu_shortcut.ps1") {
+  Copy-Item "scripts\create_start_menu_shortcut.ps1" "$distDir\create_start_menu_shortcut.ps1"
   Write-Host "  - Copied create_start_menu_shortcut.ps1"
 }
-if (Test-Path "Add Supervertaler to Start Menu.cmd") {
-  Copy-Item "Add Supervertaler to Start Menu.cmd" "$distDir\Add Supervertaler to Start Menu.cmd"
+if (Test-Path "scripts\Add Supervertaler to Start Menu.cmd") {
+  Copy-Item "scripts\Add Supervertaler to Start Menu.cmd" "$distDir\Add Supervertaler to Start Menu.cmd"
   Write-Host "  - Copied 'Add Supervertaler to Start Menu.cmd'"
 }
 
