@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.443 (May 6, 2026)
+**Current Version:** v1.9.444 (May 6, 2026)
 
+
+## v1.9.444 - May 6, 2026
+
+### Fixed (phantom vertical gap in Edit Voice Command dialog when Type ≠ Internal)
+
+- Reported by Michael with a screenshot: with Type set to Keystroke (or any non-internal type), there was a noticeable empty band of vertical space inside the dialog. Root cause: the "Preset" row was added as a bare `QHBoxLayout` and hidden by toggling `setVisible(False)` on each child widget when not in Internal mode. The layout itself remained in the parent `QVBoxLayout` and reserved its own contents-margins/spacing even with no visible children, producing a phantom gap.
+- Fix: wrap the row in a single container `QWidget` (`_internal_actions_widget`). Toggling the container's visibility collapses the whole row – widgets, margins, spacing, the lot – so non-internal action types now sit flush against the next field.
+
+---
 
 ## v1.9.443 - May 6, 2026
 

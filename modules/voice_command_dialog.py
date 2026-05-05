@@ -7,7 +7,7 @@ must not import from Supervertaler.py).
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
-    QTextEdit, QPushButton,
+    QTextEdit, QPushButton, QWidget,
 )
 
 from modules.voice_commands import VoiceCommand
@@ -162,8 +162,16 @@ class VoiceCommandEditDialog(QDialog):
         action_layout.addWidget(self._cheat_sheet)
         layout.addLayout(action_layout)
 
-        self.internal_actions_layout = QHBoxLayout()
-        self.internal_actions_layout.addWidget(QLabel("Preset:"))
+        # The "Preset" row is wrapped in a container QWidget rather than
+        # added as a bare QHBoxLayout. When the user picks a non-internal
+        # action type, ``setVisible(False)`` on the container collapses
+        # the entire row including its margins/spacing. Hiding individual
+        # widgets in a layout would leave the layout's own spacing in
+        # place, producing a phantom gap between Action and Description.
+        self._internal_actions_widget = QWidget()
+        ia_layout = QHBoxLayout(self._internal_actions_widget)
+        ia_layout.setContentsMargins(0, 0, 0, 0)
+        ia_layout.addWidget(QLabel("Preset:"))
         self.internal_combo = QComboBox()
         self.internal_combo.addItems([
             "navigate_next", "navigate_previous", "navigate_first", "navigate_last",
@@ -174,9 +182,9 @@ class VoiceCommandEditDialog(QDialog):
             "start_dictation", "stop_listening"
         ])
         self.internal_combo.currentTextChanged.connect(lambda t: self.action_edit.setPlainText(t))
-        self.internal_actions_layout.addWidget(self.internal_combo)
-        self.internal_actions_layout.addStretch()
-        layout.addLayout(self.internal_actions_layout)
+        ia_layout.addWidget(self.internal_combo)
+        ia_layout.addStretch()
+        layout.addWidget(self._internal_actions_widget)
 
         desc_layout = QHBoxLayout()
         desc_layout.addWidget(QLabel("Description:"))
@@ -210,13 +218,16 @@ class VoiceCommandEditDialog(QDialog):
         self._on_type_changed()
 
     def _on_type_changed(self):
-        """Show/hide internal actions dropdown + refresh cheat sheet."""
+        """Show/hide the Preset row + refresh the cheat sheet."""
         action_type = self.type_combo.currentData()
         is_internal = action_type == "internal"
-        for i in range(self.internal_actions_layout.count()):
-            widget = self.internal_actions_layout.itemAt(i).widget()
-            if widget:
-                widget.setVisible(is_internal)
+        # Toggling the wrapper widget collapses the whole row including
+        # its margins, so non-internal action types don't leave a
+        # phantom gap between Action and Description.
+        try:
+            self._internal_actions_widget.setVisible(is_internal)
+        except Exception:
+            pass
         # Update the contextual cheat sheet to match the new type.
         try:
             self._cheat_sheet.setText(_ACTION_CHEAT_SHEETS.get(action_type, ""))
