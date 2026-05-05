@@ -2,8 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.442 (May 6, 2026)
+**Current Version:** v1.9.443 (May 6, 2026)
 
+
+## v1.9.443 - May 6, 2026
+
+### Added (Edit Voice Command dialog now has a context-sensitive cheat sheet)
+
+- The Action field's meaning changes wildly with the Type dropdown (an internal action name vs. a keystroke spec vs. an AHK snippet vs. a path to an .ahk file), so the dialog used to show a single generic placeholder that didn't help anyone. New cheat-sheet panel below the Action field auto-updates with the Type:
+  - **Internal Action** &mdash; lists every built-in action name (`navigate_next`, `confirm_segment`, `start_dictation`, …) so you don't have to guess or scroll the Preset dropdown.
+  - **Keystroke** &mdash; modifier syntax (`ctrl`/`alt`/`shift`/`win`), the full special-key vocabulary (`enter`, `tab`, `escape`, `pageup`, `f1`–`f12`, etc.), and four canonical examples (`ctrl+s`, `ctrl+shift+enter` for Trados confirm-and-advance, plain `tab`, `alt+tab`).
+  - **AutoHotkey Code** &mdash; `Send`, `SendText`, `Sleep`, `WinActivate` patterns plus a link to the AHK v2 docs. Multi-line snippets supported.
+  - **AutoHotkey Script File** &mdash; clarifies it expects an absolute path to a `.ahk` file, with examples and a pointer to the "Open Scripts Folder" button on the AutoFingers tab.
+- Implementation in [`modules/voice_command_dialog.py`](modules/voice_command_dialog.py): single `_ACTION_CHEAT_SHEETS` dict at module scope keyed on action_type, rendered into a `QLabel` with rich-text formatting and external-link support, refreshed from the existing `_on_type_changed` slot.
+
+---
 
 ## v1.9.442 - May 6, 2026
 
