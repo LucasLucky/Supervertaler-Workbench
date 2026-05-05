@@ -94,6 +94,46 @@ def get_hidden_subprocess_flags() -> dict:
     return {}
 
 
+@contextlib.contextmanager
+def hide_subprocess_console_windows():
+    """Context manager that suppresses console flashes from any subprocess
+    spawned by code running inside the ``with`` block on Windows.
+
+    Wraps ``subprocess.Popen`` so any process started while the manager is
+    active gets ``CREATE_NO_WINDOW`` added to its creationflags. Restored
+    on exit. No-op on non-Windows platforms.
+
+    Use this when calling third-party libraries that internally spawn
+    helpers via ``subprocess.run([...])`` without giving us a way to pass
+    creationflags ourselves – e.g. OpenAI's whisper library shelling out
+    to ffmpeg for audio decoding. With Supervertaler running console-less
+    (Supervertaler.exe / pythonw.exe), every such helper would otherwise
+    flash a black cmd window for ~100 ms.
+
+    Usage::
+
+        with hide_subprocess_console_windows():
+            result = whisper_model.transcribe(audio_path)
+    """
+    if not (IS_WINDOWS and hasattr(subprocess, "CREATE_NO_WINDOW")):
+        yield
+        return
+
+    _orig_popen = subprocess.Popen
+    _no_window = subprocess.CREATE_NO_WINDOW
+
+    class _NoFlashPopen(_orig_popen):
+        def __init__(self, *args, **kwargs):
+            kwargs["creationflags"] = (kwargs.get("creationflags", 0) or 0) | _no_window
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _NoFlashPopen
+    try:
+        yield
+    finally:
+        subprocess.Popen = _orig_popen
+
+
 # ---------------------------------------------------------------------------
 # Cross-platform window activation
 # ---------------------------------------------------------------------------

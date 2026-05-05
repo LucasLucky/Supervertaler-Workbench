@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
+from modules.platform_helpers import hide_subprocess_console_windows
 
 
 def ensure_ffmpeg_available():
@@ -234,12 +235,14 @@ class QuickDictationThread(QThread):
             model = whisper.load_model(self.model_name)
             self.model_loading_finished.emit()
 
-            # Transcribe
+            # Transcribe – wrapped to suppress the per-call ffmpeg cmd flash
+            # on Windows when running console-less (Supervertaler.exe / pythonw).
             self.status_update.emit("⏳ Transcribing audio...")
-            if self.language:
-                result = model.transcribe(audio_path, language=self.language)
-            else:
-                result = model.transcribe(audio_path)
+            with hide_subprocess_console_windows():
+                if self.language:
+                    result = model.transcribe(audio_path, language=self.language)
+                else:
+                    result = model.transcribe(audio_path)
 
             return (result.get("text") or "").strip()
         except Exception as e:

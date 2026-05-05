@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QShortcut, QKeySequence
 from modules.shortcut_display import format_shortcut_for_display
+from modules.platform_helpers import hide_subprocess_console_windows
 
 
 class RecordingThread(QThread):
@@ -124,11 +125,13 @@ class TranscriptionThread(QThread):
 
             self.progress.emit("Transcribing audio...")
 
-            # Transcribe
-            if self.language:
-                result = model.transcribe(self.audio_path, language=self.language)
-            else:
-                result = model.transcribe(self.audio_path)
+            # Transcribe – wrapped to suppress the per-call ffmpeg cmd flash
+            # on Windows when running console-less (Supervertaler.exe / pythonw).
+            with hide_subprocess_console_windows():
+                if self.language:
+                    result = model.transcribe(self.audio_path, language=self.language)
+                else:
+                    result = model.transcribe(self.audio_path)
 
             # Clean up temp file
             try:

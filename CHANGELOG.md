@@ -2,8 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.432 (May 5, 2026)
+**Current Version:** v1.9.433 (May 5, 2026)
 
+
+## v1.9.433 - May 5, 2026
+
+### Fixed (AutoFingers always-listening flashed a black cmd window every few seconds in local Whisper mode)
+
+- **Reported by Michael**: with AutoFingers always-on listening enabled and *no* OpenAI API key (so the always-listener falls back to local Whisper), a black cmd window was flashing on screen at regular intervals. Closing Supervertaler stopped the flashing entirely.
+- Root cause: OpenAI's `openai-whisper` Python library decodes audio files by shelling out to `ffmpeg` via plain `subprocess.run([...])` with no `creationflags=CREATE_NO_WINDOW`. When Supervertaler runs as a console-less GUI (`Supervertaler.exe` or `pythonw.exe`), every ffmpeg invocation flashes a black cmd window for ~100 ms. Always-listening triggers a transcription per VAD chunk, so the user sees a periodic flash for as long as listening is active. Push-to-talk dictation in local mode was equally affected, just less obvious because it fires once per recording.
+- Fix at [`modules/platform_helpers.py`](modules/platform_helpers.py): new `hide_subprocess_console_windows()` context manager that temporarily wraps `subprocess.Popen` so any process spawned inside the `with` block gets `CREATE_NO_WINDOW` added to its creationflags. No-op on non-Windows platforms. Restored on exit.
+- Applied to all three local-Whisper transcribe sites: [`modules/voice_commands.py`](modules/voice_commands.py) (always-listener, the user-reported case), [`modules/voice_dictation.py`](modules/voice_dictation.py) (full-app dictation thread), and [`modules/voice_dictation_lite.py`](modules/voice_dictation_lite.py) (lite dictation engine for the standalone-app voice dictation surface).
+- This is a surgical fix for the immediate symptom – a longer-term plan to add Vosk as a free, fast, command-only local STT backend (purpose-built for fixed-vocabulary command recognition, no ffmpeg roundtrip) is tracked separately as a future enhancement.
+
+---
 
 ## v1.9.432 - May 5, 2026
 

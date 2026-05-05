@@ -18,7 +18,7 @@ from difflib import SequenceMatcher
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 from modules.shortcut_display import format_shortcut_for_display
-from modules.platform_helpers import IS_WINDOWS, get_hidden_subprocess_flags
+from modules.platform_helpers import IS_WINDOWS, get_hidden_subprocess_flags, hide_subprocess_console_windows
 
 
 @dataclass
@@ -974,15 +974,20 @@ class _VADListenerThread(QObject):
             return ""
 
     def _transcribe_with_local(self, audio_path: str) -> str:
-        """Transcribe using local Whisper model"""
+        """Transcribe using local Whisper model.
+
+        Wrapped in ``hide_subprocess_console_windows`` to suppress the
+        black cmd flash that otherwise fires per VAD chunk on Windows
+        when whisper shells out to ffmpeg for audio decoding.
+        """
         try:
-            if self.listener.language:
-                result = self._model.transcribe(audio_path, language=self.listener.language)
-            else:
-                result = self._model.transcribe(audio_path)
-            
+            with hide_subprocess_console_windows():
+                if self.listener.language:
+                    result = self._model.transcribe(
+                        audio_path, language=self.listener.language)
+                else:
+                    result = self._model.transcribe(audio_path)
             return result["text"].strip()
-            
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
             return ""
