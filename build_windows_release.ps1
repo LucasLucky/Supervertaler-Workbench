@@ -109,11 +109,19 @@ if (Test-Path "$userDataSrc\voice_scripts") {
   }
 }
 
-# Copy Start Menu shortcut creation script
-Write-Host "=== Copying Start Menu shortcut script ===" -ForegroundColor Cyan
+# Copy Start Menu shortcut creation script + double-clickable wrapper.
+# End users see the friendly "Add Supervertaler to Start Menu.cmd" in the
+# extracted ZIP — double-clicking it runs the .ps1 with -ExecutionPolicy
+# Bypass so they don't have to fiddle with right-click "Run with PowerShell"
+# or change any system policy.
+Write-Host "=== Copying Start Menu shortcut helpers ===" -ForegroundColor Cyan
 if (Test-Path "create_start_menu_shortcut.ps1") {
   Copy-Item "create_start_menu_shortcut.ps1" "$distDir\create_start_menu_shortcut.ps1"
   Write-Host "  - Copied create_start_menu_shortcut.ps1"
+}
+if (Test-Path "Add Supervertaler to Start Menu.cmd") {
+  Copy-Item "Add Supervertaler to Start Menu.cmd" "$distDir\Add Supervertaler to Start Menu.cmd"
+  Write-Host "  - Copied 'Add Supervertaler to Start Menu.cmd'"
 }
 
 $zipPath = "dist\Supervertaler-v$version-Windows.zip"

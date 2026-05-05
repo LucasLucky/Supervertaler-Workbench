@@ -2,8 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.427 (May 5, 2026)
+**Current Version:** v1.9.428 (May 5, 2026)
 
+
+## v1.9.428 - May 5, 2026
+
+### Added (One-click "Add Supervertaler to Start Menu" for Windows ZIP users)
+
+- **Windows ZIP releases now ship `Add Supervertaler to Start Menu.cmd`** alongside the existing `create_start_menu_shortcut.ps1`. End users double-click the `.cmd` and it runs the PowerShell script under `-ExecutionPolicy Bypass`, so they don't have to right-click → "Run with PowerShell", confirm scary security dialogs, or know that PowerShell ExecutionPolicy is even a thing. The `.ps1` is still the actual implementation; the `.cmd` is just a friendly user-visible wrapper.
+- Build pipeline ([build_windows_release.ps1](build_windows_release.ps1)) updated to copy the new `.cmd` into `dist/Supervertaler/` alongside the `.ps1` so it lands in the Windows ZIP automatically.
+
+### Improved (Dev script now also creates a no-terminal shortcut)
+
+- **`create_dev_start_menu_shortcut.ps1` now creates two dev shortcuts in one go:**
+  - `Supervertaler Workbench (Dev)` — targets `run.cmd`, opens a console window so stdout/stderr (`[LOG]` lines, exceptions) stream live. Useful when actively debugging.
+  - `Supervertaler Workbench (Dev, no terminal)` — targets `pythonw.exe Supervertaler.py` directly, no console flash. Useful for everyday dev use when you don't need to watch the console.
+- The no-terminal shortcut targets `pythonw.exe` directly (preferring `.venv\Scripts\pythonw.exe` if it exists, else PATH) rather than going through `run-silent.cmd`, because launching a `.cmd` from a shortcut still flashes a brief console window even with `start /b` inside.
+- Re-run the script after moving the source tree — both shortcuts embed absolute paths and need to be regenerated when the source folder moves.
+
+---
 
 ## v1.9.427 - May 5, 2026
 
