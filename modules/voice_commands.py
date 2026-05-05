@@ -670,7 +670,7 @@ class ContinuousVoiceListener(QObject):
     # Recognition engine identifiers. ``'vosk'`` is the default and is
     # purpose-built for command recognition (fixed-vocabulary, ~30 ms
     # latency, free, no cloud round-trip). ``'faster_whisper'`` covers
-    # the free-text dictation case. ``'api'`` uses OpenAI Whisper's
+    # the running-text dictation case. ``'api'`` uses OpenAI Whisper's
     # cloud endpoint for users who prefer it.
     ENGINE_VOSK = "vosk"
     ENGINE_FASTER_WHISPER = "faster_whisper"
@@ -918,7 +918,7 @@ class _VADListenerThread(QObject):
                 self._vosk_model_obj = vmodel
 
             else:
-                # faster_whisper path (default for free-text dictation).
+                # faster_whisper path (default for running-text dictation).
                 self.status_update.emit("🎤 Loading faster-whisper model...")
                 self.vad_status.emit("loading")
                 try:

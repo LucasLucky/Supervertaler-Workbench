@@ -132,8 +132,8 @@ class AutoFingersTab(QWidget):
         # _on_engine_changed and _engine_at_index.
         self._engine_combo.addItems([
             "Vosk (offline, free, commands only) — recommended",
-            "faster-whisper (offline, free-text dictation)",
-            "OpenAI Whisper API (online, fast, free-text)",
+            "faster-whisper (offline, dictates running text)",
+            "OpenAI Whisper API (online, fast, dictates running text)",
         ])
         # Default to Vosk on fresh installs. Migrate the legacy
         # ``recognition_engine='local'`` setting to ``'faster_whisper'``.
@@ -169,12 +169,20 @@ class AutoFingersTab(QWidget):
         self._commands_only_cb.setToolTip(
             "When checked, Always-On fires voice commands but ignores any "
             "speech that doesn't match a command. Use Ctrl+Alt+D (or F9 in "
-            "the editor) for one-off dictation."
+            "the editor) for one-off dictation.\n\n"
+            "Has no effect when the engine is set to Vosk – Vosk's grammar-"
+            "constrained recogniser already only emits text for known "
+            "command phrases; everything else is silently dropped."
         )
         self._commands_only_cb.setChecked(
             bool(settings.get('alwayson_commands_only', False)))
         self._commands_only_cb.toggled.connect(self._on_commands_only_toggled)
         ao_layout.addWidget(self._commands_only_cb)
+        # Disable + grey out when Vosk is the active engine, since Vosk's
+        # grammar mode is structurally "commands only" and the checkbox
+        # would otherwise confuse the user. Re-enables when they switch
+        # to faster-whisper or the OpenAI API.
+        self._sync_commands_only_for_engine()
 
         ao_focus_hint = QLabel(
             "ℹ️ <b>How it works:</b> commands and dictation go to whichever "
@@ -709,6 +717,24 @@ class AutoFingersTab(QWidget):
         engine_at_index = {0: 'vosk', 1: 'faster_whisper', 2: 'api'}
         self._set_dictation_keys(
             recognition_engine=engine_at_index.get(idx, 'vosk'))
+        # Vosk is grammar-constrained → the "commands only" checkbox is
+        # implicit. Whisper engines accept any speech → checkbox is meaningful.
+        self._sync_commands_only_for_engine()
+
+    def _sync_commands_only_for_engine(self):
+        """Disable the 'Listen for commands only' checkbox when Vosk is the
+        active engine (Vosk's grammar mode already filters out non-command
+        speech at the recogniser level, so the checkbox has no effect).
+        Re-enable for Whisper-class engines where it does."""
+        try:
+            idx = self._engine_combo.currentIndex()
+        except Exception:
+            return
+        is_vosk = (idx == 0)
+        try:
+            self._commands_only_cb.setEnabled(not is_vosk)
+        except Exception:
+            pass
 
     def _on_sensitivity_changed(self, idx: int):
         sensitivity = ['low', 'medium', 'high'][idx]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.436"
+version = "1.9.437"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -117,7 +117,7 @@ dependencies = [
     # works out of the box without any "[local-whisper]" extra dance.
     # Vosk is the default always-on engine (lightweight, free, commands-only,
     # ~15 MB wheel + ~40 MB model on first use). faster-whisper handles
-    # free-text dictation (push-to-talk) and the optional always-on
+    # running-text dictation (push-to-talk) and the optional always-on
     # Whisper backend (~30 MB ctranslate2 wheel + model on first use).
     "vosk>=0.3.45",
     "faster-whisper>=1.0.0",

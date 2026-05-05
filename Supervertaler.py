@@ -45403,7 +45403,7 @@ class SupervertalerQt(QMainWindow):
 
         New behaviour (Vosk + faster-whisper coexisting): always-on uses
         Vosk for command recognition, push-to-talk uses faster-whisper
-        for free-text dictation. They're different engines and SHOULD
+        for running-text dictation. They're different engines and SHOULD
         coexist – we just need to mute the always-on listener for the
         duration of the dictation so the dictated text isn't half-
         interpreted as a command. The mic is handed back to Vosk via
@@ -45451,7 +45451,7 @@ class SupervertalerQt(QMainWindow):
             max_duration = dictation_settings.get('max_duration', 10)
             lang_setting = dictation_settings.get('language', 'Auto (use project target language)')
 
-            # Recognition engine. Push-to-talk dictation produces free-text,
+            # Recognition engine. Push-to-talk dictation produces running text,
             # which Vosk's grammar-constrained mode is not built for – so we
             # silently route Vosk users to faster-whisper for THIS path
             # while still respecting their explicit API selection.

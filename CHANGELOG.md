@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.436 (May 5, 2026)
+**Current Version:** v1.9.437 (May 5, 2026)
 
+
+## v1.9.437 - May 5, 2026
+
+### Improved (Always-On UX polish — checkbox auto-disable + terminology fix)
+
+- **"Listen for commands only" checkbox is now greyed out when Vosk is the active engine.** Vosk's grammar-constrained recogniser already drops non-command speech at the recogniser level (returns `[unk]` and we throw it away), so the checkbox setting was structurally a no-op for Vosk users – just confusing UI noise. With Vosk selected the checkbox is now disabled with a tooltip explaining why; switching to faster-whisper or the OpenAI API re-enables it (those engines do produce transcribable text from non-command speech, so the user actually has a meaningful choice). Reported by Michael while testing v1.9.435.
+- **Engine-selector labels: "free-text" → "running text".** "Free text" reads ambiguously like "free as in money" rather than "as opposed to fixed phrases". Translators – the primary audience – say "running text" for prose, so the new labels are: **Vosk (offline, free, commands only) — recommended** / **faster-whisper (offline, dictates running text)** / **OpenAI Whisper API (online, fast, dictates running text)**. Same change applied to internal code comments and v1.9.435–v1.9.436 CHANGELOG entries for consistency.
+
+---
 
 ## v1.9.436 - May 5, 2026
 
@@ -11,7 +20,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 - **Reported by Michael**: with v1.9.435's Vosk-as-default Always-On engine, pressing F9 / Ctrl+Alt+D for push-to-talk dictation just *deactivated* Always-On instead of dictating anything. The trigger logic at [`Supervertaler.py:45404`](Supervertaler.py:45404) was a leftover from when both paths used Whisper and shared the mic exclusively – the easy-out was to treat F9 as an Always-On kill-switch when Always-On was running.
 - **Now**: F9 / Ctrl+Alt+D **pauses** Always-On for the duration of the push-to-talk dictation, then **resumes** it automatically when the dictation thread finishes (or errors out). Vosk continues monitoring for commands afterwards without the user having to manually re-enable it. The pause is implemented via a new `ContinuousVoiceListener.pause()` / `resume()` pair plus an `is_paused` flag that the audio callback checks; while paused, incoming audio chunks are silently dropped (so a) dictated text isn't half-interpreted as a command, and b) we don't waste CPU running Vosk on Whisper-bound speech).
-- The new architecture matches the user's mental model from v1.9.435 — Vosk for continuous commands, faster-whisper for explicit free-text dictation — instead of forcing them to be mutually exclusive. Resume happens unconditionally on both success (`on_dictation_finished`) and error (`on_dictation_error`) paths, so a Whisper failure never leaves Always-On stuck in the paused state.
+- The new architecture matches the user's mental model from v1.9.435 — Vosk for continuous commands, faster-whisper for explicit running-text dictation — instead of forcing them to be mutually exclusive. Resume happens unconditionally on both success (`on_dictation_finished`) and error (`on_dictation_error`) paths, so a Whisper failure never leaves Always-On stuck in the paused state.
 
 ### Note: F9 (in-app shortcut) vs Ctrl+Alt+D (global hotkey)
 
@@ -24,8 +33,8 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ### Added (Vosk as the new default Always-On engine — free, instant, commands-only)
 
 - **AutoFingers always-on listening now defaults to Vosk** instead of cloud Whisper. Vosk is a Kaldi-based, offline, lattice-decoding recogniser purpose-built for fixed-vocabulary command recognition. With your active command phrases passed in as a JSON grammar, recognition latency drops from ~1–3 seconds (Whisper-class) to ~30 ms, accuracy improves (the recogniser is biased toward your phrase list and rejects unrelated speech as `[unk]`), and per-utterance cost is exactly zero. The CPU spike per command is ~15–30% on one core for a fraction of a second – inaudible-fan-noise territory.
-- **Engine selector in [Sidekick → AutoFingers settings](modules/autofingers_tab.py)** is now three-way: **Vosk (offline, free, commands-only) — recommended**, **faster-whisper (offline, free-text dictation)**, **OpenAI Whisper API (online, fast, free-text)**. Legacy `recognition_engine='local'` setting auto-migrates to `'faster_whisper'`. Vosk is the default for fresh installs.
-- **Push-to-talk dictation (F9 / Ctrl+Alt+D) keeps using faster-whisper** for free-text capability. If a user has Vosk selected as the always-on engine but triggers push-to-talk, the dictation path silently routes to faster-whisper (Vosk's grammar mode isn't built for free-form transcription). This matches the natural split: continuous always-on listening is commands-only and free, intentional push-to-talk dictation is free-text and uses Whisper.
+- **Engine selector in [Sidekick → AutoFingers settings](modules/autofingers_tab.py)** is now three-way: **Vosk (offline, free, commands-only) — recommended**, **faster-whisper (offline, dictates running text)**, **OpenAI Whisper API (online, fast, dictates running text)**. Legacy `recognition_engine='local'` setting auto-migrates to `'faster_whisper'`. Vosk is the default for fresh installs.
+- **Push-to-talk dictation (F9 / Ctrl+Alt+D) keeps using faster-whisper** for running-text capability. If a user has Vosk selected as the always-on engine but triggers push-to-talk, the dictation path silently routes to faster-whisper (Vosk's grammar mode isn't built for running-text transcription). This matches the natural split: continuous always-on listening is commands-only and free, intentional push-to-talk dictation produces running text and uses Whisper.
 - **Auto-download on first use** at [`modules/vosk_model_manager.py`](modules/vosk_model_manager.py): the small English (~40 MB) and small Dutch models are mirrored from alphacephei.com to `<user_data>/vosk-models/<model-name>/` on first activation, similar to the Okapi sidecar download pattern. Model selection is auto-resolved from the user's language hint, falling back to small-en-us.
 - New `ContinuousVoiceListener.engine` field replaces the old `use_api: bool`, with class constants `ENGINE_VOSK`, `ENGINE_FASTER_WHISPER`, `ENGINE_API`. The old `use_api` is kept as a backward-compat property.
 - Vosk grammar is built from the user's *enabled* commands (each command's phrase plus its aliases), with `"[unk]"` always appended as the catch-all so out-of-grammar speech doesn't error.
