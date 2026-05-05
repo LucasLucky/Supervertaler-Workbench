@@ -45395,16 +45395,35 @@ class SupervertalerQt(QMainWindow):
                     pass
 
     def start_voice_dictation(self):
-        """Start or stop voice dictation (toggle behavior)
-        
-        If always-on mode is active, F9 stops it.
-        Otherwise, F9 starts push-to-talk recording.
+        """Start or stop voice dictation (toggle behavior).
+
+        Old behaviour (pre-Vosk): if always-on was active, F9/Ctrl+Alt+D
+        would toggle it OFF instead of dictating, because both paths used
+        Whisper and shared the mic exclusively.
+
+        New behaviour (Vosk + faster-whisper coexisting): always-on uses
+        Vosk for command recognition, push-to-talk uses faster-whisper
+        for free-text dictation. They're different engines and SHOULD
+        coexist – we just need to mute the always-on listener for the
+        duration of the dictation so the dictated text isn't half-
+        interpreted as a command. The mic is handed back to Vosk via
+        ``_resume_alwayson_after_dictation`` once the dictation thread
+        signals ``finished``.
         """
-        # Check if always-on mode is active - if so, toggle it off
-        if self.voice_listener and self.voice_listener.is_listening:
-            self._toggle_alwayson_listening()
-            return
-        
+        # If always-on is currently running, pause it (don't kill it) so
+        # push-to-talk can use the mic alone, then resume after.
+        alwayson_was_running = bool(
+            self.voice_listener and self.voice_listener.is_listening)
+        if alwayson_was_running:
+            try:
+                self.voice_listener.pause()
+                self.log("⏸️ Always-on paused for push-to-talk dictation")
+            except Exception:
+                pass
+        # Stash the flag so the dictation-finished callback knows whether
+        # to resume always-on or leave it stopped.
+        self._alwayson_was_running_before_dictation = alwayson_was_running
+
         # Debug: Check thread state
         has_thread = hasattr(self, 'dictation_thread')
         thread_exists = has_thread and self.dictation_thread is not None
@@ -45624,6 +45643,9 @@ class SupervertalerQt(QMainWindow):
 
         self.status_bar.showMessage(f"❌ Voice dictation error", 3000)
 
+        # Hand the mic back to always-on if we paused it for this dictation.
+        self._resume_alwayson_after_dictation()
+
         # Show detailed error dialog for FFmpeg issues
         if "FFmpeg" in error_msg or "ffmpeg" in error_msg:
             QMessageBox.warning(self, "FFmpeg Required", error_msg)
@@ -45632,6 +45654,27 @@ class SupervertalerQt(QMainWindow):
         """Handle dictation thread finishing"""
         self.log("✓ Dictation thread finished")
         self._set_dictation_button_recording(False)
+        # Hand the mic back to always-on if we paused it for this dictation.
+        self._resume_alwayson_after_dictation()
+
+    def _resume_alwayson_after_dictation(self):
+        """Re-enable the always-on listener if push-to-talk had paused it.
+
+        Idempotent – safe to call from both the success and error paths.
+        Only resumes if (a) we set the flag in ``start_voice_dictation``
+        AND (b) the listener is still around AND in a paused state.
+        """
+        if not getattr(self, '_alwayson_was_running_before_dictation', False):
+            return
+        self._alwayson_was_running_before_dictation = False
+        try:
+            if (self.voice_listener
+                    and self.voice_listener.is_listening
+                    and getattr(self.voice_listener, 'is_paused', False)):
+                self.voice_listener.resume()
+                self.log("▶️ Always-on resumed")
+        except Exception as e:
+            self.log(f"⚠ Could not resume always-on listener: {e}")
 
     def on_model_loading_started(self, model_name):
         """Handle Whisper model loading/download starting"""

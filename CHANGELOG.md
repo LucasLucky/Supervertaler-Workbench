@@ -2,8 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.435 (May 5, 2026)
+**Current Version:** v1.9.436 (May 5, 2026)
 
+
+## v1.9.436 - May 5, 2026
+
+### Fixed (Push-to-talk dictation now coexists with Always-On instead of killing it)
+
+- **Reported by Michael**: with v1.9.435's Vosk-as-default Always-On engine, pressing F9 / Ctrl+Alt+D for push-to-talk dictation just *deactivated* Always-On instead of dictating anything. The trigger logic at [`Supervertaler.py:45404`](Supervertaler.py:45404) was a leftover from when both paths used Whisper and shared the mic exclusively – the easy-out was to treat F9 as an Always-On kill-switch when Always-On was running.
+- **Now**: F9 / Ctrl+Alt+D **pauses** Always-On for the duration of the push-to-talk dictation, then **resumes** it automatically when the dictation thread finishes (or errors out). Vosk continues monitoring for commands afterwards without the user having to manually re-enable it. The pause is implemented via a new `ContinuousVoiceListener.pause()` / `resume()` pair plus an `is_paused` flag that the audio callback checks; while paused, incoming audio chunks are silently dropped (so a) dictated text isn't half-interpreted as a command, and b) we don't waste CPU running Vosk on Whisper-bound speech).
+- The new architecture matches the user's mental model from v1.9.435 — Vosk for continuous commands, faster-whisper for explicit free-text dictation — instead of forcing them to be mutually exclusive. Resume happens unconditionally on both success (`on_dictation_finished`) and error (`on_dictation_error`) paths, so a Whisper failure never leaves Always-On stuck in the paused state.
+
+### Note: F9 (in-app shortcut) vs Ctrl+Alt+D (global hotkey)
+
+- F9 is a Qt `QShortcut` and only fires when Supervertaler has window focus. To trigger push-to-talk from any application (Trados / memoQ / Word / browser / etc.) use **Ctrl+Alt+D**, which is registered via the cross-platform global hotkey manager. This isn't new behaviour but worth restating since users testing v1.9.435 for the first time may try F9 from their CAT tool's editor and conclude push-to-talk is broken when actually it's just not in scope for in-app shortcuts.
+
+---
 
 ## v1.9.435 - May 5, 2026
 

@@ -703,6 +703,11 @@ class ContinuousVoiceListener(QObject):
         self.min_speech_duration = 0.3  # Minimum speech duration to process
         self.max_speech_duration = 15.0  # Maximum recording duration
         self.is_listening = False
+        # Pause flag, set by pause()/resume(). When true, the audio
+        # callback drops incoming chunks instead of forwarding them to
+        # the recognizer. Used to mute the always-on listener while
+        # push-to-talk dictation has the mic.
+        self._paused = False
         self._thread = None
         self._whisper_model = None  # Cached Whisper model
 
@@ -732,6 +737,26 @@ class ContinuousVoiceListener(QObject):
             self._thread.stop()
             self._thread = None
         self.listening_stopped.emit()
+
+    def pause(self):
+        """Mute the listener temporarily without tearing down the thread.
+
+        Used when push-to-talk dictation needs sole access to the mic
+        for a few seconds. Audio chunks captured during the pause are
+        discarded by the callback rather than queued for transcription,
+        so a) the user's dictation isn't interpreted as a half-heard
+        command, and b) we don't waste CPU running Vosk on Whisper-
+        bound speech.
+        """
+        self._paused = True
+
+    def resume(self):
+        """Re-enable the listener after a :meth:`pause`."""
+        self._paused = False
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
     
     def set_sensitivity(self, level: str):
         """
@@ -931,6 +956,17 @@ class _VADListenerThread(QObject):
                 nonlocal audio_buffer, is_recording, silence_start, speech_start
 
                 if not self._running:
+                    return
+
+                # Paused: drop incoming audio so push-to-talk dictation has
+                # the mic to itself. Reset the in-flight recording state so
+                # we don't resume mid-utterance with a stale buffer.
+                if self.listener._paused:
+                    if is_recording:
+                        is_recording = False
+                        audio_buffer = []
+                        silence_start = None
+                        self.vad_status.emit("waiting")
                     return
 
                 rms = np.sqrt(np.mean(indata**2))
