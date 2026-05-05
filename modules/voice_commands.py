@@ -70,6 +70,11 @@ class VoiceCommandManager(QObject):
     command_executed = pyqtSignal(str, str)  # (command_phrase, result_message)
     command_not_found = pyqtSignal(str)  # spoken_text that didn't match
     error_occurred = pyqtSignal(str)  # error message
+    # Emitted whenever the command list is mutated and persisted via
+    # save_commands(). Listeners (notably ContinuousVoiceListener under
+    # the Vosk engine) can hook this to rebuild their grammar without
+    # the user having to restart Always-On.
+    commands_changed = pyqtSignal()
     
     # Default commands
     DEFAULT_COMMANDS = [
@@ -271,6 +276,13 @@ class VoiceCommandManager(QObject):
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
             self.error_occurred.emit(f"Failed to save voice commands: {e}")
+        # Signal listeners (e.g. a running Vosk recogniser) that the
+        # command set changed – they can rebuild their grammar without
+        # the user having to stop and restart Always-On.
+        try:
+            self.commands_changed.emit()
+        except Exception:
+            pass
     
     def find_matching_command(self, spoken_text: str) -> Optional[Tuple[VoiceCommand, float]]:
         """
@@ -720,7 +732,7 @@ class ContinuousVoiceListener(QObject):
         """Start continuous listening"""
         if self.is_listening:
             return
-        
+
         self.is_listening = True
         self._thread = _VADListenerThread(self)
         self._thread.transcription_ready.connect(self._on_transcription)
@@ -728,15 +740,47 @@ class ContinuousVoiceListener(QObject):
         self._thread.error_occurred.connect(self.error_occurred.emit)
         self._thread.vad_status.connect(self.vad_status_changed.emit)
         self._thread.start()
+        # Hot-reload Vosk's grammar when the user adds / edits / removes
+        # / disables a command, so they don't have to stop and restart
+        # Always-On to teach the recogniser a new phrase. The handler is
+        # a no-op for non-Vosk engines.
+        try:
+            self.command_manager.commands_changed.connect(
+                self._on_commands_changed)
+        except Exception:
+            pass
         self.listening_started.emit()
     
     def stop(self):
         """Stop continuous listening"""
         self.is_listening = False
+        try:
+            self.command_manager.commands_changed.disconnect(
+                self._on_commands_changed)
+        except (TypeError, RuntimeError):
+            # Not connected (e.g. listener never reached start) – ignore.
+            pass
         if self._thread:
             self._thread.stop()
             self._thread = None
         self.listening_stopped.emit()
+
+    def _on_commands_changed(self):
+        """Slot for ``VoiceCommandManager.commands_changed``.
+
+        Sets a flag on the worker thread so it picks up the new grammar
+        between transcriptions. No-op outside the Vosk engine and when
+        the listener isn't actively running."""
+        if not self.is_listening:
+            return
+        if self.engine != self.ENGINE_VOSK:
+            return
+        if self._thread is None:
+            return
+        try:
+            self._thread._needs_grammar_rebuild = True
+        except Exception:
+            pass
 
     def pause(self):
         """Mute the listener temporarily without tearing down the thread.
@@ -802,7 +846,17 @@ class _VADListenerThread(QObject):
         self.listener = listener
         self._running = False
         self._thread = None
-        self._model = None  # Cached whisper model
+        self._model = None  # Cached whisper / Vosk recognizer
+        # Set externally (cross-thread) when the user mutates the
+        # command list. The transcription worker checks this between
+        # clips and rebuilds the Vosk grammar without restarting the
+        # whole listener. Safe to flip from any thread because Python
+        # bool assignment is atomic under the GIL.
+        self._needs_grammar_rebuild = False
+        # Stash for the heavyweight VoskModel so we don't have to
+        # reload it from disk each time the grammar changes – we just
+        # build a new lightweight KaldiRecognizer from the same model.
+        self._vosk_model_obj = None
     
     def start(self):
         """Start the listener thread"""
@@ -1008,6 +1062,13 @@ class _VADListenerThread(QObject):
             def transcription_worker():
                 """Dedicated thread: transcribes queued clips without touching the stream."""
                 while self._running or not audio_queue.empty():
+                    # Rebuild Vosk grammar between clips if the user
+                    # added / edited / removed a command since the last
+                    # transcription. Cheap (<100 ms) and only runs when
+                    # the flag has been flipped on by ContinuousVoice
+                    # Listener._on_commands_changed.
+                    if self._needs_grammar_rebuild:
+                        self._maybe_rebuild_vosk_grammar()
                     try:
                         captured = audio_queue.get(timeout=0.5)
                     except _queue.Empty:
@@ -1138,6 +1199,45 @@ class _VADListenerThread(QObject):
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
             return ""
+
+    def _maybe_rebuild_vosk_grammar(self):
+        """Replace the active KaldiRecognizer with one built from the
+        current command list, when the ``_needs_grammar_rebuild`` flag
+        has been set by an external mutation.
+
+        Runs only when (a) the flag is set, (b) the engine is Vosk, and
+        (c) we have a cached VoskModel object to attach the new
+        recognizer to. Always clears the flag, even on failure, so a
+        broken rebuild doesn't loop forever – the next legitimate
+        change will retry.
+        """
+        # Always clear the flag up-front, before any heavy work, so a
+        # second mutation arriving mid-rebuild still queues a third
+        # rebuild deterministically.
+        self._needs_grammar_rebuild = False
+
+        if self.listener.engine != ContinuousVoiceListener.ENGINE_VOSK:
+            return
+        if self._vosk_model_obj is None:
+            return
+
+        try:
+            from vosk import KaldiRecognizer
+            import json as _json
+
+            phrases = self._collect_vosk_grammar()
+            grammar = _json.dumps(phrases + ["[unk]"])
+            new_recognizer = KaldiRecognizer(self._vosk_model_obj, 16000, grammar)
+            # Atomic swap of the recognizer reference. Python's GIL
+            # guarantees this single-name reassignment is observed as
+            # all-or-nothing by the audio-process thread.
+            self._model = new_recognizer
+            self.status_update.emit(
+                f"🔄 Vosk grammar refreshed ({len(phrases)} phrase"
+                + ("s" if len(phrases) != 1 else "") + ")"
+            )
+        except Exception as e:
+            self.error_occurred.emit(f"Vosk grammar rebuild failed: {e}")
 
     def _collect_vosk_grammar(self) -> List[str]:
         """Return the list of phrases Vosk should bias its recogniser

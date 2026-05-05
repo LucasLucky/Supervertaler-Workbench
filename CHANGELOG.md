@@ -2,8 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.441 (May 5, 2026)
+**Current Version:** v1.9.442 (May 6, 2026)
 
+
+## v1.9.442 - May 6, 2026
+
+### Added (Vosk auto-rebuilds its grammar when you add / edit / disable a command)
+
+- Reported by Michael: "It's also not clear what happens when I want to add new commands that Vosk does not yet recognize." Up to v1.9.441 the workaround was: edit the command, stop Always-On, start it again. Now that's automatic.
+- Implementation:
+  - New ``commands_changed`` signal on [`VoiceCommandManager`](modules/voice_commands.py), emitted from every ``save_commands()`` call (so all add / edit / remove / enable-toggle paths are covered without touching individual call sites).
+  - [`ContinuousVoiceListener.start()`](modules/voice_commands.py) connects the listener to that signal; ``stop()`` disconnects.
+  - The slot, ``_on_commands_changed``, is a no-op outside the Vosk engine and when the listener isn't running. When applicable it sets a ``_needs_grammar_rebuild`` flag on the worker thread.
+  - The transcription worker checks the flag between clips and rebuilds the Vosk recogniser via ``_maybe_rebuild_vosk_grammar()``: re-runs ``_collect_vosk_grammar()`` to gather the current phrases, builds a fresh ``KaldiRecognizer`` against the cached ``VoskModel`` (no model reload from disk), and swaps it in atomically.
+- The cached ``VoskModel`` (the heavy Kaldi data) is now stashed on the worker thread so rebuilds are sub-100 ms – just JSON encoding the new grammar plus constructing the lightweight recognizer object.
+- Status bar shows ``🔄 Vosk grammar refreshed (N phrases)`` when the swap happens, so the user has positive confirmation that their edit took effect.
+
+---
 
 ## v1.9.441 - May 5, 2026
 
