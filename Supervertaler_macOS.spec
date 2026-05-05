@@ -10,11 +10,29 @@ except ImportError:
 with open('pyproject.toml', 'rb') as _f:
     _version = tomllib.load(_f)['project']['version']
 
+# LLM client libraries need collect_all() rather than plain hiddenimports —
+# see Supervertaler.spec for the full explanation. Issue #187.
+from PyInstaller.utils.hooks import collect_all
+
+_llm_datas, _llm_binaries, _llm_hiddenimports = [], [], []
+# See Supervertaler.spec for the full explanation. Naming HTTP transitive
+# deps explicitly because PyInstaller's analysis doesn't follow them from
+# inside openai/anthropic's submodule tree.
+for _pkg in (
+    'google.generativeai', 'openai', 'anthropic',
+    'httpx', 'httpcore', 'h11', 'sniffio', 'anyio',
+    'distro', 'pydantic', 'jiter',
+):
+    _d, _b, _h = collect_all(_pkg)
+    _llm_datas += _d
+    _llm_binaries += _b
+    _llm_hiddenimports += _h
+
 a = Analysis(
     ['Supervertaler.py'],
     pathex=[],
-    binaries=[],
-    datas=[
+    binaries=_llm_binaries,
+    datas=_llm_datas + [
         ('pyproject.toml', '.'),
         ('docs', 'docs'),
         ('modules', 'modules'),
@@ -44,17 +62,8 @@ a = Analysis(
         'PyQt6.QtWebEngineCore',
         'pynput.keyboard._darwin',
         'pynput.mouse._darwin',
-        # LLM client libraries — function-local imports inside try/except
-        # ImportError blocks (modules/llm_clients.py) are skipped by
-        # PyInstaller's static analyzer. Name them explicitly so standalone
-        # macOS bundles include working LLM support. Without these, users
-        # see "Google AI library not installed" / equivalent at translation
-        # time (issue #187).
-        'google.generativeai',
-        'openai',
-        'anthropic',
         'PIL',
-    ],
+    ] + _llm_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

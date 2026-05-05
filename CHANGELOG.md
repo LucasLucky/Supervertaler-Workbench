@@ -2,8 +2,39 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.430 (May 5, 2026)
+**Current Version:** v1.9.432 (May 5, 2026)
 
+
+## v1.9.432 - May 5, 2026
+
+### Fixed (v1.9.431's LLM-bundling fix was still incomplete — HTTP transitive deps missing)
+
+- **Verified by inspecting the v1.9.431 build ZIP**: the LLM client libraries themselves were bundled this time (`google/generativeai/` 69 files, `openai/` 1003 files, `anthropic/` 448 files), but every one of their HTTP / validation transitive dependencies was missing — `httpx`, `httpcore`, `anyio`, `h11`, `sniffio`, `distro`, and the actual `pydantic` Python source (only `pydantic_core/_pydantic_core.cp312-win_amd64.pyd` and the dist-info shipped, no `pydantic/` tree). Every API call would have failed at runtime with `ModuleNotFoundError: No module named 'httpx'` (or anyio, etc.) the moment `openai.OpenAI()` or `anthropic.Anthropic()` was constructed.
+- Root cause: `collect_all('openai')` and `collect_all('anthropic')` correctly enumerate their own submodules, but PyInstaller's static analysis of those submodules does not reliably follow `import httpx` / `import httpcore` / `import pydantic` into the dependency tree — even though the corresponding hooks (`hook-anyio.py`, `hook-pydantic.py`) DO get loaded. Looks like an interaction between `collect_all` adding the package as data files vs. as analyzed Python source.
+- Fix at [`Supervertaler.spec`](Supervertaler.spec) and [`Supervertaler_macOS.spec`](Supervertaler_macOS.spec): extend the `collect_all()` loop to name each HTTP / validation transitive dep explicitly — `httpx`, `httpcore`, `h11`, `sniffio`, `anyio`, `distro`, `pydantic`, `jiter`. More verbose, but guarantees they all ship.
+
+### Fixed (Build script silently masked PyInstaller failures)
+
+- **Reported by Michael during today's session**: the v1.9.431 build's first attempt actually crashed mid-COLLECT with `OSError: [WinError 145] The directory is not empty` (Windows couldn't `rmtree` a stale `node_modules/` deep-path tree under `dist/Supervertaler/_internal/docs/help/workbench/`). The build script proceeded to copy user_data, copy Start-Menu shortcuts, and zip up whatever incomplete bundle PyInstaller had managed to produce — and reported _"DONE. Release asset: ..."_ as if everything was fine. Verifying the ZIP showed `anthropic/` was missing entirely, masking the bundling bug we were trying to fix.
+- Fix at [`build_windows_release.ps1`](build_windows_release.ps1): check `$LASTEXITCODE` after the PyInstaller call and abort the build with a clear error if it's non-zero (PowerShell's `$ErrorActionPreference = 'Stop'` does not catch native-command non-zero exits). Also added a hint about the `node_modules` cause since this is the same trip-hazard that any future contributor will hit if they leave a JS dep tree under a bundled docs folder.
+- The blocking `node_modules/` itself was deleted from `docs/help/workbench/` — it was already `.gitignore`d and shouldn't have been in the source tree anyway. The folder is the unused stub of an experimental MkDocs / JS-based Workbench help system; the actual published Workbench help lives in the Trados repo's `docs/workbench/`.
+
+---
+
+## v1.9.431 - May 5, 2026
+
+### Fixed (v1.9.427's hiddenimports fix wasn't enough — LLM libs still missing from Windows ZIP / macOS DMG)
+
+- **Verified by building a v1.9.430 Windows ZIP and inspecting it**: `google.generativeai`, `openai`, and `anthropic` are still absent from the bundle, despite v1.9.427's `hiddenimports` entries. PIL (also added in v1.9.427) was bundled correctly. So issue #187 is *not* fixed for standalone-bundle users yet.
+- Root cause: `hiddenimports` only adds the *named* module to PyInstaller's analysis graph. It does not pull in submodules or data files. Real Python packages with submodule structure (`google.generativeai.types`, `openai._client`, `anthropic._streaming`, etc.) need [`collect_all`](https://pyinstaller.org/en/stable/hooks.html#PyInstaller.utils.hooks.collect_all) from `PyInstaller.utils.hooks` instead — that gathers binaries, data files, *and* the full submodule tree. v1.9.427's commit message even flagged this caveat ("you may need `--collect-submodules`...") and then didn't act on it.
+- Fix at [`Supervertaler.spec`](Supervertaler.spec) and [`Supervertaler_macOS.spec`](Supervertaler_macOS.spec): replace the plain `'google.generativeai'`, `'openai'`, `'anthropic'` hiddenimports entries with a `collect_all()` loop that gathers everything each package needs. PIL stays as a plain hiddenimport because it was already working.
+- Verified after rebuild: the v1.9.431 Windows ZIP now contains the full `google/generativeai/`, `openai/`, and `anthropic/` package trees.
+
+### Note on `google-generativeai` deprecation
+
+- During this work, `google-generativeai` printed a `FutureWarning` saying support has ended and users should migrate to `google.genai`. Tracking this as a separate follow-up — the v1.9.431 fix gets the standalone bundle working with the current dep, but the migration to `google-genai` is the longer-term answer.
+
+---
 
 ## v1.9.430 - May 5, 2026
 

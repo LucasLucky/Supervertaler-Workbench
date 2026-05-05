@@ -66,6 +66,13 @@ if (Test-Path $distDir) {
 
 Write-Host "=== Building Supervertaler EXE via Supervertaler.spec ===" -ForegroundColor Cyan
 & $py -m PyInstaller --noconfirm --clean .\Supervertaler.spec
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "ERROR: PyInstaller failed (exit code $LASTEXITCODE). Aborting build." -ForegroundColor Red
+  Write-Host "Check the stderr output above for the underlying cause." -ForegroundColor Yellow
+  Write-Host "Common cause: a stale dist/Supervertaler/ directory containing a node_modules/" -ForegroundColor Yellow
+  Write-Host "or other deeply-nested tree that Windows can't rmtree. Delete it manually and retry." -ForegroundColor Yellow
+  exit $LASTEXITCODE
+}
 
 # Copy user_data directly next to the EXE (not inside _internal/)
 # This makes dictionaries, prompts, and settings easily accessible to users.

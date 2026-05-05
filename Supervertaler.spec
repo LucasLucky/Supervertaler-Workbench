@@ -1,11 +1,36 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+# LLM client libraries need collect_all() rather than plain hiddenimports.
+# Their per-provider call methods in modules/llm_clients.py wrap imports in
+# try/except ImportError, which PyInstaller's static analyzer treats as
+# optional and skips. hiddenimports alone names a single module but does NOT
+# pull in submodules or data files; collect_all does. Fix for issue #187.
+from PyInstaller.utils.hooks import collect_all
+
+_llm_datas, _llm_binaries, _llm_hiddenimports = [], [], []
+# The first three are the LLM client libraries themselves. The rest are
+# transitive deps that PyInstaller's static analysis fails to follow
+# automatically (verified by inspecting the v1.9.431 first-build ZIP and
+# finding openai+anthropic present but httpx/httpcore/anyio/h11/sniffio/
+# distro/pydantic all missing — which would make every API call fail at
+# runtime with ModuleNotFoundError). Naming them explicitly via collect_all
+# guarantees they ship.
+for _pkg in (
+    'google.generativeai', 'openai', 'anthropic',
+    'httpx', 'httpcore', 'h11', 'sniffio', 'anyio',
+    'distro', 'pydantic', 'jiter',
+):
+    _d, _b, _h = collect_all(_pkg)
+    _llm_datas += _d
+    _llm_binaries += _b
+    _llm_hiddenimports += _h
+
 
 a = Analysis(
     ['Supervertaler.py'],
     pathex=[],
-    binaries=[],
-    datas=[
+    binaries=_llm_binaries,
+    datas=_llm_datas + [
         ('pyproject.toml', '.'),
         ('docs', 'docs'),
         ('modules', 'modules'),
@@ -22,17 +47,8 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'PyQt6.QtWebEngineWidgets',
-        # LLM client libraries — these have function-local imports inside
-        # try/except ImportError blocks (modules/llm_clients.py), which
-        # PyInstaller's static analyzer treats as optional and skips. Name
-        # them explicitly so standalone bundles include working LLM support.
-        # Without these, users see "Google AI library not installed" /
-        # "OpenAI library not installed" at translation time (issue #187).
-        'google.generativeai',
-        'openai',
-        'anthropic',
         'PIL',
-    ],
+    ] + _llm_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
