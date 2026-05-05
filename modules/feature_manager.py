@@ -74,13 +74,14 @@ FEATURE_MODULES: Dict[str, FeatureModule] = {
         id="local_whisper",
         name="Local Whisper (Offline Speech Recognition)",
         description=(
-            "Offline Whisper speech recognition (no API key required). This is a heavy dependency (PyTorch) and "
-            "may increase install size significantly. Requires FFmpeg for best results."
+            "Offline Whisper speech recognition (no API key required). Uses the faster-whisper "
+            "CTranslate2 backend – much smaller and faster than the original openai-whisper / "
+            "PyTorch combo, and no ffmpeg required."
         ),
         pip_extra="local-whisper",
-        packages=["openai-whisper"],
-        size_mb=1500,
-        check_import="whisper",
+        packages=["faster-whisper"],
+        size_mb=300,
+        check_import="faster_whisper",
         icon="🤖",
         category="AI Features",
         enabled_by_default=False,
@@ -262,10 +263,10 @@ def lazy_import_supermemory():
 
 
 def lazy_import_whisper():
-    """Lazily import Whisper for voice commands."""
+    """Lazily import the faster-whisper backend for voice commands."""
     try:
-        import whisper
-        return whisper
+        import faster_whisper
+        return faster_whisper
     except ImportError:
         return None
 

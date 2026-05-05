@@ -8211,7 +8211,7 @@ class SupervertalerQt(QMainWindow):
                 "• XLIFF, SDLXLIFF, memoQ support<br>"
                 "• Basic spellchecking<br><br>"
                 "<b>Optional features</b> (install via pip):<br>"
-                "• <code>openai-whisper</code> – Local voice dictation (no API needed)<br><br>"
+                "• <code>faster-whisper</code> – Local voice dictation (no API needed)<br><br>"
                 "You can view and manage features in <b>Settings → Features</b>."
             )
             page2_msg.setWordWrap(True)
@@ -20715,7 +20715,7 @@ class SupervertalerQt(QMainWindow):
                     if not api_key:
                         # If no API key, only fall back if Local Whisper is actually installed.
                         try:
-                            import whisper  # noqa: F401
+                            import faster_whisper  # noqa: F401
                         except ImportError:
                             if getattr(sys, 'frozen', False):
                                 extra = (

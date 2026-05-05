@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.433"
+version = "1.9.434"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -117,7 +117,7 @@ dependencies = [
 [project.optional-dependencies]
 # Local Whisper is intentionally optional because it pulls in heavy PyTorch wheels.
 # Voice dictation/commands still work via the OpenAI Whisper API without it.
-local-whisper = ["openai-whisper>=20230314"]
+local-whisper = ["faster-whisper>=1.0.0"]
 
 # Legacy extras (kept for backward compatibility).
 # Some extras are still listed for historical reasons and may be no-ops.

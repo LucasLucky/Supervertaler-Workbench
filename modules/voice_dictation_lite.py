@@ -191,11 +191,11 @@ class QuickDictationThread(QThread):
             return ""
 
     def _transcribe_with_local(self, audio_path: str) -> str:
-        """Transcribe using Local Whisper (requires optional dependency)."""
+        """Transcribe using local faster-whisper (requires optional dependency)."""
         try:
-            # Lazy import whisper to avoid slow startup (PyTorch takes seconds to import)
+            # Lazy import to avoid loading the C++ engine until needed.
             try:
-                import whisper
+                from faster_whisper import WhisperModel
             except ImportError:
                 if getattr(sys, 'frozen', False):
                     msg = (
@@ -213,38 +213,32 @@ class QuickDictationThread(QThread):
                 self.error_occurred.emit(msg)
                 return ""
 
-            # Check if model needs to be downloaded
-            cache_dir = os.path.expanduser("~/.cache/whisper")
-            if os.name == 'nt':  # Windows
-                cache_dir = os.path.join(os.environ.get('USERPROFILE', ''), '.cache', 'whisper')
-
-            model_files = [
-                f"{self.model_name}.pt",
-                f"{self.model_name}.en.pt",
-                f"{self.model_name}-v3.pt"  # For large model
-            ]
-            model_exists = any(os.path.exists(os.path.join(cache_dir, f)) for f in model_files)
-
-            # Load model (cached after first use, may download on first use)
+            # faster-whisper auto-downloads its CTranslate2 model the first
+            # time you instantiate WhisperModel(model_name) – no separate
+            # cache-existence probe needed (the constructor handles it).
             self.model_loading_started.emit(self.model_name)
-            if not model_exists:
-                self.status_update.emit(f"📥 Downloading {self.model_name} model... (this may take several minutes)")
-            else:
-                self.status_update.emit(f"⏳ Loading {self.model_name} model...")
+            self.status_update.emit(
+                f"⏳ Loading {self.model_name} model "
+                "(may download on first use)..."
+            )
 
-            model = whisper.load_model(self.model_name)
+            # int8 on CPU: ~4× faster than openai-whisper at near-equal quality.
+            model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
             self.model_loading_finished.emit()
 
-            # Transcribe – wrapped to suppress the per-call ffmpeg cmd flash
-            # on Windows when running console-less (Supervertaler.exe / pythonw).
+            # Transcribe – wrapper kept defensively (no-op if nothing spawns).
             self.status_update.emit("⏳ Transcribing audio...")
             with hide_subprocess_console_windows():
-                if self.language:
-                    result = model.transcribe(audio_path, language=self.language)
-                else:
-                    result = model.transcribe(audio_path)
+                lang = self.language or None
+                segments, _info = model.transcribe(
+                    audio_path,
+                    language=lang,
+                    beam_size=5,
+                    vad_filter=False,
+                )
+                text = "".join(seg.text for seg in segments)
 
-            return (result.get("text") or "").strip()
+            return text.strip()
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
             return ""

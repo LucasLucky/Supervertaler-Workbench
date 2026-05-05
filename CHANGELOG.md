@@ -2,8 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.433 (May 5, 2026)
+**Current Version:** v1.9.434 (May 5, 2026)
 
+
+## v1.9.434 - May 5, 2026
+
+### Changed (Local Whisper backend swapped from `openai-whisper` to `faster-whisper`)
+
+- **Why:** the old `openai-whisper` backend was noticeably slow on CPU and required a ~1.5 GB PyTorch dependency tree, plus the per-call `ffmpeg` subprocess that was causing the cmd-window flash fixed in v1.9.433. The new [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper) backend uses the CTranslate2 inference engine: identical Whisper models, identical recognition quality, ~4× faster on CPU, ~3-4× lower RAM, no `ffmpeg`. Drop-in replacement at the user level – same model names (`tiny` / `base` / `small` / `medium` / `large-v3`), same language codes, same UI.
+- Applied at all three local-Whisper transcribe sites: [`modules/voice_commands.py`](modules/voice_commands.py) (always-listener), [`modules/voice_dictation.py`](modules/voice_dictation.py) (full-app push-to-talk thread), [`modules/voice_dictation_lite.py`](modules/voice_dictation_lite.py) (lite engine for the dictation surface). `WhisperModel(name, device="cpu", compute_type="int8")` for the speed/quality balance recommended by the project. `transcribe()` returns a segments generator and an info object instead of a dict; we just join the segment texts for the final transcription.
+- Dependency change in [`pyproject.toml`](pyproject.toml): `local-whisper = ["faster-whisper>=1.0.0"]` (was `openai-whisper>=20230314`). Existing users on the `[local-whisper]` extra get the new backend on next `pip install --upgrade`. The first transcription downloads the CTranslate2-format model (separate from any `~/.cache/whisper` you may already have); subsequent runs reuse the local cache.
+- The `hide_subprocess_console_windows()` wrapper added in v1.9.433 is kept defensively around each `transcribe()` call. faster-whisper does its audio decoding via libsndfile in-process (no `ffmpeg` subprocess, no flash), so the wrapper is a no-op in the common case – but it costs nothing and protects against any future code path that might shell out.
+- Feature-manager package list and first-run help text updated to advertise `faster-whisper` instead of `openai-whisper`.
+
+---
 
 ## v1.9.433 - May 5, 2026
 

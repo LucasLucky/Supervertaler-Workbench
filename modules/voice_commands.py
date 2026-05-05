@@ -792,7 +792,7 @@ class _VADListenerThread(QObject):
                 self.status_update.emit("🎤 Loading local speech model...")
                 self.vad_status.emit("loading")
                 try:
-                    import whisper
+                    from faster_whisper import WhisperModel
                 except ImportError:
                     if getattr(sys, 'frozen', False):
                         msg = (
@@ -804,13 +804,20 @@ class _VADListenerThread(QObject):
                         msg = (
                             "Local Whisper is not installed.\n\n"
                             "Option A (recommended): Choose 'OpenAI Whisper API' in Sidekick → AutoFingers (requires OpenAI API key).\n"
-                            "Option B: Install Local Whisper:\n"
+                            "Option B: Install Local Whisper (faster-whisper backend):\n"
                             "  pip install supervertaler[local-whisper]"
                         )
                     self.error_occurred.emit(msg)
                     self._running = False
                     return
-                self._model = whisper.load_model(self.listener.model_name)
+                # faster-whisper / CTranslate2 backend on CPU with int8 quantisation –
+                # roughly 4× faster than openai-whisper at ~equal quality, much lower
+                # RAM, and no ffmpeg subprocess (libsndfile-based audio decode).
+                self._model = WhisperModel(
+                    self.listener.model_name,
+                    device="cpu",
+                    compute_type="int8",
+                )
 
             self.status_update.emit("🎤 Always-on listening active (waiting for speech...)")
             self.vad_status.emit("waiting")
@@ -974,20 +981,26 @@ class _VADListenerThread(QObject):
             return ""
 
     def _transcribe_with_local(self, audio_path: str) -> str:
-        """Transcribe using local Whisper model.
+        """Transcribe using local faster-whisper model.
 
-        Wrapped in ``hide_subprocess_console_windows`` to suppress the
-        black cmd flash that otherwise fires per VAD chunk on Windows
-        when whisper shells out to ffmpeg for audio decoding.
+        Returns a generator of segments + an info object. We just
+        concatenate the segment texts to get the full transcription.
+        Wrapped in ``hide_subprocess_console_windows`` defensively – the
+        CTranslate2 backend doesn't shell out to ffmpeg, but the wrapper
+        is a no-op when nothing spawns a process so it costs nothing.
         """
         try:
             with hide_subprocess_console_windows():
-                if self.listener.language:
-                    result = self._model.transcribe(
-                        audio_path, language=self.listener.language)
-                else:
-                    result = self._model.transcribe(audio_path)
-            return result["text"].strip()
+                lang = self.listener.language or None
+                segments, _info = self._model.transcribe(
+                    audio_path,
+                    language=lang,
+                    beam_size=5,
+                    vad_filter=False,  # we run our own amplitude VAD upstream
+                )
+                # segments is a generator – iterate to materialise the output.
+                text = "".join(seg.text for seg in segments)
+            return text.strip()
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
             return ""

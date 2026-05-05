@@ -95,7 +95,7 @@ class TranscriptionThread(QThread):
             import os
 
             try:
-                import whisper  # Local Whisper (optional)
+                from faster_whisper import WhisperModel  # Local Whisper (optional)
             except ImportError:
                 if getattr(sys, 'frozen', False):
                     msg = (
@@ -120,18 +120,23 @@ class TranscriptionThread(QThread):
 
             self.progress.emit("Loading Whisper model...")
 
-            # Load model
-            model = whisper.load_model(self.model_name)
+            # Load model – faster-whisper / CTranslate2 backend on CPU with
+            # int8 quantisation: ~4× faster than openai-whisper, lower RAM,
+            # no ffmpeg subprocess.
+            model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
 
             self.progress.emit("Transcribing audio...")
 
-            # Transcribe – wrapped to suppress the per-call ffmpeg cmd flash
-            # on Windows when running console-less (Supervertaler.exe / pythonw).
+            # Transcribe – wrapper kept defensively (no-op if nothing spawns).
             with hide_subprocess_console_windows():
-                if self.language:
-                    result = model.transcribe(self.audio_path, language=self.language)
-                else:
-                    result = model.transcribe(self.audio_path)
+                lang = self.language or None
+                segments, _info = model.transcribe(
+                    self.audio_path,
+                    language=lang,
+                    beam_size=5,
+                    vad_filter=False,
+                )
+                text = "".join(seg.text for seg in segments)
 
             # Clean up temp file
             try:
@@ -139,7 +144,7 @@ class TranscriptionThread(QThread):
             except:
                 pass
 
-            self.finished.emit(result["text"].strip())
+            self.finished.emit(text.strip())
 
         except Exception as e:
             import traceback
