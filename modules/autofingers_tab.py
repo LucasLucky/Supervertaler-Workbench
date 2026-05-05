@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QScrollArea, QFrame, QMessageBox, QSplitter, QMenu,
 )
 
-from modules.styled_widgets import CheckmarkCheckBox
+from modules.styled_widgets import CheckmarkCheckBox, HelpButton
 from modules.voice_command_dialog import VoiceCommandEditDialog
 from modules.help_system import Topics as HelpTopics, set_topic as set_help_topic
 
@@ -79,6 +79,15 @@ class AutoFingersTab(QWidget):
         settings = self._load_settings()
 
         # --- Header (full width) ---------------------------------------
+        # Wrap header text + a "?" help button in one row so the button
+        # sits at the top-right of the tab, matching the Trados plugin's
+        # context-sensitive help convention.
+        header_widget = QWidget()
+        header_widget.setStyleSheet(
+            "background-color: #E3F2FD;"
+        )
+        header_row = QHBoxLayout(header_widget)
+        header_row.setContentsMargins(8, 4, 8, 4)
         header = QLabel(
             "🎤 <b>AutoFingers</b> – voice commands and dictation.<br>"
             "Toggle Always-On to listen continuously, or press <b>F9</b> "
@@ -86,11 +95,14 @@ class AutoFingersTab(QWidget):
         )
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setWordWrap(True)
-        header.setStyleSheet(
-            "font-size: 9pt; color: #444; padding: 8px;"
-            " background-color: #E3F2FD;"
+        header.setStyleSheet("font-size: 9pt; color: #444;")
+        header_row.addWidget(header, stretch=1)
+        header_row.addWidget(
+            HelpButton(HelpTopics.AUTOFINGERS,
+                       tooltip="Open AutoFingers help"),
+            alignment=Qt.AlignmentFlag.AlignTop,
         )
-        outer.addWidget(header)
+        outer.addWidget(header_widget)
 
         # --- Main horizontal splitter ----------------------------------
         self._splitter = QSplitter(Qt.Orientation.Horizontal)

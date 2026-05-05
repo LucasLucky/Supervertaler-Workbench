@@ -10,7 +10,7 @@ everywhere automatically. Don't paste local copies back into other files.
 """
 from PyQt6.QtCore import Qt, QPointF
 from PyQt6.QtGui import QPainter, QPen, QColor
-from PyQt6.QtWidgets import QCheckBox, QStyleOptionButton
+from PyQt6.QtWidgets import QCheckBox, QPushButton, QStyleOptionButton
 
 
 class CheckmarkCheckBox(QCheckBox):
@@ -107,3 +107,82 @@ class CheckmarkCheckBox(QCheckBox):
             painter.drawLine(QPointF(check_x1, check_y1), QPointF(check_x2, check_y2))
         finally:
             painter.end()
+
+
+class HelpButton(QPushButton):
+    """A small, unobtrusive "?" button that opens the relevant help page.
+
+    Mirrors the Trados plugin's context-sensitive help convention: a
+    small flat "?" sits in the top-right of every dialog / section /
+    tab and one click takes the user to that section's GitBook page.
+
+    Usage::
+
+        from modules.styled_widgets import HelpButton
+        from modules.help_system import Topics
+
+        # Drop into a horizontal row at the top-right of a section:
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Always-On Listening"))
+        header.addStretch()
+        header.addWidget(HelpButton(Topics.AUTOFINGERS))
+
+    Pairs with :func:`modules.help_system.set_topic` for F1 support –
+    F1 already walks the widget tree to find the nearest tagged
+    ancestor, so adding a HelpButton AND tagging the same widget gives
+    users two equivalent paths to the same documentation page.
+
+    Args:
+        topic: A topic identifier from :class:`modules.help_system.Topics`
+            (or any path string ``open_help`` accepts). Click → opens
+            ``DOCS_BASE_URL/<topic>`` in the user's default browser.
+        tooltip: Optional override for the hover tooltip. Defaults to
+            ``"Open help for this section"``.
+    """
+
+    def __init__(self, topic: str, tooltip: str = None, parent=None):
+        super().__init__("?", parent)
+        self._topic = topic
+        # Compact size; matches the visual weight of the Trados-side button.
+        self.setFixedSize(22, 22)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(tooltip or "Open help for this section")
+        # Don't grab tab focus – the button is supplementary navigation,
+        # not part of the form's tab order.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # Flat circular grey button, slightly bolder text on hover.
+        self.setStyleSheet("""
+            QPushButton {
+                font-size: 10pt;
+                font-weight: bold;
+                color: #666;
+                background-color: transparent;
+                border: 1px solid #BBB;
+                border-radius: 11px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                color: #222;
+                background-color: #EEE;
+                border-color: #888;
+            }
+            QPushButton:pressed {
+                background-color: #DDD;
+            }
+        """)
+        self.clicked.connect(self._open)
+
+    def _open(self):
+        # Lazy import to avoid a circular dependency at module import time
+        # (help_system currently doesn't pull styled_widgets, but the
+        # contract is intentionally one-way).
+        from modules.help_system import open_help
+        open_help(self._topic)
+
+    @property
+    def topic(self) -> str:
+        return self._topic
+
+    def set_topic(self, topic: str):
+        """Re-target an existing button at a different help page."""
+        self._topic = topic

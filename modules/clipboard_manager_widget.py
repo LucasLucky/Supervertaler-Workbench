@@ -21,6 +21,9 @@ from PyQt6.QtWidgets import (
     QSplitter, QStackedLayout, QMenu,
 )
 
+from modules.styled_widgets import HelpButton
+from modules.help_system import Topics as HelpTopics
+
 
 # ---------- Item data roles ------------------------------------------------
 # Stored on each QListWidgetItem.  UserRole numbering is shifted up to leave
@@ -128,6 +131,8 @@ class ClipboardManagerWidget(QWidget):
         clear_btn.setToolTip("Remove all clipboard history (cannot be undone)")
         clear_btn.clicked.connect(self._clear_all)
         header.addWidget(clear_btn)
+        header.addWidget(HelpButton(HelpTopics.CLIPBOARD,
+                                    tooltip="Open Clipboard help"))
         layout.addLayout(header)
 
         # Two-column split: text on the left, images on the right.
