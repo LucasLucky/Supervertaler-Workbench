@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.437 (May 5, 2026)
+**Current Version:** v1.9.438 (May 5, 2026)
 
+
+## v1.9.438 - May 5, 2026
+
+### Fixed (v1.9.437's "grey out the checkbox under Vosk" didn't actually grey out)
+
+- Reported by Michael with a screenshot: the "Listen for commands only" checkbox still looked fully active even with Vosk selected. Root cause: the shared [`CheckmarkCheckBox`](modules/styled_widgets.py) widget's stylesheet pins explicit fill colours (`#4CAF50` etc.) on the indicator and doesn't include a `:disabled` rule, so Qt's automatic disabled-state palette gets overridden. `setEnabled(False)` was called correctly but the indicator stayed bright green visually.
+- Switched from disabling to **hiding** the checkbox under Vosk. Cleaner UX anyway – the option is structurally a no-op there, so just take it off the screen rather than show a "disabled" widget that might still look clickable. When the user switches engine to faster-whisper or the OpenAI API the checkbox re-appears.
+
+---
 
 ## v1.9.437 - May 5, 2026
 

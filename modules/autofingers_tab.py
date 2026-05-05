@@ -722,16 +722,26 @@ class AutoFingersTab(QWidget):
         self._sync_commands_only_for_engine()
 
     def _sync_commands_only_for_engine(self):
-        """Disable the 'Listen for commands only' checkbox when Vosk is the
-        active engine (Vosk's grammar mode already filters out non-command
-        speech at the recogniser level, so the checkbox has no effect).
-        Re-enable for Whisper-class engines where it does."""
+        """Hide the 'Listen for commands only' checkbox when Vosk is the
+        active engine.
+
+        Vosk's grammar-constrained recogniser already drops non-command
+        speech at the recogniser level – the checkbox setting is a no-op
+        in that mode. We hide it (rather than just disabling it) because
+        the shared CheckmarkCheckBox stylesheet doesn't define a
+        ``:disabled`` rule, so a disabled-but-visible checkbox would
+        still look fully interactive. When the user switches back to a
+        Whisper engine, the checkbox re-appears."""
         try:
             idx = self._engine_combo.currentIndex()
         except Exception:
             return
         is_vosk = (idx == 0)
         try:
+            self._commands_only_cb.setVisible(not is_vosk)
+            # Keep setEnabled in sync for completeness (so even if the
+            # widget is somehow shown, programmatic interaction is
+            # blocked while Vosk is active).
             self._commands_only_cb.setEnabled(not is_vosk)
         except Exception:
             pass
