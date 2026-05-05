@@ -2,8 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.425 (May 5, 2026)
+**Current Version:** v1.9.426 (May 5, 2026)
 
+
+## v1.9.426 - May 5, 2026
+
+### Added (Proactive "install Java" dialog for Intel Mac / Linux pip users)
+
+- **Intel Mac and Linux users who pip-install Supervertaler now get a friendly heads-up at startup if they don't have Java installed yet.** Without it, they'd silently use the app for plain-text work and only discover the missing dependency when they tried to open a Word document, where the existing in-flow dialog would catch them. Better to warn them up front so they can fix it before hitting the wall.
+- The dialog explains *why* the bundled JRE in the macOS DMG isn't an option for Intel Macs (the JRE is built for Apple Silicon only) and gives a one-line install command per platform: `brew install --cask temurin@17` on macOS, `sudo apt install default-jre` (or distro equivalent) on Linux. Includes a "Don't show again" checkbox stored under the unified settings → `general.okapi_java_warning_dismissed`. Driven by a new `OkapiSidecar.needs_system_java_install()` helper that returns True iff the current platform falls back to the JAR-only download path *and* no Java runtime is reachable.
+- The existing in-flow Java-required dialog (which fires when a user with no Java tries to import a DOCX) was tightened up to recommend Eclipse Temurin specifically and to prompt a `java -version` verification step. Plain `brew install openjdk` works but pulls latest, which has tripped people on macOS in the past with `JAVA_HOME` not set.
+
+### Fixed (Lazy-install flow was unreachable on first DOCX import)
+
+- **Pip-installed users on a fresh machine could never reach the "Download Okapi sidecar?" prompt – they hit a misleading "client not initialised" error instead.** `_start_okapi_sidecar` was setting `self.okapi_sidecar = None` whenever `is_available` returned False, but `is_available` requires *both* the JAR on disk *and* a reachable Java – which is precisely the state every fresh pip install starts in. Once the sidecar object was nulled, the path-3 lazy-download dispatch in `_ensure_okapi_sidecar` short-circuited at its first `if not self.okapi_sidecar:` check. The lazy-install flow has been the documented user-facing path since v1.9.415, but it was unreachable on a clean install.
+- Fix: keep `self.okapi_sidecar` populated even when the sidecar can't run yet. The lifecycle now distinguishes three startup states (running, JAR-not-installed, JAR-present-but-no-Java) and logs each plainly without disabling the lazy-install path. Added `Supervertaler.py`'s missing top-level `import platform` while in there – the module was used inside `_ensure_okapi_sidecar` but only ever imported lazily inside one unrelated diagnostic-log method, so the same Path-3 dispatch would have hit a `NameError` had it ever been reached.
+
+---
 
 ## v1.9.425 - May 5, 2026
 

@@ -855,3 +855,30 @@ class OkapiSidecar:
         """Check if the sidecar infrastructure is present (JAR + Java)."""
         jar = self.sidecar_dir / "okapi-sidecar.jar"
         return jar.exists() and self._find_java() is not None
+
+    @staticmethod
+    def platform_bundles_jre() -> bool:
+        """True on platforms whose sidecar download bundles a private JRE.
+
+        Currently: Windows (any arch) and Apple Silicon Macs. Everywhere
+        else (Intel Macs, Linux) gets the JAR-only path and must rely on
+        a system Java install.
+        """
+        sysname = platform.system()
+        if sysname == "Windows":
+            return True
+        if sysname == "Darwin" and platform.machine() == "arm64":
+            return True
+        return False
+
+    def needs_system_java_install(self) -> bool:
+        """True iff this platform requires the user to install Java AND
+        no Java runtime is currently reachable.
+
+        Used by the GUI to surface a proactive startup warning on Intel
+        Macs and Linux, where the sidecar can't run until the user has
+        installed a JDK themselves.
+        """
+        if self.platform_bundles_jre():
+            return False
+        return self._find_java() is None

@@ -85,6 +85,7 @@ del _sys, _os
 import sys
 import json
 import os
+import platform
 import subprocess
 import atexit
 from pathlib import Path
@@ -27331,9 +27332,10 @@ class SupervertalerQt(QMainWindow):
                 if sysname == "Darwin":
                     install_hint = (
                         "Install Java first (one-time setup):\n"
-                        "  • Homebrew: brew install openjdk\n"
-                        "  • Or download from https://www.java.com\n\n"
-                        "Then re-try the import."
+                        "  • Homebrew (recommended): brew install --cask temurin@17\n"
+                        "  • Or download from https://adoptium.net\n\n"
+                        "Verify with: java -version\n"
+                        "Then restart Supervertaler and re-try the import."
                     )
                 else:
                     install_hint = (
@@ -48747,26 +48749,107 @@ class SupervertalerQt(QMainWindow):
         QTimer.singleShot(1500, self._start_okapi_sidecar)
 
     def _start_okapi_sidecar(self):
-        """Start the local Okapi sidecar process (if available)."""
+        """Start the local Okapi sidecar process (if available).
+
+        We deliberately keep ``self.okapi_sidecar`` set even when the
+        sidecar can't run yet (no JAR, no Java, etc.). The lazy-download
+        / install flow at import time relies on the OkapiSidecar object
+        being present so it can drive the platform-specific download.
+        Setting it to None here would short-circuit that flow with a
+        misleading "client not initialised" error.
+        """
         try:
             from modules.okapi_sidecar import OkapiSidecar
             self.okapi_sidecar = OkapiSidecar()
 
-            if not self.okapi_sidecar.is_available:
-                self.log("ℹ️ Okapi sidecar not installed – using built-in filters")
-                self.okapi_sidecar = None
-                return
-
-            if self.okapi_sidecar.start():
-                version = self.okapi_sidecar.get_version() or "?"
-                self.log(f"✅ Okapi sidecar started (v{version}) – "
-                         f"enhanced file filters available")
+            if self.okapi_sidecar.is_available:
+                if self.okapi_sidecar.start():
+                    version = self.okapi_sidecar.get_version() or "?"
+                    self.log(f"✅ Okapi sidecar started (v{version}) – "
+                             f"enhanced file filters available")
+                else:
+                    self.log("⚠️ Okapi sidecar failed to start – "
+                             "lazy install flow will retry on first use")
+            elif not self.okapi_sidecar.is_installed():
+                self.log("ℹ️ Okapi sidecar not installed yet – "
+                         "will offer to download on first DOCX import")
             else:
-                self.log("⚠️ Okapi sidecar failed to start – using built-in filters")
-                self.okapi_sidecar = None
+                # JAR present but Java missing (Intel Mac / Linux only;
+                # Windows and Apple Silicon ship a bundled JRE).
+                self.log("⚠️ Okapi sidecar found but Java not detected – "
+                         "install Java to enable enhanced filters")
+
+            # Proactive heads-up for Intel Mac / Linux users with no Java.
+            # Without it, the user happily uses the app for plain-text work
+            # and only discovers the missing dependency when they try to
+            # open a Word document (where the lazy-download flow will catch
+            # them anyway). Better to warn at startup so they can fix it
+            # before hitting the wall.
+            if self.okapi_sidecar.needs_system_java_install():
+                self._maybe_show_okapi_java_warning()
         except Exception as e:
             self.log(f"⚠️ Okapi sidecar unavailable: {e}")
             self.okapi_sidecar = None
+
+    def _maybe_show_okapi_java_warning(self):
+        """Show a one-time-per-session dialog explaining how to install
+        Java on Intel Macs / Linux. Respects a 'don't show again' user pref
+        stored under settings → general → ``okapi_java_warning_dismissed``.
+        """
+        try:
+            general = self._load_settings_section("general")
+            if general.get("okapi_java_warning_dismissed"):
+                return
+        except Exception:
+            general = {}
+
+        from PyQt6.QtWidgets import QMessageBox, QCheckBox
+
+        sysname = platform.system()
+        if sysname == "Darwin":
+            install_cmd = "brew install --cask temurin@17"
+            verify_cmd = "java -version"
+            platform_note = (
+                "Intel Macs need a separate Java install – the bundled "
+                "Java runtime in the macOS download is built for Apple "
+                "Silicon only."
+            )
+        else:
+            install_cmd = "sudo apt install default-jre   # or your distro's equivalent"
+            verify_cmd = "java -version"
+            platform_note = (
+                "On Linux the sidecar uses your system Java rather than "
+                "a bundled one."
+            )
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("Java needed for enhanced file filters")
+        box.setText(
+            "Supervertaler can use a small Java helper (the Okapi "
+            "sidecar) to import Word, Excel, HTML and other office "
+            "documents. No Java runtime was found on your system."
+        )
+        box.setInformativeText(
+            f"{platform_note}\n\n"
+            f"To enable it, install Java 17 (one-time, ~150 MB):\n\n"
+            f"    {install_cmd}\n\n"
+            f"Then verify with:\n\n"
+            f"    {verify_cmd}\n\n"
+            "Restart Supervertaler after installing. Plain-text "
+            "translation, TMX, etc. all work without Java."
+        )
+        dont_show = QCheckBox("Don't show this again")
+        box.setCheckBox(dont_show)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+
+        if dont_show.isChecked():
+            try:
+                general["okapi_java_warning_dismissed"] = True
+                self._save_settings_section("general", general)
+            except Exception as e:
+                self.log(f"⚠ Could not persist Java-warning preference: {e}")
 
     def _stop_okapi_sidecar(self):
         """Stop the Okapi sidecar process on app exit."""
