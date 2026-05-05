@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.438 (May 5, 2026)
+**Current Version:** v1.9.439 (May 5, 2026)
 
+
+## v1.9.439 - May 5, 2026
+
+### Improved (AutoFingers tab cleanup under Vosk)
+
+- **The "OpenAI API mode is recommended for Always-On" hint is now hidden everywhere.** Pre-Vosk it was sound advice; after v1.9.435 made Vosk the default, the hint actively misleads (Vosk is faster, free, and recommended for commands). The recommendation now lives where it should: on the engine selector itself ("Vosk — recommended").
+- **The "Speech Recognition Model" group has been retitled** to `🤖 Whisper Model (push-to-talk dictation; also Always-On if engine = Whisper)` so it's obvious those Whisper sizes (`tiny ~75 MB` … `large ~2.9 GB`) only apply when a Whisper engine is in use. Vosk picks its own model from the Language setting; the Whisper sizes are irrelevant to it.
+- **New "Push-to-talk dictation will use: ..." indicator** under the Push-to-Talk Mode group. Updates dynamically with the engine selector to remove ambiguity about which engine handles Ctrl+Alt+D / F9. With Vosk or faster-whisper selected as Always-On engine: shows "faster-whisper". With OpenAI Whisper API selected: shows "OpenAI Whisper API". This addresses the user's confusion when Vosk is the Always-On engine but Ctrl+Alt+D is for running text – Vosk is commands-only, so push-to-talk silently routes through faster-whisper.
+- All three changes converge in a new `_sync_engine_dependent_widgets()` method that runs once on load (after every engine-dependent widget exists) and again whenever the engine combo changes.
+
+---
 
 ## v1.9.438 - May 5, 2026
 

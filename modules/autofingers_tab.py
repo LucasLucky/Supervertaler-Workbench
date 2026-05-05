@@ -198,21 +198,34 @@ class AutoFingersTab(QWidget):
         )
         ao_layout.addWidget(ao_focus_hint)
 
-        ao_tip = QLabel(
-            "💡 OpenAI API mode is recommended for Always-On – much faster and "
-            "more accurate. Requires an OpenAI API key (Settings → AI Settings)."
+        # The "OpenAI API recommended" hint is only relevant when the user
+        # has a Whisper engine selected. With Vosk (the new default) it's
+        # actively misleading – Vosk is purpose-built for commands and
+        # cheaper than the API – so we hide it under Vosk via
+        # _sync_engine_dependent_widgets() below.
+        self._ao_api_tip = QLabel(
+            "💡 OpenAI API mode is recommended for Always-On if you also "
+            "want running-text dictation in always-on – much faster and "
+            "more accurate than the local Whisper fallback. Requires an "
+            "OpenAI API key (Settings → AI Settings)."
         )
-        ao_tip.setWordWrap(True)
-        ao_tip.setStyleSheet(
+        self._ao_api_tip.setWordWrap(True)
+        self._ao_api_tip.setStyleSheet(
             "font-size: 8pt; color: #555; background-color: #E8F5E9;"
             " border-radius: 4px; padding: 6px;"
         )
-        ao_layout.addWidget(ao_tip)
+        ao_layout.addWidget(self._ao_api_tip)
         alwayson_group.setLayout(ao_layout)
         left_layout.addWidget(alwayson_group)
 
-        # Speech Recognition Model
-        model_group = QGroupBox("🤖 Speech Recognition Model")
+        # Whisper-specific settings group. Used by push-to-talk dictation
+        # (always) and by Always-On when the engine is faster-whisper or
+        # the OpenAI API. NOT used when Always-On engine is Vosk – Vosk
+        # picks its own model from the Language setting below. We retitle
+        # the group so it's obvious which engine these knobs control.
+        self._whisper_group = QGroupBox(
+            "🤖 Whisper Model (push-to-talk dictation; also Always-On if engine = Whisper)"
+        )
         model_layout = QVBoxLayout()
         model_info = QLabel(
             "Whisper model size (larger = more accurate but slower):\n"
@@ -252,8 +265,8 @@ class AutoFingersTab(QWidget):
             settings.get('language', 'Auto (use project target language)'))
         lang_row.addWidget(self._lang_combo, stretch=1)
         model_layout.addLayout(lang_row)
-        model_group.setLayout(model_layout)
-        left_layout.addWidget(model_group)
+        self._whisper_group.setLayout(model_layout)
+        left_layout.addWidget(self._whisper_group)
 
         # Push-to-Talk
         ptt_group = QGroupBox("🎯 Push-to-Talk Mode (F9)")
@@ -267,6 +280,21 @@ class AutoFingersTab(QWidget):
         ptt_info.setWordWrap(True)
         ptt_info.setStyleSheet("font-size: 8pt; color: #666;")
         ptt_layout.addWidget(ptt_info)
+
+        # Engine indicator – tells the user explicitly which engine will
+        # be used when they press Ctrl+Alt+D / F9. Push-to-talk dictation
+        # produces running text, so Vosk (commands-only) is silently
+        # routed to faster-whisper for this path. The OpenAI API engine
+        # uses the API for both. _sync_engine_dependent_widgets keeps
+        # this label in sync with the engine combo.
+        self._ptt_engine_label = QLabel("")
+        self._ptt_engine_label.setTextFormat(Qt.TextFormat.RichText)
+        self._ptt_engine_label.setWordWrap(True)
+        self._ptt_engine_label.setStyleSheet(
+            "font-size: 8pt; color: #555; background-color: #FFF8E1;"
+            " border: 1px solid #FFE082; border-radius: 4px; padding: 6px;"
+        )
+        ptt_layout.addWidget(self._ptt_engine_label)
         ptt_row = QHBoxLayout()
         ptt_row.addWidget(QLabel("Mode:"))
         self._ptt_combo = QComboBox()
@@ -317,6 +345,14 @@ class AutoFingersTab(QWidget):
         left_layout.addWidget(save_btn)
 
         left_layout.addStretch()
+
+        # Now that every engine-dependent widget has been instantiated,
+        # run a final sync so the OpenAI tip / push-to-talk engine label
+        # / commands-only checkbox visibility match the saved engine.
+        # The earlier sync call (line ~185) only had access to a subset
+        # of these widgets because Push-to-Talk and the Whisper group
+        # hadn't been built yet.
+        self._sync_engine_dependent_widgets()
 
         # ---- Right panel: voice commands -----------------------------
         right_widget = QWidget()
@@ -722,27 +758,62 @@ class AutoFingersTab(QWidget):
         self._sync_commands_only_for_engine()
 
     def _sync_commands_only_for_engine(self):
-        """Hide the 'Listen for commands only' checkbox when Vosk is the
-        active engine.
+        """Back-compat shim – delegates to the new unified sync method."""
+        self._sync_engine_dependent_widgets()
 
-        Vosk's grammar-constrained recogniser already drops non-command
-        speech at the recogniser level – the checkbox setting is a no-op
-        in that mode. We hide it (rather than just disabling it) because
-        the shared CheckmarkCheckBox stylesheet doesn't define a
-        ``:disabled`` rule, so a disabled-but-visible checkbox would
-        still look fully interactive. When the user switches back to a
-        Whisper engine, the checkbox re-appears."""
+    def _sync_engine_dependent_widgets(self):
+        """Show / hide / update widgets whose relevance depends on the
+        currently-selected Always-On engine.
+
+        Mapping (engine_combo index → widget visibility / text):
+          0 = Vosk:
+            - "Listen for commands only" checkbox: HIDDEN (no-op for Vosk)
+            - "OpenAI API recommended" tip:        HIDDEN (Vosk is the recommendation now)
+            - Push-to-talk engine label:           "faster-whisper" (vosk routes there)
+          1 = faster-whisper:
+            - Checkbox: SHOWN
+            - API tip:  HIDDEN (user already on local)
+            - PT label: "faster-whisper"
+          2 = OpenAI API:
+            - Checkbox: SHOWN
+            - API tip:  HIDDEN (user already on API)
+            - PT label: "OpenAI Whisper API"
+        """
         try:
             idx = self._engine_combo.currentIndex()
         except Exception:
             return
+
         is_vosk = (idx == 0)
+        is_api = (idx == 2)
+
         try:
             self._commands_only_cb.setVisible(not is_vosk)
-            # Keep setEnabled in sync for completeness (so even if the
-            # widget is somehow shown, programmatic interaction is
-            # blocked while Vosk is active).
             self._commands_only_cb.setEnabled(not is_vosk)
+        except Exception:
+            pass
+
+        try:
+            # The OpenAI-API recommendation tip was historical advice from
+            # before Vosk landed. Hide it across the board – the engine
+            # selector itself now carries the recommendation ("Vosk —
+            # recommended"), so the tip is just noise.
+            self._ao_api_tip.setVisible(False)
+        except Exception:
+            pass
+
+        # Tell the user explicitly which engine push-to-talk dictation
+        # will use, since it doesn't always match the always-on engine.
+        try:
+            if is_api:
+                txt = ("ℹ️ Push-to-talk dictation will use: <b>OpenAI Whisper API</b> "
+                       "(running text, online, requires API key).")
+            else:
+                txt = ("ℹ️ Push-to-talk dictation will use: <b>faster-whisper</b> "
+                       "(running text, offline). Vosk is commands-only, so "
+                       "Ctrl+Alt+D / F9 always routes through Whisper for "
+                       "running text – unless your engine above is set to OpenAI API.")
+            self._ptt_engine_label.setText(txt)
         except Exception:
             pass
 
