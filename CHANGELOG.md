@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.426 (May 5, 2026)
+**Current Version:** v1.9.427 (May 5, 2026)
 
+
+## v1.9.427 - May 5, 2026
+
+### Fixed (Standalone Windows / macOS bundles couldn't translate – "Google AI library not installed")
+
+- **Reported by @marochanhk in #187**: pressing Ctrl+T to translate raised _"Failed to translate segment: Google AI library not installed. Install with: pip install google-generativeai pillow"_, and following the suggested `pip install` had no effect. Affected both Windows ZIP and macOS DMG users; pip-installed users were unaffected because pyproject.toml lists the LLM clients as core dependencies that pip pulls in automatically.
+- Root cause: in [`modules/llm_clients.py`](modules/llm_clients.py), the per-provider call methods (`_call_gemini`, `_call_openai`, `_call_claude`) wrap their imports in `try/except ImportError` blocks – a sensible pattern for surfacing a friendly error if a user's pip install is missing a dep, but PyInstaller's static analyzer treats function-local imports inside `try/except ImportError` as *optional* and silently drops them from the bundle. Combined with `google.*` being a namespace package (only `google._upb` from protobuf was being pulled in transitively), the standalone bundles shipped without `google.generativeai`, `openai`, or `anthropic` at all. The user's attempted `pip install` ran against system Python, which a PyInstaller bundle (with its own bundled Python) doesn't see.
+- Fix: explicit `hiddenimports` entries for `google.generativeai`, `openai`, `anthropic`, and `PIL` in both [`Supervertaler.spec`](Supervertaler.spec) and [`Supervertaler_macOS.spec`](Supervertaler_macOS.spec). PyInstaller now bundles them regardless of the static-analyzer heuristic. Pip-installed users were already getting these via pyproject.toml's `dependencies` list, so this is purely a build-config fix for standalone-bundle users.
+
+---
 
 ## v1.9.426 - May 5, 2026
 

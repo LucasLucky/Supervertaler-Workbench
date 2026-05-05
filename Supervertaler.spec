@@ -22,6 +22,16 @@ a = Analysis(
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'PyQt6.QtWebEngineWidgets',
+        # LLM client libraries — these have function-local imports inside
+        # try/except ImportError blocks (modules/llm_clients.py), which
+        # PyInstaller's static analyzer treats as optional and skips. Name
+        # them explicitly so standalone bundles include working LLM support.
+        # Without these, users see "Google AI library not installed" /
+        # "OpenAI library not installed" at translation time (issue #187).
+        'google.generativeai',
+        'openai',
+        'anthropic',
+        'PIL',
     ],
     hookspath=[],
     hooksconfig={},

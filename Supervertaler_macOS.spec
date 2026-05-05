@@ -44,6 +44,16 @@ a = Analysis(
         'PyQt6.QtWebEngineCore',
         'pynput.keyboard._darwin',
         'pynput.mouse._darwin',
+        # LLM client libraries — function-local imports inside try/except
+        # ImportError blocks (modules/llm_clients.py) are skipped by
+        # PyInstaller's static analyzer. Name them explicitly so standalone
+        # macOS bundles include working LLM support. Without these, users
+        # see "Google AI library not installed" / equivalent at translation
+        # time (issue #187).
+        'google.generativeai',
+        'openai',
+        'anthropic',
+        'PIL',
     ],
     hookspath=[],
     hooksconfig={},
