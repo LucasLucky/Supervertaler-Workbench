@@ -45451,14 +45451,27 @@ class SupervertalerQt(QMainWindow):
             max_duration = dictation_settings.get('max_duration', 10)
             lang_setting = dictation_settings.get('language', 'Auto (use project target language)')
 
-            # Recognition engine. Push-to-talk dictation produces running text,
-            # which Vosk's grammar-constrained mode is not built for – so we
-            # silently route Vosk users to faster-whisper for THIS path
-            # while still respecting their explicit API selection.
-            engine = dictation_settings.get('recognition_engine', 'vosk')
-            if engine in ('vosk', 'local'):  # 'local' is the legacy alias
-                engine = 'faster_whisper'
-            use_api = engine == 'api'
+            # Push-to-talk dictation engine. Three sources, in order:
+            #
+            #   1. User's explicit ``pushtotalk_engine`` setting (added
+            #      in v1.9.441 as a separate dropdown in AutoFingers)
+            #   2. ``'auto'`` → mirror the Always-On engine
+            #   3. Always-On engine (with Vosk → faster-whisper since Vosk
+            #      is commands-only and push-to-talk needs running text)
+            #
+            # Legacy ``recognition_engine='local'`` also maps to faster-whisper.
+            ptt_engine = dictation_settings.get('pushtotalk_engine', 'auto')
+            if ptt_engine == 'auto':
+                always_on_engine = dictation_settings.get('recognition_engine', 'vosk')
+                if always_on_engine in ('vosk', 'local'):
+                    ptt_engine = 'faster_whisper'
+                elif always_on_engine == 'api':
+                    ptt_engine = 'api'
+                else:
+                    ptt_engine = 'faster_whisper'
+            elif ptt_engine == 'local':  # very old legacy alias
+                ptt_engine = 'faster_whisper'
+            use_api = ptt_engine == 'api'
             api_key = None
             if use_api:
                 api_keys = self.load_api_keys()

@@ -2,8 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.440 (May 5, 2026)
+**Current Version:** v1.9.441 (May 5, 2026)
 
+
+## v1.9.441 - May 5, 2026
+
+### Added (Separate "Push-to-talk dictation engine" dropdown so the routing rule isn't a hidden surprise)
+
+- Reported by Michael: "It's also not really clear in the UI why if you set it to Vosk for commands only, faster-whisper is used for running text and not the API." Fair point – the routing rule (Vosk → faster-whisper) was buried in [`Supervertaler.py:start_voice_dictation`](Supervertaler.py) with no UI signal.
+- New **"Dictation engine"** dropdown in the Push-to-Talk Mode group, persisted as `pushtotalk_engine` in dictation settings. Three options:
+  - **Same as Always-On (auto-route)** *(default, preserves v1.9.440 behaviour)*: Vosk → faster-whisper, faster-whisper → faster-whisper, OpenAI API → OpenAI API.
+  - **faster-whisper (offline)**: always offline, regardless of Always-On engine.
+  - **OpenAI Whisper API (online, fast, requires API key)**: always API. Lets a user pair Vosk for free continuous commands with the OpenAI API for fast dictation – which the previous fixed routing didn't allow.
+- The "ℹ️ Push-to-talk will use: ..." indicator below the dropdown shows the *resolved* engine after auto-routing, so the rule is always visible.
+
+---
 
 ## v1.9.440 - May 5, 2026
 

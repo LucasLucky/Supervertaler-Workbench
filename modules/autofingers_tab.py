@@ -284,12 +284,35 @@ class AutoFingersTab(QWidget):
         ptt_info.setStyleSheet("font-size: 8pt; color: #666;")
         ptt_layout.addWidget(ptt_info)
 
-        # Engine indicator – tells the user explicitly which engine will
-        # be used when they press Ctrl+Alt+D / F9. Push-to-talk dictation
-        # produces running text, so Vosk (commands-only) is silently
-        # routed to faster-whisper for this path. The OpenAI API engine
-        # uses the API for both. _sync_engine_dependent_widgets keeps
-        # this label in sync with the engine combo.
+        # Push-to-talk dictation engine (separate from Always-On engine
+        # because the two paths have different needs: Always-On wants
+        # cheap continuous listening, push-to-talk wants snappy running-
+        # text transcription on demand). "Same as Always-On" preserves
+        # the v1.9.435 default routing (Vosk → faster-whisper, API → API)
+        # but lets the user override – e.g. Vosk for continuous commands
+        # PLUS OpenAI API for fast push-to-talk dictation.
+        ptt_engine_row = QHBoxLayout()
+        ptt_engine_row.addWidget(QLabel("Dictation engine:"))
+        self._ptt_engine_combo = QComboBox()
+        self._ptt_engine_combo.addItem(
+            "Same as Always-On (auto-route)", "auto")
+        self._ptt_engine_combo.addItem(
+            "faster-whisper (offline)", "faster_whisper")
+        self._ptt_engine_combo.addItem(
+            "OpenAI Whisper API (online, fast, requires API key)", "api")
+        saved_ptt_engine = settings.get('pushtotalk_engine', 'auto')
+        for i in range(self._ptt_engine_combo.count()):
+            if self._ptt_engine_combo.itemData(i) == saved_ptt_engine:
+                self._ptt_engine_combo.setCurrentIndex(i)
+                break
+        self._ptt_engine_combo.currentIndexChanged.connect(
+            self._on_ptt_engine_changed)
+        ptt_engine_row.addWidget(self._ptt_engine_combo, stretch=1)
+        ptt_layout.addLayout(ptt_engine_row)
+
+        # Inline indicator: tells the user the *resolved* engine (after
+        # auto-routing). Hidden when the user has picked an explicit
+        # engine, since then the dropdown itself already states it.
         self._ptt_engine_label = QLabel("")
         self._ptt_engine_label.setTextFormat(Qt.TextFormat.RichText)
         self._ptt_engine_label.setWordWrap(True)
@@ -766,21 +789,17 @@ class AutoFingersTab(QWidget):
 
     def _sync_engine_dependent_widgets(self):
         """Show / hide / update widgets whose relevance depends on the
-        currently-selected Always-On engine.
+        currently-selected Always-On engine *and* the push-to-talk engine
+        override.
 
-        Mapping (engine_combo index → widget visibility / text):
-          0 = Vosk:
-            - "Listen for commands only" checkbox: HIDDEN (no-op for Vosk)
-            - "OpenAI API recommended" tip:        HIDDEN (Vosk is the recommendation now)
-            - Push-to-talk engine label:           "faster-whisper" (vosk routes there)
-          1 = faster-whisper:
-            - Checkbox: SHOWN
-            - API tip:  HIDDEN (user already on local)
-            - PT label: "faster-whisper"
-          2 = OpenAI API:
-            - Checkbox: SHOWN
-            - API tip:  HIDDEN (user already on API)
-            - PT label: "OpenAI Whisper API"
+        - Always-On engine = Vosk: hides the "commands only" checkbox
+          (structural no-op for Vosk) and the legacy OpenAI-API tip.
+        - Push-to-talk dictation engine: dropdown lets the user pick
+          'auto' / 'faster_whisper' / 'api'. The label below the
+          dropdown shows the *resolved* engine after auto-routing
+          (auto + Vosk → faster-whisper, auto + API → API, etc.) so
+          the user always knows which backend will run when they
+          press Ctrl+Alt+D / F9.
         """
         try:
             idx = self._engine_combo.currentIndex()
@@ -788,7 +807,6 @@ class AutoFingersTab(QWidget):
             return
 
         is_vosk = (idx == 0)
-        is_api = (idx == 2)
 
         try:
             self._commands_only_cb.setVisible(not is_vosk)
@@ -797,25 +815,42 @@ class AutoFingersTab(QWidget):
             pass
 
         try:
-            # The OpenAI-API recommendation tip was historical advice from
-            # before Vosk landed. Hide it across the board – the engine
-            # selector itself now carries the recommendation ("Vosk —
-            # recommended"), so the tip is just noise.
+            # The OpenAI-API recommendation tip was historical advice
+            # from before Vosk landed. Hide it across the board – the
+            # engine selector itself now carries the recommendation.
             self._ao_api_tip.setVisible(False)
         except Exception:
             pass
 
         # Tell the user explicitly which engine push-to-talk dictation
-        # will use, since it doesn't always match the always-on engine.
+        # will use. The override dropdown below it has three options:
+        #   - 'auto'           → mirror Always-On (vosk → faster-whisper)
+        #   - 'faster_whisper' → always faster-whisper
+        #   - 'api'            → always OpenAI Whisper API
         try:
-            if is_api:
-                txt = ("ℹ️ Push-to-talk dictation will use: <b>OpenAI Whisper API</b> "
-                       "(running text, online, requires API key).")
+            ptt_pref = self._ptt_engine_combo.currentData() or 'auto'
+        except Exception:
+            ptt_pref = 'auto'
+
+        # Resolve 'auto' to the concrete engine that will actually run.
+        if ptt_pref == 'auto':
+            if idx == 2:  # Always-On = OpenAI API
+                resolved = 'api'
             else:
-                txt = ("ℹ️ Push-to-talk dictation will use: <b>faster-whisper</b> "
-                       "(running text, offline). Vosk is commands-only, so "
-                       "Ctrl+Alt+D / F9 always routes through Whisper for "
-                       "running text – unless your engine above is set to OpenAI API.")
+                resolved = 'faster_whisper'
+        else:
+            resolved = ptt_pref
+
+        try:
+            if resolved == 'api':
+                txt = ("ℹ️ Push-to-talk will use: <b>OpenAI Whisper API</b> "
+                       "(online, fast, requires API key).")
+            else:
+                txt = ("ℹ️ Push-to-talk will use: <b>faster-whisper</b> "
+                       "(offline). Vosk is commands-only – Ctrl+Alt+D / "
+                       "F9 always falls through to a Whisper engine for "
+                       "running text. Pick 'OpenAI Whisper API' above if "
+                       "you'd rather have the API handle dictation.")
             self._ptt_engine_label.setText(txt)
         except Exception:
             pass
@@ -834,6 +869,13 @@ class AutoFingersTab(QWidget):
     def _on_ptt_changed(self, idx: int):
         mode = self._ptt_combo.itemData(idx) or 'toggle'
         self._set_dictation_keys(pushtotalk_mode=mode)
+
+    def _on_ptt_engine_changed(self, idx: int):
+        """Persist the user's push-to-talk engine override and refresh
+        the resolved-engine indicator label below the dropdown."""
+        engine = self._ptt_engine_combo.itemData(idx) or 'auto'
+        self._set_dictation_keys(pushtotalk_engine=engine)
+        self._sync_engine_dependent_widgets()
 
     def _on_commands_only_toggled(self, checked: bool):
         self._set_dictation_keys(alwayson_commands_only=bool(checked))
