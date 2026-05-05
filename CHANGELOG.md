@@ -2,8 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.439 (May 5, 2026)
+**Current Version:** v1.9.440 (May 5, 2026)
 
+
+## v1.9.440 - May 5, 2026
+
+### Improved (label "Whisper model" → "faster-whisper model" so it's clear it's offline only)
+
+- Reported by Michael: the AutoFingers tab said "Whisper model size" + listed sizes from `tiny ~75 MB` to `large ~2.9 GB`, which someone could read as applying to the OpenAI Whisper API (it doesn't – the API always uses `whisper-1` server-side). Renamed the group title to `🤖 faster-whisper Model (offline; used for push-to-talk and Always-On if engine = faster-whisper)` and updated the size-table caption to start "faster-whisper model size …" plus an explicit note that the OpenAI API ignores this setting.
+
+---
 
 ## v1.9.439 - May 5, 2026
 

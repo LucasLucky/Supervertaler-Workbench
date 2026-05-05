@@ -224,11 +224,14 @@ class AutoFingersTab(QWidget):
         # picks its own model from the Language setting below. We retitle
         # the group so it's obvious which engine these knobs control.
         self._whisper_group = QGroupBox(
-            "🤖 Whisper Model (push-to-talk dictation; also Always-On if engine = Whisper)"
+            "🤖 faster-whisper Model (offline; used for push-to-talk and "
+            "Always-On if engine = faster-whisper)"
         )
         model_layout = QVBoxLayout()
         model_info = QLabel(
-            "Whisper model size (larger = more accurate but slower):\n"
+            "faster-whisper model size (larger = more accurate but slower).\n"
+            "Does not apply to the OpenAI Whisper API – that always uses "
+            "whisper-1 server-side regardless of this setting.\n"
             "• tiny ~75 MB  • base ~142 MB (recommended)  • small ~466 MB\n"
             "• medium ~1.5 GB  • large ~2.9 GB"
         )
