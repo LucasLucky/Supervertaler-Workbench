@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.429 (May 5, 2026)
+**Current Version:** v1.9.430 (May 5, 2026)
 
+
+## v1.9.430 - May 5, 2026
+
+### Fixed (Settings → Change Data Folder silently reverted on restart in dev mode)
+
+- **Reported by Michael**: clicking "Change..." in Settings → General → Data Folder Location, picking a new folder, and getting the "Data folder changed / All managers have been reinitialized" confirmation – then on next launch the path quietly reverted to `~/Supervertaler`. Only happened in dev mode (`.supervertaler.local` present).
+- Root cause: `MainWindow.__init__` had a dev-mode branch that hardcoded `self.user_data_path = Path.home() / "Supervertaler"` and skipped the unified pointer-file resolution entirely. The `Change...` button correctly wrote the new path to `%APPDATA%\Supervertaler\config.json`, but on restart the dev branch never read that file – it just took the home-folder default and ignored what the user had chosen. The comment claimed "use same path as a real user", but a real user's path is whatever is in their pointer, not necessarily the default.
+- Fix at [`Supervertaler.py`](Supervertaler.py): drop the dev-mode special case. All three flavours (dev, pip, EXE) now go through `get_user_data_path()`, which (1) reads the pointer file if it exists, (2) auto-recovers by writing a pointer at the default location if `~/Supervertaler` already has content, or (3) falls back to the default for genuinely fresh installs. Dev installs that already have data at `~/Supervertaler` will see no behaviour change after pulling – the auto-recovery writes a pointer matching the previous hardcoded path on the first run. Devs who want their data elsewhere can now actually use Settings → Change... and have it stick.
+- Also dropped a dead `base_folder = "user_data_private" if ENABLE_PRIVATE_FEATURES else "user_data"` line that was being computed but never used – legacy from the tkinter version, no behavioural impact in current code.
+
+---
 
 ## v1.9.429 - May 5, 2026
 

@@ -7644,14 +7644,16 @@ class SupervertalerQt(QMainWindow):
         # Check if this is first run BEFORE getting the path
         # (so we know whether to show the data location dialog later)
         self._needs_data_location_dialog = needs_first_run_data_dialog()
-        
-        if ENABLE_PRIVATE_FEATURES:
-            # Developer mode: use same path as a real user (~/Supervertaler)
-            self.user_data_path = Path.home() / "Supervertaler"
-            self._needs_data_location_dialog = False  # Dev mode doesn't need dialog
-        else:
-            # Normal mode: use unified system (same for pip, EXE, etc.)
-            self.user_data_path = get_user_data_path()
+
+        # Resolve the user data path via the unified pointer system for ALL
+        # users (dev, pip, EXE). The dev branch used to hardcode this to
+        # ~/Supervertaler and skip the pointer entirely, which made
+        # Settings -> Change... silently revert on restart in dev mode
+        # (the change saved to the pointer but startup never read it).
+        # The unified path also auto-recovers if the default location has
+        # content but no pointer exists, so a fresh dev install still does
+        # the right thing without a special case.
+        self.user_data_path = get_user_data_path()
         
         # Ensure user_data directory exists (creates empty folder if missing)
         # BUT only if we're not going to show the dialog (which will create the chosen folder)
@@ -7731,10 +7733,6 @@ class SupervertalerQt(QMainWindow):
         from modules.theme_manager import ThemeManager
         self.theme_manager = None  # Will be initialized after UI setup
         
-        # User data path - uses safety system to prevent private data leaks
-        # If .supervertaler.local exists: uses "user_data_private" (git-ignored)
-        # Otherwise: uses "user_data" (safe to commit)
-        base_folder = "user_data_private" if ENABLE_PRIVATE_FEATURES else "user_data"
         self.recent_projects_file = self.user_data_path / "workbench" / "settings" / "recent_projects.json"
         
         # Initialize UI
