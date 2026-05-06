@@ -22925,6 +22925,15 @@ class SupervertalerQt(QMainWindow):
             del general_settings['settings_ui_font_scale']
         self.save_general_settings(general_settings)
 
+        # Invalidate the modules.ui_scale cache so newly-constructed Sidekick /
+        # clipboard widgets see the new value (already-open ones keep their
+        # construction-time scale until reopened).
+        try:
+            from modules.ui_scale import refresh_ui_font_scale
+            refresh_ui_font_scale()
+        except Exception:
+            pass
+
         # Update ThemeManager and reapply theme
         if hasattr(self, 'theme_manager') and self.theme_manager is not None:
             self.theme_manager.font_scale = scale_percent

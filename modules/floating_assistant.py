@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 from modules.chat_backend import ChatBackend
 from modules.chat_view_widget import ChatViewWidget
 from modules.help_system import Topics as HelpTopics, set_topic as set_help_topic
+from modules.ui_scale import scaled_pt
 
 
 class _SidekickTabPaneFilter(QObject):
@@ -511,15 +512,22 @@ class FloatingAssistant(QWidget):
 
     # Header styles for the focus indicator. The "active" variant has the
     # accent blue + bottom underline; the inactive variant is muted.
-    _FOCUS_STYLE_ACTIVE = (
-        "font-weight: bold; font-size: 10pt; color: #1976D2; "
-        "border: none; border-bottom: 2px solid #1976D2; "
-        "padding: 0 6px 2px 6px;"
-    )
-    _FOCUS_STYLE_INACTIVE = (
-        "font-weight: bold; font-size: 10pt; color: #3D5A80; "
-        "border: none; padding-left: 6px;"
-    )
+    # Properties (not class constants) so they pick up the current global
+    # UI font scale at the moment Sidekick is opened.
+    @property
+    def _FOCUS_STYLE_ACTIVE(self) -> str:
+        return (
+            f"font-weight: bold; font-size: {scaled_pt(10):.1f}pt; color: #1976D2; "
+            "border: none; border-bottom: 2px solid #1976D2; "
+            "padding: 0 6px 2px 6px;"
+        )
+
+    @property
+    def _FOCUS_STYLE_INACTIVE(self) -> str:
+        return (
+            f"font-weight: bold; font-size: {scaled_pt(10):.1f}pt; color: #3D5A80; "
+            "border: none; padding-left: 6px;"
+        )
 
     def _on_focus_changed(self, _old, new):
         """Track the most recently focused widget in the left pane so the
@@ -641,14 +649,14 @@ class FloatingAssistant(QWidget):
         # Tab bar for Chat / QuickTrans
         from PyQt6.QtWidgets import QTabWidget
         self._left_tabs = QTabWidget()
-        self._left_tabs.setStyleSheet("""
-            QTabBar::tab {
-                padding: 6px 16px; font-size: 9pt;
-            }
-            QTabBar::tab:selected {
+        self._left_tabs.setStyleSheet(f"""
+            QTabBar::tab {{
+                padding: 6px 16px; font-size: {scaled_pt(9):.1f}pt;
+            }}
+            QTabBar::tab:selected {{
                 font-weight: bold;
                 border-bottom: 2px solid #3D5A80;
-            }
+            }}
         """)
         self._left_tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         # Force tabs to fit their full text instead of clipping to ellipsis.
@@ -721,7 +729,7 @@ class FloatingAssistant(QWidget):
         # Context-aware info bar – shows a short tip depending on the active tab
         self._info_label = QLabel("")
         self._info_label.setStyleSheet(
-            "color: #888; font-size: 8pt; padding: 2px 8px; border: none;")
+            f"color: #888; font-size: {scaled_pt(8):.1f}pt; padding: 2px 8px; border: none;")
         self._info_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._info_label.setFixedHeight(18)
@@ -785,7 +793,7 @@ class FloatingAssistant(QWidget):
         layout.addWidget(sv_icon_label)
 
         title = QLabel("Supervertaler Sidekick")
-        title.setStyleSheet("color: white; font-weight: bold; font-size: 10pt; border: none;")
+        title.setStyleSheet(f"color: white; font-weight: bold; font-size: {scaled_pt(10):.1f}pt; border: none;")
         layout.addWidget(title)
         layout.addStretch()
 
@@ -872,30 +880,30 @@ class FloatingAssistant(QWidget):
         self._action_tree.setRootIsDecorated(True)
         self._action_tree.setAnimated(True)
         self._action_tree.setIndentation(16)
-        self._action_tree.setStyleSheet("""
-            QTreeWidget {
+        self._action_tree.setStyleSheet(f"""
+            QTreeWidget {{
                 border: none; background: transparent;
-                font-size: 9pt; outline: none;
-            }
-            QTreeWidget::item {
+                font-size: {scaled_pt(9):.1f}pt; outline: none;
+            }}
+            QTreeWidget::item {{
                 padding: 4px 6px; border-radius: 4px;
-            }
-            QTreeWidget::item:selected {
+            }}
+            QTreeWidget::item:selected {{
                 background-color: #D6E4F0; color: #1E1E1E;
-            }
-            QTreeWidget::item:hover {
+            }}
+            QTreeWidget::item:hover {{
                 background-color: #FFFFFF;
-            }
+            }}
             QTreeWidget::branch:has-children:!has-siblings:closed,
-            QTreeWidget::branch:closed:has-children:has-siblings {
+            QTreeWidget::branch:closed:has-children:has-siblings {{
                 image: none;
                 border-image: none;
-            }
+            }}
             QTreeWidget::branch:open:has-children:!has-siblings,
-            QTreeWidget::branch:open:has-children:has-siblings {
+            QTreeWidget::branch:open:has-children:has-siblings {{
                 image: none;
                 border-image: none;
-            }
+            }}
         """)
         self._action_tree.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._action_tree.setHorizontalScrollBarPolicy(
@@ -924,7 +932,7 @@ class FloatingAssistant(QWidget):
         Categories are selectable (so arrow-key navigation highlights them)
         but activating them toggles expand/collapse instead of running a callback.
         """
-        bold_font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+        bold_font = QFont("Segoe UI", round(scaled_pt(9)), QFont.Weight.Bold)
         cat_color = QBrush(QColor("#3D5A80"))
         cat = QTreeWidgetItem([label])
         cat.setFont(0, bold_font)
@@ -1250,7 +1258,7 @@ class FloatingAssistant(QWidget):
         self._qt_source_label = QLabel("Select text and press Ctrl+Alt+Q to translate.")
         self._qt_source_label.setWordWrap(True)
         self._qt_source_label.setStyleSheet(
-            "color: #C0392B; font-size: 9pt; padding: 6px 8px; "
+            f"color: #C0392B; font-size: {scaled_pt(9):.1f}pt; padding: 6px 8px; "
             "background-color: #FEF9E7; border: 1px solid #F0E68C; "
             "border-radius: 4px;"
         )
@@ -1259,20 +1267,20 @@ class FloatingAssistant(QWidget):
         # Results list (keyboard-navigable)
         from PyQt6.QtWidgets import QListWidget, QListWidgetItem
         self._qt_list = QListWidget()
-        self._qt_list.setStyleSheet("""
-            QListWidget {
+        self._qt_list.setStyleSheet(f"""
+            QListWidget {{
                 border: none; background: transparent;
-                font-size: 9pt; outline: none;
-            }
-            QListWidget::item {
+                font-size: {scaled_pt(9):.1f}pt; outline: none;
+            }}
+            QListWidget::item {{
                 padding: 3px 6px; border-bottom: 1px solid #F0F0F0;
-            }
-            QListWidget::item:selected {
+            }}
+            QListWidget::item:selected {{
                 background-color: #E8F4FD; color: #1E1E1E;
-            }
-            QListWidget::item:hover {
+            }}
+            QListWidget::item:hover {{
                 background-color: #F5F5F5;
-            }
+            }}
         """)
         self._qt_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._qt_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
@@ -1283,7 +1291,7 @@ class FloatingAssistant(QWidget):
 
         # Hint bar
         hint = QLabel("1\u20139 to insert \u2022 \u2191\u2193 Enter to select \u2022 Click to copy")
-        hint.setStyleSheet("color: #999; font-size: 7pt; padding: 2px 6px;")
+        hint.setStyleSheet(f"color: #999; font-size: {scaled_pt(7):.1f}pt; padding: 2px 6px;")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint)
 
@@ -1305,12 +1313,12 @@ class FloatingAssistant(QWidget):
         self._qt_input = QPlainTextEdit()
         self._qt_input.setMaximumHeight(60)
         self._qt_input.setPlaceholderText("Type or paste text to translate\u2026")
-        self._qt_input.setStyleSheet("""
-            QPlainTextEdit {
-                border: none; font-size: 10pt;
+        self._qt_input.setStyleSheet(f"""
+            QPlainTextEdit {{
+                border: none; font-size: {scaled_pt(10):.1f}pt;
                 color: #1a1a1a; background-color: white;
                 padding: 4px;
-            }
+            }}
         """)
         # Enter to translate (Shift+Enter for newline)
         self._qt_input.installEventFilter(self)
@@ -1381,7 +1389,7 @@ class FloatingAssistant(QWidget):
         # Update source display
         self._qt_source_label.setText(text)
         self._qt_source_label.setStyleSheet(
-            "color: #C0392B; font-size: 9pt; padding: 6px 8px; "
+            f"color: #C0392B; font-size: {scaled_pt(9):.1f}pt; padding: 6px 8px; "
             "background-color: #FEF9E7; border: 1px solid #F0E68C; "
             "border-radius: 4px;"
         )

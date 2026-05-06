@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from modules.styled_widgets import HelpButton
 from modules.help_system import Topics as HelpTopics
+from modules.ui_scale import scaled_pt
 
 
 # ---------- Item data roles ------------------------------------------------
@@ -85,21 +86,25 @@ class ClipboardManagerWidget(QWidget):
     # UI construction
     # ------------------------------------------------------------------
 
-    _LIST_STYLESHEET = """
-        QListWidget {
-            border: 1px solid #E0E0E0; border-radius: 4px;
-            background: white; font-size: 9pt; outline: none;
-        }
-        QListWidget::item {
-            padding: 5px 8px; border-bottom: 1px solid #E4E4E4;
-        }
-        QListWidget::item:selected {
-            background-color: #E8F4FD; color: #1E1E1E;
-        }
-        QListWidget::item:hover {
-            background-color: #F5F9FF;
-        }
-    """
+    # Property (not class constant) so it picks up the current global UI
+    # font scale at the moment the clipboard widget is constructed.
+    @property
+    def _LIST_STYLESHEET(self) -> str:
+        return f"""
+            QListWidget {{
+                border: 1px solid #E0E0E0; border-radius: 4px;
+                background: white; font-size: {scaled_pt(9):.1f}pt; outline: none;
+            }}
+            QListWidget::item {{
+                padding: 5px 8px; border-bottom: 1px solid #E4E4E4;
+            }}
+            QListWidget::item:selected {{
+                background-color: #E8F4FD; color: #1E1E1E;
+            }}
+            QListWidget::item:hover {{
+                background-color: #F5F9FF;
+            }}
+        """
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -111,22 +116,22 @@ class ClipboardManagerWidget(QWidget):
         header.setContentsMargins(0, 0, 0, 0)
         self._count_label = QLabel("Clipboard History")
         self._count_label.setStyleSheet(
-            "font-weight: bold; font-size: 9pt; color: #3D5A80; border: none;"
+            f"font-weight: bold; font-size: {scaled_pt(9):.1f}pt; color: #3D5A80; border: none;"
         )
         header.addWidget(self._count_label)
         header.addStretch()
 
         clear_btn = QPushButton("Clear all")
-        clear_btn.setStyleSheet("""
-            QPushButton {
+        clear_btn.setStyleSheet(f"""
+            QPushButton {{
                 color: #888; background: transparent;
                 border: 1px solid #DDD; border-radius: 3px;
-                padding: 2px 8px; font-size: 8pt;
-            }
-            QPushButton:hover {
+                padding: 2px 8px; font-size: {scaled_pt(8):.1f}pt;
+            }}
+            QPushButton:hover {{
                 background-color: #FFF0F0;
                 border-color: #E57373; color: #C62828;
-            }
+            }}
         """)
         clear_btn.setToolTip("Remove all clipboard history (cannot be undone)")
         clear_btn.clicked.connect(self._clear_all)
@@ -178,7 +183,7 @@ class ClipboardManagerWidget(QWidget):
             "Click to paste  •  Right-click or Delete key to remove  •  "
             "Pasted items shown in grey  •  ← / → switches columns")
         hint.setStyleSheet(
-            "color: #999; font-size: 7pt; padding: 2px 4px; border: none;"
+            f"color: #999; font-size: {scaled_pt(7):.1f}pt; padding: 2px 4px; border: none;"
         )
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint)
@@ -220,21 +225,28 @@ class ClipboardManagerWidget(QWidget):
         lbl.setWordWrap(True)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet(
-            "color: #999; font-size: 8pt; padding: 20px;"
+            f"color: #999; font-size: {scaled_pt(8):.1f}pt; padding: 20px;"
             " font-style: italic; background: white;"
             " border: 1px solid #E0E0E0; border-radius: 4px;"
         )
         return lbl
 
-    _COL_HEADER_INACTIVE = (
-        "font-weight: bold; font-size: 8pt; color: #555;"
-        " padding: 2px 4px; border: none;"
-    )
-    _COL_HEADER_ACTIVE = (
-        "font-weight: bold; font-size: 8pt; color: #1976D2;"
-        " padding: 2px 4px; border: none;"
-        " border-bottom: 2px solid #1976D2;"
-    )
+    # Properties (not class constants) so they pick up the current global UI
+    # font scale at the moment the clipboard widget is constructed/refreshed.
+    @property
+    def _COL_HEADER_INACTIVE(self) -> str:
+        return (
+            f"font-weight: bold; font-size: {scaled_pt(8):.1f}pt; color: #555;"
+            " padding: 2px 4px; border: none;"
+        )
+
+    @property
+    def _COL_HEADER_ACTIVE(self) -> str:
+        return (
+            f"font-weight: bold; font-size: {scaled_pt(8):.1f}pt; color: #1976D2;"
+            " padding: 2px 4px; border: none;"
+            " border-bottom: 2px solid #1976D2;"
+        )
 
     def _make_column(self, header_label: QLabel,
                       list_widget: QListWidget,

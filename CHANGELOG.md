@@ -2,8 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.448 (May 6, 2026)
+**Current Version:** v1.9.449 (May 6, 2026)
 
+
+## v1.9.449 - May 6, 2026
+
+### Fixed (Sidekick + Clipboard history: respect global UI font scale on Retina screens)
+
+- **Sidekick (floating Assistant) and the Clipboard History widget ignored the Settings → AI Settings global UI font scale.** Even with the slider set to 125% / 150%, the Menu tree, QuickTrans input/results, info bar, and especially the Clipboard History list and column headers stayed at their hardcoded 7–10 pt sizes – uncomfortably small on a MacBook's Retina screen. Reported by Michael while testing on macOS.
+- Root cause: both modules built their stylesheets with hardcoded `font-size: Xpt` literals inside class constants and inline `setStyleSheet(...)` calls, which bypass both ThemeManager and Qt's app-level QFont. The slider only reaches widgets that inherit from those mechanisms.
+- Fix introduces a small helper at [`modules/ui_scale.py`](modules/ui_scale.py) (`get_ui_font_scale()`, `scaled_pt()`, `refresh_ui_font_scale()`) that reads `general.global_ui_font_scale` from `settings.json` and caches it. [`modules/floating_assistant.py`](modules/floating_assistant.py) and [`modules/clipboard_manager_widget.py`](modules/clipboard_manager_widget.py) now use `scaled_pt(N)` for every content font-size: the Menu tree, QuickTrans source label / results list / hint / input, Clipboard list, count label, Clear-all button, footer hint, empty-state labels, and the column-header active/inactive styles. The class-level style constants (`_FOCUS_STYLE_*`, `_LIST_STYLESHEET`, `_COL_HEADER_*`) became `@property` so they re-evaluate per Sidekick launch and pick up the current scale. `Supervertaler._apply_global_ui_font_scale` now also calls `refresh_ui_font_scale()` so the cache invalidates the moment the slider changes. Already-open Sidekick / clipboard widgets keep their construction-time scale until reopened – acceptable trade-off for not having to wire a Qt signal through these modules.
+- Title-bar chrome glyphs (settings ⚙, minimise –, maximise □, close ×) are deliberately left at their fixed point sizes because they sit inside fixed 24×24 px buttons and scaling the glyph without scaling the button would overflow.
+
+---
 
 ## v1.9.448 - May 6, 2026
 
