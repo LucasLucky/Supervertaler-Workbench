@@ -94,6 +94,7 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from modules.shortcut_display import format_shortcut_for_display
 from modules.platform_helpers import IS_WINDOWS, IS_MACOS, IS_LINUX, open_file, open_folder, get_hidden_subprocess_flags
+from modules.ui_scale import scaled_pt
 
 
 def get_resource_path(relative_path: str) -> Path:
@@ -54112,7 +54113,9 @@ class SuperlookupTab(QWidget):
 
         # Sidebar header
         sidebar_header = QLabel("🌐 Resources")
-        sidebar_header.setStyleSheet("font-weight: bold; font-size: 10pt; padding: 5px; color: #1976D2;")
+        sidebar_header.setStyleSheet(
+            f"font-weight: bold; font-size: {scaled_pt(10):.1f}pt; padding: 5px; color: #1976D2;"
+        )
         sidebar_layout.addWidget(sidebar_header)
 
         # Scrollable area for resource buttons – ensures all resources are
@@ -54138,28 +54141,28 @@ class SuperlookupTab(QWidget):
             btn = QPushButton(f"{resource['icon']} {resource['name']}")
             btn.setCheckable(True)
             btn.setToolTip(resource['description'])
-            btn.setStyleSheet("""
-                QPushButton {
+            btn.setStyleSheet(f"""
+                QPushButton {{
                     text-align: left;
                     padding: 5px 8px;
                     border: none;
                     border-radius: 4px;
                     background-color: transparent;
-                    font-size: 9pt;
+                    font-size: {scaled_pt(9):.1f}pt;
                     outline: none;
-                }
-                QPushButton:hover {
+                }}
+                QPushButton:hover {{
                     background-color: #e3e3e3;
-                }
-                QPushButton:checked {
+                }}
+                QPushButton:checked {{
                     background-color: #2196F3;
                     color: white;
                     font-weight: bold;
-                }
-                QPushButton:focus {
+                }}
+                QPushButton:focus {{
                     outline: none;
                     border: none;
-                }
+                }}
             """)
             btn.clicked.connect(lambda checked, idx=i: self._on_web_resource_selected(idx))
             self.web_resource_button_group.addButton(btn, i)
@@ -54173,30 +54176,30 @@ class SuperlookupTab(QWidget):
         # "Search All" button - pre-loads all resources
         search_all_btn = QPushButton("🔎 Search All")
         search_all_btn.setToolTip("Search all web resources at once (embedded mode)")
-        search_all_btn.setStyleSheet("""
-            QPushButton {
+        search_all_btn.setStyleSheet(f"""
+            QPushButton {{
                 padding: 8px;
                 background-color: #FF9800;
                 color: white;
                 border: none;
                 border-radius: 4px;
-                font-size: 9pt;
+                font-size: {scaled_pt(9):.1f}pt;
                 outline: none;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #F57C00;
-            }
-            QPushButton:focus {
+            }}
+            QPushButton:focus {{
                 outline: none;
                 border: none;
-            }
+            }}
         """)
         search_all_btn.clicked.connect(lambda: self._perform_web_search(search_all=True))
         sidebar_layout.addWidget(search_all_btn)
         
         # Browser mode toggle
         mode_label = QLabel("Mode:")
-        mode_label.setStyleSheet("font-size: 8pt; color: #666; padding-top: 5px;")
+        mode_label.setStyleSheet(f"font-size: {scaled_pt(8):.1f}pt; color: #666; padding-top: 5px;")
         sidebar_layout.addWidget(mode_label)
         
         self.web_mode_embedded_radio = CheckmarkRadioButton("Embedded")
@@ -54215,25 +54218,25 @@ class SuperlookupTab(QWidget):
         # "Open in Browser" button at bottom of sidebar
         self.web_open_external_btn = QPushButton("🌍 Open in Browser")
         self.web_open_external_btn.setToolTip("Open current page in your default web browser")
-        self.web_open_external_btn.setStyleSheet("""
-            QPushButton {
+        self.web_open_external_btn.setStyleSheet(f"""
+            QPushButton {{
                 padding: 8px;
                 min-height: 20px;
                 background-color: #4CAF50;
                 color: white;
                 border: none;
                 border-radius: 4px;
-                font-size: 9pt;
+                font-size: {scaled_pt(9):.1f}pt;
                 margin-top: 5px;
                 outline: none;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #45a049;
-            }
-            QPushButton:focus {
+            }}
+            QPushButton:focus {{
                 outline: none;
                 border: none;
-            }
+            }}
         """)
         self.web_open_external_btn.clicked.connect(self._open_web_resource_external)
         sidebar_layout.addWidget(self.web_open_external_btn)
@@ -54248,7 +54251,9 @@ class SuperlookupTab(QWidget):
         
         # Info label showing current language direction (no separate search bar - uses main Superlookup search)
         self.web_lang_info_label = QLabel("Languages: Any → Any  •  Click Search above or select a resource")
-        self.web_lang_info_label.setStyleSheet("color: #666; font-size: 9pt; padding: 3px 0;")
+        self.web_lang_info_label.setStyleSheet(
+            f"color: #666; font-size: {scaled_pt(9):.1f}pt; padding: 3px 0;"
+        )
         content_layout.addWidget(self.web_lang_info_label)
         
         # OPUS corpus selector (hidden by default, shown when OPUS is selected)

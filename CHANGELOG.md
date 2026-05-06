@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.450 (May 6, 2026)
+**Current Version:** v1.9.451 (May 6, 2026)
 
+
+## v1.9.451 - May 6, 2026
+
+### Fixed (SuperLookup Web Resources sidebar ignored global UI scale)
+
+- **The Web Resources sidebar list inside Sidekick (IATE, Linguee, ProZ.com, Reverso, Google, Wikipedia, etc.) stayed at its hardcoded 9 pt size even at 150% global UI scale**, while every other Sidekick element scaled correctly. Reported by Michael with a screenshot. Cause: `SuperlookupTab` lives in [`Supervertaler.py`](Supervertaler.py) (not `floating_assistant.py`), so the v1.9.449 Sidekick refactor didn't reach it.
+- Fix at [`Supervertaler.py`](Supervertaler.py): the SuperLookup Web Resources sidebar – header (`🌐 Resources`), each resource button, the "Search All" button, the Mode label, the "Open in Browser" button, and the language info label – now all use `scaled_pt(N)` from `modules.ui_scale`. Also added the import at the top of the file. The 9 pt resource buttons now render at 13.5 pt at 150% scale, matching the rest of the Sidekick chrome.
+
+---
 
 ## v1.9.450 - May 6, 2026
 
