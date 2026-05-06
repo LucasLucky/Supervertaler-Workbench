@@ -27332,6 +27332,9 @@ class SupervertalerQt(QMainWindow):
                         "  • Or download from https://www.java.com\n\n"
                         "Then re-try the import."
                     )
+                self.log("⚠️ Showing 'Java required' dialog – "
+                         "DOCX import blocked, no system Java found "
+                         f"({sysname})")
                 QMessageBox.critical(
                     self,
                     "Java required",
@@ -27339,6 +27342,8 @@ class SupervertalerQt(QMainWindow):
                     "Java service. No Java runtime was found on your "
                     "system.\n\n" + install_hint
                 )
+                self.log("ℹ️ User dismissed 'Java required' dialog – "
+                         "import aborted")
                 return False
 
         if has_bundled_jre:
@@ -27351,6 +27356,8 @@ class SupervertalerQt(QMainWindow):
                 "Java install is needed.\n\n"
             )
 
+        self.log(f"ℹ️ Showing 'Download Okapi sidecar?' dialog "
+                 f"({size_text}, has_bundled_jre={has_bundled_jre})")
         reply = QMessageBox.question(
             self,
             "Download Okapi sidecar?",
@@ -27365,7 +27372,9 @@ class SupervertalerQt(QMainWindow):
             QMessageBox.StandardButton.Yes,
         )
         if reply != QMessageBox.StandardButton.Yes:
+            self.log("ℹ️ User declined sidecar download – import aborted")
             return False
+        self.log("ℹ️ User accepted sidecar download – starting fetch")
 
         progress = QProgressDialog(
             "Downloading Okapi sidecar…",
@@ -48847,9 +48856,15 @@ class SupervertalerQt(QMainWindow):
         try:
             general = self._load_settings_section("general")
             if general.get("okapi_java_warning_dismissed"):
+                self.log("ℹ️ Skipping Java-required startup dialog "
+                         "(user previously checked 'Don't show again')")
                 return
         except Exception:
             general = {}
+
+        self.log("⚠️ Showing 'Java needed for enhanced file filters' "
+                 "startup dialog (no system Java detected on this "
+                 "platform; sidecar can't run)")
 
         from PyQt6.QtWidgets import QMessageBox, QCheckBox
 
@@ -48891,6 +48906,8 @@ class SupervertalerQt(QMainWindow):
         box.setCheckBox(dont_show)
         box.addButton(QMessageBox.StandardButton.Ok)
         box.exec()
+        self.log(f"ℹ️ User dismissed Java-required dialog "
+                 f"(don't-show-again={'on' if dont_show.isChecked() else 'off'})")
 
         if dont_show.isChecked():
             try:

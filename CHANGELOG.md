@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.446 (May 6, 2026)
+**Current Version:** v1.9.447 (May 6, 2026)
 
+
+## v1.9.447 - May 6, 2026
+
+### Improved (Okapi sidecar: surface modal-dialog state in the diagnostic log)
+
+- **The "Java required" and "Download Okapi sidecar?" modal dialogs were invisible in the log** – when an Intel Mac / Linux user without system Java tried to import a DOCX, Supervertaler showed a `QMessageBox.critical` explaining the brew/apt one-liner, but if the user dismissed it without reading (or didn't notice it at all behind the main window), the diagnostic log just stopped at "Importing: filename.docx" with no clue what had happened. Reported in the field by an Intel Mac user whose log Michael spent half an hour piecing together because the dialog state was untracked.
+- Fix at [`Supervertaler.py`](Supervertaler.py) adds `self.log()` calls around every modal in [`_maybe_show_okapi_java_warning`](Supervertaler.py) (startup-time Java warning) and [`_ensure_okapi_sidecar`](Supervertaler.py) (DOCX-import-time Java required + sidecar download prompt). Each dialog now logs three things: when it appears, what the user clicked, and any "Don't show again" preference. Effect: the next remote-debugging session shows exactly which dialog the user encountered and what they did about it, without having to ask. Zero behavioural change otherwise – purely diagnostic.
+
+---
 
 ## v1.9.446 - May 6, 2026
 
