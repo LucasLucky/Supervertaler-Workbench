@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.451"
+version = "1.9.452"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -119,7 +119,7 @@ dependencies = [
     # ~15 MB wheel + ~40 MB model on first use). faster-whisper handles
     # running-text dictation (push-to-talk) and the optional always-on
     # Whisper backend (~30 MB ctranslate2 wheel + model on first use).
-    "vosk>=0.3.45",
+    "vosk>=0.3.44",
     "faster-whisper>=1.0.0",
 ]
 

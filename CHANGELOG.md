@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.451 (May 6, 2026)
+**Current Version:** v1.9.452 (May 7, 2026)
 
+
+## v1.9.452 - May 7, 2026
+
+### Fixed (macOS pip install of v1.9.451 broken: vosk wheel pin)
+
+- **`pip install supervertaler==1.9.451` failed for every macOS user** with `Could not find a version that satisfies the requirement vosk>=0.3.45`. The pin was introduced in v1.9.435 when Vosk was promoted from optional to core dependency, but vosk 0.3.45 ships wheels only for Linux and Windows – the previous version 0.3.44 has a `macosx_10_6_universal2` wheel and is the highest version that works on macOS today. Caught when building the v1.9.451 macOS DMG: PyInstaller's `pip install -e .` step failed in the build venv on a clean MacBook checkout.
+- Fix at [`pyproject.toml`](pyproject.toml) relaxes the pin to `vosk>=0.3.44`. No functional change for Linux/Windows users (their resolver still picks 0.3.45+ when available); macOS users now get 0.3.44 instead of a hard install failure. The 0.3.45 → 0.3.44 difference is a maintenance bump in vosk itself with no Supervertaler-relevant features – we'd been arbitrarily on the latest version without needing anything from it.
+
+---
 
 ## v1.9.451 - May 6, 2026
 
