@@ -1658,6 +1658,19 @@ class Project:
 # ============================================================================
 
 
+def _cleaned_modifiers(event):
+    """Return event modifiers with KeypadModifier stripped.
+
+    macOS Qt sets KeypadModifier on arrow keys (and Home/End/PageUp/PageDown)
+    even on MacBook keyboards without a numpad. Bare equality checks like
+    `event.modifiers() == Qt.KeyboardModifier.NoModifier` therefore fail on
+    macOS, breaking arrow-key segment navigation in the grid. This helper
+    returns the modifiers with KeypadModifier removed so equality checks
+    work cross-platform.
+    """
+    return event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+
+
 class _CtrlReturnEventFilter(QObject):
     """App-level event filter to catch Ctrl+Return/Ctrl+Enter for grid confirm.
 
@@ -1739,7 +1752,7 @@ class _GridArrowKeyEventFilter(QObject):
             return False
 
         key = event.key()
-        mods = event.modifiers()
+        mods = _cleaned_modifiers(event)  # strip macOS KeypadModifier from arrow keys
 
         # Only handle the four combos we care about
         alt_only = mods == Qt.KeyboardModifier.AltModifier
@@ -2358,7 +2371,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
         # Arrow Up/Down: memoQ-style segment navigation at cell boundaries
         # When cursor is at top line and Up is pressed, go to previous segment
         # When cursor is at bottom line and Down is pressed, go to next segment
-        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and _cleaned_modifiers(event) == Qt.KeyboardModifier.NoModifier:
             cursor = self.textCursor()
             
             # Get current cursor position info
@@ -2445,7 +2458,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
                     return
 
         # Ctrl+Up: Navigate to previous segment
-        if event.key() == Qt.Key.Key_Up and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if event.key() == Qt.Key.Key_Up and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_previous_segment'):
                 main_window.go_to_previous_segment()
@@ -2453,7 +2466,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
             return
 
         # Ctrl+Down: Navigate to next segment
-        if event.key() == Qt.Key.Key_Down and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if event.key() == Qt.Key.Key_Down and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_next_segment'):
                 main_window.go_to_next_segment()
@@ -2461,19 +2474,19 @@ class ReadOnlyGridTextEditor(QTextEdit):
             return
 
         # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
-        if event.key() == Qt.Key.Key_Left and event.modifiers() == Qt.KeyboardModifier.AltModifier:
+        if event.key() == Qt.Key.Key_Left and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_termbase()
             event.accept()
             return
 
         # Alt+Up: Quick add selected terms to Project glossary (no dialog)
-        if event.key() == Qt.Key.Key_Up and event.modifiers() == Qt.KeyboardModifier.AltModifier:
+        if event.key() == Qt.Key.Key_Up and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_glossary_priority(1)
             event.accept()
             return
 
         # Alt+Down: Quick add selected terms to Background glossary (no dialog)
-        if event.key() == Qt.Key.Key_Down and event.modifiers() == Qt.KeyboardModifier.AltModifier:
+        if event.key() == Qt.Key.Key_Down and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_glossary_priority(2)
             event.accept()
             return
@@ -2845,17 +2858,17 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 return True  # Event handled
             
             # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
-            if key_event.key() == Qt.Key.Key_Left and key_event.modifiers() == Qt.KeyboardModifier.AltModifier:
+            if key_event.key() == Qt.Key.Key_Left and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.AltModifier:
                 self._handle_quick_add_to_termbase()
                 return True  # Event handled
 
             # Alt+Up: Quick add selected terms to Project glossary (no dialog)
-            if key_event.key() == Qt.Key.Key_Up and key_event.modifiers() == Qt.KeyboardModifier.AltModifier:
+            if key_event.key() == Qt.Key.Key_Up and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.AltModifier:
                 self._handle_quick_add_to_glossary_priority(1)
                 return True  # Event handled
 
             # Alt+Down: Quick add selected terms to Background glossary (no dialog)
-            if key_event.key() == Qt.Key.Key_Down and key_event.modifiers() == Qt.KeyboardModifier.AltModifier:
+            if key_event.key() == Qt.Key.Key_Down and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.AltModifier:
                 self._handle_quick_add_to_glossary_priority(2)
                 return True  # Event handled
             
@@ -2865,28 +2878,28 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 return True  # Event handled
             
             # Ctrl+Up: Navigate to previous segment
-            if key_event.key() == Qt.Key.Key_Up and key_event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if key_event.key() == Qt.Key.Key_Up and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.ControlModifier:
                 main_window = self._get_main_window()
                 if main_window and hasattr(main_window, 'go_to_previous_segment'):
                     main_window.go_to_previous_segment()
                 return True  # Event handled
 
             # Ctrl+Down: Navigate to next segment
-            if key_event.key() == Qt.Key.Key_Down and key_event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if key_event.key() == Qt.Key.Key_Down and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.ControlModifier:
                 main_window = self._get_main_window()
                 if main_window and hasattr(main_window, 'go_to_next_segment'):
                     main_window.go_to_next_segment()
                 return True  # Event handled
 
             # Ctrl+Home: Navigate to first segment (pass to main window)
-            if key_event.key() == Qt.Key.Key_Home and key_event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if key_event.key() == Qt.Key.Key_Home and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.ControlModifier:
                 main_window = self._get_main_window()
                 if main_window and hasattr(main_window, 'go_to_first_segment'):
                     main_window.go_to_first_segment()
                 return True  # Event handled
 
             # Ctrl+End: Navigate to last segment (pass to main window)
-            if key_event.key() == Qt.Key.Key_End and key_event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if key_event.key() == Qt.Key.Key_End and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.ControlModifier:
                 main_window = self._get_main_window()
                 if main_window and hasattr(main_window, 'go_to_last_segment'):
                     main_window.go_to_last_segment()
@@ -4454,7 +4467,7 @@ class EditableGridTextEditor(QTextEdit):
             return
         
         # Ctrl+Up: Navigate to previous segment
-        if event.key() == Qt.Key.Key_Up and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if event.key() == Qt.Key.Key_Up and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_previous_segment'):
                 main_window.go_to_previous_segment()
@@ -4462,7 +4475,7 @@ class EditableGridTextEditor(QTextEdit):
             return
 
         # Ctrl+Down: Navigate to next segment
-        if event.key() == Qt.Key.Key_Down and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if event.key() == Qt.Key.Key_Down and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_next_segment'):
                 main_window.go_to_next_segment()
@@ -4470,19 +4483,19 @@ class EditableGridTextEditor(QTextEdit):
             return
 
         # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
-        if event.key() == Qt.Key.Key_Left and event.modifiers() == Qt.KeyboardModifier.AltModifier:
+        if event.key() == Qt.Key.Key_Left and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_termbase()
             event.accept()
             return
 
         # Alt+Up: Quick add selected terms to Project glossary (no dialog)
-        if event.key() == Qt.Key.Key_Up and event.modifiers() == Qt.KeyboardModifier.AltModifier:
+        if event.key() == Qt.Key.Key_Up and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_glossary_priority(1)
             event.accept()
             return
 
         # Alt+Down: Quick add selected terms to Background glossary (no dialog)
-        if event.key() == Qt.Key.Key_Down and event.modifiers() == Qt.KeyboardModifier.AltModifier:
+        if event.key() == Qt.Key.Key_Down and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_glossary_priority(2)
             event.accept()
             return
@@ -4494,7 +4507,7 @@ class EditableGridTextEditor(QTextEdit):
             return
         
         # Ctrl+Home: Navigate to first segment (pass to main window)
-        if event.key() == Qt.Key.Key_Home and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if event.key() == Qt.Key.Key_Home and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_first_segment'):
                 main_window.go_to_first_segment()
@@ -4502,7 +4515,7 @@ class EditableGridTextEditor(QTextEdit):
             return
         
         # Ctrl+End: Navigate to last segment (pass to main window)
-        if event.key() == Qt.Key.Key_End and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+        if event.key() == Qt.Key.Key_End and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_last_segment'):
                 main_window.go_to_last_segment()
@@ -4578,7 +4591,7 @@ class EditableGridTextEditor(QTextEdit):
         # Arrow Up/Down: memoQ-style segment navigation at cell boundaries
         # When cursor is at top VISUAL line and Up is pressed, go to previous segment
         # When cursor is at bottom VISUAL line and Down is pressed, go to next segment
-        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and _cleaned_modifiers(event) == Qt.KeyboardModifier.NoModifier:
             cursor = self.textCursor()
             current_block = cursor.block()
             doc = self.document()

@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.447 (May 6, 2026)
+**Current Version:** v1.9.448 (May 6, 2026)
 
+
+## v1.9.448 - May 6, 2026
+
+### Fixed (Grid: arrow-key segment navigation broken on macOS)
+
+- **Pressing Up / Down arrow keys in a target (or source) cell did not move to the next/previous segment on macOS.** The cursor "stuck" inside the current cell. Reported by Michael while testing on a MacBook.
+- Root cause: macOS Qt sets `KeypadModifier` on every arrow-key event (and on Home/End/PageUp/PageDown) regardless of which physical key produced it – a long-standing macOS-only quirk to differentiate cursor keys from typing keys. The grid's keyPressEvents (and the `_GridArrowKeyEventFilter`) used strict equality checks like `event.modifiers() == Qt.KeyboardModifier.NoModifier` / `... == ControlModifier` / `... == AltModifier`, all of which evaluate to `False` on macOS because the bit set is `NoModifier | KeypadModifier` (etc.) rather than just `NoModifier`. The segment-navigation branches therefore never fired and the events fell through to default Qt cursor-within-text movement, which is invisible on a single-line segment – hence "stuck."
+- Fix at [`Supervertaler.py`](Supervertaler.py) introduces a small helper `_cleaned_modifiers(event)` that returns `event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier`, and replaces every arrow-key / Home / End / PageUp / PageDown modifier comparison with the cleaned form. Affects: plain Up/Down (memoQ-style segment hop at line boundaries) in both `ReadOnlyGridTextEditor` and `EditableGridTextEditor`, the `_GridArrowKeyEventFilter` (Ctrl+Up/Down for fast navigation, Alt+Up/Down for quick-add-to-glossary), and the per-editor Ctrl+Up/Down/Home/End and Alt+Left/Up/Down shortcuts. No behavioural change on Windows/Linux (where `KeypadModifier` isn't set on the main arrow keys, so masking it off is a no-op).
+
+---
 
 ## v1.9.447 - May 6, 2026
 
