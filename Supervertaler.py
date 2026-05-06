@@ -2247,21 +2247,16 @@ class ReadOnlyGridTextEditor(QTextEdit):
         palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, QColor("black"))
         self.setPalette(palette)
 
-        # Style to look like a normal cell with subtle selection
-        # Background and text colors now managed by theme system
-        self.setStyleSheet("""
-            QTextEdit {
-                border: none;
-                padding: 0px 4px 0px 0px;
-            }
-            QTextEdit:focus {
-                border: 1px solid #2196F3;
-            }
-            QTextEdit::selection {
-                background-color: #D0E7FF;
-                color: black;
-            }
-        """)
+        # Style to look like a normal cell with subtle selection.
+        # Background and text colors now managed by theme system.
+        # Font size lives in this widget's own stylesheet (not just setFont) so
+        # it wins over ThemeManager's app-level `QTextEdit { font-size }` rule
+        # that gets emitted whenever the global UI scale != 100% – without this
+        # override, grid zoom and per-cell setFont would silently lose to that
+        # app-level rule at 125% / 150% etc.
+        self._grid_font_pt: float | None = None
+        self._grid_bg_color: str | None = None
+        self._rebuild_grid_stylesheet()
 
         # Set document margins to 0 for compact display
         doc = self.document()
@@ -2280,11 +2275,11 @@ class ReadOnlyGridTextEditor(QTextEdit):
         text_option = QTextOption()
         text_option.setWrapMode(wrap_mode)
         doc.setDefaultTextOption(text_option)
-        
+
         # Set minimum height to 0 - let content determine size
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)  # Qt's max int
-        
+
         # Store termbase matches for this cell (for tooltip and double-click)
         self.termbase_matches = {}
         
@@ -3446,11 +3441,37 @@ class ReadOnlyGridTextEditor(QTextEdit):
 
     def set_background_color(self, color: str):
         """Set the background color for this text editor (for alternating row colors)"""
+        self._grid_bg_color = color
+        self._rebuild_grid_stylesheet()
+
+    def apply_grid_font_size(self, size_pt: float):
+        """Set the displayed font size for this grid cell.
+
+        Sets the size in this widget's own stylesheet (not just setFont) so
+        the value wins over ThemeManager's app-level `QTextEdit { font-size }`
+        rule emitted at non-100% UI scale. Without this, grid zoom and global
+        scale would silently lose the per-cell font-size battle to that rule.
+        """
+        self._grid_font_pt = size_pt
+        self._rebuild_grid_stylesheet()
+
+    def _rebuild_grid_stylesheet(self):
+        """Compose this cell's stylesheet from current bg colour + font size."""
+        bg_rule = f"background-color: {self._grid_bg_color};" if self._grid_bg_color else ""
+        font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
         self.setStyleSheet(f"""
             QTextEdit {{
                 border: none;
-                background-color: {color};
-                padding: 0px;
+                padding: 0px 4px 0px 0px;
+                {bg_rule}
+                {font_rule}
+            }}
+            QTextEdit:focus {{
+                border: 1px solid #2196F3;
+            }}
+            QTextEdit::selection {{
+                background-color: #D0E7FF;
+                color: black;
             }}
         """)
 
@@ -3804,24 +3825,14 @@ class EditableGridTextEditor(QTextEdit):
 
         self.highlighter = TagHighlighter(self.document(), tag_color, invisible_char_color, enable_spellcheck=True)
 
-        # Style to look like a normal cell with subtle selection
-        # Background and text colors now managed by theme system
-        # Border color and thickness use class variables for user customization
-        border_color = EditableGridTextEditor.focus_border_color
-        border_thickness = EditableGridTextEditor.focus_border_thickness
-        self.setStyleSheet(f"""
-            QTextEdit {{
-                border: none;
-                padding: 0px 4px 0px 0px;
-            }}
-            QTextEdit:focus {{
-                border: {border_thickness}px solid {border_color};
-            }}
-            QTextEdit::selection {{
-                background-color: #D0E7FF;
-                color: black;
-            }}
-        """)
+        # Style to look like a normal cell with subtle selection.
+        # Background and text colors now managed by theme system.
+        # Font size lives in this widget's own stylesheet (not just setFont) so
+        # it wins over ThemeManager's app-level `QTextEdit { font-size }` rule
+        # that gets emitted whenever the global UI scale != 100%.
+        self._grid_font_pt: float | None = None
+        self._grid_bg_color: str | None = None
+        self._rebuild_grid_stylesheet()
 
         # Set document margins to 0 for compact display
         doc = self.document()
@@ -4929,14 +4940,32 @@ class EditableGridTextEditor(QTextEdit):
 
     def set_background_color(self, color: str):
         """Set the background color for this text editor (for alternating row colors)"""
-        # Use class variables for border settings to respect user customization
+        self._grid_bg_color = color
+        self._rebuild_grid_stylesheet()
+
+    def apply_grid_font_size(self, size_pt: float):
+        """Set the displayed font size for this grid cell.
+
+        Sets the size in this widget's own stylesheet (not just setFont) so
+        the value wins over ThemeManager's app-level `QTextEdit { font-size }`
+        rule emitted at non-100% UI scale. Without this, grid zoom and global
+        scale would silently lose the per-cell font-size battle to that rule.
+        """
+        self._grid_font_pt = size_pt
+        self._rebuild_grid_stylesheet()
+
+    def _rebuild_grid_stylesheet(self):
+        """Compose this cell's stylesheet from current bg colour + font size."""
         border_color = EditableGridTextEditor.focus_border_color
         border_thickness = EditableGridTextEditor.focus_border_thickness
+        bg_rule = f"background-color: {self._grid_bg_color};" if self._grid_bg_color else ""
+        font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
         self.setStyleSheet(f"""
             QTextEdit {{
                 border: none;
-                background-color: {color};
                 padding: 0px 4px 0px 0px;
+                {bg_rule}
+                {font_rule}
             }}
             QTextEdit:focus {{
                 border: {border_thickness}px solid {border_color};
@@ -34687,9 +34716,13 @@ class SupervertalerQt(QMainWindow):
                 # Initialize empty termbase matches (will be populated lazily on segment selection or by background worker)
                 source_editor.termbase_matches = {}
 
-                # Set font to match grid
+                # Set font to match grid – both setFont (so editor knows its
+                # logical font) AND apply_grid_font_size (so the size lives in
+                # the widget's own stylesheet and wins over ThemeManager's
+                # app-level QTextEdit rule at non-100% UI scale).
                 font = QFont(self.default_font_family, self.default_font_size)
                 source_editor.setFont(font)
+                source_editor.apply_grid_font_size(self.default_font_size)
 
                 # Set as cell widget (allows easy text selection)
                 self.table.setCellWidget(row, 2, source_editor)
@@ -34717,6 +34750,7 @@ class SupervertalerQt(QMainWindow):
                 target_display_text = self.apply_invisible_replacements(target_for_display)
                 target_editor = EditableGridTextEditor(target_display_text, self.table, row, self.table)
                 target_editor.setFont(font)
+                target_editor.apply_grid_font_size(self.default_font_size)
                 # Store stripped tag on editor for auto-restore
                 target_editor._stripped_outer_tag = stripped_source_tag or stripped_target_tag
                 # Store compact tag map for reverse-expanding on save
@@ -36995,15 +37029,20 @@ class SupervertalerQt(QMainWindow):
                 if type_item is not None:
                     type_item.setFont(type_font)
 
-                # Source column (2) - ReadOnlyGridTextEditor
+                # Source column (2) - ReadOnlyGridTextEditor.
+                # Use apply_grid_font_size (sets the size in the widget's own
+                # stylesheet) – setFont alone loses to ThemeManager's app-level
+                # `QTextEdit { font-size }` rule emitted at non-100% UI scale.
                 source_widget = self.table.cellWidget(row, 2)
                 if source_widget and isinstance(source_widget, ReadOnlyGridTextEditor):
                     source_widget.setFont(font)
+                    source_widget.apply_grid_font_size(self.default_font_size)
 
-                # Target column (3) - EditableGridTextEditor
+                # Target column (3) - EditableGridTextEditor (same reason)
                 target_widget = self.table.cellWidget(row, 3)
                 if target_widget and isinstance(target_widget, EditableGridTextEditor):
                     target_widget.setFont(font)
+                    target_widget.apply_grid_font_size(self.default_font_size)
 
         # Adjust segment number column width based on font size
         self._update_segment_column_width()

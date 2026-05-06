@@ -87,18 +87,27 @@ def _user_data_path() -> Path:
 
 
 def _read_scale_from_disk() -> int:
-    try:
-        settings_path = _user_data_path() / "settings.json"
-        if not settings_path.exists():
-            return _DEFAULT_SCALE
-        with open(settings_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        general = data.get("general", {})
-        scale = general.get("global_ui_font_scale",
-                            general.get("settings_ui_font_scale", _DEFAULT_SCALE))
-        scale_int = int(scale)
-        if scale_int < 50 or scale_int > 300:
-            return _DEFAULT_SCALE
-        return scale_int
-    except Exception:
-        return _DEFAULT_SCALE
+    # Unified settings file lives at <user_data>/workbench/settings/settings.json
+    # (matches Supervertaler._get_unified_settings_path). Older installs may
+    # also have a top-level settings.json from the pre-unified layout, so fall
+    # back to that if the unified file isn't there.
+    candidates = [
+        _user_data_path() / "workbench" / "settings" / "settings.json",
+        _user_data_path() / "settings.json",
+    ]
+    for settings_path in candidates:
+        try:
+            if not settings_path.exists():
+                continue
+            with open(settings_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            general = data.get("general", {})
+            scale = general.get("global_ui_font_scale",
+                                general.get("settings_ui_font_scale", _DEFAULT_SCALE))
+            scale_int = int(scale)
+            if scale_int < 50 or scale_int > 300:
+                return _DEFAULT_SCALE
+            return scale_int
+        except Exception:
+            continue
+    return _DEFAULT_SCALE

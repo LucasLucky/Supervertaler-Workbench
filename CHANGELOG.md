@@ -2,8 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.449 (May 6, 2026)
+**Current Version:** v1.9.450 (May 6, 2026)
 
+
+## v1.9.450 - May 6, 2026
+
+### Fixed (UI scaling – v1.9.449 follow-up)
+
+Two distinct bugs surfaced after the v1.9.449 Sidekick scaling work, both reported by Michael while testing 150% scale on the MacBook.
+
+- **`modules.ui_scale.scaled_pt()` always returned 100.** The helper looked at `<user_data>/settings.json`, but the unified settings file actually lives at `<user_data>/workbench/settings/settings.json`. Helper silently fell through to its default → no scaling reached Sidekick or the Clipboard widget even though the slider was set to 150%. Fix at [`modules/ui_scale.py`](modules/ui_scale.py) tries the unified path first and falls back to the old top-level location for legacy installs.
+
+- **Grid source/target text didn't scale, and grid zoom (Ctrl+= / Ctrl+-) didn't work either, but only at non-100% UI scales.** [`ThemeManager.apply_theme`](modules/theme_manager.py:328) emits an app-level `QTextEdit { font-size: Xpt; }` stylesheet rule whenever `font_scale != 100`, and Qt's stylesheet cascade ranks app-level rules higher than `widget.setFont()`. So the per-cell setFont calls in `apply_font_to_grid` silently lost: source/target stayed at the scaled rule's size while segment-number and type columns (plain `QTableWidgetItem`s, untouched by the QTextEdit selector) grew normally – producing the "numbers huge, text small" mismatch. Same mechanism broke grid zoom: changing `default_font_size` and re-running `setFont` had no visible effect. (At 100% scale the rule isn't emitted, which is why the bug only appeared once a user nudged the slider.)
+- Fix at [`Supervertaler.py`](Supervertaler.py): `ReadOnlyGridTextEditor` and `EditableGridTextEditor` now own their font-size in their own stylesheet via a new `apply_grid_font_size(size_pt)` method, which a widget-level rule wins over the app-level one. The editors also gained a `_rebuild_grid_stylesheet` helper that composes the cell stylesheet from current bg colour + font size, so `set_background_color` (alternating row colours) no longer wipes the focus border or font size when it runs. `apply_font_to_grid` and the cell-creation paths in `load_segments_to_grid` both call `apply_grid_font_size(self.default_font_size)` alongside the existing `setFont`, so grid zoom and global UI scale now both produce the expected size for source/target text.
+
+---
 
 ## v1.9.449 - May 6, 2026
 
