@@ -6,34 +6,33 @@
 
 **Professional AI-enhanced translation workbench** with multi-LLM support (GPT-4, Claude, Gemini, Mistral, Ollama), translation memory, glossary management, and seamless CAT tool integration (memoQ, Trados, CafeTran, Phrase, Déjà Vu).
 
-**Latest release:** v1.9.398 – Keyboard Shortcuts settings page redesigned for laptop screens: two-column layout (draggable splitter, default 70/30), with the shortcuts table on the left absorbing all spare vertical height, and Import/Export + Global Hotkeys groups stacked on the right.
+See the [latest release notes](https://github.com/Supervertaler/Supervertaler-Workbench/releases/latest) for what changed in the most recent build.
 
 ---
 
-## Installation
+## Download
 
-```bash
-pip install supervertaler
-supervertaler
-```
+Three ways to install. Pick whichever fits your setup.
 
-Or run from source:
+| Option | Best for | Get it |
+|--------|----------|--------|
+| **Pip (any OS, Python 3.10+)** | Developers and power users; smallest download; updates with one command. | `pip install --upgrade supervertaler` then run `supervertaler` |
+| **Windows standalone (.zip)** | Windows users who don't want to install Python. Self-contained, ~470 MB. | [Download from the latest release](https://github.com/Supervertaler/Supervertaler-Workbench/releases/latest) → `Supervertaler-vX.Y.Z-Windows.zip` |
+| **macOS standalone (.dmg)** | Apple Silicon Macs (M1 / M2 / M3 / M4). Code-signed and Apple-notarised, opens without Gatekeeper warnings. | [Download from the latest release](https://github.com/Supervertaler/Supervertaler-Workbench/releases/latest) → `Supervertaler-vX.Y.Z.dmg` |
+
+**Notes**
+
+- **macOS Intel:** there's no Intel standalone build. Run from source after installing system Java 17 (`brew install --cask temurin@17`).
+- **Linux:** pip or run from source.
+
+### Run from source
 
 ```bash
 git clone https://github.com/Supervertaler/Supervertaler-Workbench.git
-cd Supervertaler
+cd Supervertaler-Workbench
 pip install -r requirements.txt
 python Supervertaler.py
 ```
-
-### macOS Standalone App (.dmg)
-
-macOS will block the app on first launch because it is not signed with an Apple Developer certificate. To allow it:
-
-1. **Double-click** `Supervertaler.app` – macOS will show a warning
-2. Open **System Settings > Privacy & Security**
-3. Scroll down and click **"Open Anyway"** next to the Supervertaler message
-4. Confirm when prompted – the app will launch normally from now on
 
 ---
 
