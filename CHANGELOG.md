@@ -2,8 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.458 (May 8, 2026)
+**Current Version:** v1.9.459 (May 8, 2026)
 
+
+## v1.9.459 – May 8, 2026
+
+### Changed (Sidekick snippets – simpler model: filename = label, body = inserted text)
+
+- **The eight default Special Characters snippets are renamed: filename now matches the displayed glyph label.** Previously a pair of fields was needed – an ASCII-safe filename (`Maths symbols.md`) plus a `name:` line in YAML front matter holding the unicode label (`± × ÷ ≠ π ∞`). After the rename the on-disk filename *is* the label (`± × ÷ ≠ π ∞.md`) and the file body is just the inserted text – no front matter at all. To customise an entry, you just rename the file or edit the body in any text editor.
+- **One-shot migration in [`snippet_library.py`](modules/snippet_library.py)** moves existing user installations onto the new naming. For each of the eight known default filenames (`Maths symbols.md`, `Arrows.md`, `Currency.md`, etc.) the seeder checks the user's snippet folder: if the legacy file is still there and the new glyph filename does not exist yet, the body is copied to the new filename and the legacy file deleted. Any body edits the user made to a default are preserved across the rename. User-created snippets and any case where the user has *already* created a file with the new name are never touched.
+- **Front-matter parser kept as a silent fallback.** Any user-authored `.md` file that includes `name:` in front matter still works exactly as before – the loader strips the front matter and uses `name:` as the displayed label if present. Only the default seeder stops emitting front matter; existing customised files are never re-touched.
+
+---
 
 ## v1.9.458 – May 8, 2026
 
