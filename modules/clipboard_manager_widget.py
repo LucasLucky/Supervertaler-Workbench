@@ -147,7 +147,7 @@ class ClipboardManagerWidget(QWidget):
         self._splitter.setHandleWidth(4)
         self._splitter.setChildrenCollapsible(False)
 
-        self._text_list = self._make_list_widget()
+        self._text_list = self._make_list_widget(row_height_hint=24)
         self._text_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._text_list.customContextMenuRequested.connect(
             lambda pos: self._on_context_menu(pos, self._text_list))
@@ -158,7 +158,8 @@ class ClipboardManagerWidget(QWidget):
             self._text_header, self._text_list, self._text_empty)
         self._splitter.addWidget(text_col)
 
-        self._image_list = self._make_list_widget()
+        self._image_list = self._make_list_widget(
+            row_height_hint=self._THUMB_SIZE.height() + 10)
         self._image_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._image_list.customContextMenuRequested.connect(
             lambda pos: self._on_context_menu(pos, self._image_list))
@@ -190,18 +191,20 @@ class ClipboardManagerWidget(QWidget):
 
     # -- column / list construction helpers -----------------------------
 
-    def _make_list_widget(self):
+    def _make_list_widget(self, row_height_hint: int = 24):
         lst = QListWidget()
         lst.setStyleSheet(self._LIST_STYLESHEET)
         lst.setIconSize(self._THUMB_SIZE)
         lst.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        # ScrollPerItem (the default before we switched to ScrollPerPixel)
-        # keeps held-down arrow keys snappy: each Up/Down snaps directly to
-        # the next row instead of animating a per-pixel smooth-scroll. With
-        # ScrollPerPixel, key auto-repeat fires faster than the smooth-
-        # scroll animation can complete, producing visible stalls when the
-        # user holds Down for several rows at a time. Reported by Michael.
-        lst.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerItem)
+        # ScrollPerPixel + a singleStep tuned to one row height. ScrollPerItem
+        # made mouse-wheel and precision-trackpad scrolling feel "stuck" on
+        # Windows because sub-row deltas were dropped rather than accumulated.
+        # ScrollPerPixel handles those deltas smoothly. Arrow-key navigation
+        # still feels row-wise because Qt's scroll-into-view on QListWidget
+        # isn't animated – it scrolls just enough pixels to make the new
+        # current row visible, in one step.
+        lst.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        lst.verticalScrollBar().setSingleStep(row_height_hint)
         lst.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         lst.setWordWrap(False)
         # Tell Qt every row has the same height (single-line text items, or
