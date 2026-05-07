@@ -45621,14 +45621,18 @@ class SupervertalerQt(QMainWindow):
                 self.log(f"▶️ Starting dictation thread (OpenAI Whisper API, language={lang_code}, duration={max_duration}s)...")
             else:
                 self.log(f"▶️ Starting dictation thread (local Whisper model={model_name}, language={lang_code}, duration={max_duration}s)...")
-            # Audible cue so the user knows the hotkey was received and the
-            # mic is now hot. Push-to-talk is fired by Ctrl+Alt+D from any app
-            # via the global hotkey, so without this the user has no feedback
-            # that recording started.
+            # Visual cue so the user knows the hotkey was received and the
+            # mic is now hot. Push-to-talk fires from Ctrl+Shift+Space in any
+            # app via the global hotkey; without this there's no feedback
+            # that recording started. Replaces the earlier QApplication.beep()
+            # which was unreliable (many users mute system sound) and harsh
+            # on Windows (the system Ding tone reads as an error).
             try:
-                QApplication.beep()
-            except Exception:
-                pass
+                from modules.dictation_toast import show_dictation_toast
+                self._dictation_toast = show_dictation_toast(self)
+            except Exception as _toast_err:
+                print(f"[Dictation toast] Failed to show: {_toast_err}")
+                self._dictation_toast = None
             self.dictation_thread.start()
 
         except Exception as e:
@@ -45762,6 +45766,14 @@ class SupervertalerQt(QMainWindow):
         """Handle dictation thread finishing"""
         self.log("✓ Dictation thread finished")
         self._set_dictation_button_recording(False)
+        # Dismiss the "🎤 Listening…" toast if it's still up.
+        try:
+            toast = getattr(self, '_dictation_toast', None)
+            if toast is not None:
+                toast.dismiss()
+                self._dictation_toast = None
+        except Exception:
+            pass
         # Hand the mic back to always-on if we paused it for this dictation.
         self._resume_alwayson_after_dictation()
 
