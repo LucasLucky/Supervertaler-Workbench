@@ -576,7 +576,7 @@ class ShortcutManager:
         "sidekick_open": {
             "category": "Sidekick",
             "description": "Open Sidekick (with selection / lookup)",
-            "default": "Alt+K",
+            "default": "Ctrl+Alt+K",
             "action": "open_sidekick",
             "global": True,
         },
@@ -746,6 +746,18 @@ class ShortcutManager:
                 self.disabled_shortcuts.discard(old_id)
                 merge_changed = True
         if merge_changed:
+            self.save_shortcuts()
+
+        # Default-value upgrade for sidekick_open: Alt+K → Ctrl+Alt+K.
+        # Old default was the bare Option/Alt+K, which on Mac (after the
+        # Qt-aware NSEvent backend landed) maps to ⌥K – Option+K is a
+        # dead key on Mac that types "˚", so it's a poor global hotkey.
+        # Drop a custom value matching the old default so the new
+        # Ctrl+Alt+K default takes effect; explicit overrides to anything
+        # else are preserved.
+        sk_open = self.custom_shortcuts.get('sidekick_open')
+        if sk_open and sk_open.lower() == 'alt+k':
+            del self.custom_shortcuts['sidekick_open']
             self.save_shortcuts()
 
     def save_shortcuts(self):
