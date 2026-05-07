@@ -45525,6 +45525,19 @@ class SupervertalerQt(QMainWindow):
                 # Stop recording early
                 self.dictation_thread.stop_recording()
                 self.log("⏹️ Stopping recording early...")
+                # Dismiss the "🎤 Listening…" toast immediately on the
+                # user-initiated stop. on_dictation_finished will also
+                # call dismiss() once the thread actually finishes
+                # transcribing, but that can be a couple of seconds
+                # later – the user pressed the shortcut to STOP, so the
+                # visual feedback should disappear right away.
+                try:
+                    toast = getattr(self, '_dictation_toast', None)
+                    if toast is not None:
+                        toast.dismiss()
+                        self._dictation_toast = None
+                except Exception:
+                    pass
                 return
             else:
                 # Thread is running but not recording (probably transcribing/loading model)

@@ -21,25 +21,34 @@ The widget is owned by Qt; the caller only needs to keep a reference so
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint
-from PyQt6.QtGui import QColor, QPalette, QFont, QGuiApplication
-from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QGraphicsDropShadowEffect, QApplication,
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QRectF
+from PyQt6.QtGui import (
+    QColor, QFont, QGuiApplication, QPainter, QBrush, QPen,
 )
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
 
 
 class DictationToast(QWidget):
     """
-    Frameless, semi-transparent popup that floats top-right of the active
-    screen and shows a single status line. Used to indicate that dictation
-    has started after a Ctrl+Shift+Space push-to-talk hotkey was received.
+    Frameless popup that floats top-right of the active screen and shows a
+    single status line. Used to indicate that dictation has started after
+    a push-to-talk hotkey was received.
+
+    The toast paints its own dark rounded-rectangle background in
+    paintEvent rather than relying on QSS + WA_TranslucentBackground +
+    QGraphicsDropShadowEffect, because that stack rendered white-on-white
+    in some compositing contexts (notably when the global hotkey fired
+    while the user was in another app like Trados Studio).
     """
 
     _MARGIN_X = 24       # pixels from the right edge of the screen
-    _MARGIN_Y = 56       # pixels from the top of the screen (clear of the menu bar / titlebar)
+    _MARGIN_Y = 56       # pixels from the top of the screen
     _MIN_WIDTH = 240
     _HEIGHT = 56
+    _RADIUS = 10
     _FADE_MS = 180       # in/out fade duration
+    _BG = QColor(36, 36, 36, 235)
+    _FG = QColor(255, 255, 255)
 
     def __init__(self, parent_for_screen=None, text: str = "🎤  Listening…"):
         # No parent so the widget is independent of the main window's
@@ -55,39 +64,25 @@ class DictationToast(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
-        # ---- Visual ----
-        self._panel = QWidget(self)
-        self._panel.setObjectName("toastPanel")
-        self._panel.setStyleSheet(
-            "#toastPanel {"
-            "  background-color: rgba(36, 36, 36, 235);"
-            "  border-radius: 10px;"
-            "}"
+        # Single label; layout just centres it. Background is painted in
+        # paintEvent below so the rounded-corner panel is always opaque
+        # regardless of compositing/styling quirks.
+        self._label = QLabel(text, self)
+        self._label.setStyleSheet(
+            f"color: rgb({self._FG.red()}, {self._FG.green()}, {self._FG.blue()});"
+            " background: transparent;"
         )
-
-        self._label = QLabel(text, self._panel)
-        self._label.setStyleSheet("color: white;")
         font = QFont("Segoe UI", 11)
         font.setWeight(QFont.Weight.Medium)
         self._label.setFont(font)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        layout = QHBoxLayout(self._panel)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 10, 18, 10)
         layout.addWidget(self._label)
 
-        outer = QHBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(self._panel)
-
-        # Soft shadow under the panel
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(24)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 120))
-        self._panel.setGraphicsEffect(shadow)
-
         # Size + position before showing
-        self.resize(max(self._MIN_WIDTH, self._panel.sizeHint().width() + 8), self._HEIGHT)
+        self.resize(max(self._MIN_WIDTH, self._label.sizeHint().width() + 64), self._HEIGHT)
         self._reposition(parent_for_screen)
 
         # Fade-in
@@ -134,6 +129,18 @@ class DictationToast(QWidget):
             self.close()
 
     # ---- Internal ----
+
+    def paintEvent(self, event):
+        """Draw the dark rounded-rectangle background ourselves – relying
+        on QSS + transparent-background + drop-shadow for this on Windows
+        produced a transparent panel with white text invisible against
+        whatever app was behind us."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(QBrush(self._BG))
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        rect = QRectF(0, 0, self.width(), self.height())
+        painter.drawRoundedRect(rect, self._RADIUS, self._RADIUS)
 
     def _reposition(self, parent_for_screen):
         """Place the toast at top-right of the screen the parent window is on,
