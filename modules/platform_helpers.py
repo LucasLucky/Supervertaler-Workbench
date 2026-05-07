@@ -1231,13 +1231,22 @@ class CrossPlatformKeySender:
 
     @staticmethod
     def _keystroke_to_applescript(keystroke: str) -> str:
-        """Convert a keystroke string to an osascript command."""
+        """Convert a keystroke string to an osascript command.
+
+        Follows Qt's macOS convention so a stored ``ctrl+s`` fires ⌘S on
+        Mac (the platform-native Save shortcut), matching what the user
+        actually pressed in the press-to-capture editor and what other Mac
+        apps do. ``meta`` maps to literal Control (the ⌃ key), ``cmd`` /
+        ``command`` map to Command directly. ``alt`` is Option, ``shift``
+        is Shift, ``win`` is treated as Command for cross-platform recipes.
+        """
         modifier_map = {
-            'ctrl': 'control down', 'control': 'control down',
-            'alt': 'option down',
+            'ctrl': 'command down', 'control': 'command down',
+            'meta': 'control down',
+            'alt': 'option down', 'option': 'option down',
             'shift': 'shift down',
             'cmd': 'command down', 'command': 'command down',
-            'win': 'command down',
+            'super': 'command down', 'win': 'command down',
         }
         special_keys = {
             'enter': 'return', 'return': 'return',

@@ -5,12 +5,77 @@ Sidekick AutoFingers tab can use it without creating a circular import (modules/
 must not import from Supervertaler.py).
 """
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
     QTextEdit, QPushButton, QWidget,
 )
 
 from modules.voice_commands import VoiceCommand
+from modules.shortcut_display import format_shortcut_for_display
+
+
+class KeystrokeCaptureEdit(QLineEdit):
+    """Press-to-capture widget for voice-command keystrokes.
+
+    Internally stores the shortcut in Qt's cross-platform lowercase format
+    (e.g. ``ctrl+shift+s``) so the same JSON works on every OS – the
+    dispatcher in ``platform_helpers.CrossPlatformKeySender`` swaps
+    ``ctrl``↔``cmd`` on macOS to fire the Mac-native shortcut. The
+    displayed text is platform-formatted (``⌘⇧S`` on macOS, ``Ctrl+Shift+S``
+    elsewhere) via ``format_shortcut_for_display`` so users see exactly
+    the keys they pressed regardless of internal storage.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setPlaceholderText("Click here, then press the key combination…")
+        self.setReadOnly(False)
+        self.current_sequence = ""
+
+    def setShortcut(self, raw_sequence: str):
+        """Set the shortcut from a raw lowercase Qt-format string."""
+        self.current_sequence = (raw_sequence or "").strip()
+        # format_shortcut_for_display wants TitleCase tokens to recognise
+        # them; convert "ctrl+shift+s" -> "Ctrl+Shift+S" before formatting.
+        if self.current_sequence:
+            display_input = "+".join(
+                p.capitalize() for p in self.current_sequence.split("+")
+            )
+            self.setText(format_shortcut_for_display(display_input))
+        else:
+            self.setText("")
+
+    def keyPressEvent(self, event: QKeyEvent):
+        # Ignore lone modifiers
+        if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Shift,
+                           Qt.Key.Key_Alt, Qt.Key.Key_Meta):
+            return
+
+        modifiers = event.modifiers()
+        key = event.key()
+
+        parts = []
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            parts.append("ctrl")
+        if modifiers & Qt.KeyboardModifier.AltModifier:
+            parts.append("alt")
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            parts.append("shift")
+        if modifiers & Qt.KeyboardModifier.MetaModifier:
+            parts.append("meta")
+
+        key_name = QKeySequence(key).toString()
+        if key_name:
+            parts.append(key_name.lower())
+
+        if parts:
+            self.setShortcut("+".join(parts))
+        event.accept()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.selectAll()
 
 
 # Per-action-type cheat sheets shown below the Action field. Each entry
@@ -36,25 +101,13 @@ _ACTION_CHEAT_SHEETS = {
     "keystroke": (
         "<b>Keystroke</b> sends a key combination to whichever app is in the "
         "foreground (Trados, memoQ, Word, browser, etc.).<br><br>"
-        "<b>Modifiers</b> &mdash; combine with <code>+</code>:<br>"
-        "<code>ctrl</code>, <code>alt</code>, <code>shift</code>, <code>win</code>"
-        "<br><br>"
-        "<b>Special keys</b>:<br>"
-        "<code>enter</code>, <code>tab</code>, <code>escape</code>, "
-        "<code>space</code>, <code>backspace</code>, <code>delete</code>, "
-        "<code>insert</code>, <code>home</code>, <code>end</code>, "
-        "<code>pageup</code>, <code>pagedown</code>, <code>up</code>, "
-        "<code>down</code>, <code>left</code>, <code>right</code>, "
-        "<code>f1</code>&hellip;<code>f12</code>"
-        "<br><br>"
-        "<b>Examples</b>:"
-        "<ul style='margin-top:2px; margin-bottom:0;'>"
-        "<li><code>ctrl+s</code> &mdash; Save</li>"
-        "<li><code>ctrl+shift+enter</code> &mdash; Confirm + next segment (Trados)</li>"
-        "<li><code>tab</code> &mdash; Tab key (inserts tab in text editors, "
-        "advances field in dialogs)</li>"
-        "<li><code>alt+tab</code> &mdash; Switch app</li>"
-        "</ul>"
+        "Click the <b>Keystroke</b> field above and press the keys you want "
+        "to send – the field captures them and shows the platform-native "
+        "symbols (⌘⇧⌥⌃ on macOS, Ctrl+Shift+Alt elsewhere).<br><br>"
+        "Shortcuts are stored in a cross-platform format: a command "
+        "captured as <code>Ctrl+S</code> on Windows fires <code>⌘S</code> "
+        "on macOS automatically, so your voice commands are portable "
+        "between machines."
     ),
     "ahk_inline": (
         "<b>AutoHotkey v2 code</b>, run inline against the foreground window. "
@@ -137,12 +190,26 @@ class VoiceCommandEditDialog(QDialog):
         layout.addLayout(type_layout)
 
         action_layout = QVBoxLayout()
-        action_label = QLabel("Action:")
-        action_layout.addWidget(action_label)
+        self._action_label = QLabel("Action:")
+        action_layout.addWidget(self._action_label)
+
+        # Multi-line text editor – used for "internal" / "ahk_inline" /
+        # "ahk_script" action types. For "keystroke" we hide this and
+        # show the press-to-capture widget below instead, so Mac users
+        # never have to type "ctrl+a" for what is actually ⌘A.
         self.action_edit = QTextEdit()
         self.action_edit.setMaximumHeight(100)
-        self.action_edit.setPlaceholderText("For internal: action_name\nFor keystroke: ctrl+s\nFor AHK: Send, ^s")
+        self.action_edit.setPlaceholderText(
+            "For internal: action_name\nFor AHK: Send, ^s")
         action_layout.addWidget(self.action_edit)
+
+        # Press-to-capture widget for keystroke commands. Stored value is
+        # cross-platform Qt format (lowercase: "ctrl+shift+s"); displayed
+        # value is platform-native (⌘⇧S on macOS, Ctrl+Shift+S elsewhere).
+        # The dispatcher in CrossPlatformKeySender handles the Mac
+        # ctrl↔cmd swap so a single stored shortcut works everywhere.
+        self.keystroke_edit = KeystrokeCaptureEdit()
+        action_layout.addWidget(self.keystroke_edit)
 
         # Context-sensitive cheat sheet that updates with the Type
         # dropdown – tells the user what to put in the Action field for
@@ -218,14 +285,24 @@ class VoiceCommandEditDialog(QDialog):
         self._on_type_changed()
 
     def _on_type_changed(self):
-        """Show/hide the Preset row + refresh the cheat sheet."""
+        """Show/hide the Preset row, the right Action editor, + refresh the cheat sheet."""
         action_type = self.type_combo.currentData()
         is_internal = action_type == "internal"
+        is_keystroke = action_type == "keystroke"
         # Toggling the wrapper widget collapses the whole row including
         # its margins, so non-internal action types don't leave a
         # phantom gap between Action and Description.
         try:
             self._internal_actions_widget.setVisible(is_internal)
+        except Exception:
+            pass
+        # Swap between the multi-line text editor (internal / ahk_*) and
+        # the press-to-capture widget (keystroke). Update the section
+        # label so the field meaning is unambiguous.
+        try:
+            self.action_edit.setVisible(not is_keystroke)
+            self.keystroke_edit.setVisible(is_keystroke)
+            self._action_label.setText("Keystroke:" if is_keystroke else "Action:")
         except Exception:
             pass
         # Update the contextual cheat sheet to match the new type.
@@ -243,7 +320,12 @@ class VoiceCommandEditDialog(QDialog):
                 self.type_combo.setCurrentIndex(i)
                 break
 
-        self.action_edit.setPlainText(cmd.action)
+        if cmd.action_type == "keystroke":
+            self.keystroke_edit.setShortcut(cmd.action)
+            self.action_edit.setPlainText("")
+        else:
+            self.action_edit.setPlainText(cmd.action)
+            self.keystroke_edit.setShortcut("")
         self.desc_edit.setText(cmd.description)
 
         idx = self.cat_combo.findText(cmd.category)
@@ -256,11 +338,17 @@ class VoiceCommandEditDialog(QDialog):
         aliases_text = self.aliases_edit.text().strip()
         aliases = [a.strip() for a in aliases_text.split(",") if a.strip()] if aliases_text else []
 
+        action_type = self.type_combo.currentData()
+        if action_type == "keystroke":
+            action_value = self.keystroke_edit.current_sequence.strip()
+        else:
+            action_value = self.action_edit.toPlainText().strip()
+
         return VoiceCommand(
             phrase=self.phrase_edit.text().strip(),
             aliases=aliases,
-            action_type=self.type_combo.currentData(),
-            action=self.action_edit.toPlainText().strip(),
+            action_type=action_type,
+            action=action_value,
             description=self.desc_edit.text().strip(),
             category=self.cat_combo.currentText().strip(),
             enabled=True,

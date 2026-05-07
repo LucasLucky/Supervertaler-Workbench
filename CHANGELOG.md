@@ -2,10 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.452 (May 7, 2026)
+**Current Version:** v1.9.457 (May 7, 2026)
 
 
-## v1.9.452 - May 7, 2026
+## v1.9.457 – May 7, 2026
+
+### Changed (AutoFingers voice commands – press-to-capture keystrokes, cross-platform shortcuts)
+
+- **Voice command keystrokes now use a press-to-capture editor instead of a free-text field.** Editing a `keystroke` voice command on the AutoFingers tab used to show a `For keystroke: ctrl+s` placeholder and require typing the modifier names by hand – which meant Mac users had to mentally translate "type ctrl+a here, but it'll fire ⌘A" or, worse, type `cmd+a` and discover that none of the shipped defaults worked because they all contained `ctrl`. Replaced with a [`KeystrokeCaptureEdit`](modules/voice_command_dialog.py) widget: click the field, press the keys you actually want to send, and the field shows the platform-native symbols (⌘⇧⌥⌃ on macOS, Ctrl+Shift+Alt elsewhere). Same widget pattern as the Keyboard Shortcuts settings dialog.
+- **macOS keystroke dispatcher now follows Qt's Ctrl↔Cmd swap convention.** [`platform_helpers._keystroke_to_applescript`](modules/platform_helpers.py) used to map `ctrl` → `control down` literally, so a stored `ctrl+s` fired `⌃S` (which most Mac apps don't bind) instead of `⌘S` (the actual Save shortcut). Now `ctrl` → `command down` and `meta` → `control down`, matching the rest of the Workbench's macOS handling. The dispatcher still accepts `cmd` / `command` directly for users who'd prefer to be explicit. Net effect: every shipped voice command (`ctrl+z`, `ctrl+s`, `ctrl+o`, etc.) now does the right thing on Mac without any per-platform JSON files.
+
+---
+
+## v1.9.452 – May 7, 2026
 
 ### Fixed (macOS pip install of v1.9.451 broken: vosk wheel pin)
 
