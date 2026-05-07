@@ -360,8 +360,13 @@ _WM_HOTKEY = 0x0312
 class GlobalHotkeyManager:
     """Cross-platform global hotkey registration.
 
-    On Windows uses ``RegisterHotKey`` (native API, works with PyQt6).
-    On macOS/Linux uses ``pynput.keyboard.GlobalHotKeys``.
+    Backends:
+
+    * Windows: native ``RegisterHotKey`` API (works with PyQt6).
+    * macOS:   ``NSEvent.addGlobalMonitorForEventsMatchingMask:handler:``
+               via PyObjC. Avoids pynput's TSM-on-background-thread crash
+               on macOS 26+ by running handlers on the main runloop.
+    * Linux:   ``pynput.keyboard.GlobalHotKeys``.
 
     Usage::
 
@@ -376,7 +381,7 @@ class GlobalHotkeyManager:
     def __init__(self):
         self._hotkeys: Dict[str, Callable] = {}  # shortcut string -> callback
         self._running = False
-        self._backend = None  # 'winapi' or 'pynput'
+        self._backend = None  # 'winapi' | 'pynput' | 'nsevent'
 
         # Windows-specific
         self._win_thread = None
@@ -389,13 +394,18 @@ class GlobalHotkeyManager:
         self._listener = None
         self._pynput_hotkeys: Dict[str, Callable] = {}
 
+        # macOS-specific (NSEvent monitor)
+        self._mac_backend = None  # _MacNSEventHotkey instance
+
     # -- public API ----------------------------------------------------------
 
     @property
     def is_available(self) -> bool:
         if IS_WINDOWS:
             return True  # RegisterHotKey is always available
-        # Check pynput
+        if IS_MACOS:
+            return _MacNSEventHotkey.is_available()
+        # Linux: pynput
         try:
             from pynput.keyboard import GlobalHotKeys  # noqa: F401
             return True
@@ -423,8 +433,9 @@ class GlobalHotkeyManager:
 
         if IS_WINDOWS:
             return self._start_winapi()
-        else:
-            return self._start_pynput()
+        if IS_MACOS:
+            return self._start_macos()
+        return self._start_pynput()  # Linux
 
     def stop(self):
         """Stop listening for hotkeys."""
@@ -432,7 +443,41 @@ class GlobalHotkeyManager:
             self._stop_winapi()
         elif self._backend == 'pynput':
             self._stop_pynput()
+        elif self._backend == 'nsevent':
+            if self._mac_backend is not None:
+                try:
+                    self._mac_backend.stop()
+                except Exception as e:
+                    print(f"[GlobalHotkeyManager] NSEvent stop error: {e}")
+                self._mac_backend = None
         self._running = False
+
+    # -- macOS NSEvent backend -----------------------------------------------
+
+    def _start_macos(self) -> bool:
+        """Register hotkeys via NSEvent monitors.
+
+        Bypasses pynput because pynput's macOS listener calls Carbon's
+        TSMGetInputSourceProperty from a background CFRunLoop thread,
+        which macOS 26+ aborts with EXC_BREAKPOINT. NSEvent monitors
+        installed from the Qt main thread fire on the main runloop, so
+        no TSM violation occurs.
+        """
+        if not _MacNSEventHotkey.is_available():
+            print("[GlobalHotkeyManager] PyObjC (pyobjc-framework-Cocoa) "
+                  "not available – install it to enable global hotkeys "
+                  "on macOS:  pip install pyobjc-framework-Cocoa")
+            return False
+
+        backend = _MacNSEventHotkey()
+        for shortcut, callback in self._hotkeys.items():
+            backend.register(shortcut, callback)
+        if not backend.start():
+            return False
+        self._mac_backend = backend
+        self._running = True
+        self._backend = 'nsevent'
+        return True
 
     # -- Windows RegisterHotKey backend --------------------------------------
 
@@ -544,29 +589,13 @@ class GlobalHotkeyManager:
     # -- pynput backend (macOS / Linux) --------------------------------------
 
     def _start_pynput(self) -> bool:
-        """Register hotkeys using pynput GlobalHotKeys."""
-        if IS_MACOS:
-            # pynput's macOS keyboard listener runs on a background CFRunLoop
-            # thread that calls into Carbon's TSMGetInputSourceProperty when a
-            # registered hotkey fires. Starting with macOS 26 (Sequoia), the
-            # Text Services Manager hard-asserts that those calls happen on
-            # the main thread and aborts the process with EXC_BREAKPOINT in
-            # libdispatch's _dispatch_assert_queue_fail when they don't.
-            # Net effect: the very first time the user presses the hotkey,
-            # the entire app crashes. This was reported on a v1.9.418
-            # signed/notarized DMG with macOS Accessibility + Input
-            # Monitoring permissions granted; the crash dump pointed at
-            # Thread-2 (pynput's listener) inside HIToolbox →
-            # TSMGetInputSourceProperty → ffi_call → ctypes.
-            # Disable global hotkeys on macOS until we have a Cocoa-native
-            # (NSEvent.addGlobalMonitorForEvents / Carbon RegisterEventHotKey
-            # on the main thread) replacement. Sidekick + SuperLookup are
-            # still reachable via the menu-bar tray icon.
-            print("[GlobalHotkeyManager] macOS: global hotkeys disabled "
-                  "(pynput's TSM call from a background thread crashes the "
-                  "process on macOS 26+). Use the menu-bar tray icon to "
-                  "summon Sidekick / SuperLookup.")
-            return False
+        """Register hotkeys using pynput GlobalHotKeys (Linux only).
+
+        macOS used to share this path but was switched to ``_start_macos``
+        because pynput's listener calls Carbon's TSMGetInputSourceProperty
+        from a background CFRunLoop thread, which macOS 26+ aborts with
+        EXC_BREAKPOINT (TSM hard-asserts main-thread).
+        """
         try:
             from pynput.keyboard import GlobalHotKeys
         except ImportError:
@@ -626,6 +655,182 @@ class GlobalHotkeyManager:
             else:
                 converted.append(part)
         return '+'.join(converted)
+
+
+# ---------------------------------------------------------------------------
+# macOS NSEvent global hotkey backend
+# ---------------------------------------------------------------------------
+class _MacNSEventHotkey:
+    """macOS global hotkey backend using NSEvent monitors via PyObjC.
+
+    Why this exists: pynput's macOS listener invokes Carbon's
+    TSMGetInputSourceProperty from a background CFRunLoop thread, and
+    macOS 26+ hard-asserts that TSM calls happen on the main thread,
+    crashing the process with EXC_BREAKPOINT. NSEvent monitors installed
+    on the Qt main thread fire on the main runloop, sidestepping the
+    issue entirely.
+
+    Limitations:
+      * Monitor-only — does not consume the keystroke. Other apps
+        receiving the same hotkey still respond (a non-issue for our
+        ⌃⌘L/M/K combos because nothing else binds them).
+      * Only the *global* monitor is installed (fires when Supervertaler
+        is NOT frontmost). When Supervertaler IS frontmost, Qt's
+        QShortcut handles the same key via the local-shortcut path. This
+        avoids double-firing.
+
+    Requires:
+      * ``pyobjc-framework-Cocoa`` installed.
+      * Accessibility permission on whichever binary launched Python.
+        For Terminal launches, that's Terminal.app (or iTerm2.app).
+        For the bundled .app, it's Supervertaler itself.
+    """
+
+    def __init__(self):
+        self._hotkeys: Dict[str, tuple] = {}  # shortcut_lower -> (mods_int, char_lower, callback)
+        self._global_monitor = None
+
+    @staticmethod
+    def is_available() -> bool:
+        try:
+            import AppKit  # noqa: F401
+            return True
+        except ImportError:
+            try:
+                import Cocoa  # noqa: F401
+                return True
+            except ImportError:
+                return False
+
+    def register(self, shortcut: str, callback: Callable) -> bool:
+        flags, char = self._parse(shortcut)
+        if char is None or flags == 0:
+            print(f"[MacNSEvent] Could not parse shortcut: {shortcut!r}")
+            return False
+        self._hotkeys[shortcut.lower()] = (flags, char, callback)
+        return True
+
+    def start(self) -> bool:
+        try:
+            from AppKit import (
+                NSEvent,
+                NSEventMaskKeyDown,
+                NSEventModifierFlagShift,
+                NSEventModifierFlagControl,
+                NSEventModifierFlagOption,
+                NSEventModifierFlagCommand,
+            )
+        except ImportError:
+            try:
+                from Cocoa import (  # type: ignore
+                    NSEvent,
+                    NSEventMaskKeyDown,
+                    NSEventModifierFlagShift,
+                    NSEventModifierFlagControl,
+                    NSEventModifierFlagOption,
+                    NSEventModifierFlagCommand,
+                )
+            except ImportError:
+                print("[MacNSEvent] PyObjC not available")
+                return False
+
+        mod_mask = (NSEventModifierFlagShift |
+                    NSEventModifierFlagControl |
+                    NSEventModifierFlagOption |
+                    NSEventModifierFlagCommand)
+        hotkeys = self._hotkeys
+
+        def _global_handler(event):
+            try:
+                event_mods = int(event.modifierFlags()) & mod_mask
+                chars = event.charactersIgnoringModifiers()
+                if not chars:
+                    return
+                ch = str(chars).lower()
+                for shortcut, (flags, target_char, callback) in hotkeys.items():
+                    if event_mods == flags and ch == target_char:
+                        try:
+                            callback()
+                        except Exception as e:
+                            print(f"[MacNSEvent] callback error for {shortcut}: {e}")
+                        return
+            except Exception as e:
+                print(f"[MacNSEvent] dispatch error: {e}")
+
+        self._global_monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            NSEventMaskKeyDown, _global_handler
+        )
+        if self._global_monitor is None:
+            print("[MacNSEvent] Failed to install global monitor. Grant "
+                  "Accessibility permission to Terminal.app (or iTerm2 / "
+                  "the bundled Supervertaler.app) in System Settings → "
+                  "Privacy & Security → Accessibility, then restart.")
+            return False
+
+        registered = ', '.join(self._hotkeys.keys())
+        print(f"[MacNSEvent] Started — global hotkeys: {registered}")
+        return True
+
+    def stop(self):
+        try:
+            from AppKit import NSEvent
+        except ImportError:
+            try:
+                from Cocoa import NSEvent  # type: ignore
+            except ImportError:
+                return
+        if self._global_monitor is not None:
+            try:
+                NSEvent.removeMonitor_(self._global_monitor)
+            except Exception:
+                pass
+            self._global_monitor = None
+
+    @staticmethod
+    def _parse(shortcut: str):
+        """Parse e.g. ``'ctrl+cmd+l'`` → ``(modifier_flags, 'l')``.
+
+        Returns ``(0, None)`` on failure.
+        """
+        try:
+            from AppKit import (
+                NSEventModifierFlagShift,
+                NSEventModifierFlagControl,
+                NSEventModifierFlagOption,
+                NSEventModifierFlagCommand,
+            )
+        except ImportError:
+            try:
+                from Cocoa import (  # type: ignore
+                    NSEventModifierFlagShift,
+                    NSEventModifierFlagControl,
+                    NSEventModifierFlagOption,
+                    NSEventModifierFlagCommand,
+                )
+            except ImportError:
+                return 0, None
+
+        flags = 0
+        char = None
+        for raw in shortcut.lower().split('+'):
+            part = raw.strip()
+            if part in ('ctrl', 'control'):
+                flags |= NSEventModifierFlagControl
+            elif part in ('alt', 'option'):
+                flags |= NSEventModifierFlagOption
+            elif part == 'shift':
+                flags |= NSEventModifierFlagShift
+            elif part in ('cmd', 'meta', 'super', 'win'):
+                flags |= NSEventModifierFlagCommand
+            elif len(part) == 1:
+                char = part
+            elif part:
+                # Multi-char keys (e.g. f1, space) – not supported in this
+                # minimal backend yet. Could extend with a name→character
+                # lookup if we ever bind such combos globally on macOS.
+                print(f"[MacNSEvent] Unsupported key in shortcut: {part!r}")
+                return 0, None
+        return flags, char
 
 
 # ---------------------------------------------------------------------------

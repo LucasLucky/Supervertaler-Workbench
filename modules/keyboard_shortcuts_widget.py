@@ -16,6 +16,7 @@ from PyQt6.QtGui import QKeySequence, QKeyEvent, QFont, QPainter, QPen, QColor
 from modules.shortcut_manager import ShortcutManager
 from modules.shortcut_display import format_shortcut_for_display, format_shortcuts_in_text
 from modules.platform_helpers import IS_WINDOWS, IS_MACOS, IS_LINUX
+from modules.ui_scale import scaled_pt
 
 
 from modules.styled_widgets import CheckmarkCheckBox  # noqa: E402
@@ -342,7 +343,8 @@ class KeyboardShortcutsWidget(QWidget):
             "💡 Exported HTML cheatsheets can be printed or saved as PDF."
         )
         cheatsheet_tip.setWordWrap(True)
-        cheatsheet_tip.setStyleSheet("color: #666; font-style: italic; font-size: 9pt;")
+        cheatsheet_tip.setStyleSheet(
+            f"color: #666; font-style: italic; font-size: {scaled_pt(9):.1f}pt;")
         io_layout.addWidget(cheatsheet_tip)
 
         right_layout.addWidget(io_group)
@@ -367,7 +369,8 @@ class KeyboardShortcutsWidget(QWidget):
             f"{qm_key} (QuickLauncher) to work from any application."
         )
         hotkey_info.setWordWrap(True)
-        hotkey_info.setStyleSheet("color: #666; font-size: 9pt; padding: 5px;")
+        hotkey_info.setStyleSheet(
+            f"color: #666; font-size: {scaled_pt(9):.1f}pt; padding: 5px;")
         hotkey_layout.addWidget(hotkey_info)
 
         # Current status
@@ -375,15 +378,25 @@ class KeyboardShortcutsWidget(QWidget):
         hotkey_status_layout.addWidget(QLabel("Status:"))
 
         hotkey_active = False
-        using_pynput = False
+        backend_label = "unknown"
         mw = self.main_window
         if mw and hasattr(mw, 'lookup_tab') and hasattr(mw.lookup_tab, 'hotkey_registered'):
             hotkey_active = mw.lookup_tab.hotkey_registered
-            using_pynput = getattr(mw.lookup_tab, '_using_pynput', False)
+            if hotkey_active:
+                manager = getattr(mw.lookup_tab, '_hotkey_manager', None)
+                if manager is not None:
+                    raw = getattr(manager, '_backend', None)
+                    backend_label = {
+                        'winapi': 'WinAPI',
+                        'pynput': 'pynput',
+                        'nsevent': 'NSEvent',
+                    }.get(raw, raw or 'unknown')
+                else:
+                    # External AHK script path doesn't expose a manager.
+                    backend_label = 'AutoHotkey'
 
         if hotkey_active:
-            backend = "pynput" if using_pynput else "AutoHotkey"
-            status_text = f"✅ Active (via {backend})"
+            status_text = f"✅ Active (via {backend_label})"
             status_style = "font-weight: bold; color: green;"
         else:
             status_text = "❌ Not active"
@@ -398,12 +411,19 @@ class KeyboardShortcutsWidget(QWidget):
         # Platform-specific notes
         if IS_MACOS:
             mac_note = QLabel(
-                "macOS: Global hotkeys require Accessibility permissions.\n"
-                "Go to System Preferences > Privacy & Security > Accessibility\n"
-                "and add Supervertaler (or the Python/Terminal app running it)."
+                "macOS: Global hotkeys require Accessibility permission on "
+                "the binary that launched Python.\n"
+                "  • Bundled Supervertaler.app → add Supervertaler\n"
+                "  • Launched from Terminal.app → add Terminal.app\n"
+                "  • Launched from iTerm2 → add iTerm2.app\n"
+                "Open System Settings → Privacy & Security → Accessibility, "
+                "tick the relevant app, then restart Supervertaler.\n\n"
+                "Also requires the pyobjc-framework-Cocoa Python package "
+                "(pip install pyobjc-framework-Cocoa)."
             )
             mac_note.setWordWrap(True)
-            mac_note.setStyleSheet("color: #d97706; font-size: 9pt; padding: 5px;")
+            mac_note.setStyleSheet(
+                f"color: #d97706; font-size: {scaled_pt(9):.1f}pt; padding: 5px;")
             hotkey_layout.addWidget(mac_note)
         elif IS_LINUX:
             linux_note = QLabel(
@@ -411,7 +431,8 @@ class KeyboardShortcutsWidget(QWidget):
                 "If hotkeys don't work, add your user to the 'input' group."
             )
             linux_note.setWordWrap(True)
-            linux_note.setStyleSheet("color: #d97706; font-size: 9pt; padding: 5px;")
+            linux_note.setStyleSheet(
+                f"color: #d97706; font-size: {scaled_pt(9):.1f}pt; padding: 5px;")
             hotkey_layout.addWidget(linux_note)
 
         # AutoHotkey fallback settings (Windows only)
@@ -447,14 +468,16 @@ class KeyboardShortcutsWidget(QWidget):
                 detected_path, source = mw._find_autohotkey_for_settings()
                 if detected_path:
                     detected_label = QLabel(f"💡 Detected: {detected_path}")
-                    detected_label.setStyleSheet("color: #666; font-size: 9pt;")
+                    detected_label.setStyleSheet(
+                        f"color: #666; font-size: {scaled_pt(9):.1f}pt;")
                     hotkey_layout.addWidget(detected_label)
 
             # Store reference on main window so save handler can access it
             mw.ahk_path_edit = ahk_path_edit
 
         restart_note = QLabel("💡 Changes require restart to take effect.")
-        restart_note.setStyleSheet("color: #666; font-size: 9pt; font-style: italic;")
+        restart_note.setStyleSheet(
+            f"color: #666; font-size: {scaled_pt(9):.1f}pt; font-style: italic;")
         hotkey_layout.addWidget(restart_note)
 
         hotkey_group.setLayout(hotkey_layout)

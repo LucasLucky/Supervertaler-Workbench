@@ -78,6 +78,12 @@ spylls>=0.1.7  # Pure Python Hunspell (replaces cyhunspell which doesn't work on
 # Global hotkey registration and keystroke automation (Superlookup, QuickTrans)
 pynput>=1.7.6
 
+# [hotkeys-macos] - macOS NSEvent backend (replaces pynput on macOS to avoid
+# a TSM-on-background-thread crash on macOS 26+). Required for global hotkeys
+# to work on macOS; the host Terminal/iTerm2/Supervertaler.app also needs
+# Accessibility permission.
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+
 # [windows] - Windows-only AutoHotkey support for keystroke commands
 # (used by Dicta voice commands of type 'keystroke', 'ahk_inline', 'ahk_script')
 ahk>=1.0.0; sys_platform == "win32"

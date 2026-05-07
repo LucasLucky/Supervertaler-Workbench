@@ -57152,9 +57152,11 @@ class SuperlookupTab(QWidget):
             import traceback
             traceback.print_exc()
             if IS_MACOS:
-                print("[Superlookup] macOS: Ensure Supervertaler (or Terminal/Python) has "
-                      "Accessibility permission in System Settings → Privacy & Security → "
-                      "Accessibility. Without it, global hotkeys cannot be detected.")
+                _log("[Global Hotkeys] macOS: grant Accessibility permission "
+                     "to whichever binary launched Python (Terminal.app / "
+                     "iTerm2.app for terminal launches, Supervertaler.app "
+                     "for the bundled app) in System Settings → Privacy & "
+                     "Security → Accessibility, then restart Supervertaler.")
 
         # --- Attempt 2: AHK external script (Windows only) ---
         if IS_WINDOWS:
