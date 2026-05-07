@@ -23,25 +23,38 @@ from modules.styled_widgets import CheckmarkCheckBox  # noqa: E402
 
 
 class KeySequenceEdit(QLineEdit):
-    """Custom widget for capturing keyboard shortcuts"""
-    
+    """Custom widget for capturing keyboard shortcuts.
+
+    Internally stores Qt-style names (e.g. ``Ctrl+Shift+C``) on
+    ``current_sequence`` — that's what the rest of the app expects. The
+    displayed text is platform-formatted (``⌘⇧C`` on macOS, plain text
+    elsewhere) via ``format_shortcut_for_display`` so users see the
+    symbols matching the keys they actually pressed.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setPlaceholderText("Press keys or click to edit...")
         self.setReadOnly(False)
         self.current_sequence = ""
-        
+
+    def setShortcut(self, raw_sequence: str):
+        """Set the shortcut from a raw Qt-format string and refresh display."""
+        self.current_sequence = raw_sequence or ""
+        display = format_shortcut_for_display(raw_sequence) if raw_sequence else ""
+        self.setText(display)
+
     def keyPressEvent(self, event: QKeyEvent):
         """Capture key press and convert to shortcut string"""
         # Ignore modifier-only presses
-        if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Shift, 
+        if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Shift,
                           Qt.Key.Key_Alt, Qt.Key.Key_Meta):
             return
-        
+
         # Build key sequence from modifiers + key
         modifiers = event.modifiers()
         key = event.key()
-        
+
         parts = []
         if modifiers & Qt.KeyboardModifier.ControlModifier:
             parts.append("Ctrl")
@@ -51,20 +64,20 @@ class KeySequenceEdit(QLineEdit):
             parts.append("Shift")
         if modifiers & Qt.KeyboardModifier.MetaModifier:
             parts.append("Meta")
-        
+
         # Get key name
         key_name = QKeySequence(key).toString()
         if key_name:
             parts.append(key_name)
-        
-        # Create shortcut string
+
+        # Create shortcut string. We store the Qt-format string on
+        # current_sequence and display the platform-formatted version,
+        # so on macOS the user sees ⌘⇧C after pressing Cmd+Shift+C.
         if parts:
-            sequence = "+".join(parts)
-            self.setText(sequence)
-            self.current_sequence = sequence
-        
+            self.setShortcut("+".join(parts))
+
         event.accept()
-    
+
     def focusInEvent(self, event):
         """Clear on focus for new input"""
         super().focusInEvent(event)
@@ -104,11 +117,11 @@ class ShortcutEditDialog(QDialog):
         input_layout = QHBoxLayout()
         input_label = QLabel("New Shortcut:")
         self.shortcut_input = KeySequenceEdit()
-        self.shortcut_input.setText(data['current'])
+        self.shortcut_input.setShortcut(data['current'])
         input_layout.addWidget(input_label)
         input_layout.addWidget(self.shortcut_input)
         layout.addLayout(input_layout)
-        
+
         # Reset button
         reset_btn = QPushButton("Reset to Default")
         reset_btn.clicked.connect(self.reset_to_default)
@@ -136,15 +149,17 @@ class ShortcutEditDialog(QDialog):
     
     def reset_to_default(self):
         """Reset to default shortcut"""
-        self.shortcut_input.setText(self.data['default'])
-    
+        self.shortcut_input.setShortcut(self.data['default'])
+
     def check_conflicts(self):
         """Check for conflicting shortcuts"""
-        new_sequence = self.shortcut_input.text()
+        # Use the raw Qt-format value, not the displayed (possibly
+        # ⌘-symbolised) text. Conflict detection compares storage strings.
+        new_sequence = self.shortcut_input.current_sequence
         if not new_sequence:
             self.warning_label.setText("")
             return
-        
+
         conflicts = self.manager.find_conflicts(self.shortcut_id, new_sequence)
         if conflicts:
             conflict_names = []
@@ -161,7 +176,7 @@ class ShortcutEditDialog(QDialog):
     
     def accept_shortcut(self):
         """Accept the new shortcut"""
-        new_sequence = self.shortcut_input.text()
+        new_sequence = self.shortcut_input.current_sequence
         
         # Check conflicts one more time
         conflicts = self.manager.find_conflicts(self.shortcut_id, new_sequence)
@@ -475,7 +490,7 @@ class KeyboardShortcutsWidget(QWidget):
             # Store reference on main window so save handler can access it
             mw.ahk_path_edit = ahk_path_edit
 
-        restart_note = QLabel("💡 Changes require restart to take effect.")
+        restart_note = QLabel("💡 Changes apply immediately – no restart needed.")
         restart_note.setStyleSheet(
             f"color: #666; font-size: {scaled_pt(9):.1f}pt; font-style: italic;")
         hotkey_layout.addWidget(restart_note)
@@ -606,20 +621,29 @@ class KeyboardShortcutsWidget(QWidget):
                 break
     
     def _reload_global_hotkeys_on_main_window(self):
-        """Tell the main window to re-register its OS-level global hotkeys.
+        """Tell the main window to re-register all shortcut bindings.
 
-        Called after any shortcut change so that updates to ``global_*``
-        bindings (Superlookup, QuickTrans, Sidekick, Clipboard, AutoFingers
-        push-to-talk, AutoFingers Always-On toggle) take effect immediately
-        instead of waiting for the next application restart. Local
-        QShortcuts already update on each load_shortcuts call.
+        Called after any shortcut change so it takes effect immediately.
+        Reloads two things:
+          • OS-level global hotkeys (Superlookup, QuickTrans, Sidekick,
+            Clipboard, push-to-talk, Always-On) via ``reload_global_hotkeys``.
+          • Local QShortcut key sequences via ``refresh_shortcut_enabled_states``.
+            Without the second call, in-app QShortcut objects keep firing on
+            the old key until the next application restart.
         """
         mw = self.main_window
-        if mw is not None and hasattr(mw, 'reload_global_hotkeys'):
+        if mw is None:
+            return
+        if hasattr(mw, 'reload_global_hotkeys'):
             try:
                 mw.reload_global_hotkeys()
             except Exception as e:
                 print(f"[KeyboardShortcuts] reload_global_hotkeys failed: {e}")
+        if hasattr(mw, 'refresh_shortcut_enabled_states'):
+            try:
+                mw.refresh_shortcut_enabled_states()
+            except Exception as e:
+                print(f"[KeyboardShortcuts] refresh_shortcut_enabled_states failed: {e}")
 
     def filter_shortcuts(self):
         """Filter shortcuts based on search text"""
