@@ -57145,14 +57145,15 @@ class SuperlookupTab(QWidget):
             pt_shortcut = 'ctrl+alt+d'
             ao_shortcut = 'ctrl+alt+a'
 
-        # On macOS, replace 'alt' with 'cmd' in the shortcuts
-        if IS_MACOS:
-            sl_shortcut = sl_shortcut.replace('alt', 'cmd')
-            qt_shortcut = qt_shortcut.replace('alt', 'cmd')
-            sk_shortcut = sk_shortcut.replace('alt', 'cmd')
-            cb_shortcut = cb_shortcut.replace('alt', 'cmd')
-            pt_shortcut = pt_shortcut.replace('alt', 'cmd')
-            ao_shortcut = ao_shortcut.replace('alt', 'cmd')
+        # No platform-specific rewrite needed: GlobalHotkeyManager's macOS
+        # NSEvent backend now follows Qt's Mac convention internally
+        # (stored "Ctrl" → ⌘ Cmd, "Alt" → ⌥ Option, "Meta" → ⌃ Control),
+        # so the same shortcut string fires on the SAME physical keystroke
+        # whether triggered via QShortcut in-app or via the global hotkey
+        # outside the app. The previous alt→cmd rewrite was a workaround
+        # for an older NSEvent parser that took modifier names literally
+        # and produced different physical chords for local vs global; that
+        # parser was fixed in modules/platform_helpers.py:_MacNSEventHotkey._parse.
 
         # --- Attempt 1: WinAPI / pynput (cross-platform) ---
         import sys as _sys

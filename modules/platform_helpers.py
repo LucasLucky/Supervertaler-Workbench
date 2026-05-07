@@ -829,13 +829,23 @@ class _MacNSEventHotkey:
         char = None
         for raw in shortcut.lower().split('+'):
             part = raw.strip()
+            # Modifier mapping follows Qt's macOS convention so that the
+            # global hotkey fires on the SAME physical keystroke that
+            # local QShortcut binds to. Qt swaps Ctrl↔Cmd on macOS so a
+            # cross-platform "Ctrl+L" QShortcut fires on ⌘L on Mac; we
+            # mirror that here so a stored "Ctrl+L" registers as ⌘L
+            # globally on Mac too. "Meta" maps the other way (Control ⌃),
+            # again matching Qt's native handling.
             if part in ('ctrl', 'control'):
-                flags |= NSEventModifierFlagControl
+                flags |= NSEventModifierFlagCommand          # Qt Ctrl = Mac ⌘
+            elif part == 'meta':
+                flags |= NSEventModifierFlagControl          # Qt Meta = Mac ⌃
             elif part in ('alt', 'option'):
-                flags |= NSEventModifierFlagOption
+                flags |= NSEventModifierFlagOption           # Qt Alt = Mac ⌥
             elif part == 'shift':
                 flags |= NSEventModifierFlagShift
-            elif part in ('cmd', 'meta', 'super', 'win'):
+            elif part in ('cmd', 'super', 'win'):
+                # Explicit "cmd" / cross-platform aliases also mean Mac ⌘.
                 flags |= NSEventModifierFlagCommand
             elif len(part) == 1:
                 char = part
