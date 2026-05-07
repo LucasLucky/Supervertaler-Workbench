@@ -8770,6 +8770,22 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+Shift+C - Open Sidekick directly to Clipboard tab
         create_shortcut("sidekick_open_clipboard", "Ctrl+Shift+C", self.open_clipboard_tab)
 
+        # The next three actions used to have only an OS-level global hotkey
+        # entry. After merging local + global into one shortcut per action,
+        # they need an in-app QShortcut binding too so the same key works
+        # whether or not Supervertaler is frontmost. The global side is
+        # registered separately by SuperlookupTab.register_global_hotkey.
+        create_shortcut(
+            "tools_universal_lookup", "Ctrl+Alt+L",
+            lambda: self.lookup_tab._handle_superlookup_hotkey()
+                if hasattr(self, 'lookup_tab') else None,
+        )
+        create_shortcut("sidekick_open", "Alt+K", self.open_quicklauncher)
+        create_shortcut(
+            "autofingers_alwayson_toggle", "Ctrl+Alt+A",
+            self._toggle_alwayson_listening,
+        )
+
         # Lone Ctrl tap – Term Insert Popup (memoQ-style glossary + NT insert list).
         # Implemented as an app-level event filter rather than a QShortcut because
         # QShortcut cannot bind to a bare modifier key.
@@ -57088,18 +57104,34 @@ class SuperlookupTab(QWidget):
         self._using_pynput = False
         self._hotkey_manager = None
 
-        # Read customizable shortcuts from ShortcutManager
+        # Read customizable shortcuts from ShortcutManager. Each action used
+        # to have a separate `global_*` ID; that's been merged into a single
+        # entry per action with `global: True`. Legacy IDs still resolve via
+        # ShortcutManager._LEGACY_IDS, so old saved settings keep working.
         sm = getattr(self.main_window, 'shortcut_manager', None) if self.main_window else None
         if sm:
-            sl_shortcut = sm.get_shortcut('global_superlookup').lower().replace('+', '+')
-            qt_shortcut = sm.get_shortcut('global_quicktrans').lower().replace('+', '+')
-            sk_shortcut = sm.get_shortcut('global_sidekick').lower().replace('+', '+')
-            cb_shortcut = sm.get_shortcut('global_clipboard').lower().replace('+', '+')
-            pt_shortcut = sm.get_shortcut('global_pushtotalk').lower().replace('+', '+')
-            ao_shortcut = sm.get_shortcut('global_alwayson_toggle').lower().replace('+', '+')
+            sl_shortcut = sm.get_shortcut('tools_universal_lookup').lower()
+            qt_shortcut = sm.get_shortcut('mt_quick_lookup').lower()
+            sk_shortcut = sm.get_shortcut('sidekick_open').lower()
+            cb_shortcut = sm.get_shortcut('sidekick_open_clipboard').lower()
+            pt_shortcut = sm.get_shortcut('voice_dictate').lower()
+            ao_shortcut = sm.get_shortcut('autofingers_alwayson_toggle').lower()
+
+            # Honour the per-shortcut enabled flag and the `global` field:
+            # if disabled, or if the entry is no longer flagged global, skip
+            # OS-level registration. (In-app QShortcut binding is still set
+            # up by the regular create_shortcut path.)
+            def _skip(sid):
+                return (not sm.is_enabled(sid)) or (not sm.is_global(sid))
+            if _skip('tools_universal_lookup'):       sl_shortcut = ''
+            if _skip('mt_quick_lookup'):              qt_shortcut = ''
+            if _skip('sidekick_open'):                sk_shortcut = ''
+            if _skip('sidekick_open_clipboard'):      cb_shortcut = ''
+            if _skip('voice_dictate'):                pt_shortcut = ''
+            if _skip('autofingers_alwayson_toggle'):  ao_shortcut = ''
         else:
             sl_shortcut = 'ctrl+alt+l'
-            qt_shortcut = 'ctrl+alt+m'
+            qt_shortcut = 'ctrl+alt+q'
             sk_shortcut = 'alt+k'
             cb_shortcut = 'ctrl+shift+c'
             pt_shortcut = 'ctrl+alt+d'
@@ -57125,13 +57157,23 @@ class SuperlookupTab(QWidget):
             manager = GlobalHotkeyManager()
             _log(f"[Global Hotkeys] Manager available: {manager.is_available}")
             if manager.is_available:
-                manager.register(sl_shortcut, self._on_pynput_superlookup)
-                manager.register(qt_shortcut, self._on_pynput_quicktrans)
-                manager.register(sk_shortcut, self._on_pynput_sidekick)
-                manager.register(cb_shortcut, self._on_pynput_clipboard)
-                manager.register(pt_shortcut, self._on_pynput_pushtotalk)
-                manager.register(ao_shortcut, self._on_pynput_alwayson_toggle)
-                _log(f"[Global Hotkeys] Registering: {sl_shortcut}, {qt_shortcut}, {sk_shortcut}, {cb_shortcut}, {pt_shortcut}, {ao_shortcut}")
+                # Skip empty shortcuts (action disabled or `global` flag off)
+                _bindings = [
+                    (sl_shortcut, self._on_pynput_superlookup),
+                    (qt_shortcut, self._on_pynput_quicktrans),
+                    (sk_shortcut, self._on_pynput_sidekick),
+                    (cb_shortcut, self._on_pynput_clipboard),
+                    (pt_shortcut, self._on_pynput_pushtotalk),
+                    (ao_shortcut, self._on_pynput_alwayson_toggle),
+                ]
+                _to_register = [(s, cb) for s, cb in _bindings if s]
+                if not _to_register:
+                    _log("[Global Hotkeys] Nothing to register (all global shortcuts disabled or unset).")
+                    self.hotkey_registered = False
+                    return
+                for s, cb in _to_register:
+                    manager.register(s, cb)
+                _log(f"[Global Hotkeys] Registering: {', '.join(s for s, _ in _to_register)}")
                 started = manager.start()
                 _log(f"[Global Hotkeys] Started: {started}")
                 if started:
@@ -57142,7 +57184,7 @@ class SuperlookupTab(QWidget):
                     failed = getattr(manager, 'failed_hotkeys', [])
                     if failed:
                         _log(f"\u26A0 [Global Hotkeys] Failed to register: {', '.join(failed)} (claimed by another app)")
-                    ok_keys = [k for k in [sl_shortcut, qt_shortcut, sk_shortcut, cb_shortcut, pt_shortcut, ao_shortcut] if k not in failed]
+                    ok_keys = [s for s, _ in _to_register if s not in failed]
                     _log(f"\u2328 [Global Hotkeys] Registered via {manager._backend}: {', '.join(ok_keys)}")
                     return
                 else:

@@ -171,7 +171,8 @@ class ShortcutManager:
             "category": "Resources",
             "description": "Superlookup",
             "default": "Ctrl+Alt+L",
-            "action": "show_universal_lookup"
+            "action": "show_universal_lookup",
+            "global": True,
         },
         "tools_force_refresh": {
             "category": "Resources",
@@ -183,9 +184,10 @@ class ShortcutManager:
         # Special
         "voice_dictate": {
             "category": "Special",
-            "description": "Voice Dictation",
-            "default": "F9",
-            "action": "start_voice_dictation"
+            "description": "Voice dictation / push-to-talk",
+            "default": "Ctrl+Alt+D",
+            "action": "start_voice_dictation",
+            "global": True,
         },
 
         # Match Insertion (Direct)
@@ -571,11 +573,26 @@ class ShortcutManager:
             "action": "open_quicklauncher",
             "context": "grid_editor"
         },
+        "sidekick_open": {
+            "category": "Sidekick",
+            "description": "Open Sidekick (with selection / lookup)",
+            "default": "Alt+K",
+            "action": "open_sidekick",
+            "global": True,
+        },
         "sidekick_open_clipboard": {
             "category": "Sidekick",
             "description": "Open Sidekick – Clipboard tab",
             "default": "Ctrl+Shift+C",
             "action": "open_clipboard_tab",
+            "global": True,
+        },
+        "autofingers_alwayson_toggle": {
+            "category": "Special",
+            "description": "AutoFingers Always-On (toggle)",
+            "default": "Ctrl+Alt+A",
+            "action": "toggle_alwayson",
+            "global": True,
         },
         "editor_show_context_menu_double_shift": {
             "category": "Editor",
@@ -604,53 +621,9 @@ class ShortcutManager:
         "mt_quick_lookup": {
             "category": "Translation",
             "description": "QuickTrans (instant translation popup)",
-            "default": "Ctrl+M",
-            "action": "show_mt_quick_popup",
-            "context": "editor"
-        },
-
-        # Global hotkeys (system-wide, work from any application)
-        "global_superlookup": {
-            "category": "Global",
-            "description": "Superlookup (global – works from any app)",
-            "default": "Ctrl+Alt+L",
-            "action": "global_superlookup",
-            "context": "global"
-        },
-        "global_quicktrans": {
-            "category": "Global",
-            "description": "QuickTrans (global – works from any app)",
             "default": "Ctrl+Alt+Q",
-            "action": "global_quicktrans",
-            "context": "global"
-        },
-        "global_sidekick": {
-            "category": "Global",
-            "description": "Supervertaler Sidekick (global – works from any app)",
-            "default": "Alt+K",
-            "action": "global_sidekick",
-            "context": "global"
-        },
-        "global_clipboard": {
-            "category": "Global",
-            "description": "Sidekick – Clipboard tab (global – works from any app)",
-            "default": "Ctrl+Shift+C",
-            "action": "global_clipboard",
-            "context": "global"
-        },
-        "global_pushtotalk": {
-            "category": "Global",
-            "description": "AutoFingers push-to-talk (global – works from any app)",
-            "default": "Ctrl+Alt+D",
-            "action": "global_pushtotalk",
-            "context": "global"
-        },
-        "global_alwayson_toggle": {
-            "category": "Global",
-            "description": "AutoFingers Always-On toggle (global – works from any app)",
-            "default": "Ctrl+Alt+A",
-            "action": "global_alwayson_toggle",
-            "context": "global"
+            "action": "show_mt_quick_popup",
+            "global": True,
         },
     }
     
@@ -743,6 +716,38 @@ class ShortcutManager:
             del self.custom_shortcuts['global_sidekick']
             self.save_shortcuts()
 
+        # Merge the old `global_*` entries into the corresponding action
+        # entries marked `global: True`. There used to be one local and one
+        # global shortcut per action; users now manage one entry that
+        # registers both the OS-level global hotkey and the in-app
+        # QShortcut. If the user customised the old global ID, transfer it
+        # to the merged ID (unless the merged ID already has its own
+        # customisation, which we don't want to clobber).
+        _GLOBAL_TO_MERGED = {
+            'global_superlookup':       'tools_universal_lookup',
+            'global_quicktrans':        'mt_quick_lookup',
+            'global_sidekick':          'sidekick_open',
+            'global_clipboard':         'sidekick_open_clipboard',
+            'global_pushtotalk':        'voice_dictate',
+            'global_alwayson_toggle':   'autofingers_alwayson_toggle',
+        }
+        merge_changed = False
+        for old_id, new_id in _GLOBAL_TO_MERGED.items():
+            if old_id in self.custom_shortcuts:
+                if new_id not in self.custom_shortcuts:
+                    self.custom_shortcuts[new_id] = self.custom_shortcuts[old_id]
+                del self.custom_shortcuts[old_id]
+                merge_changed = True
+            if old_id in self.disabled_shortcuts:
+                # Old global was disabled. Don't propagate the disable to
+                # the merged entry – the user may still want the in-app
+                # shortcut, and they can disable explicitly if they want
+                # neither.
+                self.disabled_shortcuts.discard(old_id)
+                merge_changed = True
+        if merge_changed:
+            self.save_shortcuts()
+
     def save_shortcuts(self):
         """Save custom shortcuts to file"""
         try:
@@ -770,8 +775,15 @@ class ShortcutManager:
         # Backward compat: accept old shortcut IDs
         _LEGACY_IDS = {
             'editor_open_quickmenu': 'editor_open_quicklauncher',
-            'global_quickmenu': 'global_sidekick',
-            'global_quicklauncher': 'global_sidekick',
+            'global_quickmenu': 'sidekick_open',
+            'global_quicklauncher': 'sidekick_open',
+            # Merged: action-pair IDs replaced by single entry with `global: True`
+            'global_superlookup':     'tools_universal_lookup',
+            'global_quicktrans':      'mt_quick_lookup',
+            'global_sidekick':        'sidekick_open',
+            'global_clipboard':       'sidekick_open_clipboard',
+            'global_pushtotalk':      'voice_dictate',
+            'global_alwayson_toggle': 'autofingers_alwayson_toggle',
         }
         shortcut_id = _LEGACY_IDS.get(shortcut_id, shortcut_id)
 
@@ -783,6 +795,11 @@ class ShortcutManager:
 
         return ""
     
+    def is_global(self, shortcut_id: str) -> bool:
+        """Return True if this shortcut should also register as an OS-level
+        global hotkey (works from any application)."""
+        return bool(self.DEFAULT_SHORTCUTS.get(shortcut_id, {}).get("global", False))
+
     def is_enabled(self, shortcut_id: str) -> bool:
         """
         Check if a shortcut is enabled

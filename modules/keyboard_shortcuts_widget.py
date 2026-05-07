@@ -533,8 +533,17 @@ class KeyboardShortcutsWidget(QWidget):
                 cat_item.setData(Qt.ItemDataRole.UserRole, shortcut_id)  # Store ID
                 self.table.setItem(row, 1, cat_item)
                 
-                # Action (column 2)
-                action_item = QTableWidgetItem(format_shortcuts_in_text(data["description"]))
+                # Action (column 2). Prefix with 🌍 for shortcuts that also
+                # register as OS-level global hotkeys (work from any app).
+                action_text = format_shortcuts_in_text(data["description"])
+                if data.get("global"):
+                    action_text = f"🌍 {action_text}"
+                action_item = QTableWidgetItem(action_text)
+                if data.get("global"):
+                    action_item.setToolTip(
+                        "Global – also works when Supervertaler isn't the "
+                        "frontmost app."
+                    )
                 self.table.setItem(row, 2, action_item)
                 
                 # Shortcut (column 3)
