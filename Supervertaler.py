@@ -45621,6 +45621,14 @@ class SupervertalerQt(QMainWindow):
                 self.log(f"▶️ Starting dictation thread (OpenAI Whisper API, language={lang_code}, duration={max_duration}s)...")
             else:
                 self.log(f"▶️ Starting dictation thread (local Whisper model={model_name}, language={lang_code}, duration={max_duration}s)...")
+            # Audible cue so the user knows the hotkey was received and the
+            # mic is now hot. Push-to-talk is fired by Ctrl+Alt+D from any app
+            # via the global hotkey, so without this the user has no feedback
+            # that recording started.
+            try:
+                QApplication.beep()
+            except Exception:
+                pass
             self.dictation_thread.start()
 
         except Exception as e:
