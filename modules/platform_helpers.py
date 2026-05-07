@@ -810,6 +810,21 @@ class _MacNSEventHotkey:
             except ImportError:
                 return 0, None
 
+        # Map named keys to the character NSEvent's
+        # charactersIgnoringModifiers() returns when that key is pressed
+        # with our modifiers held. Add to this map as new combos appear
+        # in shortcut bindings; function keys (f1-f12) don't produce a
+        # printable character and would need keycode-based detection,
+        # so they're not in this map.
+        named_keys = {
+            'space': ' ',
+            'tab': '\t',
+            'enter': '\r',
+            'return': '\r',
+            'escape': '\x1b',
+            'esc': '\x1b',
+        }
+
         flags = 0
         char = None
         for raw in shortcut.lower().split('+'):
@@ -824,10 +839,11 @@ class _MacNSEventHotkey:
                 flags |= NSEventModifierFlagCommand
             elif len(part) == 1:
                 char = part
+            elif part in named_keys:
+                char = named_keys[part]
             elif part:
-                # Multi-char keys (e.g. f1, space) – not supported in this
-                # minimal backend yet. Could extend with a name→character
-                # lookup if we ever bind such combos globally on macOS.
+                # Function keys etc. would need keycode-based detection
+                # rather than the character-comparison approach used here.
                 print(f"[MacNSEvent] Unsupported key in shortcut: {part!r}")
                 return 0, None
         return flags, char

@@ -185,7 +185,7 @@ class ShortcutManager:
         "voice_dictate": {
             "category": "Special",
             "description": "Voice dictation / push-to-talk",
-            "default": "Ctrl+Space",
+            "default": "Ctrl+Shift+Space",
             "action": "start_voice_dictation",
             "global": True,
         },
