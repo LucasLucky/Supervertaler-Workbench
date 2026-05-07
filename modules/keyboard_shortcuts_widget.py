@@ -17,6 +17,8 @@ from modules.shortcut_manager import ShortcutManager
 from modules.shortcut_display import format_shortcut_for_display, format_shortcuts_in_text
 from modules.platform_helpers import IS_WINDOWS, IS_MACOS, IS_LINUX
 from modules.ui_scale import scaled_pt
+from modules.styled_widgets import HelpButton
+from modules.help_system import Topics as HelpTopics
 
 
 from modules.styled_widgets import CheckmarkCheckBox  # noqa: E402
@@ -241,9 +243,18 @@ class KeyboardShortcutsWidget(QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(10)
 
-        # Header
+        # Header with a help button on the right that opens the
+        # cross-platform shortcut cheatsheet on GitBook.
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
         header = QLabel("<h2>⌨️ Keyboard Shortcuts</h2>")
-        layout.addWidget(header)
+        header_row.addWidget(header)
+        header_row.addStretch()
+        header_row.addWidget(HelpButton(
+            HelpTopics.SETTINGS_SHORTCUTS,
+            tooltip="Open the keyboard shortcuts help page (incl. macOS vs Windows symbol cheatsheet)",
+        ))
+        layout.addLayout(header_row)
 
         # Description
         desc = QLabel(
