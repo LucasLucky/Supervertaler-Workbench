@@ -583,7 +583,7 @@ class ShortcutManager:
         "sidekick_open_clipboard": {
             "category": "Sidekick",
             "description": "Open Sidekick – Clipboard tab",
-            "default": "Ctrl+Shift+C",
+            "default": "Ctrl+Alt+C",
             "action": "open_clipboard_tab",
             "global": True,
         },
@@ -758,6 +758,16 @@ class ShortcutManager:
         sk_open = self.custom_shortcuts.get('sidekick_open')
         if sk_open and sk_open.lower() == 'alt+k':
             del self.custom_shortcuts['sidekick_open']
+            self.save_shortcuts()
+
+        # Default-value upgrade for sidekick_open_clipboard: Ctrl+Shift+C
+        # → Ctrl+Alt+C. The old default fired unreliably on Windows
+        # (Ctrl+Shift+C is widely claimed by browsers / DevTools and
+        # other apps), so users who were on the previous default are
+        # bumped to Ctrl+Alt+C; explicit overrides are preserved.
+        sk_clip = self.custom_shortcuts.get('sidekick_open_clipboard')
+        if sk_clip and sk_clip.lower() == 'ctrl+shift+c':
+            del self.custom_shortcuts['sidekick_open_clipboard']
             self.save_shortcuts()
 
     def save_shortcuts(self):

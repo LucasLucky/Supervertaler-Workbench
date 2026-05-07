@@ -2,8 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.457 (May 7, 2026)
+**Current Version:** v1.9.458 (May 8, 2026)
 
+
+## v1.9.458 – May 8, 2026
+
+### Changed (Sidekick Clipboard global hotkey: Ctrl+Shift+C → Ctrl+Alt+C)
+
+- **Default global hotkey for "Open Sidekick – Clipboard tab" changed from `Ctrl+Shift+C` to `Ctrl+Alt+C` (= ⌘⌥C on macOS).** The old default was unreliable on Windows because `Ctrl+Shift+C` is widely claimed by other apps – Chrome / Firefox / Edge bind it to "Inspect element" in their DevTools, several IDEs use it for case conversion or comment commands, and Microsoft apps occasionally grab it for paste-format. With Workbench installed alongside any of those, the global hook would silently lose to whichever app was in the foreground.
+- One-shot migration in [`shortcut_manager.py`](modules/shortcut_manager.py) drops a custom value matching the old `Ctrl+Shift+C` default so the new `Ctrl+Alt+C` default takes effect on next launch. Anyone who'd already explicitly rebound the shortcut to something else is left untouched.
+
+---
 
 ## v1.9.457 – May 7, 2026
 
