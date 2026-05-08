@@ -987,9 +987,32 @@ class LLMClient:
 
         usage = {}
         if hasattr(response, 'usage') and response.usage:
+            cached_tokens = 0
+            # OpenAI native: prompt_tokens_details.cached_tokens reports the
+            # auto-cache hit count (50% off cached input). Available on GPT-4o,
+            # GPT-4-turbo, GPT-5.x and the o-series.
+            details = getattr(response.usage, 'prompt_tokens_details', None)
+            if details is not None:
+                cached_tokens = getattr(details, 'cached_tokens', 0) or 0
+            # OpenRouter → Anthropic flavour: passes Anthropic's cache fields
+            # through directly on the usage object.
+            if not cached_tokens:
+                cached_tokens = getattr(response.usage, 'cache_read_input_tokens', 0) or 0
+            cache_creation_tokens = (
+                getattr(response.usage, 'cache_creation_input_tokens', 0) or 0
+            )
+
             usage = {
                 'input_tokens': getattr(response.usage, 'prompt_tokens', 0) or 0,
                 'output_tokens': getattr(response.usage, 'completion_tokens', 0) or 0,
+                # Tokens served from cache, billed at the provider's cache-read
+                # rate (50% for OpenAI auto-cache, 10% for Anthropic via
+                # OpenRouter, 10% for DeepSeek auto-cache).
+                'cache_read_input_tokens': cached_tokens,
+                # Tokens written to the cache on this call (Anthropic only;
+                # billed at 1.25× input). Zero for native OpenAI / DeepSeek
+                # which auto-cache without a separate write step.
+                'cache_creation_input_tokens': cache_creation_tokens,
             }
 
         return text, usage
@@ -1060,14 +1083,23 @@ class LLMClient:
 
         usage = {}
         if hasattr(response, 'usage') and response.usage:
+            # Anthropic reports `input_tokens` as the UNCACHED portion only;
+            # the cached portion is in cache_creation/cache_read fields.
+            # Normalise to "total input including cache" so the dict shape
+            # matches OpenAI / Gemini conventions and downstream cost
+            # estimation code works the same way for every provider.
+            regular_in = getattr(response.usage, 'input_tokens', 0) or 0
+            cache_creation = getattr(response.usage, 'cache_creation_input_tokens', 0) or 0
+            cache_read = getattr(response.usage, 'cache_read_input_tokens', 0) or 0
+
             usage = {
-                'input_tokens': getattr(response.usage, 'input_tokens', 0) or 0,
+                'input_tokens': regular_in + cache_creation + cache_read,
                 'output_tokens': getattr(response.usage, 'output_tokens', 0) or 0,
-                # Anthropic-specific: cache_creation = bytes written to cache on this
-                # call (billed at 1.25×); cache_read = bytes served from cache
-                # (billed at 0.1×). Zero when caching wasn't requested or hit.
-                'cache_creation_input_tokens': getattr(response.usage, 'cache_creation_input_tokens', 0) or 0,
-                'cache_read_input_tokens': getattr(response.usage, 'cache_read_input_tokens', 0) or 0,
+                # Tokens served from cache, billed at 0.1× the input rate.
+                'cache_read_input_tokens': cache_read,
+                # Tokens written to cache on this call, billed at 1.25× input.
+                # (Anthropic-only field; OpenAI auto-cache has no separate write.)
+                'cache_creation_input_tokens': cache_creation,
             }
 
         return text, usage
@@ -1099,9 +1131,20 @@ class LLMClient:
         usage = {}
         if hasattr(response, 'usage_metadata') and response.usage_metadata:
             um = response.usage_metadata
+            # Gemini 2.5+ implicit caching: when the prompt prefix is stable
+            # and ≥1024 tokens, the API reports the cached portion in
+            # cached_content_token_count. Cached tokens are billed at 25% of
+            # the input rate (75% discount).
+            cached_tokens = getattr(um, 'cached_content_token_count', 0) or 0
+
             usage = {
                 'input_tokens': getattr(um, 'prompt_token_count', 0) or 0,
                 'output_tokens': getattr(um, 'candidates_token_count', 0) or 0,
+                # Normalised cache fields, matching the Anthropic / OpenAI shape.
+                # cache_read = tokens served from cache (75% off for Gemini).
+                # cache_creation is N/A for Gemini's implicit cache and stays 0.
+                'cache_read_input_tokens': cached_tokens,
+                'cache_creation_input_tokens': 0,
             }
 
         return text, usage

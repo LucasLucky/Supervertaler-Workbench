@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.460 (May 8, 2026)
+**Current Version:** v1.9.461 (May 8, 2026)
+
+
+## v1.9.461 – May 8, 2026
+
+### Added (Capture cache-hit token counts from OpenAI and Gemini responses)
+
+- `_call_openai_with_usage` now captures `prompt_tokens_details.cached_tokens` from OpenAI's response (the auto-cache hit count, billed at 50% of the input rate). When the response comes through OpenRouter from an Anthropic model, `cache_read_input_tokens` and `cache_creation_input_tokens` are also captured.
+- `_call_gemini_with_usage` now captures `usage_metadata.cached_content_token_count` from Gemini 2.5+'s implicit-cache response (billed at 25% of the input rate).
+- All three providers (Anthropic, OpenAI-shape, Gemini) now return a normalised `usage` dict with the same shape: `input_tokens` (total, including any cached portion), `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`. This finishes the data-capture half of issue #8 (per-job cost in tokens and EUR) – when the cost UI lands, it can compute the true cache-aware billed cost for every supported provider with no further plumbing.
+
+### Notes
+
+- `input_tokens` is now consistently "total billed input including cache" across all providers (matching OpenAI and Gemini conventions). Anthropic's `usage.input_tokens` natively excludes the cached portion; we add `cache_creation` and `cache_read` back in to give the same total. Existing consumers that compute cost as `input_tokens × input_rate` will now slightly over-estimate when caching is active – the safer-than-actual direction; cache-aware cost calc using the new fields will be added with issue #8.
 
 
 ## v1.9.460 – May 8, 2026
