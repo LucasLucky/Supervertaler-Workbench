@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.465 (May 8, 2026)
+**Current Version:** v1.9.466 (May 8, 2026)
+
+
+## v1.9.466 – May 8, 2026
+
+### Removed (Superbench tool – simplifying the surface area)
+
+- The **Superbench** sub-tab under Tools is gone, along with its Tools-menu entry. It was a multi-model LLM benchmarking workflow (translate the same segments through GPT-4o / Claude / Gemini side by side, score with chrF++, export comparison Excel). Distinct enough from the core translation workflow that the maintenance overhead wasn't justified.
+- Deleted `modules/llm_leaderboard.py` (~785-line backend) and `modules/llm_superbench_ui.py` (PyQt6 panel).
+- Removed `create_llm_leaderboard_tab()` from `Supervertaler.py` (~47 lines).
+- Updated `workbench/reference/faq.md` in the help docs: removed the dedicated Superbench section and the eight inline mentions across feature lists, recommendations, system-requirements notes, and the roadmap. Replaced the "use Superbench to test models" recommendations with a generic "try a couple of models on a representative passage" wording.
+- Internal: the generic `_navigate_to_tool("Superbench")` dispatcher silently no-ops if anything still references that tool name (no callers do after this change).
+
+### Notes
+
+- Same theme as v1.9.463 (Superconverter removal) and v1.9.464 (Text Encoding Repair removal): trimming features that distract from the core translation workflow.
 
 
 ## v1.9.465 – May 8, 2026

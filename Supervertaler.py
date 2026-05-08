@@ -9904,10 +9904,6 @@ class SupervertalerQt(QMainWindow):
         pdf_rescue_action = QAction("📄 &PDF Rescue...", self)
         pdf_rescue_action.triggered.connect(lambda: self._navigate_to_tool("PDF Rescue"))
         tools_menu.addAction(pdf_rescue_action)
-        
-        superbench_action = QAction("📊 Super&bench...", self)
-        superbench_action.triggered.connect(lambda: self._navigate_to_tool("Superbench"))
-        tools_menu.addAction(superbench_action)
 
         superlookup_action = QAction(f"🔍 Super&lookup ({format_shortcut_for_display('Ctrl+K')})...", self)
         # Note: Actual Ctrl+K shortcut handled by QShortcut in setup_global_shortcuts()
@@ -11038,54 +11034,6 @@ class SupervertalerQt(QMainWindow):
                 "There are no images currently loaded."
             )
 
-    def create_llm_leaderboard_tab(self) -> QWidget:
-        """Create the Superbench tab - Benchmark LLM translation quality"""
-        from modules.llm_superbench_ui import LLMLeaderboardUI
-
-        # Create LLM client factory that uses existing API keys
-        def llm_client_factory(provider: str, model_id: str):
-            from modules.llm_clients import LLMClient
-            api_keys = self._get_api_keys()
-
-            # Map provider names to API key names
-            provider_to_key = {
-                "openai": "openai",
-                "claude": "claude",
-                "gemini": "gemini",
-                "mistral": "mistral",
-                "deepseek": "deepseek",
-                "custom_openai": "custom_openai"
-            }
-
-            key_name = provider_to_key.get(provider, provider)
-            api_key = api_keys.get(key_name, "")
-            # Backward compat: if key stored as 'google' instead of 'gemini'
-            if not api_key and provider == 'gemini':
-                api_key = api_keys.get('google', '')
-
-            if not api_key and provider not in ('ollama', 'custom_openai'):
-                raise ValueError(f"No API key configured for {provider}. Please add it in Settings.")
-
-            base_url = None
-            if provider == 'custom_openai':
-                profile = self._get_active_custom_profile()
-                if profile:
-                    base_url = profile.get('endpoint') or None
-                    profile_key = (profile.get('api_key') or '').strip()
-                    api_key = profile_key or api_key or 'not-needed'
-                else:
-                    api_key = api_key or 'not-needed'
-            http_proxy = self._get_proxy_url() if provider != 'gemini' else None
-            return LLMClient(api_key=api_key, provider=provider, model=model_id, base_url=base_url, http_proxy=http_proxy)
-
-        # Create and return the leaderboard UI widget
-        leaderboard_widget = LLMLeaderboardUI(
-            parent=self,
-            llm_client_factory=llm_client_factory
-        )
-
-        return leaderboard_widget
-
     def create_superdocs_tab(self) -> QWidget:
         """Create the Help tab - Online Documentation Viewer"""
         # The embedded docs viewer was removed in favor of online documentation.
@@ -11548,10 +11496,6 @@ class SupervertalerQt(QMainWindow):
         pdf_tab = self.create_pdf_rescue_tab()
         set_help_topic(pdf_tab, HelpTopics.TOOL_PDF_RESCUE)
         modules_tabs.addTab(pdf_tab, "📄 PDF Rescue")
-
-        # Superbench
-        leaderboard_tab = self.create_llm_leaderboard_tab()
-        modules_tabs.addTab(leaderboard_tab, "📊 Superbench")
 
         # Superdocs removed (online GitBook will be used instead)
 
