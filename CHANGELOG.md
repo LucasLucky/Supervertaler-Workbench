@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.462 (May 8, 2026)
+**Current Version:** v1.9.463 (May 8, 2026)
+
+
+## v1.9.463 – May 8, 2026
+
+### Removed (Superconverter tool – simplifying the surface area)
+
+- The **Superconverter** sub-tab under Tools is gone, along with its Tools-menu entry. It bundled three things: an "Export project as Markdown table" button, a "Convert DOCX/TXT to Markdown" workflow (single + batch), and a TMX-conversion placeholder that was never wired up. None of these were core to the translation workflow and tracking suggested they were rarely used.
+- The Markdown-table export functionality survives where it's actually useful: **File → Export → AI-Readable Markdown (.md)**, which calls the same `export_bilingual_table_markdown` method as before.
+- Removed the per-document Markdown conversion helpers (`convert_document_to_markdown`, `batch_convert_documents_to_markdown`, `_convert_docx_to_markdown`, `_convert_txt_to_markdown`). 205 lines of dead code gone after this commit.
+- Internal: the generic `_navigate_to_tool("Superconverter")` dispatcher silently no-ops if anything still references that tool name (no callers do after this change).
 
 
 ## v1.9.462 – May 8, 2026
