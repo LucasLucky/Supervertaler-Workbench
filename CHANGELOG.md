@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.466 (May 8, 2026)
+**Current Version:** v1.9.467 (May 9, 2026)
+
+
+## v1.9.467 – May 9, 2026
+
+### Changed (Tools tab retired – PDF Rescue and TMX Editor now open in their own windows)
+
+- The **Tools** main tab is gone. PDF Rescue and TMX Editor were the only two remaining sub-tabs after this week's removals (Superconverter, Text Encoding Repair, Superbench), and an entire main tab for two tools wasn't pulling its weight.
+- Both tools are now reachable from the **Tools menu** at the top of the window:
+  - **Tools → 🔍 PDF Rescue...** opens PDF Rescue in its own resizable window.
+  - **Tools → ✏️ TMX Editor...** opens TMX Editor in its own resizable window.
+- Each tool window is reused if already open: clicking the menu again raises the existing window to the front rather than spawning duplicates. Closing the window destroys the underlying widget so the next open is a fresh instance.
+- The Workbench's main tab strip is now: Editor / TMs / Termbases / AI / Settings (5 tabs, was 6).
+- Internal: removed `create_specialised_tools_tab`, `create_pdf_rescue_tab`, `create_tmx_editor_tab`, and `_navigate_to_tool` (no callers after this change). Renamed the SuperlookupTab construction (which is needed for global hotkey registration) into a dedicated `_setup_superlookup_hotkeys` method.
+- Updated all hardcoded Settings tab indices from `5` to `4` to match the new layout (View → Navigate To → Settings, post-config-import navigation, MT Settings shortcut, etc.).
+
+### Updated (Workbench help docs)
+
+- `workbench/tools/tmx-editor.md` and `workbench/tools/pdf-rescue.md`: "Where to find it" sections updated. Both now say "open the Tools menu at the top of the window" instead of "go to the Tools tab".
 
 
 ## v1.9.466 – May 8, 2026

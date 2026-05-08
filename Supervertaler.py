@@ -8110,7 +8110,7 @@ class SupervertalerQt(QMainWindow):
             dialog.exec()
             
             # Navigate to Settings → Features tab
-            self.main_tabs.setCurrentIndex(5)  # Settings tab (5 in the post-v1.9.422 layout: Editor/TMs/Termbases/AI/Tools/Settings)
+            self.main_tabs.setCurrentIndex(4)  # Settings tab (post-v1.9.467 layout: Editor/TMs/Termbases/AI/Settings)
             if hasattr(self, 'settings_tabs'):
                 # Find the Features tab index
                 for i in range(self.settings_tabs.count()):
@@ -8369,7 +8369,7 @@ class SupervertalerQt(QMainWindow):
 
                 # Navigate to Features tab if checkbox is checked
                 if open_features_checkbox.isChecked():
-                    self.main_tabs.setCurrentIndex(5)  # Settings tab
+                    self.main_tabs.setCurrentIndex(4)  # Settings tab
                     if hasattr(self, 'settings_tabs'):
                         for i in range(self.settings_tabs.count()):
                             if "Features" in self.settings_tabs.tabText(i):
@@ -9802,12 +9802,11 @@ class SupervertalerQt(QMainWindow):
         go_prompt_manager_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(3) if hasattr(self, 'main_tabs') else None)
         nav_menu.addAction(go_prompt_manager_action)
 
-        go_tools_action = QAction("🛠️ &Tools", self)
-        go_tools_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(4) if hasattr(self, 'main_tabs') else None)
-        nav_menu.addAction(go_tools_action)
+        # Tools-tab navigation entry retired in v1.9.467: PDF Rescue and TMX
+        # Editor now open in their own windows from the Tools menu instead.
 
         go_settings_action = QAction("⚙️ &Settings", self)
-        go_settings_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(5) if hasattr(self, 'main_tabs') else None)
+        go_settings_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(4) if hasattr(self, 'main_tabs') else None)
         nav_menu.addAction(go_settings_action)
         
         view_menu.addSeparator()
@@ -9900,9 +9899,9 @@ class SupervertalerQt(QMainWindow):
         # Tools Menu
         tools_menu = menubar.addMenu("&Tools")
         
-        # Tools in same order as Tools tab
+        # Tools (open in their own windows; no embedded Tools tab anymore)
         pdf_rescue_action = QAction("📄 &PDF Rescue...", self)
-        pdf_rescue_action.triggered.connect(lambda: self._navigate_to_tool("PDF Rescue"))
+        pdf_rescue_action.triggered.connect(self.open_pdf_rescue_window)
         tools_menu.addAction(pdf_rescue_action)
 
         superlookup_action = QAction(f"🔍 Super&lookup ({format_shortcut_for_display('Ctrl+K')})...", self)
@@ -9910,9 +9909,9 @@ class SupervertalerQt(QMainWindow):
         # which calls show_concordance_search() for proper selection capture
         superlookup_action.triggered.connect(self.show_concordance_search)
         tools_menu.addAction(superlookup_action)
-        
+
         tmx_editor_action = QAction("✏️ T&MX Editor...", self)
-        tmx_editor_action.triggered.connect(lambda: self._navigate_to_tool("TMX Editor"))
+        tmx_editor_action.triggered.connect(self.open_tmx_editor_window)
         tools_menu.addAction(tmx_editor_action)
         
         tools_menu.addSeparator()
@@ -10345,11 +10344,14 @@ class SupervertalerQt(QMainWindow):
         # Keep backward compatibility reference
         self.document_views_widget = self.main_tabs
         
-        # 4. TOOLS
-        tools_tab = self.create_specialised_tools_tab()
-        self.main_tabs.addTab(tools_tab, "🛠️ Tools")
+        # The "Tools" main tab was retired in v1.9.467: PDF Rescue and TMX Editor
+        # now open in their own windows from the Tools menu, so the embedded
+        # tab no longer pulls its weight. SuperlookupTab still needs to be
+        # constructed though – its __init__ registers the global Ctrl+Alt+L /
+        # Ctrl+Alt+Q / Alt+K hotkeys – so do that here as a side-effect.
+        self._setup_superlookup_hotkeys()
 
-        # 5. SETTINGS
+        # 4. SETTINGS
         settings_tab = self.create_settings_tab()
         self.main_tabs.addTab(settings_tab, "⚙️ Settings")
         
@@ -10392,39 +10394,63 @@ class SupervertalerQt(QMainWindow):
         return prompt_widget
     
     
-    def create_tmx_editor_tab(self) -> QWidget:
-        """Create the TMX Editor tab - Edit TMs"""
+    def open_tmx_editor_window(self):
+        """Open the TMX Editor in a standalone window.
+
+        Reuses any existing window if one is already open instead of stacking
+        multiple instances on every menu click.
+        """
+        from PyQt6.QtCore import Qt
         from modules.tmx_editor_qt import TmxEditorUIQt
-        
-        # Create container widget with Superlookup style header
-        container = QWidget()
-        layout = QVBoxLayout(container)
+
+        existing = getattr(self, '_tmx_editor_window', None)
+        if existing is not None:
+            try:
+                existing.show()
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                # Window was destroyed without our destroyed-signal callback
+                # firing (rare). Fall through and create a new one.
+                self._tmx_editor_window = None
+
+        window = QWidget()
+        window.setWindowFlags(Qt.WindowType.Window)
+        window.setWindowTitle("📝 TMX Editor – Supervertaler")
+        window.resize(1200, 800)
+
+        layout = QVBoxLayout(window)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(5)  # Reduced from 10 to 5 for tighter spacing
-        
-        # Header (matches Superlookup / PDF Rescue style)
+        layout.setSpacing(5)
+
         header = QLabel("📝 TMX Editor")
         header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
-        layout.addWidget(header, 0)  # 0 = no stretch, stays compact
-        
-        # Description box (matches Superlookup / PDF Rescue style)
+        layout.addWidget(header, 0)
+
         description = QLabel(
             "Edit translation memory files directly - inspired by Heartsome TMX Editor.\n"
             "Open, edit, filter, and manage your TMX translation memories."
         )
         description.setWordWrap(True)
-        description.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(description, 0)  # 0 = no stretch, stays compact
-        
-        # Create TMX Editor widget (embedded mode) - pass database manager
-        tmx_editor = TmxEditorUIQt(parent=None, standalone=False, db_manager=self.db_manager)
-        tmx_editor.translator_name = self.get_translator_name()
-        layout.addWidget(tmx_editor, 1)  # 1 = stretch factor, expands to fill space
+        description.setStyleSheet(
+            "color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;"
+        )
+        layout.addWidget(description, 0)
 
-        # Store reference for potential future use
+        # Pass the shared database manager so the window can access TMs.
+        tmx_editor = TmxEditorUIQt(parent=window, standalone=False, db_manager=self.db_manager)
+        tmx_editor.translator_name = self.get_translator_name()
+        layout.addWidget(tmx_editor, 1)
         self.tmx_editor_embedded = tmx_editor
-        
-        return container
+
+        self._tmx_editor_window = window
+        # Drop the reference when the window closes so a subsequent click on
+        # Tools → TMX Editor opens a fresh instance instead of trying to
+        # reuse a deleted Qt object.
+        window.destroyed.connect(lambda *a: setattr(self, '_tmx_editor_window', None))
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        window.show()
     
     def create_reference_images_tab(self) -> QWidget:
         """Create the Image Context tab - Load images as visual context for AI translation"""
@@ -10678,16 +10704,35 @@ class SupervertalerQt(QMainWindow):
         
         return tab
     
-    def create_pdf_rescue_tab(self) -> QWidget:
-        """Create the PDF Rescue tab - AI OCR"""
+    def open_pdf_rescue_window(self):
+        """Open PDF Rescue in a standalone window. Reuses an existing window
+        if already open."""
+        from PyQt6.QtCore import Qt
         from modules.pdf_rescue_Qt import PDFRescueQt
-        
-        # Create PDF Rescue widget (embedded mode, not standalone)
-        pdf_rescue_widget = QWidget()
+
+        existing = getattr(self, '_pdf_rescue_window', None)
+        if existing is not None:
+            try:
+                existing.show()
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                self._pdf_rescue_window = None
+
+        window = QWidget()
+        window.setWindowFlags(Qt.WindowType.Window)
+        window.setWindowTitle("🔍 PDF Rescue – Supervertaler")
+        window.resize(1100, 800)
+
+        # PDFRescueQt builds its own header / layout into the supplied widget.
         self.pdf_rescue_qt = PDFRescueQt(self, standalone=False)
-        self.pdf_rescue_qt.create_tab(pdf_rescue_widget)
-        
-        return pdf_rescue_widget
+        self.pdf_rescue_qt.create_tab(window)
+
+        self._pdf_rescue_window = window
+        window.destroyed.connect(lambda *a: setattr(self, '_pdf_rescue_window', None))
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        window.show()
     
     # ═══════════════════════════════════════════════════════════════════════════
     # Image Extractor Helper Methods
@@ -11482,56 +11527,30 @@ class SupervertalerQt(QMainWindow):
     # create_translation_memories_tab() and create_termbases_tab()
     # directly. The wrapper widget and its method are gone.
 
-    def create_specialised_tools_tab(self):
-        """Create the Specialised Tools tab with horizontal tab navigation"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def _setup_superlookup_hotkeys(self):
+        """Construct the (hidden) SuperlookupTab so its __init__ registers
+        the global hotkeys (Ctrl+Alt+L, Ctrl+Alt+Q, Alt+K).
 
-        modules_tabs = QTabWidget()
-        self.modules_tabs = modules_tabs  # Store for navigation
+        Pre-v1.9.467 this lived inside create_specialised_tools_tab(),
+        which also built the embedded Tools-tab UI. The Tools tab has
+        been retired; the SuperlookupTab construction stays because the
+        global hotkey registration happens as a side-effect of __init__.
 
-        # Add tool tabs (alphabetical order)
-        pdf_tab = self.create_pdf_rescue_tab()
-        set_help_topic(pdf_tab, HelpTopics.TOOL_PDF_RESCUE)
-        modules_tabs.addTab(pdf_tab, "📄 PDF Rescue")
-
-        # Superdocs removed (online GitBook will be used instead)
-
-        # SuperlookupTab is still created here for two reasons:
-        # (a) it registers the global Ctrl+Alt+L hotkey in its __init__
-        # (b) it's the fallback if the floating assistant isn't available
-        # But it's no longer added to the sidebar – the floating assistant
-        # hosts the primary Superlookup tab now.
+        AutoFingers (voice commands / dictation) is registered separately
+        via Sidekick (modules/autofingers_tab.py).
+        """
         lookup_tab = SuperlookupTab(self, user_data_path=self.user_data_path)
-        lookup_tab.hide()  # Not in the sidebar – prevent rendering as a floating child widget
+        lookup_tab.hide()  # Never shown – purely for hotkey side effects
         self.lookup_tab = lookup_tab
 
-        # Log global hotkey status to the session log (visible in-app)
         if hasattr(lookup_tab, 'hotkey_registered') and lookup_tab.hotkey_registered:
             failed = getattr(getattr(lookup_tab, '_hotkey_manager', None), 'failed_hotkeys', [])
             if failed:
-                self.log(f"\u26A0 Global hotkeys: some failed to register: {', '.join(failed)}")
+                self.log(f"⚠ Global hotkeys: some failed to register: {', '.join(failed)}")
             else:
-                self.log("\u2328 Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+Q, Alt+K)")
+                self.log("⌨ Global hotkeys registered (Ctrl+Alt+L, Ctrl+Alt+Q, Alt+K)")
         else:
-            self.log("\u26A0 Global hotkeys NOT registered – check console for errors")
-
-        # AutoFingers (voice commands & dictation) lives in Sidekick now –
-        # see modules/autofingers_tab.py. Reach it via Ctrl+Q → AutoFingers
-        # tab, or via the right-side Workbench Tools menu inside Sidekick.
-
-        tmx_tab = self.create_tmx_editor_tab()
-        set_help_topic(tmx_tab, HelpTopics.TOOL_TMX_EDITOR)
-        modules_tabs.addTab(tmx_tab, "✏️ TMX Editor")
-
-        layout.addWidget(modules_tabs)
-
-        # Apply dark sidebar style if current theme is dark
-        self._update_tools_sidebar_theme()
-
-        return tab
+            self.log("⚠ Global hotkeys NOT registered – check console for errors")
     
     def create_translation_memories_tab(self):
         """Create the Translation Memories tab with nested sub-tabs"""
@@ -47143,8 +47162,8 @@ class SupervertalerQt(QMainWindow):
             subtab_name: Name of the sub-tab to navigate to (e.g., "AI Settings")
         """
         if hasattr(self, 'main_tabs'):
-            # Main tabs (post-v1.9.422): Grid=0, TMs=1, Termbases=2, AI=3, Tools=4, Settings=5
-            self.main_tabs.setCurrentIndex(5)
+            # Main tabs (post-v1.9.467): Grid=0, TMs=1, Termbases=2, AI=3, Settings=4
+            self.main_tabs.setCurrentIndex(4)
 
             # Navigate to specific sub-tab if requested
             if subtab_name and hasattr(self, 'settings_tabs'):
@@ -47185,18 +47204,6 @@ class SupervertalerQt(QMainWindow):
                 source_lang=source_lang,
                 target_lang=target_lang,
             )
-    
-    def _navigate_to_tool(self, tool_name: str):
-        """Navigate to a specific tool in the Tools tab"""
-        if hasattr(self, 'main_tabs'):
-            # Main tabs (post-v1.9.422): Grid=0, TMs=1, Termbases=2, AI=3, Tools=4, Settings=5
-            self.main_tabs.setCurrentIndex(4)  # Switch to Tools tab
-            # Then switch to the specific tool sub-tab
-            if hasattr(self, 'modules_tabs'):
-                for i in range(self.modules_tabs.count()):
-                    if tool_name in self.modules_tabs.tabText(i):
-                        self.modules_tabs.setCurrentIndex(i)
-                        break
     
     def load_llm_settings(self) -> Dict[str, str]:
         """Load LLM settings from user preferences"""
@@ -53253,10 +53260,10 @@ class SuperlookupTab(QWidget):
     def _open_mt_settings(self):
         """Navigate to Settings → MT Settings tab"""
         if self.main_window:
-            # Go to main Settings tab (Settings is index 5 in the
-            # post-v1.9.422 layout: Editor/TMs/Termbases/AI/Tools/Settings)
+            # Go to main Settings tab (Settings is index 4 in the
+            # post-v1.9.467 layout: Editor/TMs/Termbases/AI/Settings)
             if hasattr(self.main_window, 'main_tabs'):
-                self.main_window.main_tabs.setCurrentIndex(5)
+                self.main_window.main_tabs.setCurrentIndex(4)
             # Go to MT Settings sub-tab (index 3: General=0, AI=1, Language=2, MT=3)
             if hasattr(self.main_window, 'settings_tabs'):
                 self.main_window.settings_tabs.setCurrentIndex(3)
