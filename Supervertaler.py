@@ -9915,10 +9915,6 @@ class SupervertalerQt(QMainWindow):
         superlookup_action.triggered.connect(self.show_concordance_search)
         tools_menu.addAction(superlookup_action)
         
-        encoding_action = QAction("🔧 &Text Encoding Repair...", self)
-        encoding_action.triggered.connect(lambda: self._navigate_to_tool("Text Encoding Repair"))
-        tools_menu.addAction(encoding_action)
-        
         tmx_editor_action = QAction("✏️ T&MX Editor...", self)
         tmx_editor_action.triggered.connect(lambda: self._navigate_to_tool("TMX Editor"))
         tools_menu.addAction(tmx_editor_action)
@@ -10696,17 +10692,6 @@ class SupervertalerQt(QMainWindow):
         self.pdf_rescue_qt.create_tab(pdf_rescue_widget)
         
         return pdf_rescue_widget
-    
-    def create_encoding_repair_tab(self) -> QWidget:
-        """Create the Encoding Repair tab - Text Encoding Tool"""
-        from modules.encoding_repair_Qt import EncodingRepairQt
-        
-        # Create Encoding Repair widget (embedded mode, not standalone)
-        encoding_repair_widget = QWidget()
-        self.encoding_repair_qt = EncodingRepairQt(self, standalone=False)
-        self.encoding_repair_qt.create_tab(encoding_repair_widget)
-        
-        return encoding_repair_widget
     
     # ═══════════════════════════════════════════════════════════════════════════
     # Image Extractor Helper Methods
@@ -11592,9 +11577,6 @@ class SupervertalerQt(QMainWindow):
         # AutoFingers (voice commands & dictation) lives in Sidekick now –
         # see modules/autofingers_tab.py. Reach it via Ctrl+Q → AutoFingers
         # tab, or via the right-side Workbench Tools menu inside Sidekick.
-
-        encoding_tab = self.create_encoding_repair_tab()
-        modules_tabs.addTab(encoding_tab, "🔧 Text Encoding Repair")
 
         tmx_tab = self.create_tmx_editor_tab()
         set_help_topic(tmx_tab, HelpTopics.TOOL_TMX_EDITOR)

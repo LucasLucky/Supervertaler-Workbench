@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.463 (May 8, 2026)
+**Current Version:** v1.9.464 (May 8, 2026)
+
+
+## v1.9.464 – May 8, 2026
+
+### Removed (Text Encoding Repair tool – simplifying the surface area)
+
+- The **Text Encoding Repair** sub-tab under Tools is gone, along with its Tools-menu entry. It detected and fixed UTF-8/Latin-1/Windows-1252 mojibake in translation files. Standard external tools (Notepad++ "Convert to UTF-8", or `ftfy` on the command line) cover the same ground, so keeping a custom in-app implementation wasn't pulling its weight.
+- Deleted the three module files: `modules/encoding_repair.py` (backend), `modules/encoding_repair_Qt.py` (PyQt6 panel), and `modules/encoding_repair_ui.py` (legacy Tkinter UI, no longer wired in anywhere).
+- Workbench help docs updated: `troubleshooting/import-export-errors.md` and `troubleshooting/common-issues.md` now point users at Notepad++ and `ftfy` for encoding-fix workflows instead of the (now-removed) in-app tool.
+
+### Removed in v1.9.463 (continued)
+
+Same theme as v1.9.463's Superconverter removal — trimming features that distract from the core translation workflow.
 
 
 ## v1.9.463 – May 8, 2026
