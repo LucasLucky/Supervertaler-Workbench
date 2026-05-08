@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.464 (May 8, 2026)
+**Current Version:** v1.9.465 (May 8, 2026)
+
+
+## v1.9.465 – May 8, 2026
+
+### Note (Project field on term entries – companion to Trados v4.19.88)
+
+- The Workbench has had a **Project** free-text metadata field on term entries since the Workbench database migration introduced the `project` column some versions back, and the Workbench's term-entry editor already exposes it (the field appears between Notes and Client in the metadata group).
+- The companion Trados plugin v4.19.88 release (same day) brings the Trados side up to parity: the column is now visible in the Trados Termbase Editor grid, in the term-entry edit dialog, and is round-tripped through the Trados-side INSERT/UPDATE path. Workbench and Trados now share the same field across the SQLite database.
+- No code changes needed in the Workbench for this release; bumped here purely to keep the two products' release cadences in lockstep.
 
 
 ## v1.9.464 – May 8, 2026
