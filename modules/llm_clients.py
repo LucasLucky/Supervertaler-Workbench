@@ -792,7 +792,8 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         images: Optional[List] = None,
         system_prompt: Optional[str] = None,
-        skip_cleaning: bool = False
+        skip_cleaning: bool = False,
+        enable_prompt_caching: bool = False,
     ) -> str:
         """
         Translate text using configured LLM
@@ -827,17 +828,17 @@ class LLMClient:
 
         # Call appropriate provider
         if self.provider in ("openai", "custom_openai"):
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "claude":
-            result = self._call_claude(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
+            result = self._call_claude(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "gemini":
             result = self._call_gemini(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
         elif self.provider == "mistral":
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "deepseek":
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "openrouter":
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt)
+            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "ollama":
             result = self._call_ollama(prompt, max_tokens=max_tokens, system_prompt=system_prompt)
         else:
@@ -861,7 +862,8 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         images: Optional[List] = None,
         system_prompt: Optional[str] = None,
-        skip_cleaning: bool = False
+        skip_cleaning: bool = False,
+        enable_prompt_caching: bool = False,
     ) -> Tuple[str, Dict]:
         """
         Same as translate() but returns (text, usage_dict).
@@ -883,9 +885,9 @@ class LLMClient:
             images = None
 
         if self.provider in ("openai", "custom_openai", "mistral", "deepseek", "openrouter"):
-            result, usage = self._call_openai_with_usage(prompt, max_tokens=max_tokens, images=images if self.provider in ("openai", "custom_openai") else None, system_prompt=system_prompt)
+            result, usage = self._call_openai_with_usage(prompt, max_tokens=max_tokens, images=images if self.provider in ("openai", "custom_openai") else None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "claude":
-            result, usage = self._call_claude_with_usage(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
+            result, usage = self._call_claude_with_usage(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "gemini":
             result, usage = self._call_gemini_with_usage(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
         elif self.provider == "ollama":
@@ -899,8 +901,16 @@ class LLMClient:
 
         return result, usage
 
-    def _call_openai_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> Tuple[str, Dict]:
-        """Call OpenAI-compatible API and return (text, usage_dict)."""
+    def _call_openai_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None, enable_prompt_caching: bool = False) -> Tuple[str, Dict]:
+        """Call OpenAI-compatible API and return (text, usage_dict).
+
+        enable_prompt_caching only affects OpenRouter when fronting an
+        Anthropic model (anthropic/claude-*). In that case the system
+        message is sent as a content array with cache_control:ephemeral
+        so OpenRouter passes the marker through to Anthropic. For native
+        OpenAI / DeepSeek the flag is a no-op – they auto-cache stable
+        prefixes ≥1024 tokens with no marker required.
+        """
         try:
             from openai import OpenAI
         except ImportError:
@@ -936,9 +946,27 @@ class LLMClient:
             for img_ref, img_base64 in images:
                 content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}})
 
+        # OpenRouter passes cache_control through to Anthropic when expressed
+        # via the OpenAI-compatible content-array form. Bare OpenAI/DeepSeek/
+        # Mistral/Grok ignore the marker.
+        is_openrouter_anthropic = (
+            self.provider == "openrouter"
+            and self.model.lower().startswith("anthropic/")
+        )
+
         messages = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            if enable_prompt_caching and is_openrouter_anthropic:
+                messages.append({
+                    "role": "system",
+                    "content": [{
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }],
+                })
+            else:
+                messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": content})
 
         api_params = {"model": self.model, "messages": messages, "timeout": timeout_seconds}
@@ -966,8 +994,16 @@ class LLMClient:
 
         return text, usage
 
-    def _call_claude_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> Tuple[str, Dict]:
-        """Call Claude API and return (text, usage_dict)."""
+    def _call_claude_with_usage(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None, enable_prompt_caching: bool = False) -> Tuple[str, Dict]:
+        """Call Claude API and return (text, usage_dict).
+
+        enable_prompt_caching: caller asserts the system prompt will be reused
+        byte-identically across multiple calls within ~5 minutes (e.g. batch
+        translate sending one big system prompt with N batches of segments).
+        When True, the system prompt is sent as a content block with
+        cache_control:ephemeral so cache writes are billed at 1.25× and
+        cache reads at 0.1× of the normal input rate.
+        """
         try:
             import anthropic
         except ImportError:
@@ -1004,7 +1040,17 @@ class LLMClient:
             "timeout": timeout_seconds
         }
         if system_prompt:
-            api_params["system"] = system_prompt
+            if enable_prompt_caching:
+                # Mark the system prompt as ephemeral-cached. First call within a
+                # ~5-minute window pays 1.25× the input rate (cache write); subsequent
+                # calls with the byte-identical system prompt pay 0.1× (cache read).
+                api_params["system"] = [{
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }]
+            else:
+                api_params["system"] = system_prompt
 
         response = client.messages.create(**api_params)
 
@@ -1017,6 +1063,11 @@ class LLMClient:
             usage = {
                 'input_tokens': getattr(response.usage, 'input_tokens', 0) or 0,
                 'output_tokens': getattr(response.usage, 'output_tokens', 0) or 0,
+                # Anthropic-specific: cache_creation = bytes written to cache on this
+                # call (billed at 1.25×); cache_read = bytes served from cache
+                # (billed at 0.1×). Zero when caching wasn't requested or hit.
+                'cache_creation_input_tokens': getattr(response.usage, 'cache_creation_input_tokens', 0) or 0,
+                'cache_read_input_tokens': getattr(response.usage, 'cache_read_input_tokens', 0) or 0,
             }
 
         return text, usage
@@ -1055,8 +1106,12 @@ class LLMClient:
 
         return text, usage
 
-    def _call_openai(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> str:
-        """Call OpenAI API with GPT-5/o1/o3 reasoning model support and vision capability"""
+    def _call_openai(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None, enable_prompt_caching: bool = False) -> str:
+        """Call OpenAI API with GPT-5/o1/o3 reasoning model support and vision capability.
+
+        enable_prompt_caching: see _call_openai_with_usage. Only effective for
+        OpenRouter→Anthropic; OpenAI / DeepSeek auto-cache without a marker.
+        """
         print(f"🔵 _call_openai START: model={self.model}, prompt_len={len(prompt)}, max_tokens={max_tokens}, images={len(images) if images else 0}, has_system={bool(system_prompt)}")
 
         try:
@@ -1116,10 +1171,26 @@ class LLMClient:
             # Standard text-only format
             content = prompt
 
+        # OpenRouter → Anthropic: pass cache_control through via OpenAI content array.
+        is_openrouter_anthropic = (
+            self.provider == "openrouter"
+            and self.model.lower().startswith("anthropic/")
+        )
+
         # Build messages list
         messages = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            if enable_prompt_caching and is_openrouter_anthropic:
+                messages.append({
+                    "role": "system",
+                    "content": [{
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }],
+                })
+            else:
+                messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": content})
 
         # Build API call parameters
@@ -1175,8 +1246,16 @@ class LLMClient:
                 print(f"   Response: {e.response}")
             raise  # Re-raise to be caught by calling code
     
-    def _call_claude(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> str:
-        """Call Anthropic Claude API with vision support"""
+    def _call_claude(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None, enable_prompt_caching: bool = False) -> str:
+        """Call Anthropic Claude API with vision support.
+
+        enable_prompt_caching: when True, the system prompt is sent as a
+        content block with cache_control:ephemeral so subsequent calls
+        within ~5 minutes that share the same system prompt pay 0.1× the
+        input rate on the cached portion. Pass False for one-shot calls
+        (chat, single-segment translate) – the 1.25× write surcharge is
+        wasted there.
+        """
         try:
             import anthropic
         except ImportError:
@@ -1233,7 +1312,15 @@ class LLMClient:
 
         # Add system prompt if provided (Claude uses 'system' parameter, not a message)
         if system_prompt:
-            api_params["system"] = system_prompt
+            if enable_prompt_caching:
+                # See _call_claude_with_usage for the rationale on cache_control.
+                api_params["system"] = [{
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }]
+            else:
+                api_params["system"] = system_prompt
 
         response = client.messages.create(**api_params)
 

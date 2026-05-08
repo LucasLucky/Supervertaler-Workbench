@@ -7087,10 +7087,16 @@ class PreTranslationWorker(QThread):
                 elif not api_key:
                     api_key = api_keys.get('custom_openai', '') or 'not-needed'
 
-            # Build batch prompt
-            batch_prompt_parts = []
-            
-            # Get base prompt from prompt library
+            # Build batch prompt – split into a static cacheable system prompt
+            # (base instructions, glossary, project context) and a per-batch
+            # user prompt (segment list). Anthropic prompt caching marks the
+            # system prompt as ephemeral so batches 2..N hit the 0.1× cache-read
+            # rate instead of the full input rate; OpenRouter→Anthropic gets
+            # the same treatment via OpenAI's content-array form. Other
+            # providers ignore the marker.
+
+            # Get base prompt from prompt library – becomes the system prompt
+            # so that it's byte-stable across batches in this run and cacheable.
             base_prompt = None
             if self.prompt_manager and batch_segments:
                 try:
@@ -7113,14 +7119,16 @@ class PreTranslationWorker(QThread):
                         base_prompt = full_prompt
                 except Exception:
                     base_prompt = None
-            
-            if base_prompt:
-                batch_prompt_parts.append(base_prompt)
-            else:
+
+            # User-message portion: critical instructions + the actual segments.
+            # This is per-batch and intentionally NOT cached.
+            batch_prompt_parts = []
+            if not base_prompt:
+                # Fallback when no prompt manager is available – include the
+                # minimal language pair instruction in the user prompt itself.
                 batch_prompt_parts.append(f"Translate the following text segments from {source_lang} to {target_lang}.")
-            
-            # Add batch instructions
-            batch_prompt_parts.append(f"\n**SEGMENTS TO TRANSLATE ({len(batch_segments)} segments):**")
+
+            batch_prompt_parts.append(f"**SEGMENTS TO TRANSLATE ({len(batch_segments)} segments):**")
             batch_prompt_parts.append("\n⚠️ CRITICAL INSTRUCTIONS:")
             batch_prompt_parts.append(f"1. You must provide EXACTLY one translation per segment")
             batch_prompt_parts.append(f"2. You MUST translate ALL {len(batch_segments)} segments")
@@ -7128,18 +7136,18 @@ class PreTranslationWorker(QThread):
             batch_prompt_parts.append("4. Line breaks: If the source segment contains line breaks, preserve them in your translation.")
             batch_prompt_parts.append("   The number label (e.g. '40.') appears only ONCE at the start; continuation lines have no number.")
             batch_prompt_parts.append("5. NO explanations, NO commentary, ONLY the numbered translations\n")
-            
+
             batch_prompt_parts.append("**SEGMENTS TO TRANSLATE:**\n")
-            
+
             # Add all segments
             for row_index, seg in batch_segments:
                 batch_prompt_parts.append(f"{seg.id}. {seg.source}")
-            
+
             batch_prompt_parts.append("\n**YOUR TRANSLATIONS (numbered list):**")
             batch_prompt_parts.append("Begin your translations now:")
-            
+
             batch_prompt = "\n".join(batch_prompt_parts)
-            
+
             # Create client
             client = LLMClient(
                 api_key=api_key,
@@ -7149,12 +7157,21 @@ class PreTranslationWorker(QThread):
                 http_proxy=self.http_proxy
             )
 
-            # Call LLM with batch prompt (no custom_prompt parameter - it's all in the text)
+            # Call LLM. enable_prompt_caching: the system prompt
+            # (base_prompt) is byte-stable across every batch in this run, so
+            # caching pays off from batch 2 onwards. Anthropic native +
+            # OpenRouter→Anthropic add explicit cache_control markers;
+            # OpenAI / DeepSeek / Gemini 2.5+ benefit from automatic implicit
+            # caching at the provider layer; other providers ignore the flag.
             result = client.translate(
                 text=batch_prompt,
                 source_lang=source_lang,
                 target_lang=target_lang,
-                custom_prompt=None  # We built the full prompt already
+                # custom_prompt=batch_prompt prevents translate() from wrapping
+                # the user message with its own "Translate the following…" prefix.
+                custom_prompt=batch_prompt,
+                system_prompt=base_prompt,
+                enable_prompt_caching=True,
             )
             
             # Parse the numbered response

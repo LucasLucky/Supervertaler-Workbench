@@ -2,7 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.459 (May 8, 2026)
+**Current Version:** v1.9.460 (May 8, 2026)
+
+
+## v1.9.460 – May 8, 2026
+
+### Added (Anthropic prompt caching for batch translation – ~80% input-cost reduction on cached tokens)
+
+- Pre-translation batch runs now mark the static portion of each batch's prompt (the prompt-library template, glossary, and project context built by `prompt_manager.build_final_prompt`) with Anthropic's `cache_control: {"type": "ephemeral"}` marker, so the first batch in a run pays a one-time 1.25× cache-write surcharge and every subsequent batch within ~5 minutes pays only 0.1× of the input rate for the cached portion. For large jobs (e.g. a 1000-segment patent with full glossary context on Sonnet 4.6) this drops the API bill by roughly 60–65% overall and ~80% on the cached portion alone.
+- The batch worker now sends the static instructions as a `system` prompt and the per-batch segment list as the `user` message, so the cacheable prefix is byte-stable across batches even when the last batch has a different segment count. Single-shot callers (chat, single-segment translate) still pass `enable_prompt_caching=False` to avoid the 1.25× write surcharge on calls that won't be reused.
+- Anthropic native: `system` is sent as a content block with `cache_control: ephemeral` via the official Python SDK.
+- OpenRouter → Anthropic: same marker passed through in the OpenAI-compatible content-array form, so OpenRouter forwards it correctly to the underlying Anthropic provider.
+- Other providers (OpenAI, DeepSeek, Gemini 2.5+) get implicit automatic caching at the provider layer because the system prompt is now byte-stable across batches; no marker required. Mistral / Grok / Ollama: no caching available, the flag is a no-op.
+- The `usage` dict returned from `translate_with_usage()` now also captures Anthropic's `cache_creation_input_tokens` and `cache_read_input_tokens` so cost surfacing (issue #8) can compute the real billed cost with cache discounts applied.
+
+### Fixed (cost estimator: Claude Opus 4.6 / 4.7 priced at 1/3 the real rate)
+
+- `modules/llm_pricing.py` had Opus 4.6 and 4.7 listed at $5 / $25 per million input/output tokens. Anthropic's published rate for Opus 4.x is $15 / $75 per million – the table was off by 3×, causing the in-app cost estimate to under-shoot the real bill on Opus calls. Corrected the rate in both the `claude` and `openrouter` (anthropic/claude-opus-*) pricing entries. Sonnet 4.6 ($3 / $15) and Haiku 4.5 ($1 / $5) were already correct.
+
+### Notes
+
+- These changes mirror the equivalent Trados plugin v4.19.86 release on the same day, so the two products are again in lock-step on cost-relevant behaviour.
 
 
 ## v1.9.459 – May 8, 2026
