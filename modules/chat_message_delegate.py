@@ -440,8 +440,14 @@ class ChatMessageDelegate(QStyledItemDelegate):
         tok_out = metadata.get('tokens_out', 0)
         if tok_in or tok_out:
             parts.append(f"{tok_in:,} in / {tok_out:,} out")
+        # cost_usd: float for known cost, 0.0 for genuinely free (Ollama),
+        # None for unknown (model not in pricing table). Distinguishing
+        # "free" from "unknown" prevents users mistaking a non-curated
+        # OpenRouter model (e.g. deepseek/deepseek-v4-pro) for free.
         cost = metadata.get('cost_usd', 0)
-        if cost:
+        if cost is None:
+            parts.append("cost unknown")
+        elif cost:
             parts.append(f"~${cost:.2f}")
         duration = metadata.get('duration_s', 0)
         if duration:

@@ -59,11 +59,19 @@ PRICING = {
 }
 
 
-def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
+def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: int) -> Optional[float]:
     """
     Estimate USD cost for a given API call.
 
-    Returns 0.0 for unknown models, local providers (ollama), or if tokens are 0.
+    Returns:
+        - 0.0  when tokens are 0, or for genuinely free providers (ollama, custom_openai).
+        - float (> 0) computed cost for a model with a known pricing entry.
+        - None when the model is not in the pricing table for its provider.
+            Callers should render this as "unknown" (NOT "free") so users
+            don't mistake a non-curated OpenRouter model for a free one.
+
+    Pre-v1.9.462 this function returned 0.0 for unknown models, which
+    callers couldn't distinguish from genuinely free.
     """
     if not input_tokens and not output_tokens:
         return 0.0
@@ -85,7 +93,7 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
                 break
 
     if not prices:
-        return 0.0
+        return None
 
     input_price, output_price = prices
     cost = (input_tokens * input_price + output_tokens * output_price) / 1_000_000

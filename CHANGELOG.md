@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.461 (May 8, 2026)
+**Current Version:** v1.9.462 (May 8, 2026)
+
+
+## v1.9.462 – May 8, 2026
+
+### Fixed (Chat metadata: cost silently omitted for unknown models, masking real cost)
+
+- `modules/llm_pricing.py: estimate_cost` now returns `None` (instead of `0.0`) when a model is not present in the pricing table. The chat reply's metadata strip distinguishes three cases: a known cost (`~$X.XX`), a genuinely-free provider like Ollama (cost omitted, as before), and an unknown model — which now displays **cost unknown** so users don't silently overlook real charges from non-curated OpenRouter models (e.g. `deepseek/deepseek-v4-pro`).
+- Mirrors Trados plugin v4.19.87 on the same day.
 
 
 ## v1.9.461 – May 8, 2026
