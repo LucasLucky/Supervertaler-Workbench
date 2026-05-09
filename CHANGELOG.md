@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.472 (May 9, 2026)
+**Current Version:** v1.9.473 (May 9, 2026)
+
+
+## v1.9.473 – May 9, 2026
+
+### Added (Help links surfacing the Supported File Formats reference)
+
+- New **❓ Supported file formats (online help)…** entry at the foot of **File → Import** and **File → Export**. Opens the [Supported File Formats](https://supervertaler.gitbook.io/help/import-and-export/formats) page on GitBook in your browser. The format list (DOCX, IDML, HTML, XLIFF, PO, XLSX, PPTX, plus all the CAT-tool round-trips) was previously only discoverable by digging through the menus or the help site directly; this puts it one click away from where you actually pick the format.
+- The language-pair dialog inside **File → Import → Other format via Okapi…** now has the standard "?" help badge in its title bar, matching the convention used in the rest of the app (Settings tabs, dialogs, etc.). Clicking the badge also opens the Supported File Formats reference.
 
 
 ## v1.9.472 – May 9, 2026
