@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.468 (May 9, 2026)
+**Current Version:** v1.9.469 (May 9, 2026)
+
+
+## v1.9.469 – May 9, 2026
+
+### Changed (Settings UI tidy-up)
+
+- **All settings tabs are now a consistent 1000 px wide**, left-anchored against the sidebar with the right side acting as breathing room. Previously each tab claimed only as much width as its longest internal row, so clicking between General, AI Settings, Language Pair etc. felt jumpy. Centralised in `_wrap_in_scroll`, so future settings tabs inherit the same look automatically. Width lives in a single `SETTINGS_CONTENT_MAX_WIDTH` class constant for easy tweaking.
+- **Mouse-wheel guard on sliders, spin boxes, and combo boxes** across every settings tab. By default these widgets grab wheel events whenever the cursor crosses them – which meant scrolling a page could silently move the Context-window slider, change a Batch size, or flip a model dropdown. They now ignore wheel events unless the user has actually clicked into the widget. Implemented as a small `_WheelGuard` event filter installed automatically by `_wrap_in_scroll`.
+- **AI Settings page**: dropped the "💡 Free vs Paid API Access" info banner that was repeating help-doc material on every visit, replaced with a single "AI Settings" page title.
+- **LLM Provider radio buttons** (Settings → AI Settings → LLM Provider Selection) finally look like radio buttons. The custom widget had been rendering as a square indicator with a checkmark – which made an early reviewer think the eight providers were multi-select when they're actually mutually exclusive. Now circular indicators with a green centre dot when active. Behaviour was already correct (the underlying widget is `QRadioButton`); only the visual changed.
 
 
 ## v1.9.468 – May 9, 2026

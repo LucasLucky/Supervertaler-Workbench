@@ -1928,6 +1928,28 @@ class _F9HoldReleaseFilter(QObject):
         return False
 
 
+class _WheelGuard(QObject):
+    """Stops a hovered slider / spinbox / combo from eating the mouse wheel.
+
+    By default ``QSlider``, ``QAbstractSpinBox`` and ``QComboBox`` have
+    ``Qt.FocusPolicy.WheelFocus`` and respond to wheel events whenever the
+    cursor is over them – even without a click – which means scrolling a
+    settings page can silently move a slider you didn't mean to touch. We
+    install this filter on those widgets and ignore their wheel events
+    *unless* the widget actually has keyboard focus (i.e. the user clicked
+    or tabbed into it). Result: scrolling the page works as expected;
+    explicit interaction still does.
+    """
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.Wheel:
+            if not (hasattr(obj, "hasFocus") and obj.hasFocus()):
+                event.ignore()
+                return True
+        return False
+
+
 class _LoneCtrlEventFilter(QObject):
     """App-level event filter: triggers the term-insert popup when Ctrl is tapped alone.
 
@@ -17555,12 +17577,66 @@ class SupervertalerQt(QMainWindow):
 
         return tab
     
+    # Fixed content width for every settings tab. Content is left-anchored
+    # against the sidebar; anything past this width sits as breathing room
+    # on the right. 1000 px is roughly the content area of the Trados
+    # Studio Options dialog and keeps label–control rows comfortable
+    # without feeling oversized on wide monitors.
+    SETTINGS_CONTENT_MAX_WIDTH = 1000
+
     def _wrap_in_scroll(self, widget):
-        """Wrap a widget in a scroll area"""
+        """Wrap a settings-tab widget in a scroll area with consistent layout.
+
+        Three things in one place so every settings tab gets them for free:
+
+        1. **Wheel guard** – prevents hovered sliders / spinboxes / combo
+           boxes from silently absorbing mouse-wheel events meant for the
+           scroll area. See ``_WheelGuard``.
+        2. **Left-anchor + max-width cap** – wraps ``widget`` in a horizontal
+           layout with the content on the left and a stretch on the right,
+           capped at ``SETTINGS_CONTENT_MAX_WIDTH`` px. Stops settings rows
+           from sprawling across ultra-wide monitors while avoiding the
+           "centred in a sea of grey" look that bare centring produces.
+        3. **Scroll area** – the obvious one.
+        """
+        from PyQt6.QtWidgets import QSlider, QAbstractSpinBox, QComboBox
+
+        # Left-anchor + width cap. Skip if the caller already wrapped its
+        # own content (legacy: AI Settings used to do this inline). We
+        # detect that by checking whether `widget` itself already has a
+        # QHBoxLayout with a stretch – a heuristic that's good enough for
+        # the small number of legacy callers.
+        host = widget
+        if not getattr(widget, '_settings_left_anchored', False):
+            host = QWidget()
+            outer = QHBoxLayout(host)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.setSpacing(0)
+            # Pin both min and max to the same width so every tab claims
+            # exactly the same column regardless of how wide its longest
+            # internal row would naturally make it. Without the min, a tab
+            # with short rows would sit narrower than its neighbours, and
+            # clicking between tabs would feel jumpy.
+            widget.setMinimumWidth(self.SETTINGS_CONTENT_MAX_WIDTH)
+            widget.setMaximumWidth(self.SETTINGS_CONTENT_MAX_WIDTH)
+            outer.addWidget(widget, 0)
+            outer.addStretch(1)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(widget)
+        scroll.setWidget(host)
         scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        # Wheel guard: one instance per scroll area, attached so it's not GC'd.
+        if not hasattr(self, '_settings_wheel_guards'):
+            self._settings_wheel_guards = []
+        guard = _WheelGuard(scroll)
+        self._settings_wheel_guards.append(guard)
+        for cls in (QSlider, QAbstractSpinBox, QComboBox):
+            for w in widget.findChildren(cls):
+                w.installEventFilter(guard)
+                # Demote WheelFocus → StrongFocus so wheel doesn't take focus.
+                w.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         return scroll
 
     def _update_settings_sidebar_theme(self):
@@ -17706,51 +17782,25 @@ class SupervertalerQt(QMainWindow):
         """Create unified AI Settings tab - combines LLM, Ollama, and AI Assistant settings"""
         from PyQt6.QtWidgets import QCheckBox, QGroupBox, QPushButton
         
+        # The width-cap + left-anchor layout is applied centrally by
+        # _wrap_in_scroll so every settings tab gets it consistently.
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
-        
+
         # Load current settings
         settings = self.load_llm_settings()
         enabled_providers = self.load_provider_enabled_states()
         general_settings = self.load_general_settings()
         general_prefs = self.load_general_settings()
-        
-        # ========== INFO BOX: Free vs Paid Providers ==========
-        info_frame = QFrame()
-        info_frame.setStyleSheet("""
-            QFrame {
-                background-color: #E8F4FD;
-                border: 1px solid #B8D4E8;
-                border-radius: 6px;
-                padding: 10px;
-            }
-            QLabel {
-                background: transparent;
-                border: none;
-            }
-        """)
-        info_layout = QVBoxLayout(info_frame)
-        info_layout.setContentsMargins(12, 8, 12, 8)
-        info_layout.setSpacing(4)
-        
-        info_title = QLabel("💡 <b>Free vs Paid API Access</b>")
-        info_layout.addWidget(info_title)
-        
-        info_text = QLabel(
-            "• <b>Google Gemini</b> – <span style='color: green;'>FREE tier available</span> (15 req/min, 1M tokens/day)<br>"
-            "• <b>Ollama</b> – <span style='color: green;'>100% FREE</span> (runs locally on your computer)<br>"
-            "• <b>OpenAI</b> – Paid API only (no free tier)<br>"
-            "• <b>Anthropic Claude</b> – Paid API only (no free tier)<br><br>"
-            "⚠️ <b>Note:</b> This app uses <i>API keys</i>, not web chat interfaces. "
-            "ChatGPT Plus and Claude Pro web subscriptions do NOT include API access."
-        )
-        info_text.setWordWrap(True)
-        info_text.setStyleSheet("font-size: 11px;")
-        info_layout.addWidget(info_text)
-        
-        layout.addWidget(info_frame)
+
+        # Page title (replaces the old "Free vs Paid API Access" info panel
+        # that was repeating information already covered in the help docs and
+        # added visual noise on every Settings visit).
+        title = QLabel("AI Settings")
+        title.setStyleSheet("font-size: 16pt; font-weight: bold; padding: 0 0 4px 0;")
+        layout.addWidget(title)
         
         # ========== SECTION 1: LLM Provider Selection ==========
         provider_group = QGroupBox("🤖 LLM Provider Selection")
@@ -58559,12 +58609,21 @@ class OrangeCheckmarkCheckBox(QCheckBox):
 
 
 class CustomRadioButton(QRadioButton):
-    """Custom radio button with square indicator, green when checked, white checkmark"""
-    
+    """Custom radio button with circular indicator, green ring + green dot when checked.
+
+    Earlier versions of this class drew a square indicator with a white checkmark
+    on a green fill – which looked exactly like a checkbox and gave at least one
+    user (forum feedback, May 2026) the impression that the LLM provider list
+    was multi-select when it's actually mutually exclusive. The visual now
+    matches the universal radio-button signal: hollow circle when off, filled
+    centre dot when on.
+    """
+
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setCheckable(True)
         self.setEnabled(True)
+        # 18 px diameter → border-radius 9 px = a perfect circle.
         self.setStyleSheet("""
             QRadioButton {
                 font-size: 9pt;
@@ -58574,77 +58633,53 @@ class CustomRadioButton(QRadioButton):
                 width: 18px;
                 height: 18px;
                 border: 2px solid #999;
-                border-radius: 3px;
+                border-radius: 9px;
                 background-color: white;
             }
             QRadioButton::indicator:checked {
-                background-color: #4CAF50;
                 border-color: #4CAF50;
+                background-color: white;
             }
             QRadioButton::indicator:hover {
                 border-color: #666;
             }
             QRadioButton::indicator:checked:hover {
-                background-color: #45a049;
                 border-color: #45a049;
             }
         """)
-    
+
     def paintEvent(self, event):
-        """Override paint event to draw white checkmark when checked"""
+        """Draw the centre dot when checked – the visual signal for "this radio
+        is the active selection". Drawn manually because Qt's stylesheet engine
+        doesn't expose a nice way to put a coloured dot inside a styled
+        ::indicator without losing the ring + hover behaviour we just defined.
+        """
         super().paintEvent(event)
-        
-        if self.isChecked():
-            # Get the indicator rectangle using QStyle
-            from PyQt6.QtWidgets import QStyleOptionButton
-            from PyQt6.QtGui import QPainter, QPen, QColor
-            from PyQt6.QtCore import QPointF, QRect
-            
-            opt = QStyleOptionButton()
-            self.initStyleOption(opt)
-            indicator_rect = self.style().subElementRect(
-                self.style().SubElement.SE_RadioButtonIndicator,
-                opt,
-                self
-            )
-            
-            if indicator_rect.isValid():
-                # Draw white checkmark
-                painter = QPainter(self)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                # Slightly thinner pen for better fit on smaller displays
-                pen_width = max(2.0, min(indicator_rect.width(), indicator_rect.height()) * 0.12)
-                painter.setPen(QPen(QColor(255, 255, 255), pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-                painter.setBrush(QColor(255, 255, 255))
-                
-                # Draw checkmark (✓ shape) - coordinates relative to indicator
-                # Add padding to prevent clipping on smaller displays
-                x = indicator_rect.x()
-                y = indicator_rect.y()
-                w = indicator_rect.width()
-                h = indicator_rect.height()
-                
-                # Add padding (15% on all sides) to ensure checkmark doesn't get cut off on smaller displays
-                padding = min(w, h) * 0.15
-                x += padding
-                y += padding
-                w -= padding * 2
-                h -= padding * 2
-                
-                # Checkmark path: bottom-left to middle, then middle to top-right
-                # Using proportions that create a nice checkmark shape with proper padding
-                check_x1 = x + w * 0.10  # Left point (more padding from left)
-                check_y1 = y + h * 0.50  # Bottom point (centered vertically)
-                check_x2 = x + w * 0.35  # Middle-bottom point
-                check_y2 = y + h * 0.70  # Bottom point (with padding from bottom)
-                check_x3 = x + w * 0.90  # Right point (more padding from right)
-                check_y3 = y + h * 0.25  # Top point (with padding from top)
-                
-                # Draw two lines forming the checkmark
-                painter.drawLine(QPointF(check_x2, check_y2), QPointF(check_x3, check_y3))
-                painter.drawLine(QPointF(check_x1, check_y1), QPointF(check_x2, check_y2))
-                
-                painter.end()
+        if not self.isChecked():
+            return
+
+        from PyQt6.QtWidgets import QStyleOptionButton
+        from PyQt6.QtGui import QPainter, QColor
+        from PyQt6.QtCore import QRectF
+
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+        indicator_rect = self.style().subElementRect(
+            self.style().SubElement.SE_RadioButtonIndicator, opt, self
+        )
+        if not indicator_rect.isValid():
+            return
+
+        # Centre dot: ~50% of the indicator diameter, green to match the ring.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#4CAF50"))
+        cx = indicator_rect.x() + indicator_rect.width() / 2
+        cy = indicator_rect.y() + indicator_rect.height() / 2
+        r = min(indicator_rect.width(), indicator_rect.height()) * 0.25
+        painter.drawEllipse(QRectF(cx - r, cy - r, r * 2, r * 2))
+        painter.end()
 
 
 # ============================================================================
