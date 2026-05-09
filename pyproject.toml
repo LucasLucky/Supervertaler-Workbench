@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.473"
+version = "1.9.474"
 description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -126,7 +126,11 @@ dependencies = [
 [project.optional-dependencies]
 # All extras kept as no-ops for backward compatibility – installing
 # ``supervertaler[local-whisper]`` is harmless on existing setups but
-# the underlying package is now a core dep.
+# the underlying package is now a core dep. Since v1.9.474 the
+# Workbench has stopped advertising any modular install paths;
+# `pip install supervertaler` gives the full surface area in one go.
+# The empty buckets are preserved here only so existing scripts that
+# request specific extras don't fail at install time.
 local-whisper = []
 voice = []
 web = []

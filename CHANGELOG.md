@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.473 (May 9, 2026)
+**Current Version:** v1.9.474 (May 9, 2026)
+
+
+## v1.9.474 – May 9, 2026
+
+### Removed (Modular features architecture and the Features Settings tab)
+
+- The **Features tab** under Settings is gone. It used to show a list of optional feature modules (AutoFingers, Local Whisper, Web Browser, PDF Rescue, MT Providers, Hunspell Spellcheck) with their pip-extra install commands and an "installed / not installed" indicator. Every package those modules depended on has been a core dependency for some time, so the panel reduced to "everything is installed" by default and was no longer earning its keep on the Settings sidebar.
+- The **first-run modular features pop-up** is gone. Earlier versions threw up a dialog explaining Supervertaler's modular architecture and routed the user to Settings → Features. New users now go straight from the data-folder setup page to a brief "you're all set!" confirmation – no architecture lecture, no follow-on tab navigation.
+- The setup wizard's second page no longer mentions modular features at all. It's a one-screen "your data folder is ready" confirmation with a single "don't show this on startup" checkbox.
+- `_create_features_settings_tab` (≈ 270 lines) is removed. `_show_first_run_welcome` is reduced to a no-op stub – any pending QTimer callbacks still resolve harmlessly.
+- `pyproject.toml`'s `[project.optional-dependencies]` extras (`voice`, `web`, `pdf`, `mt`, `hunspell`, `local-whisper`, `windows`, `core`, `all`) are kept as empty buckets so existing scripts that do `pip install supervertaler[voice]` don't fail – but no public docs advertise them anymore. The single recommended install command is `pip install supervertaler`.
+
+### Notes
+
+- This is a UX simplification, not a feature removal. Everything that was previously "optional" is still installed and works exactly as before – there's just no longer a UI to toggle anything.
 
 
 ## v1.9.473 – May 9, 2026

@@ -8103,64 +8103,22 @@ class SupervertalerQt(QMainWindow):
             traceback.print_exc()
     
     def _show_first_run_welcome(self):
-        """Show welcome message and Features tab on first run."""
+        """No-op since v1.9.474.
+
+        This used to pop up an intro dialog about Supervertaler's modular
+        feature architecture and route the user to Settings → Features.
+        Both the modular-extras system and the Features tab were retired
+        when every feature module became a core dependency. The setup
+        wizard handles the data-folder confirmation; nothing else needs
+        to nag the user on first run. Kept as a stub so any pending
+        QTimer.singleShot() callers don't blow up.
+        """
         try:
-            # Create a custom dialog with checkbox
-            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QCheckBox, QDialogButtonBox
-            
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Welcome to Supervertaler Workbench!")
-            dialog.setMinimumWidth(450)
-            
-            layout = QVBoxLayout(dialog)
-            layout.setSpacing(15)
-            
-            # Icon and title
-            title_label = QLabel("<h2>Welcome to Supervertaler! 🎉</h2>")
-            layout.addWidget(title_label)
-            
-            # Message
-            msg_label = QLabel(
-                "Supervertaler uses a <b>modular architecture</b> - you can install "
-                "only the features you need to save disk space.<br><br>"
-                "We'll now show you the <b>Features</b> tab where you can see which "
-                "optional components are installed and how to add more.<br><br>"
-                "💡 <b>Tip:</b> You can always access this from Settings → Features."
-            )
-            msg_label.setWordWrap(True)
-            layout.addWidget(msg_label)
-            
-            # Checkbox - use our standard green checkmark style
-            dont_show_checkbox = CheckmarkCheckBox("Don't show this again")
-            dont_show_checkbox.setChecked(True)  # Default to not showing again
-            layout.addWidget(dont_show_checkbox)
-            
-            # OK button
-            button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-            button_box.accepted.connect(dialog.accept)
-            layout.addWidget(button_box)
-            
-            dialog.exec()
-            
-            # Navigate to Settings → Features tab
-            self.main_tabs.setCurrentIndex(4)  # Settings tab (post-v1.9.467 layout: Editor/TMs/Termbases/AI/Settings)
-            if hasattr(self, 'settings_tabs'):
-                # Find the Features tab index
-                for i in range(self.settings_tabs.count()):
-                    if "Features" in self.settings_tabs.tabText(i):
-                        self.settings_tabs.setCurrentIndex(i)
-                        break
-            
-            # Save the preference to general_settings.json (where load_general_settings reads from)
-            if dont_show_checkbox.isChecked():
-                settings = self.load_general_settings()
-                settings['first_run_completed'] = True
-                self.save_general_settings(settings)
-                self.log("✅ First-run welcome completed (won't show again)")
-            else:
-                self.log("✅ First-run welcome shown (will show again next time)")
-        except Exception as e:
-            self.log(f"⚠️ First-run welcome error: {e}")
+            settings = self.load_general_settings()
+            settings['first_run_completed'] = True
+            self.save_general_settings(settings)
+        except Exception:
+            pass
 
     def _show_setup_wizard(self, is_first_run: bool = False):
         """
@@ -8291,21 +8249,20 @@ class SupervertalerQt(QMainWindow):
                 page2_layout.addWidget(data_folder_info)
 
             # Title
-            page2_title = QLabel("<h2>✨ Modular Features</h2>")
+            page2_title = QLabel("<h2>✨ You're all set!</h2>")
             page2_layout.addWidget(page2_title)
 
-            # Message
+            # Message – kept deliberately short. Earlier versions of this
+            # page explained Supervertaler's modular-features architecture
+            # and pointed users at Settings → Features. Both are gone in
+            # v1.9.474: every feature module that used to be optional is
+            # now a core dependency, so there is nothing for the user to
+            # install or toggle.
             page2_msg = QLabel(
-                "Supervertaler uses a <b>modular architecture</b> – you can install "
-                "only the features you need.<br><br>"
-                "<b>Core features</b> (always available):<br>"
-                "• AI translation with OpenAI, Claude, Gemini, Ollama<br>"
-                "• Translation Memory and Glossaries<br>"
-                "• XLIFF, SDLXLIFF, memoQ support<br>"
-                "• Basic spellchecking<br><br>"
-                "<b>Optional features</b> (install via pip):<br>"
-                "• <code>faster-whisper</code> – Local voice dictation (no API needed)<br><br>"
-                "You can view and manage features in <b>Settings → Features</b>."
+                "Your data folder is ready and Supervertaler is set up.<br><br>"
+                "Have a look around the <b>Editor</b> tab to start translating, "
+                "or visit <b>Settings</b> to configure API keys, prompts, theme, "
+                "and more."
             )
             page2_msg.setWordWrap(True)
             page2_msg.setTextFormat(Qt.TextFormat.RichText)
@@ -8315,11 +8272,6 @@ class SupervertalerQt(QMainWindow):
             dont_show_checkbox = CheckmarkCheckBox("Don't show this wizard on startup")
             dont_show_checkbox.setChecked(True)
             page2_layout.addWidget(dont_show_checkbox)
-
-            # Open Features tab checkbox
-            open_features_checkbox = CheckmarkCheckBox("Open Features tab after closing")
-            open_features_checkbox.setChecked(True)
-            page2_layout.addWidget(open_features_checkbox)
 
             page2_layout.addStretch()
             stacked.addWidget(page2)
@@ -8399,15 +8351,6 @@ class SupervertalerQt(QMainWindow):
                     self.log("✅ Setup wizard shown (will show again next time)")
 
                 dialog.accept()
-
-                # Navigate to Features tab if checkbox is checked
-                if open_features_checkbox.isChecked():
-                    self.main_tabs.setCurrentIndex(4)  # Settings tab
-                    if hasattr(self, 'settings_tabs'):
-                        for i in range(self.settings_tabs.count()):
-                            if "Features" in self.settings_tabs.tabText(i):
-                                self.settings_tabs.setCurrentIndex(i)
-                                break
 
             back_btn.clicked.connect(on_back)
             next_btn.clicked.connect(on_next)
@@ -17600,11 +17543,16 @@ class SupervertalerQt(QMainWindow):
         debug_tab = self._create_debug_settings_tab()
         settings_tabs.addTab(scroll_area_wrapper(debug_tab), "🐛 Debug")
 
-        # ===== TAB 9: Features (Optional Modules) =====
-        features_tab = self._create_features_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(features_tab), "📦 Features")
+        # The "📦 Features" tab was retired in v1.9.474. The Workbench used
+        # to ship feature modules (voice, web, pdf, mt, hunspell, …) as
+        # optional pip extras and exposed an install-status panel here. All
+        # of those packages are now part of the core dependency set, so the
+        # tab no longer had any toggles to offer – everything is always
+        # installed and ready. The pyproject [project.optional-dependencies]
+        # section is also gone; ``pip install supervertaler`` gives you the
+        # full surface area in one step.
 
-        # ===== TAB 10: Domain Detection Keywords =====
+        # ===== TAB 9: Domain Detection Keywords =====
         domain_keywords_tab = self._create_domain_keywords_tab()
         settings_tabs.addTab(scroll_area_wrapper(domain_keywords_tab), "🎯 Domain Detection")
 
@@ -21940,278 +21888,6 @@ class SupervertalerQt(QMainWindow):
         
         return tab
 
-    def _create_features_settings_tab(self):
-        """Create Features Settings tab - view optional modules and installation status."""
-        from PyQt6.QtWidgets import QGroupBox, QPushButton, QProgressBar, QTextEdit, QFrame, QSplitter
-        from modules.feature_manager import get_feature_manager, FEATURE_MODULES
-        import sys
-        
-        tab = QWidget()
-        main_layout = QVBoxLayout(tab)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(10)
-        
-        fm = get_feature_manager(str(self.user_data_path))
-        
-        is_frozen_build = bool(getattr(sys, 'frozen', False))
-
-        # Header info with legend
-        header_subtitle = (
-            "Supervertaler has a modular design. Core features work out of the box. "
-            "Optional features require additional packages."
-        )
-        if is_frozen_build:
-            header_subtitle += (
-                " <b>Note:</b> This is the Windows EXE build; you can't install pip extras into this portable app. "
-                "To add optional features, install the Python version (pip) or download a separate EXE build that includes them."
-            )
-        else:
-            header_subtitle += " See install commands on the right."
-
-        header_info = QLabel(
-            "📦 <b>Optional Feature Modules</b><br>"
-            f"<span style='color:#666;'>{header_subtitle}</span><br><br>"
-            "<b>✅ Installed</b> – Feature is ready to use&nbsp;&nbsp;&nbsp;&nbsp;"
-            "<b>❌ Not installed</b> – Run the install command to add this feature"
-        )
-        header_info.setTextFormat(Qt.TextFormat.RichText)
-        header_info.setStyleSheet("font-size: 9pt; color: #444; padding: 10px; background-color: #E3F2FD; border-radius: 4px;")
-        header_info.setWordWrap(True)
-        main_layout.addWidget(header_info)
-        
-        # Size summary
-        total_available = sum(f.size_mb for f in FEATURE_MODULES.values() if f.is_available())
-        total_possible = sum(f.size_mb for f in FEATURE_MODULES.values())
-        installed_count = sum(1 for f in FEATURE_MODULES.values() if f.is_available())
-        total_count = len(FEATURE_MODULES)
-        
-        size_label = QLabel(
-            f"💾 <b>Status:</b> {installed_count}/{total_count} optional features installed (~{total_available} MB of ~{total_possible} MB possible)"
-        )
-        size_label.setTextFormat(Qt.TextFormat.RichText)
-        size_label.setStyleSheet("font-size: 9pt; padding: 3px;")
-        main_layout.addWidget(size_label)
-        
-        # === TWO-COLUMN LAYOUT ===
-        columns_layout = QHBoxLayout()
-        columns_layout.setSpacing(15)
-        
-        # LEFT COLUMN: Feature groups (scrollable)
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(10)
-        
-        # Group features by category
-        categories = fm.get_features_by_category()
-        
-        for category, features in categories.items():
-            group = QGroupBox(f"📁 {category}")
-            group_layout = QVBoxLayout()
-            group_layout.setSpacing(6)
-            
-            for feature in features:
-                # Main feature row
-                feature_layout = QHBoxLayout()
-                feature_layout.setSpacing(8)
-                
-                # Status icon and name
-                if feature.is_available():
-                    status_text = f"✅ {feature.icon} <b>{feature.name}</b>"
-                    status_style = "font-size: 9pt; color: #2E7D32;"
-                else:
-                    status_text = f"❌ {feature.icon} <b>{feature.name}</b>"
-                    status_style = "font-size: 9pt; color: #C62828;"
-                
-                name_label = QLabel(status_text)
-                name_label.setTextFormat(Qt.TextFormat.RichText)
-                name_label.setStyleSheet(status_style)
-                feature_layout.addWidget(name_label, stretch=1)
-                
-                # Size label
-                size_lbl = QLabel(f"~{feature.size_mb} MB")
-                size_lbl.setStyleSheet("color: #666; font-size: 8pt;")
-                size_lbl.setFixedWidth(55)
-                feature_layout.addWidget(size_lbl)
-                
-                group_layout.addLayout(feature_layout)
-                
-                # Description + packages (always show packages)
-                pkg_str = ", ".join(feature.packages)
-                if feature.is_available():
-                    # Installed: show packages in blue/teal
-                    desc_text = (
-                        f"{feature.description}<br>"
-                        f"<span style='color:#0277BD; font-family:Consolas,monospace;'>📦 {pkg_str}</span>"
-                    )
-                else:
-                    # Not installed: show packages in red
-                    desc_text = (
-                        f"{feature.description}<br>"
-                        f"<span style='color:#C62828; font-family:Consolas,monospace;'>📦 Requires: {pkg_str}</span>"
-                    )
-                desc_style = "font-size: 8pt; color: #555; padding-left: 24px; padding-bottom: 6px;"
-                
-                desc_label = QLabel(desc_text)
-                desc_label.setTextFormat(Qt.TextFormat.RichText)
-                desc_label.setWordWrap(True)
-                desc_label.setStyleSheet(desc_style)
-                group_layout.addWidget(desc_label)
-            
-            group.setLayout(group_layout)
-            left_layout.addWidget(group)
-        
-        left_layout.addStretch()
-        
-        # Make left side scrollable
-        left_scroll = QScrollArea()
-        left_scroll.setWidget(left_widget)
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        left_scroll.setMinimumWidth(400)
-        
-        # RIGHT COLUMN: Installation commands
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(10)
-        
-        # Install header
-        if is_frozen_build:
-            install_header_text = (
-                "<b>🔧 Installation Commands</b><br>"
-                "<span style='font-size:8pt; color:#666;'>These commands apply to the <b>Python/pip</b> install (not the Windows EXE build).</span>"
-            )
-        else:
-            install_header_text = (
-                "<b>🔧 Installation Commands</b><br>"
-                "<span style='font-size:8pt; color:#666;'>Run in Terminal to add features</span>"
-            )
-        install_header = QLabel(install_header_text)
-        install_header.setTextFormat(Qt.TextFormat.RichText)
-        install_header.setStyleSheet("padding: 5px;")
-        right_layout.addWidget(install_header)
-        
-        # Terminal style for both text boxes
-        terminal_style = """
-            QTextEdit {
-                font-family: Consolas, 'Courier New', monospace;
-                font-size: 9pt;
-                background-color: #1E1E1E;
-                color: #D4D4D4;
-                padding: 8px;
-                border: 1px solid #333;
-                border-radius: 4px;
-            }
-            QScrollBar:vertical {
-                background-color: #2D2D2D;
-                width: 12px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #5A5A5A;
-                border-radius: 5px;
-                min-height: 20px;
-                margin: 2px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #787878;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """
-        
-        # Tabs for PyPI vs Repo
-        commands_tabs = QTabWidget()
-        commands_tabs.setStyleSheet("QTabWidget::pane { border: none; }")
-        
-        # Tab 1: PyPI install
-        pypi_text = QTextEdit()
-        pypi_text.setReadOnly(True)
-        pypi_text.setStyleSheet(terminal_style)
-        if is_frozen_build:
-            pypi_prefix = (
-                "# WINDOWS EXE BUILD NOTE\n"
-                "# This portable EXE does not support installing extras via pip inside the app.\n"
-                "# To add Local Whisper: Download the FULL Windows build from GitHub releases.\n"
-                "#\n"
-                "# Releases: https://github.com/Supervertaler/Supervertaler-Workbench/releases/latest\n\n"
-            )
-        else:
-            pypi_prefix = "# If you installed via: pip install supervertaler\n\n"
-
-        pypi_text.setPlainText(
-            pypi_prefix +
-            "# ADD FEATURES:\n"
-            "pip install supervertaler[voice]       # ~150 MB\n"
-            "pip install supervertaler[web]         # ~100 MB\n"
-            "pip install supervertaler[pdf]         # ~30 MB\n"
-            "pip install supervertaler[mt]          # ~30 MB\n\n"
-            "# MULTIPLE:\n"
-            "pip install supervertaler[voice,web]\n\n"
-            "# EVERYTHING:\n"
-            "pip install supervertaler[all]         # ~300 MB\n\n"
-            "# ═══════════════════════════════════════════════════\n"
-            "# EXTRAS (copy-paste these names):\n"
-            "# voice, web, pdf, mt, hunspell, windows\n"
-            "# ═══════════════════════════════════════════════════"
-        )
-        commands_tabs.addTab(pypi_text, "📦 PyPI")
-        
-        # Tab 2: Repo clone
-        repo_text = QTextEdit()
-        repo_text.setReadOnly(True)
-        repo_text.setStyleSheet(terminal_style)
-        if is_frozen_build:
-            repo_prefix = (
-                "# PYTHON DEV INSTALL NOTE\n"
-                "# These commands are for developers / Python installs (not the EXE build).\n\n"
-            )
-        else:
-            repo_prefix = "# If you cloned from GitHub:\n\n"
-
-        repo_text.setPlainText(
-            repo_prefix +
-            "# OPTION A - Direct install:\n"
-            "pip install .\n"
-            "pip install sounddevice numpy\n"
-            "pip install supervertaler[local-whisper]  # Optional: offline Local Whisper (heavy)\n"
-            "pip install PyQt6-WebEngine\n"
-            "pip install PyMuPDF\n"
-            "pip install deepl boto3\n\n"
-            "# OPTION B - Editable install:\n"
-            "cd C:\\path\\to\\Supervertaler\n"
-            "pip install -e .\n"
-            "pip install -e .[all]  # Everything\n\n"
-            "# ═══════════════════════════════════════════════════\n"
-            "# ALL PACKAGES (copy-paste):\n"
-            "# sounddevice PyQt6-WebEngine PyMuPDF deepl boto3\n"
-            "# spylls keyboard ahk\n"
-            "#\n"
-            "# spylls = Pure Python Hunspell (works on Windows!)\n"
-            "# Supports regional variants like en-US, en-GB, etc.\n"
-            "# ═══════════════════════════════════════════════════"
-        )
-        commands_tabs.addTab(repo_text, "📂 Repo")
-        
-        right_layout.addWidget(commands_tabs, stretch=1)
-        
-        # Tip at bottom of right column
-        tip_label = QLabel(
-            "<i>💡 Tip: Install only what you need to save disk space!</i>"
-        )
-        tip_label.setTextFormat(Qt.TextFormat.RichText)
-        tip_label.setStyleSheet("font-size: 8pt; color: #666; padding: 5px;")
-        right_layout.addWidget(tip_label)
-        
-        # Add columns to layout
-        columns_layout.addWidget(left_scroll, stretch=2)
-        columns_layout.addWidget(right_widget, stretch=1)
-        
-        main_layout.addLayout(columns_layout, stretch=1)
-        
-        return tab
-    
     def _save_debug_settings_from_ui(self, debug_mode_cb, debug_export_cb, debounce_spin):
         """Save debug settings from UI"""
         self.debug_mode_enabled = debug_mode_cb.isChecked()
