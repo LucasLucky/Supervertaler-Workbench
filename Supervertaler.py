@@ -12704,8 +12704,30 @@ class SupervertalerQt(QMainWindow):
                 )
                 return False
 
-            # Build translations list: [{"id": tu_id, "segmentIndex": idx, "translation": "..."}]
-            translations = []
+            # Build translations list, ONE entry per Okapi text-unit ID.
+            #
+            # Why one-per-TU and not one-per-segment: the sidecar applies
+            # SRX sentence segmentation only inside its extract helper
+            # (segmentTextContentWithTags) – it doesn't actually re-segment
+            # the underlying ITextUnit. So when /merge re-opens the original
+            # file and reads the same TU, srcSegments.count() == 1. The
+            # merge loop then drops any MergeSegment with segmentIndex >= 1,
+            # silently losing the 2nd, 3rd, … sentences of every paragraph
+            # we sent (verified end-to-end against an IDML round-trip in
+            # v1.9.470 testing).
+            #
+            # Workaround: group all our per-sentence segments back by
+            # okapi_tu_id, sort by okapi_segment_index, concatenate the
+            # translations with a single space, and send one merge entry
+            # per TU at segmentIndex=0. The whole TU's text gets written
+            # into the single source segment that actually exists in the
+            # filter's view of the document. This costs us a possible
+            # extra space at SRX sentence boundaries (the LLM strips
+            # leading/trailing whitespace from each segment translation),
+            # which is a rounding error in laid-out text but matters less
+            # than the alternative of silently losing sentences.
+            from collections import defaultdict as _defaultdict
+            tu_groups: dict = _defaultdict(list)  # tu_id → [(seg_idx, translation)]
             skipped = 0
             for seg in segments:
                 tu_id = getattr(seg, 'okapi_tu_id', '')
@@ -12723,16 +12745,26 @@ class SupervertalerQt(QMainWindow):
                 # strip Supervertaler-specific tags that Okapi wouldn't know.
                 translation = _re.sub(r'</?(?:bi|li-[bo]|li)>', '', translation)
 
+                tu_groups[tu_id].append((seg_idx, translation))
+
+            translations = []
+            for tu_id, sub_segs in tu_groups.items():
+                sub_segs.sort(key=lambda pair: pair[0])
+                combined = ' '.join(t for _, t in sub_segs)
                 translations.append({
                     'id': tu_id,
-                    'segmentIndex': seg_idx,
-                    'translation': translation,
+                    'segmentIndex': 0,
+                    'translation': combined,
                 })
 
             if not translations:
                 self.log("No segments with Okapi metadata found -- falling back to standard export")
                 return False
 
+            multi_tu_count = sum(1 for tu_id, sub in tu_groups.items() if len(sub) > 1)
+            if multi_tu_count:
+                self.log(f"Combining sub-segments for merge: {multi_tu_count} text-unit(s) "
+                         f"had multiple sentences (concatenated for /merge)")
             if skipped > 0:
                 self.log(f"{skipped} segments without Okapi metadata will use source text in merge")
 

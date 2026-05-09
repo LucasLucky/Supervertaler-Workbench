@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.470 (May 9, 2026)
+**Current Version:** v1.9.471 (May 9, 2026)
+
+
+## v1.9.471 – May 9, 2026
+
+### Fixed (Okapi merge: dropped sentences after the first in multi-sentence paragraphs)
+
+- **Critical fix on top of v1.9.470.** The Okapi-via round-trip introduced in v1.9.470 silently dropped every sub-segment past the first in any multi-sentence paragraph. Verified end-to-end against an IDML round-trip: an 8-segment story ended up with only 3 of the 8 translations in the merged file, and one whole italic `CharacterStyleRange` disappeared along the way.
+- **Root cause** lived in the interaction between extract and merge in the Okapi sidecar. Extract applied SRX sentence segmentation as a string-level helper – producing one row per sentence in the Workbench grid for translation – but did not apply it to the underlying `ITextUnit`. When `/merge` reopened the original file the TU still had `srcSegments.count() == 1`, and the Java merge loop's `if (idx >= totalSegs) continue;` silently dropped every `MergeSegment` whose `segmentIndex >= 1`.
+- **Fix** is on the Workbench side, in `_try_okapi_merge_export`: group all sub-segments per `okapi_tu_id`, sort them by `segmentIndex`, concatenate the translations with a single space, and send one entry per text unit at `segmentIndex=0`. The TU's single source segment now receives the full multi-sentence translation in one go. Whitespace at SRX sentence boundaries may pick up an extra space (LLMs tend to strip leading/trailing whitespace from each sub-segment translation), but every translation now reaches the merged file.
+- A new log line, `Combining sub-segments for merge: N text-unit(s) had multiple sentences (concatenated for /merge)`, makes the workaround visible at export time. Single-sentence projects ignore this code path entirely.
+
+### Notes
+
+- v1.9.470's external entry points (the import/export menu items, the test IDML round-trip) are unchanged. This release is a behaviour fix, not a feature addition.
 
 
 ## v1.9.470 – May 9, 2026
