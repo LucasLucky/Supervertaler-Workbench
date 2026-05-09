@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QTextEdit, QSpinBox, QCheckBox, QPushButton, QGroupBox,
     QMessageBox, QListWidget, QListWidgetItem, QMenu, QScrollArea,
-    QWidget, QToolButton, QApplication
+    QWidget, QToolButton, QApplication, QFormLayout
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -309,61 +309,46 @@ class TermbaseEntryEditor(QDialog):
         # Drop into the target-language column (see source-side comment).
         self._target_col_layout.addWidget(target_syn_group)
         
-        # Metadata group – field order matches the Add Term dialog so
-        # users see the same shape whether they're adding or editing.
+        # Metadata group – matches the Add Term dialog exactly: same
+        # QFormLayout (label-on-the-left), same field order, same
+        # placeholders. Editing and adding now look identical.
         metadata_group = QGroupBox("Metadata")
-        metadata_layout = QVBoxLayout()
-        metadata_layout.setSpacing(4)
+        metadata_layout = QFormLayout()
 
-        def _label(text):
-            lbl = QLabel(text)
-            lbl.setStyleSheet("font-weight: bold;")
-            return lbl
-
-        # Definition (own column on termbase_terms; was previously folded
-        # into the Note field – now surfaced as its own row).
-        metadata_layout.addWidget(_label("Definition:"))
+        # Definition – Trados-style dedicated field, separate from notes.
         self.definition_edit = QTextEdit()
-        self.definition_edit.setPlaceholderText("Brief definition or gloss...")
         self.definition_edit.setMaximumHeight(45)
-        self.definition_edit.setStyleSheet("padding: 3px; font-size: 10px;")
-        metadata_layout.addWidget(self.definition_edit)
+        self.definition_edit.setPlaceholderText("Brief definition or gloss...")
+        self.definition_edit.setStyleSheet("padding: 3px;")
+        metadata_layout.addRow("Definition:", self.definition_edit)
 
         # Domain
-        metadata_layout.addWidget(_label("Domain:"))
         self.domain_edit = QLineEdit()
         self.domain_edit.setPlaceholderText("e.g., Patents, Legal, Medical, IT...")
-        self.domain_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        metadata_layout.addWidget(self.domain_edit)
+        metadata_layout.addRow("Domain:", self.domain_edit)
 
-        # Notes
-        metadata_layout.addWidget(_label("Notes:"))
+        # Notes (kept as `note_edit` to preserve existing references in
+        # load_term_data / save_term elsewhere in this class).
         self.note_edit = QTextEdit()
-        self.note_edit.setPlaceholderText("Usage notes, context...")
         self.note_edit.setMaximumHeight(45)
-        self.note_edit.setStyleSheet("padding: 3px; font-size: 10px;")
-        metadata_layout.addWidget(self.note_edit)
+        self.note_edit.setPlaceholderText("Usage notes, context...")
+        self.note_edit.setStyleSheet("padding: 3px;")
+        metadata_layout.addRow("Notes:", self.note_edit)
 
         # URL (column added in v1.9.478)
-        metadata_layout.addWidget(_label("URL:"))
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("https://...")
-        self.url_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        metadata_layout.addWidget(self.url_edit)
+        metadata_layout.addRow("URL:", self.url_edit)
 
         # Client
-        metadata_layout.addWidget(_label("Client:"))
         self.client_edit = QLineEdit()
         self.client_edit.setPlaceholderText("Optional client name...")
-        self.client_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        metadata_layout.addWidget(self.client_edit)
+        metadata_layout.addRow("Client:", self.client_edit)
 
         # Project
-        metadata_layout.addWidget(_label("Project:"))
         self.project_edit = QLineEdit()
         self.project_edit.setPlaceholderText("Optional project name...")
-        self.project_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        metadata_layout.addWidget(self.project_edit)
+        metadata_layout.addRow("Project:", self.project_edit)
 
         # Non-translatable checkbox – when ticked, the target field is
         # auto-synced to the source so the term copies through unchanged
@@ -373,13 +358,13 @@ class TermbaseEntryEditor(QDialog):
             "Non-translatable (keep source text in target)"
         )
         self.nontranslatable_check.toggled.connect(self._on_nontranslatable_toggled)
-        metadata_layout.addWidget(self.nontranslatable_check)
+        metadata_layout.addRow("", self.nontranslatable_check)
 
         # Forbidden term checkbox
         self.forbidden_check = CheckmarkCheckBox(
             "Forbidden term (warn when used in translation)"
         )
-        metadata_layout.addWidget(self.forbidden_check)
+        metadata_layout.addRow("", self.forbidden_check)
 
         metadata_group.setLayout(metadata_layout)
         layout.addWidget(metadata_group)

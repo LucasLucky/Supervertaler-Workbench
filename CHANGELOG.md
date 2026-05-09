@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.480 (May 9, 2026)
+**Current Version:** v1.9.481 (May 9, 2026)
+
+
+## v1.9.481 – May 9, 2026
+
+### Changed (Add Term and Edit Termbase Entry dialogs now look identical)
+
+- The metadata block in **Edit Termbase Entry** now uses the same `QFormLayout` (label-on-the-left) shape as **Add Term to Termbase**. Definition / Domain / Notes / URL / Client / Project all line up neatly in a column with their labels left-aligned, instead of stacking label-above-field. Both dialogs now feel like the same screen with two different titles.
+- **Add Term to Termbase** button relabelled from "Add to Termbase" to "💾 Save" with the same floppy-disk icon the Edit dialog uses, so the bottom-right button reads the same in both.
 
 
 ## v1.9.480 – May 9, 2026

@@ -6132,7 +6132,7 @@ class TermMetadataDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
         
-        save_btn = QPushButton("Add to Termbase")
+        save_btn = QPushButton("💾 Save")
         save_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 15px; border: none; outline: none;")
         save_btn.clicked.connect(self._accept_and_save)
         save_btn.setDefault(True)
