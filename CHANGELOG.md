@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.469 (May 9, 2026)
+**Current Version:** v1.9.470 (May 9, 2026)
+
+
+## v1.9.470 – May 9, 2026
+
+### Added (Import any format the Okapi sidecar can extract)
+
+- New menu entry **File → Import → Other format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)…**. Pick a file in any of those formats and Supervertaler routes it through the same Okapi extract → translate → merge round-trip that's been used for DOCX since v1.9.227. You translate the segments in Supervertaler, then export back to the original format via the matching new menu entry – byte-for-byte preservation of the original file structure, courtesy of the Okapi skeleton mechanism.
+- New menu entry **File → Export → Original format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)…**. For Okapi-imported projects, opens a Save As dialog defaulted to the original file's extension and asks the sidecar to merge the translation back. Works for any format the sidecar supports; the per-segment `okapi_tu_id` / `okapi_segment_index` round-trip metadata has been collected at import time since v1.9.227, so this is genuinely just a new entry point onto an already-tested pipeline.
+- The IDML use case (raised in the public forum) now works without any user-facing Okapi conversion step. Drop the .idml file in, translate, drop it back out as .idml.
+
+### Notes
+
+- **Tag handling**: Okapi inline tags (`<g>`, `<bpt>`, `<ph>`, etc.) appear in the grid as their tagged-text representation. Keep them in the translation; the merge endpoint uses them to reconstruct the inline-code structure of the original file.
+- **DOCX continues to have its own dedicated import / export entry** – the new Okapi-via menu is for everything *else*. Internally both paths use the same code; the separate DOCX entries are kept because they're far more commonly used and have specific dialog wording.
 
 
 ## v1.9.469 – May 9, 2026

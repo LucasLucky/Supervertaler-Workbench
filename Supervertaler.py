@@ -9457,7 +9457,16 @@ class SupervertalerQt(QMainWindow):
         import_docx_action.triggered.connect(self.import_docx)
         import_docx_action.setShortcut("Ctrl+O")
         import_menu.addAction(import_docx_action)
-        
+
+        import_okapi_action = QAction("&Other format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)...", self)
+        import_okapi_action.setToolTip(
+            "Import IDML, HTML, XLIFF, PO, XLSX, or PPTX through the Okapi sidecar. "
+            "Same round-trip pipeline as DOCX import – translate in Supervertaler, "
+            "export back to the original format."
+        )
+        import_okapi_action.triggered.connect(self.import_okapi_format)
+        import_menu.addAction(import_okapi_action)
+
         import_txt_action = QAction("&Text / Markdown File (TXT, MD)...", self)
         import_txt_action.triggered.connect(self.import_simple_txt)
         import_menu.addAction(import_txt_action)
@@ -9531,6 +9540,15 @@ class SupervertalerQt(QMainWindow):
         export_target_docx_action = QAction("&Target Only (DOCX)...", self)
         export_target_docx_action.triggered.connect(self.export_target_only_docx)
         export_menu.addAction(export_target_docx_action)
+
+        export_okapi_action = QAction("Original format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)...", self)
+        export_okapi_action.setToolTip(
+            "For projects imported via 'Other format via Okapi…': merge the "
+            "translation back into the original file format using the Okapi "
+            "sidecar."
+        )
+        export_okapi_action.triggered.connect(self.export_okapi_merge)
+        export_menu.addAction(export_okapi_action)
 
         export_txt_action = QAction("Simple &Text File - Translated (TXT)...", self)
         export_txt_action.triggered.connect(self.export_simple_txt)
@@ -27548,7 +27566,185 @@ class SupervertalerQt(QMainWindow):
         self.save_general_settings(general_settings)
 
         self.import_docx_from_path(file_path)
-    
+
+    # Formats other than DOCX that we route through Okapi extract → merge.
+    # DOCX has its own dedicated menu entry; TMX is for TM import (separate
+    # path); everything else the sidecar reports as supported lands here.
+    OKAPI_OTHER_FORMATS = [
+        ("Adobe InDesign Markup", "*.idml"),
+        ("HTML", "*.html *.htm"),
+        ("XLIFF 1.2", "*.xliff *.xlf"),
+        ("PO (gettext)", "*.po"),
+        ("Microsoft Excel", "*.xlsx"),
+        ("Microsoft PowerPoint", "*.pptx"),
+    ]
+
+    def import_okapi_format(self):
+        """Import any format the Okapi sidecar can extract (IDML, HTML, XLIFF, PO, …).
+
+        Mirrors the DOCX import flow: file picker → language pair dialog →
+        ``import_docx_from_path``. The path-based importer is already
+        format-agnostic at the extraction step (it just calls
+        ``okapi_sidecar.extract``), so once we hand it the file path the
+        existing Okapi round-trip plumbing takes care of the rest – the
+        project ends up tagged with ``import_engine = "okapi"`` and the
+        original file path is stored on the project for ``_try_okapi_merge_export``
+        to use later.
+        """
+        # Build file filter list: per-format entries + an "All supported"
+        # bucket for users who don't know what their file is.
+        all_patterns = " ".join(p for _, p in self.OKAPI_OTHER_FORMATS)
+        filter_parts = [f"All supported formats ({all_patterns})"]
+        filter_parts.extend(f"{name} ({pattern})" for name, pattern in self.OKAPI_OTHER_FORMATS)
+        filter_parts.append("All Files (*.*)")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import via Okapi",
+            "",
+            ";;".join(filter_parts)
+        )
+        if not file_path:
+            return
+
+        # Language-pair dialog (mirrors import_docx). Kept duplicated to
+        # avoid disturbing the working DOCX path during this v1 rollout.
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Import via Okapi – Options")
+        dialog.setMinimumWidth(500)
+        layout = QVBoxLayout(dialog)
+
+        info_label = QLabel(
+            f"<b>{Path(file_path).name}</b><br><br>"
+            f"Supervertaler will use the Okapi sidecar to extract translatable "
+            f"content from this file. When you later export via "
+            f"<i>File → Export → Original format (via Okapi)…</i>, the same "
+            f"sidecar reconstructs the file in its original format, byte-for-byte."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+        layout.addSpacing(15)
+
+        lang_group = QGroupBox("Language Pair")
+        lang_layout = QHBoxLayout(lang_group)
+
+        languages = [
+            ("English", "en"), ("Dutch", "nl"), ("German", "de"),
+            ("French", "fr"), ("Spanish", "es"), ("Italian", "it"),
+            ("Portuguese", "pt"), ("Polish", "pl"), ("Russian", "ru"),
+            ("Chinese", "zh"), ("Japanese", "ja"), ("Korean", "ko"),
+        ]
+
+        source_combo = QComboBox()
+        target_combo = QComboBox()
+        for name, code in languages:
+            source_combo.addItem(name, code)
+            target_combo.addItem(name, code)
+
+        general_settings = self.load_general_settings()
+        last_source = general_settings.get('last_import_source_lang',
+                                           self.current_project.source_lang if self.current_project else 'en')
+        last_target = general_settings.get('last_import_target_lang',
+                                           self.current_project.target_lang if self.current_project else 'nl')
+        for i in range(source_combo.count()):
+            if source_combo.itemData(i) == last_source:
+                source_combo.setCurrentIndex(i)
+                break
+        for i in range(target_combo.count()):
+            if target_combo.itemData(i) == last_target:
+                target_combo.setCurrentIndex(i)
+                break
+
+        arrow = QLabel(" → ")
+        arrow.setStyleSheet("font-weight: bold; font-size: 14px;")
+        lang_layout.addWidget(QLabel("Source:"))
+        lang_layout.addWidget(source_combo)
+        lang_layout.addWidget(arrow)
+        lang_layout.addWidget(QLabel("Target:"))
+        lang_layout.addWidget(target_combo)
+        lang_layout.addStretch()
+        layout.addWidget(lang_group)
+        layout.addSpacing(20)
+
+        button_layout = QHBoxLayout()
+        ok_btn = QPushButton("Import")
+        ok_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; border: none; outline: none;")
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(ok_btn)
+        layout.addLayout(button_layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._import_source_lang = source_combo.currentData()
+        self._import_target_lang = target_combo.currentData()
+        general_settings['last_import_source_lang'] = self._import_source_lang
+        general_settings['last_import_target_lang'] = self._import_target_lang
+        self.save_general_settings(general_settings)
+
+        # import_docx_from_path is generic at the extract level – it asks the
+        # Okapi sidecar to parse whatever path it gets, then builds segments
+        # from the result. The "docx" in its name is historical.
+        self.import_docx_from_path(file_path)
+
+    def export_okapi_merge(self):
+        """Export an Okapi-imported project back to its original format.
+
+        Pairs with ``import_okapi_format``: looks up the original file path
+        stored on import, opens a Save As dialog defaulted to the same
+        extension, and calls ``_try_okapi_merge_export`` to round-trip
+        the translation through the sidecar.
+        """
+        if not self.current_project or not self.current_project.segments:
+            QMessageBox.warning(self, "Nothing to Export", "Open a project first.")
+            return
+        if getattr(self.current_project, 'import_engine', '') != 'okapi':
+            QMessageBox.warning(
+                self, "Not an Okapi project",
+                "This menu entry only works for projects imported via "
+                "<i>File → Import → Other format (via Okapi)…</i> (or DOCX, "
+                "but DOCX has its own dedicated export entry).<br><br>"
+                "The current project was imported through a different path."
+            )
+            return
+
+        original_path = (getattr(self, 'original_docx', None)
+                         or getattr(self, 'current_document_path', None)
+                         or getattr(self.current_project, 'original_docx_path', None))
+        if not original_path or not os.path.exists(original_path):
+            QMessageBox.warning(
+                self, "Original File Not Found",
+                f"The original source file is needed for the Okapi merge step "
+                f"but couldn't be located:<br><br>"
+                f"<code>{original_path or 'no path stored'}</code><br><br>"
+                f"Re-import the source file to refresh the link, then try "
+                f"the export again."
+            )
+            return
+
+        ext = Path(original_path).suffix.lower()  # includes the dot
+        ext_label = ext.lstrip('.').upper() or "file"
+        default_name = Path(original_path).stem + "_translated" + ext
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export {ext_label} via Okapi",
+            default_name,
+            f"{ext_label} files (*{ext});;All Files (*.*)"
+        )
+        if not file_path:
+            return
+
+        ok = self._try_okapi_merge_export(
+            self.current_project.segments, original_path, file_path
+        )
+        if not ok:
+            self.log("⚠ Okapi merge export did not complete – check the log above.")
+
     def _ensure_okapi_sidecar(self) -> bool:
         """Make sure the Okapi sidecar is up. Returns True on success.
 
