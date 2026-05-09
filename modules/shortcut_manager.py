@@ -499,7 +499,7 @@ class ShortcutManager:
         "editor_add_to_termbase": {
             "category": "Editor",
             "description": "Add selected term pair to glossary (with dialogue)",
-            "default": "Ctrl+E",
+            "default": "Ctrl+Alt+T",
             "action": "add_to_termbase",
             "context": "grid_editor"
         },

@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.474 (May 9, 2026)
+**Current Version:** v1.9.475 (May 9, 2026)
+
+
+## v1.9.475 – May 9, 2026
+
+### Changed (Add-term-to-glossary dialog redesigned + shortcut Ctrl+Alt+T)
+
+- **The "Save to Glossary(s)" checkbox list is gone.** Choosing a target glossary on every term-add was redundant – the Termbases tab already has a Read/Write toggle that captures the same intent more durably. The dialog now writes the term to **every glossary that is active for the current project AND marked Write**. If no glossary is marked Write, you get a clear error pointing at the right toggle.
+- **Source and target term fields are editable.** They were read-only labels before; now they're proper QLineEdits so you can correct the spacing, capitalisation, or typo of the captured pair before saving. Matches the Trados plugin's editable behaviour.
+- **Side-by-side layout** for the source/target term row, mirroring the Trados plugin's "Source: English / Target: Dutch" two-column header. The column captions pick up the current project's source/target language names automatically.
+- **New `Definition` field** between the term row and the Domain row – the database column has always been there, the dialog just never exposed it. Use it for the brief gloss; keep usage notes / URLs in `Notes`.
+- **New `Non-translatable (keep source text in target)` checkbox** alongside the existing `Forbidden term` one. Lights up the `is_nontranslatable` column on the row, so the entry shows up correctly when filtering by NT lists.
+- **Header label removed** ("Add term pair to glossary") – the dialog title bar already says "Add Term to Glossary", saying it twice was clutter.
+
+### Changed (Keyboard shortcut)
+
+- **`Ctrl+Alt+T`** now opens the Add-Term dialog (was `Ctrl+E`). Matches the equivalent shortcut in the Supervertaler for Trados plugin so muscle memory transfers between products. The Settings → Keyboard Shortcuts default is updated; existing custom binding overrides are unaffected. Tooltip strings, right-click menu labels, and welcome-tip messages all reflect the new shortcut.
 
 
 ## v1.9.474 – May 9, 2026

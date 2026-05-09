@@ -2570,7 +2570,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 self,
                 "Selection Required",
                 "Please select text in both Source and Target cells before quick-adding to glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+E')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
             )
             return
 
@@ -2870,8 +2870,14 @@ class ReadOnlyGridTextEditor(QTextEdit):
         if event.type() == event.Type.KeyPress:
             key_event = event
             
-            # Ctrl+E: Add selected terms to termbase (with dialog)
-            if key_event.key() == Qt.Key.Key_E and key_event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            # Ctrl+Alt+T: Add selected terms to termbase (with dialog).
+            # Matches the shortcut used by the Trados plugin so muscle
+            # memory transfers between products.  Was Ctrl+E before
+            # v1.9.475; the old binding is now free for Qt's stock "edit"
+            # default if anyone wants it back.
+            if (key_event.key() == Qt.Key.Key_T
+                    and key_event.modifiers() == (Qt.KeyboardModifier.ControlModifier
+                                                  | Qt.KeyboardModifier.AltModifier)):
                 self._handle_add_to_termbase()
                 return True  # Event handled
             
@@ -2984,7 +2990,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 "1. Select term in source cell\\n"
                 "2. Press Tab to cycle to target cell\\n"
                 "3. Select corresponding translation\\n"
-                f"4. Press {format_shortcut_for_display('Ctrl+E')} (or right-click) to add to glossary"
+                f"4. Press {format_shortcut_for_display('Ctrl+Alt+T')} (or right-click) to add to glossary"
             )
             return
         
@@ -3017,7 +3023,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 self,
                 "Selection Required",
                 "Please select text in both Source and Target cells before quick-adding to glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+E')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
             )
             return
 
@@ -3048,7 +3054,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 self,
                 "Selection Required",
                 f"Please select text in both Source and Target cells before quick-adding to the glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+E')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
             )
             return
 
@@ -3391,7 +3397,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
             pass
 
         # Add to glossary action (with dialogue)
-        add_to_tb_action = QAction(f"📖 Add to Glossary ({format_shortcut_for_display('Ctrl+E')})", self)
+        add_to_tb_action = QAction(f"📖 Add to Glossary ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
         add_to_tb_action.triggered.connect(self._handle_add_to_termbase)
         menu.addAction(add_to_tb_action)
 
@@ -3968,7 +3974,7 @@ class EditableGridTextEditor(QTextEdit):
                 "1. Select term in source/target cell\\n"
                 "2. Press Tab to cycle to other cell\\n"
                 "3. Select corresponding term\\n"
-                f"4. Press {format_shortcut_for_display('Ctrl+E')} (or right-click) to add to glossary"
+                f"4. Press {format_shortcut_for_display('Ctrl+Alt+T')} (or right-click) to add to glossary"
             )
             return
         
@@ -4001,7 +4007,7 @@ class EditableGridTextEditor(QTextEdit):
                 self,
                 "Selection Required",
                 "Please select text in both Source and Target cells before quick-adding to glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+E')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
             )
             return
 
@@ -4031,7 +4037,7 @@ class EditableGridTextEditor(QTextEdit):
                 self,
                 "Selection Required",
                 f"Please select text in both Source and Target cells before quick-adding to the glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+E')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
             )
             return
 
@@ -4203,7 +4209,7 @@ class EditableGridTextEditor(QTextEdit):
             pass
 
         # Add to glossary action (with dialogue)
-        add_to_tb_action = QAction(f"📖 Add to Glossary ({format_shortcut_for_display('Ctrl+E')})", self)
+        add_to_tb_action = QAction(f"📖 Add to Glossary ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
         add_to_tb_action.triggered.connect(self._handle_add_to_termbase)
         menu.addAction(add_to_tb_action)
 
@@ -5781,117 +5787,102 @@ class TermMetadataDialog(QDialog):
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
         
-        # Header
-        header = QLabel("Add term pair to glossary")
-        header.setStyleSheet("font-size: 12px; font-weight: bold; margin-bottom: 5px; padding: 4px;")
-        layout.addWidget(header)
+        # Term pair – editable, side by side (Trados-style). The header label
+        # that used to say "Add term pair to glossary" is gone; the dialog
+        # title already says "Add term entry — <termbase>" which is enough.
+        term_row = QHBoxLayout()
+        term_row.setSpacing(12)
+
+        # Resolve language names for the column captions. Pulled from the
+        # current project when available, otherwise show a generic
+        # "Source / Target" label.
+        parent_window = parent if (parent := self.parent()) else None
+        try:
+            proj = getattr(parent_window, 'current_project', None)
+            src_caption = (proj.source_lang if proj and getattr(proj, 'source_lang', None) else "Source")
+            tgt_caption = (proj.target_lang if proj and getattr(proj, 'target_lang', None) else "Target")
+        except Exception:
+            src_caption, tgt_caption = "Source", "Target"
+
+        source_col = QVBoxLayout()
+        source_col.setSpacing(2)
+        src_lbl = QLabel(f"<b>{src_caption}:</b>")
+        source_col.addWidget(src_lbl)
+        self.source_edit = QLineEdit(self.source_term)
+        self.source_edit.setStyleSheet("padding: 4px;")
+        source_col.addWidget(self.source_edit)
+
+        target_col = QVBoxLayout()
+        target_col.setSpacing(2)
+        tgt_lbl = QLabel(f"<b>{tgt_caption}:</b>")
+        target_col.addWidget(tgt_lbl)
+        self.target_edit = QLineEdit(self.target_term)
+        self.target_edit.setStyleSheet("padding: 4px;")
+        target_col.addWidget(self.target_edit)
+
+        term_row.addLayout(source_col, 1)
+        term_row.addLayout(target_col, 1)
+        layout.addLayout(term_row)
         
-        # Term pair display (read-only)
-        term_group = QGroupBox("Term Pair")
-        term_layout = QFormLayout()
-        
-        source_label = QLabel(self.source_term)
-        source_label.setStyleSheet("padding: 5px; border-radius: 3px;")
-        source_label.setWordWrap(True)
-        term_layout.addRow("Source:", source_label)
-        
-        target_label = QLabel(self.target_term)
-        target_label.setStyleSheet("padding: 5px; border-radius: 3px;")
-        target_label.setWordWrap(True)
-        term_layout.addRow("Target:", target_label)
-        
-        term_group.setLayout(term_layout)
-        layout.addWidget(term_group)
-        
-        # Termbase selection
-        tb_group = QGroupBox("Save to Glossary(s)")
-        tb_layout = QVBoxLayout()
-        
-        if not self.active_termbases:
-            no_tb_label = QLabel("⚠️ No active glossaries found. Please activate at least one glossary first.")
-            no_tb_label.setStyleSheet("color: #d32f2f; padding: 10px;")
-            no_tb_label.setWordWrap(True)
-            tb_layout.addWidget(no_tb_label)
-        else:
-            # Header with select all/none buttons
-            header_layout = QHBoxLayout()
-            select_all_btn = QPushButton("Select All")
-            select_all_btn.setMaximumWidth(100)
-            select_none_btn = QPushButton("Select None")
-            select_none_btn.setMaximumWidth(100)
-            
-            def select_all():
-                for cb in self.termbase_checkboxes.values():
-                    cb.setChecked(True)
-            
-            def select_none():
-                for cb in self.termbase_checkboxes.values():
-                    cb.setChecked(False)
-            
-            select_all_btn.clicked.connect(select_all)
-            select_none_btn.clicked.connect(select_none)
-            
-            header_layout.addWidget(select_all_btn)
-            header_layout.addWidget(select_none_btn)
-            header_layout.addStretch()
-            tb_layout.addLayout(header_layout)
-            
-            # Checkboxes for each active termbase
-            for tb in self.active_termbases:
-                is_project_tb = tb.get('is_project_termbase', False)
-                
-                # Use pink checkbox for project termbase, green for others
-                if is_project_tb:
-                    cb = PinkCheckmarkCheckBox(f"📌 {tb['name']} (Project)")
-                else:
-                    cb = CheckmarkCheckBox(tb['name'])
-                
-                # Priority: active project glossaries -> saved manual selections -> legacy default all
-                if self.default_selected_termbase_ids:
-                    cb.setChecked(tb['id'] in self.default_selected_termbase_ids)
-                elif self.saved_selections is not None:
-                    cb.setChecked(tb['id'] in self.saved_selections)
-                else:
-                    cb.setChecked(True)  # Default: all selected
-                cb.setToolTip(f"Languages: {tb.get('source_lang', '?')} → {tb.get('target_lang', '?')}")
-                
-                self.termbase_checkboxes[tb['id']] = cb
-                tb_layout.addWidget(cb)
-        
-        tb_group.setLayout(tb_layout)
-        layout.addWidget(tb_group)
-        
+        # The "Save to Glossary(s)" checkbox list that used to live here has
+        # been retired. The caller now computes the destination termbases
+        # automatically based on the Read/Write toggles in the Termbases tab –
+        # any termbase active for the current project AND marked Write gets
+        # the new term. No per-add picker, no per-add nag.
+
         # Metadata fields
         meta_group = QGroupBox("Metadata (Optional)")
         meta_layout = QFormLayout()
-        
+
+        # Definition – Trados-style dedicated field, separate from notes.
+        # The DB column already exists (termbase_terms.definition) so this
+        # is a pure UI addition.
+        self.definition_edit = QTextEdit()
+        self.definition_edit.setMaximumHeight(45)
+        self.definition_edit.setPlaceholderText("Brief definition or gloss...")
+        self.definition_edit.setStyleSheet("padding: 3px;")
+        meta_layout.addRow("Definition:", self.definition_edit)
+
         # Domain
         self.domain_edit = QLineEdit()
         self.domain_edit.setPlaceholderText("e.g., Patents, Legal, Medical, IT...")
         meta_layout.addRow("Domain:", self.domain_edit)
-        
+
         # Notes
         self.notes_edit = QTextEdit()
         self.notes_edit.setMaximumHeight(45)
-        self.notes_edit.setPlaceholderText("Usage notes, context, definition, URLs...")
-        self.notes_edit.setStyleSheet("padding: 3px; font-size: 10px;")
+        self.notes_edit.setPlaceholderText("Usage notes, context, URLs...")
+        self.notes_edit.setStyleSheet("padding: 3px;")
         meta_layout.addRow("Notes:", self.notes_edit)
-        
-        # Project
-        self.project_edit = QLineEdit()
-        self.project_edit.setPlaceholderText("Optional project name...")
-        meta_layout.addRow("Project:", self.project_edit)
-        
+
         # Client
         self.client_edit = QLineEdit()
         self.client_edit.setPlaceholderText("Optional client name...")
         meta_layout.addRow("Client:", self.client_edit)
-        
+
+        # Project
+        self.project_edit = QLineEdit()
+        self.project_edit.setPlaceholderText("Optional project name...")
+        meta_layout.addRow("Project:", self.project_edit)
+
+        # Non-translatable checkbox – matches Trados.  The DB column
+        # is termbase_terms.is_nontranslatable.
+        self.nontranslatable_check = CheckmarkCheckBox(
+            "Non-translatable (keep source text in target)"
+        )
+        self.nontranslatable_check.setToolTip(
+            "Mark this entry as non-translatable. The source term is kept "
+            "verbatim in the target whenever it appears in segments."
+        )
+        meta_layout.addRow("", self.nontranslatable_check)
+
         # Forbidden term checkbox
-        self.forbidden_check = CheckmarkCheckBox("Mark as forbidden term")
+        self.forbidden_check = CheckmarkCheckBox(
+            "Forbidden term (warn when used in translation)"
+        )
         self.forbidden_check.setToolTip("Forbidden terms trigger warnings when used")
         meta_layout.addRow("", self.forbidden_check)
-        
+
         meta_group.setLayout(meta_layout)
         layout.addWidget(meta_group)
         
@@ -6337,19 +6328,33 @@ class TermMetadataDialog(QDialog):
             })
         return synonyms
     
+    def get_source_term(self):
+        """Return the (possibly edited) source term."""
+        return self.source_edit.text().strip()
+
+    def get_target_term(self):
+        """Return the (possibly edited) target term."""
+        return self.target_edit.text().strip()
+
     def get_metadata(self):
         """Return dictionary of metadata fields"""
         return {
+            'definition': self.definition_edit.toPlainText().strip(),
             'domain': self.domain_edit.text().strip(),
             'notes': self.notes_edit.toPlainText().strip(),
             'project': self.project_edit.text().strip(),
             'client': self.client_edit.text().strip(),
-            'forbidden': self.forbidden_check.isChecked()
+            'forbidden': self.forbidden_check.isChecked(),
+            'is_nontranslatable': self.nontranslatable_check.isChecked(),
         }
-    
+
     def get_selected_termbases(self):
-        """Return list of selected termbase IDs"""
-        return [tb_id for tb_id, cb in self.termbase_checkboxes.items() if cb.isChecked()]
+        """Compatibility shim – the dialog no longer asks the user to pick
+        target glossaries. The caller computes the destination set from
+        the Termbases tab's Read/Write toggles. Always returns an empty
+        list; existing call sites that pass it through to the insert
+        logic should treat empty-from-dialog as "use writable defaults"."""
+        return []
     
     def _accept_and_save(self):
         """Save termbase selections and accept the dialog"""
@@ -14010,19 +14015,44 @@ class SupervertalerQt(QMainWindow):
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return  # User cancelled
-        
+
         metadata = dialog.get_metadata()
-        selected_termbase_ids = dialog.get_selected_termbases()
         source_synonyms = dialog.get_source_synonyms()
         target_synonyms = dialog.get_target_synonyms()
-        
+
+        # The user can correct the source/target text in the dialog now;
+        # use those values if they changed.
+        if hasattr(dialog, 'get_source_term'):
+            edited_source = dialog.get_source_term()
+            edited_target = dialog.get_target_term()
+            if edited_source:
+                source_text = edited_source
+            if edited_target:
+                target_text = edited_target
+
+        # Determine destination termbases automatically. The picker that
+        # used to live in the dialog is gone; the term is written to every
+        # termbase that is BOTH active for this project AND not marked
+        # read-only in the Termbases tab. If nothing matches, surface a
+        # clear error so the user knows they need to flip a Write toggle.
+        selected_termbase_ids = [
+            tb['id'] for tb in active_termbases
+            if tb['id'] in active_termbase_ids
+            and not tb.get('read_only', False)
+        ]
         if not selected_termbase_ids:
-            QMessageBox.warning(self, "No Glossary Selected", "Please select at least one glossary to save the term to.")
+            QMessageBox.warning(
+                self, "No Writable Glossary",
+                "There are no glossaries marked <b>Write</b> for the current "
+                "project.<br><br>"
+                "Open <b>Termbases → TM List</b> and tick the <b>Write</b> "
+                "checkbox on at least one active glossary, then try again."
+            )
             return
-        
+
         # Store the selected termbase IDs for quick add (Ctrl+Q)
         self._last_selected_termbase_ids = selected_termbase_ids
-        self.log(f"💾 Stored last-selected termbase IDs for Ctrl+Q: {selected_termbase_ids}")
+        self.log(f"💾 Stored writable termbase IDs for Ctrl+Q: {selected_termbase_ids}")
         
         # Get source and target languages from current project
         source_lang = self.current_project.source_lang if self.current_project else 'English'
@@ -14177,7 +14207,7 @@ class SupervertalerQt(QMainWindow):
         # Check if we have a last-selected termbase from Ctrl+E
         if not hasattr(self, '_last_selected_termbase_ids') or not self._last_selected_termbase_ids:
             QMessageBox.information(self, "No Glossary Selected", 
-                f"Please use {format_shortcut_for_display('Ctrl+E')} first to select which glossary to save terms to.\n\n"
+                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} first to select which glossary to save terms to.\n\n"
                 f"After that, {format_shortcut_for_display('Ctrl+Q')} will quick-save to the same glossary(s).")
             return
         
@@ -14195,7 +14225,7 @@ class SupervertalerQt(QMainWindow):
         if not target_termbases:
             QMessageBox.warning(self, "Glossary Not Found", 
                 "The previously selected glossary(s) could not be found.\n\n"
-                f"Please use {format_shortcut_for_display('Ctrl+E')} to select a glossary again.")
+                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} to select a glossary again.")
             self._last_selected_termbase_ids = None
             return
         
