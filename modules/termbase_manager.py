@@ -716,6 +716,8 @@ class TermbaseManager:
                  forbidden: bool = False, source_lang: Optional[str] = None,
                  target_lang: Optional[str] = None, term_uuid: Optional[str] = None,
                  is_nontranslatable: bool = False,
+                 definition: str = "", url: str = "",
+                 source_abbreviation: str = "", target_abbreviation: str = "",
                  **kwargs) -> Optional[int]:
         """
         Add a term to termbase
@@ -725,7 +727,7 @@ class TermbaseManager:
             source_term: Source language term
             target_term: Target language term
             domain: Domain/category
-            notes: Optional notes/definition
+            notes: Optional notes
             project: Optional project name
             client: Optional client name
             forbidden: Whether this is a forbidden term
@@ -734,6 +736,10 @@ class TermbaseManager:
             term_uuid: Optional UUID for tracking term across imports/exports
             is_nontranslatable: Whether this term is a non-translatable
                                 (copies through unchanged at translation time)
+            definition: Brief gloss / definition (separate from notes)
+            url: Optional reference URL
+            source_abbreviation: Optional abbreviation for the source term
+            target_abbreviation: Optional abbreviation for the target term
 
         Returns:
             Term ID or None if failed (returns None if duplicate found)
@@ -763,11 +769,13 @@ class TermbaseManager:
                 INSERT INTO termbase_terms
                 (termbase_id, source_term, target_term, domain, notes,
                  project, client, forbidden, source_lang, target_lang, term_uuid,
-                 is_nontranslatable)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 is_nontranslatable, definition, url,
+                 source_abbreviation, target_abbreviation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (termbase_id, source_term, target_term, domain, notes,
                   project, client, forbidden, source_lang, target_lang, term_uuid,
-                  1 if is_nontranslatable else 0))
+                  1 if is_nontranslatable else 0, definition, url,
+                  source_abbreviation, target_abbreviation))
 
             self.db_manager.connection.commit()
             term_id = cursor.lastrowid

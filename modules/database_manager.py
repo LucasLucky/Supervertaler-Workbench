@@ -459,10 +459,32 @@ class DatabaseManager:
         """)
         
         self.cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_gt_project_id 
+            CREATE INDEX IF NOT EXISTS idx_gt_project_id
             ON termbase_terms(project_id)
         """)
-        
+
+        # Migration: add url + per-language abbreviation columns to
+        # termbase_terms. Both fields are present in the Trados plugin's
+        # term editor and were finally surfaced in the Workbench dialog
+        # in v1.9.478. ALTER TABLE ADD COLUMN is the safe SQLite-friendly
+        # path; existing rows simply get NULL for the new fields.
+        try:
+            self.cursor.execute("PRAGMA table_info(termbase_terms)")
+            tt_columns = [row[1] for row in self.cursor.fetchall()]
+            if 'url' not in tt_columns:
+                self.cursor.execute("ALTER TABLE termbase_terms ADD COLUMN url TEXT")
+                print("✓ Added url column to termbase_terms")
+            if 'source_abbreviation' not in tt_columns:
+                self.cursor.execute("ALTER TABLE termbase_terms ADD COLUMN source_abbreviation TEXT")
+                print("✓ Added source_abbreviation column to termbase_terms")
+            if 'target_abbreviation' not in tt_columns:
+                self.cursor.execute("ALTER TABLE termbase_terms ADD COLUMN target_abbreviation TEXT")
+                print("✓ Added target_abbreviation column to termbase_terms")
+            self.connection.commit()
+        except Exception as e:
+            print(f"termbase_terms migration info: {e}")
+
+
         self.cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_gt_domain 
             ON termbase_terms(domain)

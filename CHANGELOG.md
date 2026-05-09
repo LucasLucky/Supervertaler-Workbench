@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.477 (May 9, 2026)
+**Current Version:** v1.9.478 (May 9, 2026)
+
+
+## v1.9.478 – May 9, 2026
+
+### Added (URL + per-language Abbreviation fields on the Add-Term dialog)
+
+- The **Add Term to Glossary** dialog now exposes two more fields that have been part of the Trados plugin's term editor for a long time but never made it into the Workbench:
+  - **Abbreviation** for each language, sitting directly beneath the term field in its respective language column. Useful for terms like "European Patent Office (EPO)" where you want to record both the long form and the abbreviation as a single linked entry.
+  - **URL** in the metadata block beneath Notes. For a reference link to a Wikipedia article, IATE record, internal style guide, etc.
+- Schema migration adds three new columns to `termbase_terms` (`url`, `source_abbreviation`, `target_abbreviation`) on next launch. Existing rows get NULL for the new fields.
+- `TermbaseManager.add_term()` accepts the new fields as keyword arguments. Callers that pre-date this change continue to work unchanged – the new params have safe `""` defaults.
+- The dialog's `definition` field (added in v1.9.475) is now also actually persisted; the previous version surfaced a Definition box in the UI but didn't pass it through to the insert. Caller fixed in the same edit.
+
+### Changed (Synonym widgets moved into their language column)
+
+- The Source Synonyms / Target Synonyms collapsible groups used to sit stacked below the term row, taking up a lot of vertical space and making the dialog feel like a long form. They now live **inside** their respective language column – source synonyms drop directly under the source term + abbreviation, target synonyms under the target term + abbreviation. Mirrors the Trados plugin's per-language column layout.
 
 
 ## v1.9.477 – May 9, 2026

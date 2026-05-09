@@ -5829,21 +5829,36 @@ class TermMetadataDialog(QDialog):
         except Exception:
             src_caption, tgt_caption = "Source", "Target"
 
+        # Source column: term, abbreviation, (later) synonyms
         source_col = QVBoxLayout()
         source_col.setSpacing(2)
-        src_lbl = QLabel(f"<b>{src_caption}:</b>")
-        source_col.addWidget(src_lbl)
+        source_col.addWidget(QLabel(f"<b>{src_caption}:</b>"))
         self.source_edit = QLineEdit(self.source_term)
         self.source_edit.setStyleSheet("padding: 4px;")
         source_col.addWidget(self.source_edit)
+        source_col.addWidget(QLabel("Abbreviation:"))
+        self.source_abbr_edit = QLineEdit()
+        self.source_abbr_edit.setStyleSheet("padding: 4px;")
+        source_col.addWidget(self.source_abbr_edit)
 
+        # Target column: term, abbreviation, (later) synonyms
         target_col = QVBoxLayout()
         target_col.setSpacing(2)
-        tgt_lbl = QLabel(f"<b>{tgt_caption}:</b>")
-        target_col.addWidget(tgt_lbl)
+        target_col.addWidget(QLabel(f"<b>{tgt_caption}:</b>"))
         self.target_edit = QLineEdit(self.target_term)
         self.target_edit.setStyleSheet("padding: 4px;")
         target_col.addWidget(self.target_edit)
+        target_col.addWidget(QLabel("Abbreviation:"))
+        self.target_abbr_edit = QLineEdit()
+        self.target_abbr_edit.setStyleSheet("padding: 4px;")
+        target_col.addWidget(self.target_abbr_edit)
+
+        # Stash the column layouts on self so the synonym group widgets
+        # built later in this method can be dropped into the same
+        # columns as their respective term/abbreviation pair – matches
+        # the Trados plugin's per-language column layout.
+        self._source_col_layout = source_col
+        self._target_col_layout = target_col
 
         term_row.addLayout(source_col, 1)
         term_row.addLayout(target_col, 1)
@@ -5876,9 +5891,16 @@ class TermMetadataDialog(QDialog):
         # Notes
         self.notes_edit = QTextEdit()
         self.notes_edit.setMaximumHeight(45)
-        self.notes_edit.setPlaceholderText("Usage notes, context, URLs...")
+        self.notes_edit.setPlaceholderText("Usage notes, context...")
         self.notes_edit.setStyleSheet("padding: 3px;")
         meta_layout.addRow("Notes:", self.notes_edit)
+
+        # URL (optional) – Trados-style. Stored in termbase_terms.url since
+        # the column was added in v1.9.478. Use it for a reference link
+        # (Wikipedia entry, IATE record, internal style guide, etc.).
+        self.url_edit = QLineEdit()
+        self.url_edit.setPlaceholderText("https://...")
+        meta_layout.addRow("URL:", self.url_edit)
 
         # Client
         self.client_edit = QLineEdit()
@@ -6002,7 +6024,10 @@ class TermMetadataDialog(QDialog):
         # Connect toggle button
         self.source_syn_toggle.clicked.connect(lambda: self.toggle_section(self.source_syn_toggle, self.source_syn_content))
 
-        layout.addWidget(source_syn_group)
+        # Drop the synonym group into the source-language column rather
+        # than the main vertical layout – mirrors the Trados plugin's
+        # "everything for this language stacks under its term" layout.
+        self._source_col_layout.addWidget(source_syn_group)
         
         # Target Synonyms section (collapsible)
         target_syn_group = QGroupBox()
@@ -6095,7 +6120,9 @@ class TermMetadataDialog(QDialog):
         # Connect toggle button
         self.target_syn_toggle.clicked.connect(lambda: self.toggle_section(self.target_syn_toggle, self.target_syn_content))
 
-        layout.addWidget(target_syn_group)
+        # Drop the synonym group into the target-language column (see
+        # the source-side comment above).
+        self._target_col_layout.addWidget(target_syn_group)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -6367,8 +6394,11 @@ class TermMetadataDialog(QDialog):
             'definition': self.definition_edit.toPlainText().strip(),
             'domain': self.domain_edit.text().strip(),
             'notes': self.notes_edit.toPlainText().strip(),
+            'url': self.url_edit.text().strip(),
             'project': self.project_edit.text().strip(),
             'client': self.client_edit.text().strip(),
+            'source_abbreviation': self.source_abbr_edit.text().strip(),
+            'target_abbreviation': self.target_abbr_edit.text().strip(),
             'forbidden': self.forbidden_check.isChecked(),
             'is_nontranslatable': self.nontranslatable_check.isChecked(),
         }
@@ -14111,12 +14141,16 @@ class SupervertalerQt(QMainWindow):
                     target_term=target_text,
                     source_lang=source_lang_code,
                     target_lang=target_lang_code,
-                    notes=metadata['notes'],
                     domain=metadata['domain'],
+                    notes=metadata['notes'],
                     project=metadata['project'],
                     client=metadata['client'],
-                    # priority removed - now managed at termbase level via ranking
-                    forbidden=metadata['forbidden']
+                    forbidden=metadata['forbidden'],
+                    is_nontranslatable=metadata.get('is_nontranslatable', False),
+                    definition=metadata.get('definition', ''),
+                    url=metadata.get('url', ''),
+                    source_abbreviation=metadata.get('source_abbreviation', ''),
+                    target_abbreviation=metadata.get('target_abbreviation', ''),
                 )
                 
                 if term_id:
