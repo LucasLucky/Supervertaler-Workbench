@@ -90,6 +90,7 @@ class Topics:
     TM_BASICS           = "translation-memory/basics"
     TM_MANAGING         = "translation-memory/managing-tms"
     TM_IMPORTING        = "translation-memory/importing-tmx"
+    TM_TRADOS_SDLTM     = "translation-memory/trados-sdltm"
     TM_FUZZY            = "translation-memory/fuzzy-matching"
     TM_SUPERMEMORY      = "translation-memory/supermemory"
 

@@ -2242,10 +2242,10 @@ class ReadOnlyGridTextEditor(QTextEdit):
         # Make inactive selections stay visible with same color
         from PyQt6.QtGui import QPalette
         palette = self.palette()
-        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight, QColor("#D0E7FF"))
-        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText, QColor("black"))
-        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.Highlight, QColor("#D0E7FF"))
-        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, QColor("black"))
+        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight, QColor("#000000"))
+        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.Highlight, QColor("#000000"))
+        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
         self.setPalette(palette)
 
         # Style to look like a normal cell with subtle selection.
@@ -3471,8 +3471,8 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 border: 1px solid #2196F3;
             }}
             QTextEdit::selection {{
-                background-color: #D0E7FF;
-                color: black;
+                background-color: #000000;
+                color: #FFFFFF;
             }}
         """)
 
@@ -3809,10 +3809,10 @@ class EditableGridTextEditor(QTextEdit):
         # Make inactive selections stay visible with same color
         from PyQt6.QtGui import QPalette
         palette = self.palette()
-        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight, QColor("#D0E7FF"))
-        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText, QColor("black"))
-        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.Highlight, QColor("#D0E7FF"))
-        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, QColor("black"))
+        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight, QColor("#000000"))
+        palette.setColor(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.Highlight, QColor("#000000"))
+        palette.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
         self.setPalette(palette)
 
         # Add syntax highlighter for tags (with spellcheck enabled for target cells)
@@ -4972,8 +4972,8 @@ class EditableGridTextEditor(QTextEdit):
                 border: {border_thickness}px solid {border_color};
             }}
             QTextEdit::selection {{
-                background-color: #D0E7FF;
-                color: black;
+                background-color: #000000;
+                color: #FFFFFF;
             }}
         """)
 
@@ -5354,8 +5354,8 @@ class WordWrapDelegate(QStyledItemDelegate):
                         color: black;
                     }
                     QTextEdit::selection {
-                        background-color: #D0E7FF;
-                        color: black;
+                        background-color: #000000;
+                        color: #FFFFFF;
                     }
                 """)
             
@@ -7759,6 +7759,17 @@ class SupervertalerQt(QMainWindow):
         # TM Metadata Manager - needed for TM list in Superlookup
         from modules.tm_metadata_manager import TMMetadataManager
         self.tm_metadata_mgr = TMMetadataManager(self.db_manager, self.log)
+
+        # External TM live-sync timer. Attached Trados .sdltm files (and any
+        # future external TM sources) are kept in step with their source by
+        # checking the file mtime every few seconds and pulling any new or
+        # modified TUs via incremental delta sync. The mtime check itself
+        # is essentially free; the SQL work only runs on actual changes.
+        from PyQt6.QtCore import QTimer
+        self._external_tm_sync_timer = QTimer(self)
+        self._external_tm_sync_timer.setInterval(5000)  # 5s — feels live without being spammy
+        self._external_tm_sync_timer.timeout.connect(self._sync_external_tms)
+        self._external_tm_sync_timer.start()
 
         # Termbase Manager - needed for glossary AI injection
         from modules.termbase_manager import TermbaseManager
@@ -11844,6 +11855,15 @@ class SupervertalerQt(QMainWindow):
         import_btn.setToolTip("Import TMX file as a new TM or add to existing TM")
         import_btn.clicked.connect(lambda: self._import_tmx_as_tm(tm_metadata_mgr, tm_table, refresh_tm_list))
         button_layout.addWidget(import_btn)
+
+        attach_sdltm_btn = QPushButton("🔗 Attach Trados TM")
+        attach_sdltm_btn.setToolTip(
+            "Mirror a Trados Studio .sdltm file as a read-only TM. "
+            "Inline tags are preserved as Supervertaler <N> markers."
+        )
+        attach_sdltm_btn.clicked.connect(lambda: self._attach_sdltm_as_tm(tm_metadata_mgr, refresh_tm_list))
+        set_help_topic(attach_sdltm_btn, HelpTopics.TM_TRADOS_SDLTM)
+        button_layout.addWidget(attach_sdltm_btn)
         
         export_btn = QPushButton("📤 Export TM")
         export_btn.setToolTip("Export selected TM to TMX file")
@@ -16971,7 +16991,335 @@ class SupervertalerQt(QMainWindow):
             import traceback
             traceback.print_exc()
             QMessageBox.critical(self, "Import Error", f"Failed to import TMX:\n\n{str(e)}")
-    
+
+    def _attach_sdltm_as_tm(self, tm_metadata_mgr, refresh_callback):
+        """Mirror a Trados Studio .sdltm into Supervertaler's DB as a read-only TM.
+
+        The .sdltm file stays untouched – we open it in SQLite read-only mode
+        so it's safe to attach while Trados Studio has the same TM open. Each
+        translation unit's source/target XML is converted to Supervertaler's
+        inline-tag form (`<N>...</N>` / `<N/>`), then bulk-inserted under a
+        new tm_id.
+        """
+        from PyQt6.QtWidgets import QFileDialog, QProgressDialog
+        from pathlib import Path
+        from modules.sdltm_handler import SDLTMReader, SDLTMError
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Attach Trados TM (.sdltm)",
+            "",
+            "Trados Translation Memory (*.sdltm);;All Files (*.*)"
+        )
+        if not file_path:
+            return
+
+        if not self.tm_database:
+            self.initialize_tm_database()
+        if not self.tm_database:
+            QMessageBox.critical(self, "Error", "TM database not available")
+            return
+
+        try:
+            reader = SDLTMReader(file_path, log_callback=self.log)
+            md = reader.metadata()
+        except SDLTMError as e:
+            QMessageBox.critical(
+                self, "Cannot Read .sdltm",
+                f"Could not open the selected file as a Trados TM:\n\n{e}"
+            )
+            return
+
+        # Confirmation dialog – show what we found and let the user name it.
+        # Default to the full filename (including .sdltm) so the entry stands
+        # out from regular TMX-imported TMs in the list.
+        default_name = Path(file_path).name
+        confirm_msg = (
+            f"<b>{Path(file_path).name}</b><br><br>"
+            f"Languages: <b>{md['source_lang']}</b> → <b>{md['target_lang']}</b><br>"
+            f"Translation units: <b>{md['tu_count']:,}</b><br><br>"
+            f"This will mirror the TM into Supervertaler as <i>read-only</i>. "
+            f"The .sdltm file itself is not modified.<br><br>"
+            f"Continue?"
+        )
+        reply = QMessageBox.question(
+            self, "Attach Trados TM",
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            reader.close()
+            return
+
+        # Ask the user for the display name (default = full filename of the .sdltm).
+        name, ok = QInputDialog.getText(
+            self, "Trados TM name",
+            "Display name for this TM in Supervertaler:",
+            text=default_name
+        )
+        if not ok or not name.strip():
+            reader.close()
+            return
+        name = name.strip()
+
+        # tm_id derived from filename so re-attaching the same .sdltm
+        # lands on the same TM (and acts as a "refresh"). If a TM with
+        # this id already exists we ask whether to replace it.
+        stem = Path(file_path).stem
+        safe_stem = "".join(c if c.isalnum() else "_" for c in stem).strip("_")
+        tm_id = f"trados_{safe_stem.lower()}"
+
+        if tm_metadata_mgr.tm_id_exists(tm_id):
+            existing = tm_metadata_mgr.get_tm_by_tm_id(tm_id)
+            existing_count = existing.get('entry_count', 0) if existing else 0
+            reply = QMessageBox.question(
+                self, "Trados TM already attached",
+                f"A TM with id <code>{tm_id}</code> is already attached "
+                f"({existing_count:,} TUs).<br><br>"
+                f"Replace it with a fresh import from the .sdltm? "
+                f"This deletes the existing entries and re-imports.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                reader.close()
+                return
+            # Delete entries + metadata so we get a clean slate.
+            if existing:
+                tm_metadata_mgr.delete_tm(existing['id'], delete_entries=True)
+
+        db_id = tm_metadata_mgr.create_tm(
+            name=name,
+            tm_id=tm_id,
+            source_lang=md["source_lang"],
+            target_lang=md["target_lang"],
+            description=f"Mirrored from {file_path}",
+            read_only=True,
+            auto_unique_id=False,
+        )
+        if not db_id:
+            QMessageBox.critical(self, "Error", "Failed to create TM metadata entry")
+            reader.close()
+            return
+        actual_tm_id = tm_id
+
+        # Bulk import with a progress dialog. We chunk the inserts so the
+        # dialog updates and the user can cancel mid-flight on huge TMs.
+        total = md["tu_count"]
+        progress = QProgressDialog(
+            f"Importing {total:,} TUs from {Path(file_path).name}...",
+            "Cancel", 0, max(total, 1), self
+        )
+        progress.setWindowTitle("Attaching Trados TM")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        CHUNK = 500
+        buffer = []        # (src, tgt) pairs ready for batch insert
+        inserted = 0
+        cancelled = False
+        import_error = None
+        max_id_seen = 0
+        max_date_seen = ""  # lexicographic compare on ISO strings
+        try:
+            for tu_id, src, tgt, change_date in reader.iter_tus():
+                if progress.wasCanceled():
+                    cancelled = True
+                    break
+                buffer.append((src, tgt))
+                if tu_id > max_id_seen:
+                    max_id_seen = tu_id
+                if change_date and change_date > max_date_seen:
+                    max_date_seen = change_date
+                if len(buffer) >= CHUNK:
+                    inserted += self.db_manager.add_translation_units_batch(
+                        buffer, md["source_lang"], md["target_lang"], actual_tm_id
+                    )
+                    buffer = []
+                    progress.setValue(min(inserted, total))
+                    progress.setLabelText(
+                        f"Imported {inserted:,} / {total:,} TUs from {Path(file_path).name}..."
+                    )
+                    QApplication.processEvents()
+            # Flush remaining buffer.
+            if buffer and not cancelled:
+                inserted += self.db_manager.add_translation_units_batch(
+                    buffer, md["source_lang"], md["target_lang"], actual_tm_id
+                )
+        except Exception as e:
+            # Catch and surface – Qt slot callbacks would otherwise swallow
+            # the traceback silently and leave the user with an empty TM.
+            import_error = e
+            self.log(f"✗ Trados TM import failed: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            progress.close()
+            reader.close()
+
+        # Persist external-source state so the periodic sync timer can
+        # delta-update from this .sdltm without duplicating work.
+        if import_error is None and inserted > 0:
+            try:
+                self.db_manager.cursor.execute(
+                    "UPDATE translation_memories SET "
+                    "external_source_path = ?, "
+                    "external_last_sync_id = ?, "
+                    "external_last_sync_date = ?, "
+                    "external_last_mtime = ? "
+                    "WHERE id = ?",
+                    (
+                        file_path,
+                        max_id_seen,
+                        max_date_seen or None,
+                        md.get("mtime"),
+                        db_id,
+                    ),
+                )
+                self.db_manager.connection.commit()
+            except Exception as e:
+                self.log(f"⚠ Could not save external-source state: {e}")
+
+        # Refresh the entry_count on the metadata row so the TM Manager
+        # display shows the right number without a manual reload.
+        if hasattr(tm_metadata_mgr, 'update_entry_count'):
+            tm_metadata_mgr.update_entry_count(actual_tm_id)
+
+        if refresh_callback:
+            refresh_callback()
+
+        if import_error is not None:
+            QMessageBox.critical(
+                self, "Import Failed",
+                f"Failed while importing TUs from <b>{Path(file_path).name}</b>:<br><br>"
+                f"{import_error}<br><br>"
+                f"The partial TM has been kept ({inserted:,} TUs) so you can inspect it. "
+                f"Delete it from the TM Manager and try again."
+            )
+        elif cancelled:
+            self.log(f"⚠ Trados TM attach cancelled after {inserted:,} TUs (TM kept partial)")
+            QMessageBox.warning(
+                self, "Attach Cancelled",
+                f"Cancelled after importing {inserted:,} of {total:,} TUs.\n\n"
+                f"The partial TM '{name}' has been kept – you can delete it from the "
+                f"TM Manager or re-attach the .sdltm to start over."
+            )
+        else:
+            self.log(f"✓ Attached Trados TM '{name}' ({inserted:,} TUs, tm_id={actual_tm_id})")
+            QMessageBox.information(
+                self, "Trados TM Attached",
+                f"Successfully imported <b>{inserted:,}</b> TUs from "
+                f"<b>{Path(file_path).name}</b>.<br><br>"
+                f"Languages: {md['source_lang']} → {md['target_lang']}<br>"
+                f"TM ID: <code>{actual_tm_id}</code> (read-only)<br><br>"
+                f"Activate it for the current project from the TM list to use it for lookups."
+            )
+
+    def _sync_external_tms(self):
+        """Tick of the external-TM live-sync timer.
+
+        For each TM that was attached from an external source (currently:
+        Trados Studio .sdltm), check the file's mtime; if it's newer than
+        when we last synced, pull any new or modified TUs in via a delta
+        query. Cheap on every tick when nothing has changed (one stat()
+        call per attached TM). Silent unless we actually pulled new data.
+        """
+        if not self.db_manager or not getattr(self.db_manager, 'connection', None):
+            return
+        try:
+            cur = self.db_manager.cursor
+            cur.execute(
+                "SELECT id, name, tm_id, source_lang, target_lang, "
+                "external_source_path, external_last_sync_id, "
+                "external_last_sync_date, external_last_mtime "
+                "FROM translation_memories "
+                "WHERE external_source_path IS NOT NULL"
+            )
+            rows = cur.fetchall()
+        except Exception:
+            # Migration may not have run yet, or DB closed mid-shutdown.
+            return
+
+        for db_id, name, tm_id, src_lang, tgt_lang, path, last_id, last_date, last_mtime in rows:
+            if not path or not os.path.exists(path):
+                continue
+            try:
+                current_mtime = os.path.getmtime(path)
+            except OSError:
+                continue
+            # Skip if nothing has changed on disk since the last sync. Use a
+            # small epsilon to dodge filesystem timestamp granularity issues
+            # (FAT-flavoured filesystems round to 2-second boundaries).
+            if last_mtime is not None and current_mtime <= (last_mtime + 0.001):
+                continue
+            self._delta_sync_external_tm(
+                db_id, name, tm_id, src_lang, tgt_lang, path,
+                last_id or 0, last_date, current_mtime,
+            )
+
+    def _delta_sync_external_tm(
+        self, db_id, name, tm_id, src_lang, tgt_lang, path,
+        since_id, since_date, current_mtime,
+    ):
+        """Pull new/modified TUs from an external .sdltm into our DB.
+
+        Always updates external_last_mtime so a no-op change (mtime bumped
+        without any new TUs, e.g. Trados re-saving on close) doesn't keep
+        re-triggering the SQL on every tick.
+        """
+        from modules.sdltm_handler import SDLTMReader
+        try:
+            with SDLTMReader(path, log_callback=self.log) as reader:
+                new_tus = list(reader.iter_tus(
+                    since_id=since_id,
+                    since_change_date=since_date or None,
+                ))
+        except Exception as e:
+            self.log(f"⚠ Live-sync failed for '{name}' ({path}): {e}")
+            return
+
+        max_id = since_id
+        max_date = since_date or ""
+        inserted = 0
+        if new_tus:
+            pairs = [(src, tgt) for (_tid, src, tgt, _cd) in new_tus]
+            try:
+                inserted = self.db_manager.add_translation_units_batch(
+                    pairs, src_lang, tgt_lang, tm_id
+                )
+            except Exception as e:
+                self.log(f"⚠ Could not insert delta TUs for '{name}': {e}")
+                return
+            for tid, _src, _tgt, cd in new_tus:
+                if tid > max_id:
+                    max_id = tid
+                if cd and cd > max_date:
+                    max_date = cd
+
+        # Always persist mtime + max-marker state so we don't redo this work.
+        try:
+            self.db_manager.cursor.execute(
+                "UPDATE translation_memories SET "
+                "external_last_sync_id = ?, "
+                "external_last_sync_date = ?, "
+                "external_last_mtime = ?, "
+                "entry_count = (SELECT COUNT(*) FROM translation_units WHERE tm_id = ?) "
+                "WHERE id = ?",
+                (max_id, max_date or None, current_mtime, tm_id, db_id),
+            )
+            self.db_manager.connection.commit()
+        except Exception as e:
+            self.log(f"⚠ Could not persist sync state for '{name}': {e}")
+            return
+
+        if inserted:
+            self.log(f"🔄 Synced {inserted:,} new TU(s) from '{name}'")
+
     def _export_tm_to_tmx(self, tm_metadata_mgr, tm_table):
         """Export selected TM to TMX file"""
         selected_row = tm_table.currentRow()
@@ -23574,7 +23922,8 @@ class SupervertalerQt(QMainWindow):
         self.termlens_widget.term_insert_requested.connect(self.insert_termlens_text)
         self.termlens_widget.edit_entry_requested.connect(self._on_termlens_edit_entry)
         self.termlens_widget.delete_entry_requested.connect(self._on_termlens_delete_entry)
-        
+        self.termlens_widget.font_size_changed.connect(self._on_termlens_font_size_changed)
+
         # Apply saved termlens font settings
         font_settings = self.load_general_settings()
         termlens_family = font_settings.get('termlens_font_family', 'Segoe UI')
@@ -24280,6 +24629,19 @@ class SupervertalerQt(QMainWindow):
             QTableWidget::item:last-child {
                 border-right: none;
             }
+            /* Trados-style strong blue for the active row so the user can see
+               at a glance which segment they're working on. The theme's
+               default highlight is too pale (#e3f2fd ≈ near-white) for the
+               editor grid, where the active segment needs to stand out from
+               the alternating-row tint. */
+            QTableWidget::item:selected {
+                background-color: #CFE5F5;
+                color: #000000;
+            }
+            QTableWidget::item:selected:!active {
+                background-color: #DEE9F2;
+                color: #000000;
+            }
 
             /* Narrower scrollbar with visible arrow buttons */
             QScrollBar:vertical {
@@ -24338,6 +24700,7 @@ class SupervertalerQt(QMainWindow):
         # Connect signals for debugging
         self.table.itemChanged.connect(self.on_cell_changed)
         self.table.currentCellChanged.connect(self.on_cell_selected)
+        self.table.currentCellChanged.connect(self._update_row_selection_tint)
         self.table.itemClicked.connect(self.on_cell_clicked)
         self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
 
@@ -32572,8 +32935,40 @@ class SupervertalerQt(QMainWindow):
 
             self.log(f"Importing {len(file_paths)} SDLXLIFF file(s)...")
 
+            # Progress dialog so large files don't look frozen during parsing.
+            first_name = Path(file_paths[0]).name
+            load_progress = QProgressDialog(
+                f"Opening {first_name}...", "Cancel", 0, max(len(file_paths), 1), self
+            )
+            load_progress.setWindowTitle("Importing SDLXLIFF")
+            load_progress.setWindowModality(Qt.WindowModality.WindowModal)
+            load_progress.setMinimumDuration(0)
+            load_progress.setAutoClose(False)
+            load_progress.setAutoReset(False)
+            load_progress.setValue(0)
+            QApplication.processEvents()
+
+            def _on_load_progress(stage: str, current: int, total: int, message: str) -> bool:
+                if load_progress.wasCanceled():
+                    return False
+                load_progress.setRange(0, max(total, 1))
+                load_progress.setValue(current)
+                load_progress.setLabelText(
+                    f"Parsing SDLXLIFF: {message} ({current}/{total})"
+                    if total else f"Parsing: {message}"
+                )
+                QApplication.processEvents()
+                return not load_progress.wasCanceled()
+
             handler = StandaloneSDLXLIFFHandler(log_callback=self.log)
-            if not handler.load(file_paths):
+            load_ok = handler.load(file_paths, progress_callback=_on_load_progress)
+            cancelled = load_progress.wasCanceled()
+            load_progress.close()
+
+            if cancelled:
+                self.log("❌ SDLXLIFF import cancelled by user")
+                return
+            if not load_ok:
                 QMessageBox.critical(
                     self, "Import Error",
                     "Failed to load the SDLXLIFF file(s). Check the log for details."
@@ -32751,8 +33146,40 @@ class SupervertalerQt(QMainWindow):
         try:
             from modules.sdlppx_handler import StandaloneSDLXLIFFHandler
 
+            # Progress dialog so large folders don't look frozen during parsing.
+            load_progress = QProgressDialog(
+                f"Opening {len(file_paths)} SDLXLIFF file(s)...", "Cancel",
+                0, max(len(file_paths), 1), self
+            )
+            load_progress.setWindowTitle("Importing SDLXLIFF Folder")
+            load_progress.setWindowModality(Qt.WindowModality.WindowModal)
+            load_progress.setMinimumDuration(0)
+            load_progress.setAutoClose(False)
+            load_progress.setAutoReset(False)
+            load_progress.setValue(0)
+            QApplication.processEvents()
+
+            def _on_load_progress(stage: str, current: int, total: int, message: str) -> bool:
+                if load_progress.wasCanceled():
+                    return False
+                load_progress.setRange(0, max(total, 1))
+                load_progress.setValue(current)
+                load_progress.setLabelText(
+                    f"Parsing SDLXLIFF: {message} ({current}/{total})"
+                    if total else f"Parsing: {message}"
+                )
+                QApplication.processEvents()
+                return not load_progress.wasCanceled()
+
             handler = StandaloneSDLXLIFFHandler(log_callback=self.log)
-            if not handler.load(file_paths):
+            load_ok = handler.load(file_paths, progress_callback=_on_load_progress)
+            cancelled = load_progress.wasCanceled()
+            load_progress.close()
+
+            if cancelled:
+                self.log("❌ SDLXLIFF folder import cancelled by user")
+                return
+            if not load_ok:
                 QMessageBox.critical(
                     self, "Import Error",
                     "Failed to load the SDLXLIFF file(s). Check the log for details."
@@ -34678,6 +35105,7 @@ class SupervertalerQt(QMainWindow):
         self.termlens_widget_match.term_insert_requested.connect(self.insert_termlens_text)
         self.termlens_widget_match.edit_entry_requested.connect(self._on_termlens_edit_entry)
         self.termlens_widget_match.delete_entry_requested.connect(self._on_termlens_delete_entry)
+        self.termlens_widget_match.font_size_changed.connect(self._on_termlens_font_size_changed)
         # Apply font settings
         font_settings = self.load_general_settings()
         termlens_family = font_settings.get('termlens_font_family', 'Segoe UI')
@@ -36761,11 +37189,71 @@ class SupervertalerQt(QMainWindow):
         # Apply to source widget
         if hasattr(source_widget, 'set_background_color'):
             source_widget.set_background_color(color)
-        
+
         # Apply to target widget
         if hasattr(target_widget, 'set_background_color'):
             target_widget.set_background_color(color)
-    
+
+    # Selection tint colour for the source/target cell widgets in the current
+    # row. Matches the QTableWidget::item:selected QSS rule so the tint is
+    # consistent across columns 0/1 (table items) and 2/3 (cell widgets).
+    # Pale Trados-style icy blue – clearly visible against alternating row
+    # tints without overpowering the cell content (termbase pills, tag
+    # markers, search highlights).
+    SELECTION_TINT = "#CFE5F5"
+
+    def _update_row_selection_tint(self, current_row, current_col, previous_row, previous_col):
+        """Tint every column of the active row with the selection blue.
+
+        QSS `::item:selected` is meant to handle this for free, but Qt paints
+        explicit ``item.setBackground()`` brushes on top of the QSS colour –
+        and we set those brushes via _apply_row_color for the ID/Type cells.
+        That's why without this method the source/target widgets show the
+        selection blue but the segment-number column stays on its alternating
+        colour, breaking the visual unity of the active row.
+
+        We walk every column so any cell widget that knows how to be tinted
+        (``set_background_color``) gets the same shade, and any plain
+        QTableWidgetItem gets its background brush overridden. The previous
+        row is reverted to its alternating colour via the existing helper.
+        """
+        if not hasattr(self, 'table') or self.table is None:
+            return
+
+        column_count = self.table.columnCount()
+        tint = QColor(self.SELECTION_TINT)
+
+        # Restore alternating colour on the row we left.
+        if previous_row is not None and previous_row >= 0 and previous_row != current_row:
+            try:
+                src_w = self.table.cellWidget(previous_row, 2)
+                tgt_w = self.table.cellWidget(previous_row, 3)
+                if src_w is not None or tgt_w is not None:
+                    # _apply_row_color handles cols 0/1 (items) + 2/3 (widgets).
+                    self._apply_row_color(previous_row, src_w, tgt_w)
+            except RuntimeError:
+                # Widget may have been deleted (e.g., during grid reload).
+                pass
+
+        # Tint the new current row across every column.
+        if current_row is not None and current_row >= 0:
+            try:
+                for col in range(column_count):
+                    widget = self.table.cellWidget(current_row, col)
+                    if widget is not None:
+                        # Cell widgets that opt into themed backgrounds
+                        # (source/target QTextEdits) take the tint via their
+                        # API. Other cell widgets are left alone – they have
+                        # their own opinions about how to render selection.
+                        if hasattr(widget, 'set_background_color'):
+                            widget.set_background_color(self.SELECTION_TINT)
+                    else:
+                        item = self.table.item(current_row, col)
+                        if item is not None:
+                            item.setBackground(tint)
+            except RuntimeError:
+                pass
+
     def apply_alternating_row_colors(self):
         """Apply alternating row colors to all source and target cells in the grid"""
         if not hasattr(self, 'table') or not self.table:
@@ -36785,6 +37273,13 @@ class SupervertalerQt(QMainWindow):
 
             if source_widget and target_widget:
                 self._apply_row_color(row, source_widget, target_widget)
+
+        # Re-apply the selection tint to the current row across all columns –
+        # we just overwrote its cells with the alternating colour. Pass
+        # previous_row=-1 so the helper skips the restore branch.
+        current_row = self.table.currentRow()
+        if current_row is not None and current_row >= 0:
+            self._update_row_selection_tint(current_row, 0, -1, 0)
 
         self.log("✓ Alternating row colors applied")
     
@@ -43305,22 +43800,39 @@ class SupervertalerQt(QMainWindow):
             
             # Clear filtering flag to re-enable auto-center
             self.filtering_active = False
-            
+
+            # Resolve the previously selected segment's row index BEFORE we
+            # re-apply pagination. If pagination is on, we need to switch to
+            # the page that contains this row first; otherwise the row stays
+            # hidden and the scroll/select call below silently no-ops on a
+            # hidden cell, leaving the user looking at page 1 even though
+            # they were working at the end of the project.
+            target_row = None
+            if selected_segment_id is not None:
+                for row, segment in enumerate(self.current_project.segments):
+                    if segment.id == selected_segment_id:
+                        target_row = row
+                        break
+
+            page_size = getattr(self, 'grid_page_size', 50)
+            if target_row is not None and page_size and page_size < 999999:
+                target_page = target_row // page_size
+                if getattr(self, 'grid_current_page', 0) != target_page:
+                    self.grid_current_page = target_page
+
             # Re-apply pagination after clearing filters (also resizes visible rows)
             if hasattr(self, '_apply_pagination_to_grid'):
                 self._apply_pagination_to_grid()
 
-            # Restore selection to the previously selected segment
-            if selected_segment_id is not None:
-                for row, segment in enumerate(self.current_project.segments):
-                    if segment.id == selected_segment_id:
-                        self.table.setCurrentCell(row, current_column)
-                        # Scroll to the row
-                        self.table.scrollToItem(
-                            self.table.item(row, 0), 
-                            QTableWidget.ScrollHint.PositionAtCenter
-                        )
-                        break
+            # Restore selection to the previously selected segment.
+            # PositionAtCenter centres it in the viewport so the user lands
+            # back where they were looking, not at the top of the page.
+            if target_row is not None:
+                self.table.setCurrentCell(target_row, current_column)
+                self.table.scrollToItem(
+                    self.table.item(target_row, 0),
+                    QTableWidget.ScrollHint.PositionAtCenter
+                )
         
         # Reset file filter to "All Files"
         if hasattr(self, 'file_filter_combo') and self.file_filter_combo:
@@ -46839,6 +47351,44 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"✗ Error inserting termlens text: {e}")
     
+    def _on_termlens_font_size_changed(self, new_size: int):
+        """Persist new TermLens font size and sync the other TermLens panel.
+
+        Triggered by the inline A-/A+ buttons on either TermLens widget.
+        """
+        try:
+            settings = self.load_general_settings()
+            if settings.get('termlens_font_size') == new_size:
+                # The widget that fired the signal is already at new_size; sync the other.
+                pass
+            else:
+                settings['termlens_font_size'] = new_size
+                self.save_general_settings(settings)
+
+            family = settings.get('termlens_font_family', 'Segoe UI')
+            bold = settings.get('termlens_font_bold', False)
+
+            # Sync both TermLens widgets without re-emitting the signal.
+            sender = self.sender()
+            for widget in (getattr(self, 'termlens_widget', None),
+                           getattr(self, 'termlens_widget_match', None)):
+                if widget is None or widget is sender:
+                    continue
+                if widget.current_font_size == new_size:
+                    continue
+                widget.current_font_size = new_size
+                if getattr(widget, 'current_source', '') and hasattr(widget, '_last_termbase_matches'):
+                    widget.update_with_matches(
+                        widget.current_source,
+                        widget._last_termbase_matches or [],
+                        getattr(widget, '_last_nt_matches', None),
+                        getattr(widget, '_status_hint', None),
+                    )
+                else:
+                    widget.set_font_settings(family, new_size, bold)
+        except Exception as e:
+            self.log(f"⚠ Could not save TermLens font size: {e}")
+
     def _on_termlens_edit_entry(self, term_id: int, termbase_id: int):
         """Handle edit glossary entry request from TermLens"""
         try:

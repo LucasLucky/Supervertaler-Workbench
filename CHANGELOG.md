@@ -2,7 +2,37 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.467 (May 9, 2026)
+**Current Version:** v1.9.468 (May 9, 2026)
+
+
+## v1.9.468 – May 9, 2026
+
+### Added (Attach a Trados Studio TM as a read-only TM in Supervertaler)
+
+- New **🔗 Attach Trados TM** button on the TM list (next to **📥 Import TMX**). Pick a `.sdltm` file – Trados can stay open at the same time, the file is read in SQLite read-only mode – and Supervertaler mirrors its translation units into the database under a dedicated `tm_id`. Tags are converted to Supervertaler's inline form (`<116>...</116>` etc.) on the way in, so a TM hit lines up with the same tag markers your imported segments already use.
+- The mirror **stays in sync** with the live `.sdltm`. A 5-second timer watches the file's mtime; whenever Trados saves new or modified TUs, only the delta is pulled in (id-and-change-date filtered, no full re-read), and the entry count on the TM row updates automatically. The mtime check itself is essentially free, so idle ticks cost nothing.
+- The TM is created **read-only** by default – Supervertaler never writes back to the `.sdltm`. Re-attaching the same file lands on the same TM and offers a one-click "Replace?" path that wipes and re-mirrors (use this if you'd rather refresh manually than rely on the timer).
+- Schema migration adds four columns to `translation_memories` (`external_source_path`, `external_last_sync_id`, `external_last_sync_date`, `external_last_mtime`) on next launch.
+- New module: `modules/sdltm_handler.py` (`SDLTMReader`).
+
+### Added (smaller wins)
+
+- **SDLXLIFF import progress dialog** for File → Import → Bilingual XLIFF (.sdlxliff)... and the folder variant. Large standalone files no longer look frozen during the parse phase, and the dialog supports cancel.
+- **TermLens font zoomer** (small "A" / big bold "A" buttons in the TermLens panel header). Click to bump the panel font size in 1-pt steps; the value persists across sessions and stays in sync between the TermLens tab and the Match Panel copy.
+
+### Fixed
+
+- **Clear Filters** now keeps the previously selected segment in view. Before, if you used the source filter to jump to a segment near the end of the document and then clicked **Clear Filters**, the grid snapped back to page 1 even though the selection was still on (e.g.) segment 1000. The grid now navigates to the page containing the active segment and centres it in the viewport.
+
+### Changed (active-row visuals)
+
+- The **active row** now has a clean Trados-style icy-blue tint (`#CFE5F5`) across all columns – ID, Type, source, target – so it's instantly clear which segment you're on. The tint dims to a soft slate when focus moves to the AI Assistant or TermLens panel and brightens back when you return to the grid. Previously, the QTextEdit cell widgets painted over the QSS selection rule and only the segment-number column changed colour.
+- **In-cell text selection** uses high-contrast black-on-white (Trados style) instead of the old pale blue. Selecting a word with the mouse or Ctrl-A now produces a clearly visible highlight in both source and target cells.
+
+### Updated (Workbench help docs)
+
+- New page: `workbench/translation-memory/trados-sdltm.md` documenting the Attach Trados TM workflow.
+- `workbench/cat-tools/trados.md`: added a "Just want to consult a TM?" pointer near the top with a cross-link to the new page.
 
 
 ## v1.9.467 – May 9, 2026

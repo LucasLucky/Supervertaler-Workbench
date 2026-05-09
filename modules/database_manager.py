@@ -268,7 +268,23 @@ class DatabaseManager:
             if 'project_id' not in columns:
                 self.cursor.execute("ALTER TABLE translation_memories ADD COLUMN project_id INTEGER")
                 print("✓ Added project_id column to translation_memories")
-            
+
+            # External-source mirror columns. When a row has a non-NULL
+            # external_source_path we periodically delta-sync it from that
+            # file (currently used for Trados Studio .sdltm attach).
+            if 'external_source_path' not in columns:
+                self.cursor.execute("ALTER TABLE translation_memories ADD COLUMN external_source_path TEXT")
+                print("✓ Added external_source_path column to translation_memories")
+            if 'external_last_sync_id' not in columns:
+                self.cursor.execute("ALTER TABLE translation_memories ADD COLUMN external_last_sync_id INTEGER DEFAULT 0")
+                print("✓ Added external_last_sync_id column to translation_memories")
+            if 'external_last_sync_date' not in columns:
+                self.cursor.execute("ALTER TABLE translation_memories ADD COLUMN external_last_sync_date TEXT")
+                print("✓ Added external_last_sync_date column to translation_memories")
+            if 'external_last_mtime' not in columns:
+                self.cursor.execute("ALTER TABLE translation_memories ADD COLUMN external_last_mtime REAL")
+                print("✓ Added external_last_mtime column to translation_memories")
+
             self.connection.commit()
         except Exception as e:
             print(f"Migration info: {e}")

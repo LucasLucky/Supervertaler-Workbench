@@ -604,6 +604,12 @@ class TermLensWidget(QWidget):
     term_insert_requested = pyqtSignal(str)  # Emits target text to insert
     edit_entry_requested = pyqtSignal(int, int)  # term_id, termbase_id
     delete_entry_requested = pyqtSignal(int, int, str, str)  # term_id, termbase_id, source, target
+    font_size_changed = pyqtSignal(int)  # Emits new font size (points) when user clicks A-/A+
+
+    # Bounds for the inline A-/A+ font zoomer. Match the Settings spin box range
+    # (6-16 pt) plus a little extra headroom on both sides.
+    MIN_FONT_SIZE = 6
+    MAX_FONT_SIZE = 20
     
     def __init__(self, parent=None, db_manager=None, log_callback=None, theme_manager=None):
         super().__init__(parent)
@@ -664,6 +670,38 @@ class TermLensWidget(QWidget):
         """)
         header.hide()  # Hide the header to save space
         layout.addWidget(header)
+
+        # ── A-/A+ font zoomer (right-aligned strip above the scroll area) ──
+        # Mirrors the buttons in the Trados plugin TermLens panel: small "A"
+        # decreases, large bold "A" increases. Clicks bump the font and emit
+        # font_size_changed so the host can persist the new size.
+        zoom_row = QHBoxLayout()
+        zoom_row.setContentsMargins(0, 0, 0, 0)
+        zoom_row.setSpacing(2)
+        zoom_row.addStretch()
+
+        self._btn_font_down = QPushButton("A")
+        font_down_font = QFont("Segoe UI", 7)
+        self._btn_font_down.setFont(font_down_font)
+        self._btn_font_down.setFixedSize(22, 20)
+        self._btn_font_down.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_font_down.setToolTip("Decrease TermLens font size")
+        self._btn_font_down.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_font_down.clicked.connect(lambda: self._change_font_size(-1))
+        zoom_row.addWidget(self._btn_font_down)
+
+        self._btn_font_up = QPushButton("A")
+        font_up_font = QFont("Segoe UI", 11)
+        font_up_font.setBold(True)
+        self._btn_font_up.setFont(font_up_font)
+        self._btn_font_up.setFixedSize(22, 20)
+        self._btn_font_up.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_font_up.setToolTip("Increase TermLens font size")
+        self._btn_font_up.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_font_up.clicked.connect(lambda: self._change_font_size(+1))
+        zoom_row.addWidget(self._btn_font_up)
+
+        layout.addLayout(zoom_row)
 
         # Scroll area for term blocks
         scroll = QScrollArea()
@@ -749,6 +787,38 @@ class TermLensWidget(QWidget):
                     self._status_hint if hasattr(self, '_status_hint') else None
                 )
     
+    def _change_font_size(self, delta: int):
+        """Bump the TermLens font size by ±delta points (clamped) and refresh.
+
+        Triggered by the inline A-/A+ buttons. Re-renders cached matches so
+        block layouts pick up the new size, and emits font_size_changed so
+        the host can persist the value and sync the Match Panel copy.
+        """
+        new_size = max(self.MIN_FONT_SIZE,
+                       min(self.MAX_FONT_SIZE, self.current_font_size + delta))
+        if new_size == self.current_font_size:
+            return  # Already at the boundary
+
+        self.current_font_size = new_size
+
+        # Re-render so blocks/badges/count labels rebuild at the new size –
+        # set_font_settings only retags label fonts and won't relayout cleanly.
+        if (getattr(self, 'current_source', '') and
+                hasattr(self, '_last_termbase_matches')):
+            self.update_with_matches(
+                self.current_source,
+                self._last_termbase_matches or [],
+                getattr(self, '_last_nt_matches', None),
+                getattr(self, '_status_hint', None),
+            )
+        else:
+            # No cached matches – just update font on whatever's there.
+            self.set_font_settings(self.current_font_family,
+                                   self.current_font_size,
+                                   self.current_font_bold)
+
+        self.font_size_changed.emit(self.current_font_size)
+
     def set_font_settings(self, font_family: str = "Segoe UI", font_size: int = 10, bold: bool = False):
         """Update font settings for TermLens
         

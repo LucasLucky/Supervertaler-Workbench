@@ -1341,11 +1341,17 @@ class StandaloneSDLXLIFFHandler:
         self.xliff_files: List[SDLXLIFFFile] = []
         self.source_paths: List[str] = []
 
-    def load(self, file_paths: List[str]) -> bool:
+    def load(self, file_paths: List[str], progress_callback=None) -> bool:
         """
         Load one or more .sdlxliff files.
 
         Validates that all files share the same language pair.
+
+        If progress_callback is supplied it's called as
+        callback('parse', current, total, filename) before each file is parsed
+        and once more with current==total when parsing is complete.
+        Returning False from the callback cancels the load; this function
+        returns False in that case (and self.xliff_files is left empty).
 
         Returns:
             True if at least one file loaded successfully
@@ -1353,7 +1359,14 @@ class StandaloneSDLXLIFFHandler:
         self.xliff_files = []
         self.source_paths = []
 
-        for file_path in file_paths:
+        total = len(file_paths)
+        cancelled = False
+        for idx, file_path in enumerate(file_paths):
+            if progress_callback:
+                if progress_callback('parse', idx, total, Path(file_path).name) is False:
+                    self.log("SDLXLIFF load cancelled by caller")
+                    cancelled = True
+                    break
             try:
                 xliff_file = self.parser.parse_file(file_path)
                 if xliff_file and xliff_file.segments:
@@ -1365,6 +1378,17 @@ class StandaloneSDLXLIFFHandler:
             except Exception as e:
                 self.log(f"  Error loading {Path(file_path).name}: {e}")
                 traceback.print_exc()
+
+        if cancelled:
+            self.xliff_files = []
+            self.source_paths = []
+            return False
+
+        if progress_callback:
+            if progress_callback('parse', total, total, "Parsing complete") is False:
+                self.xliff_files = []
+                self.source_paths = []
+                return False
 
         if not self.xliff_files:
             return False
