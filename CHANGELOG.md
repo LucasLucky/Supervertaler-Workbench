@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.476 (May 9, 2026)
+**Current Version:** v1.9.477 (May 9, 2026)
+
+
+## v1.9.477 – May 9, 2026
+
+### Fixed (Ctrl+Alt+T typed a literal T into the active cell on Windows)
+
+- **Add Term to Glossary** (`Ctrl+Alt+T`) now actually fires the dialog instead of letting Windows insert a capital T into the focused source/target cell. The two per-widget event filters that handle this shortcut were doing a strict-equality check on `event.modifiers()` against `Ctrl|Alt`. On Windows the `Ctrl+Alt` combo is the same scancode pair as `AltGr`, and the OS sometimes tags the event with an extra `GroupSwitchModifier` bit – the strict equality check then fails silently, the event falls through to the QTextEdit, and the literal letter gets typed.
+- Fix masks the modifiers down to `{Ctrl, Alt, Shift, Meta}` before comparing, stripping `GroupSwitchModifier` and `KeypadModifier`. Same modifier-tolerance pattern Workbench already uses for arrow-key navigation. Applied to both `ReadOnlyGridTextEditor` (source side) and `EditableGridTextEditor` (target side – the latter was still on the old `Ctrl+E` binding by mistake; both editors now share the new shortcut).
 
 
 ## v1.9.476 – May 9, 2026

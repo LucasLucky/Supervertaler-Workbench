@@ -2875,11 +2875,24 @@ class ReadOnlyGridTextEditor(QTextEdit):
             # memory transfers between products.  Was Ctrl+E before
             # v1.9.475; the old binding is now free for Qt's stock "edit"
             # default if anyone wants it back.
-            if (key_event.key() == Qt.Key.Key_T
-                    and key_event.modifiers() == (Qt.KeyboardModifier.ControlModifier
-                                                  | Qt.KeyboardModifier.AltModifier)):
-                self._handle_add_to_termbase()
-                return True  # Event handled
+            #
+            # Modifier mask: strip KeypadModifier (macOS arrow-key quirk)
+            # and GroupSwitchModifier (Windows AltGr) before comparing.
+            # Without this, on Windows AltGr-tolerant keyboards the
+            # Ctrl+Alt combo carries an extra GroupSwitchModifier bit,
+            # the strict equality check fails, the event falls through
+            # to the QTextEdit, and the letter T just gets typed into
+            # the cell instead of opening the dialog (v1.9.477 fix).
+            if key_event.key() == Qt.Key.Key_T:
+                _mod_mask = (Qt.KeyboardModifier.ControlModifier
+                             | Qt.KeyboardModifier.AltModifier
+                             | Qt.KeyboardModifier.ShiftModifier
+                             | Qt.KeyboardModifier.MetaModifier)
+                _mods = key_event.modifiers() & _mod_mask
+                if _mods == (Qt.KeyboardModifier.ControlModifier
+                             | Qt.KeyboardModifier.AltModifier):
+                    self._handle_add_to_termbase()
+                    return True  # Event handled
             
             # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
             if key_event.key() == Qt.Key.Key_Left and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.AltModifier:
@@ -4500,11 +4513,23 @@ class EditableGridTextEditor(QTextEdit):
                     event.accept()
                     return
         
-        # Ctrl+E: Add selected terms to termbase (with dialog)
-        if event.key() == Qt.Key.Key_E and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            self._handle_add_to_termbase()
-            event.accept()
-            return
+        # Ctrl+Alt+T: Add selected terms to termbase (with dialog).
+        # Was Ctrl+E in this widget before v1.9.475 (a leftover binding I
+        # missed when migrating the source-side editor), and went through a
+        # strict-equality modifier check that broke on Windows AltGr; fix
+        # is the same as in ReadOnlyGridTextEditor – mask away
+        # KeypadModifier / GroupSwitchModifier before comparing.
+        if event.key() == Qt.Key.Key_T:
+            _mod_mask = (Qt.KeyboardModifier.ControlModifier
+                         | Qt.KeyboardModifier.AltModifier
+                         | Qt.KeyboardModifier.ShiftModifier
+                         | Qt.KeyboardModifier.MetaModifier)
+            _mods = event.modifiers() & _mod_mask
+            if _mods == (Qt.KeyboardModifier.ControlModifier
+                         | Qt.KeyboardModifier.AltModifier):
+                self._handle_add_to_termbase()
+                event.accept()
+                return
         
         # Ctrl+Up: Navigate to previous segment
         if event.key() == Qt.Key.Key_Up and _cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier:
