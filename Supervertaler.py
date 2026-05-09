@@ -9533,7 +9533,16 @@ class SupervertalerQt(QMainWindow):
         import_review_table_action = QAction("&Bilingual Table (DOCX) - Update Project...", self)
         import_review_table_action.triggered.connect(self.import_review_table)
         import_menu.addAction(import_review_table_action)
-        
+
+        # Help link at the foot of the Import submenu. Imports happen straight
+        # from a menu (no dialog), so the standard set_help_topic "?" badge
+        # has nowhere to live – this entry is the closest substitute.
+        import_menu.addSeparator()
+        import_help_action = QAction("❓ Supported file formats (online help)...", self)
+        import_help_action.setToolTip("Open the Supported File Formats reference in your browser")
+        import_help_action.triggered.connect(lambda: open_help(HelpTopics.IMPORT_FORMATS))
+        import_menu.addAction(import_help_action)
+
         export_menu = file_menu.addMenu("&Export")
 
         # --- Monolingual (target-only) exports at top ---
@@ -9645,7 +9654,14 @@ class SupervertalerQt(QMainWindow):
         export_tm_action = QAction("TMX from &TM(s) for Current Project...", self)
         export_tm_action.triggered.connect(self.export_tmx_from_tm_database)
         export_menu.addAction(export_tm_action)
-        
+
+        # Help link at the foot of the Export submenu (mirrors Import).
+        export_menu.addSeparator()
+        export_help_action = QAction("❓ Supported file formats (online help)...", self)
+        export_help_action.setToolTip("Open the Supported File Formats reference in your browser")
+        export_help_action.triggered.connect(lambda: open_help(HelpTopics.IMPORT_FORMATS))
+        export_menu.addAction(export_help_action)
+
         file_menu.addSeparator()
         
         # Project Info
@@ -27644,6 +27660,10 @@ class SupervertalerQt(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle("Import via Okapi – Options")
         dialog.setMinimumWidth(500)
+        # Standard "?" help badge in the dialog title bar – opens the
+        # Supported File Formats reference. Matches the convention used
+        # elsewhere in the app for context-sensitive help.
+        set_help_topic(dialog, HelpTopics.IMPORT_FORMATS)
         layout = QVBoxLayout(dialog)
 
         info_label = QLabel(
