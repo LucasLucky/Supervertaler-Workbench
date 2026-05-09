@@ -877,7 +877,7 @@ class UnifiedPromptLibrary:
                     '- Preserve all formatting, tags, and placeholders exactly as they appear\n'
                     '\n'
                     '## Terminology\n'
-                    '- Use the glossary terms provided (if any) \u2013 they take priority over alternative translations\n'
+                    '- Use the termbase terms provided (if any) \u2013 they take priority over alternative translations\n'
                     '- When a term has no established equivalent, keep the source term and add a brief explanation in parentheses if needed\n'
                     '\n'
                     '## Style\n'

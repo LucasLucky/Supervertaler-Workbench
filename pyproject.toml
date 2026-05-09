@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "supervertaler"
-version = "1.9.479"
-description = "Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
+version = "1.9.480"
+description = "Professional AI-enhanced translation workbench with multi-LLM support, termbase system, TM, spellcheck, voice commands, and PyQt6 interface. Batteries included (core)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

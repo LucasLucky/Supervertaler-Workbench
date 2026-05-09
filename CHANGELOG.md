@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.479 (May 9, 2026)
+**Current Version:** v1.9.480 (May 9, 2026)
+
+
+## v1.9.480 – May 9, 2026
+
+### Changed (Termbase terminology – user-facing strings now consistent)
+
+- All user-facing copy in the Workbench that previously said "glossary" now says "termbase" – button labels, menu items, dialog titles, status messages, group box titles, tooltips, voice-command phrases, the assembled LLM prompt's `# TERMBASE` section, the analyser's "consider using a termbase…" suggestion, the `setup.py` / `pyproject.toml` description, and so on. ~130 strings touched across 11 modules.
+- Internal identifiers (variable names, function names, class names, settings keys, the SQL `glossaries` legacy table name, sound-event keys persisted in JSON settings, GitBook help-topic slugs) are deliberately left as-is so existing user settings, help URLs, and the public Python API don't break.
+- Voice-command phrase change worth knowing: the trigger phrase to add a term to the active termbase is now "termbase" (or "add term" / "add to termbase"). The old phrase "add to glossary" no longer works.
+- The assembled LLM prompt now emits a `# TERMBASE` section header instead of `# GLOSSARY`. If you have custom prompt templates that reference the literal `# GLOSSARY` heading, update them to `# TERMBASE`.
 
 
 ## v1.9.479 – May 9, 2026

@@ -37,7 +37,7 @@ setup(
     version=get_version(),
     author="Michael Beijer",
     author_email="info@michaelbeijer.co.uk",
-    description="Professional AI-enhanced translation workbench with multi-LLM support, glossary system, TM, spellcheck, voice commands, and PyQt6 interface",
+    description="Professional AI-enhanced translation workbench with multi-LLM support, termbase system, TM, spellcheck, voice commands, and PyQt6 interface",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://supervertaler.com",

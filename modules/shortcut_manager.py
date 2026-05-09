@@ -504,14 +504,14 @@ class ShortcutManager:
         },
         "editor_add_to_termbase": {
             "category": "Editor",
-            "description": "Add selected term pair to glossary (with dialogue)",
+            "description": "Add selected term pair to termbase (with dialogue)",
             "default": "Ctrl+Alt+T",
             "action": "add_to_termbase",
             "context": "grid_editor"
         },
         "editor_quick_add_to_termbase": {
             "category": "Editor",
-            "description": "Quick add term pair to the last used glossary",
+            "description": "Quick add term pair to the last used termbase",
             "default": "Alt+Left",
             "action": "quick_add_to_termbase",
             "context": "grid_editor"
@@ -532,14 +532,14 @@ class ShortcutManager:
         },
         "editor_quick_add_to_glossary_priority_1": {
             "category": "Editor",
-            "description": "Quick add term pair to Priority 1 glossary",
+            "description": "Quick add term pair to Priority 1 termbase",
             "default": "Alt+Up",
             "action": "quick_add_to_glossary_priority_1",
             "context": "grid_editor"
         },
         "editor_quick_add_to_glossary_priority_2": {
             "category": "Editor",
-            "description": "Quick add term pair to Priority 2 glossary",
+            "description": "Quick add term pair to Priority 2 termbase",
             "default": "Alt+Down",
             "action": "quick_add_to_glossary_priority_2",
             "context": "grid_editor"

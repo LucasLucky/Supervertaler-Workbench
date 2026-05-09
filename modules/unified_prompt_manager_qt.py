@@ -498,12 +498,12 @@ DOMAIN_TEMPLATES = {
             'TRANSLATION STYLE (LOCKED) – mandatory term mappings (omvattende>comprising, waarbij>wherein, met het kenmerk dat>characterized in that, conclusie>claim, stand der techniek>prior art, uitvoeringsvorm>embodiment, bij voorkeur>preferably, inrichting>device, werkwijze>method)',
             'CLAIM TRANSLATION STYLE – preserve dependency structure, maintain "according to any one of the preceding claims" phrasing, avoid stylistic smoothing',
             'GERUND STYLE RULE – prefer natural English gerund over "the [verb]ing of" construction',
-            'TERMINOLOGY CONSISTENCY HIERARCHY – (1) Previous correct translations, (2) Project-specific glossary, (3) General mandatory mappings',
+            'TERMINOLOGY CONSISTENCY HIERARCHY – (1) Previous correct translations, (2) Project-specific termbase, (3) General mandatory mappings',
             'TECHNICAL AND MECHANICAL FORMATTING RULES – dimensions, figure refs, prior art numbers, sensor designations, standard abbreviations',
             'PREFLIGHT SELF-CHECK (MANDATORY) – verify every word translated, no compression, all values intact, all references intact, no claim restructuring',
             'POST-TRANSLATION INTEGRITY ASSERTION (MANDATORY) – assert completeness, literalness, structural faithfulness',
             'PROJECT CONTEXT (for model understanding only – do not output) – comprehensive invention description',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED) – all terms organized by category',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED) – all terms organized by category',
             'PREVIOUS CORRECT TRANSLATIONS – validated TM pairs as style anchors',
             'OUTPUT FORMAT – translation only, preserve line breaks, no markdown, no commentary, UTF-8',
         ],
@@ -541,11 +541,11 @@ DOMAIN_TEMPLATES = {
             'LEGAL REGISTER REQUIREMENTS – formality, precision, no colloquial language',
             'LEGAL ENTITY AND TITLE HANDLING – preservation rules for entities, titles, proper names',
             'STATUTORY REFERENCE PRESERVATION – article numbers, law names, citations',
-            'TERMINOLOGY CONSISTENCY HIERARCHY – (1) Previous correct translations, (2) Project glossary, (3) Domain conventions',
+            'TERMINOLOGY CONSISTENCY HIERARCHY – (1) Previous correct translations, (2) Project termbase, (3) Domain conventions',
             'NUMBER, DATE & LOCALISATION RULES – date formats, currency, number formatting',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
             'PROJECT CONTEXT – document type, parties, jurisdiction, subject matter',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
@@ -584,7 +584,7 @@ DOMAIN_TEMPLATES = {
             'TERMINOLOGY CONSISTENCY HIERARCHY',
             'PREFLIGHT SELF-CHECK (SAFETY-FOCUSED) – verify all dosages, warnings, and measurements intact',
             'PROJECT CONTEXT – document type, therapeutic area, patient population',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
@@ -621,7 +621,7 @@ DOMAIN_TEMPLATES = {
             'NUMBER, DATE & LOCALISATION RULES',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
             'PROJECT CONTEXT – product/system, technical domain, target audience',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
@@ -657,7 +657,7 @@ DOMAIN_TEMPLATES = {
             'TERMINOLOGY CONSISTENCY HIERARCHY',
             'PREFLIGHT SELF-CHECK (MANDATORY) – verify all figures, calculations, and disclosures',
             'PROJECT CONTEXT – document type, financial instrument, jurisdiction',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
@@ -692,7 +692,7 @@ DOMAIN_TEMPLATES = {
             'TERMINOLOGY CONSISTENCY HIERARCHY',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
             'PROJECT CONTEXT – brand, campaign, target audience, key messages',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
@@ -726,7 +726,7 @@ DOMAIN_TEMPLATES = {
             'NUMBER, DATE & LOCALISATION RULES – appropriate for language pair',
             'PREFLIGHT SELF-CHECK (MANDATORY)',
             'PROJECT CONTEXT – document description and subject matter',
-            'PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED)',
+            'PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED)',
             'PREVIOUS CORRECT TRANSLATIONS',
             'OUTPUT FORMAT',
         ],
@@ -3449,7 +3449,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
 
         # Glossary injection (if terms provided)
         if glossary_terms:
-            final_prompt += "\n\n# GLOSSARY\n\n"
+            final_prompt += "\n\n# TERMBASE\n\n"
             final_prompt += "Use these approved terms in your translation:\n\n"
             for term in glossary_terms:
                 source_term = term.get('source_term', '')
@@ -3895,9 +3895,9 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
         if term_count > 0:
             terminology_instruction = (
                 f"The project has {term_count} termbase entries. Include ALL of them in a "
-                f"PROJECT-SPECIFIC GLOSSARY (MANDATORY, LOCKED) section, organized by semantic category "
+                f"PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED) section, organized by semantic category "
                 f"(e.g., structural terms, electronic terms, process terms, boilerplate terms).\n"
-                f"Mark the glossary as LOCKED and state: 'No substitutions or variants are permitted.'\n"
+                f"Mark the termbase as LOCKED and state: 'No substitutions or variants are permitted.'\n"
             )
             if has_forbidden:
                 terminology_instruction += (
@@ -3908,7 +3908,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             terminology_instruction = (
                 "No termbase entries available. Instruct the model to extract key terms from the "
                 "document content and maintain strict internal consistency. Include a section asking "
-                "the model to build its own glossary from context and apply it uniformly."
+                "the model to build its own termbase from context and apply it uniformly."
             )
 
         # TM reference section
@@ -3991,7 +3991,7 @@ SPECIAL DOMAIN INSTRUCTIONS:
    If a segment appears incomplete, translate exactly what is provided without comment."
 
 4. TERMINOLOGY CONSISTENCY HIERARCHY:
-   "(1) Previous correct translations from TM (highest priority), (2) Project-specific glossary terms
+   "(1) Previous correct translations from TM (highest priority), (2) Project-specific termbase terms
    (LOCKED), (3) Domain-specific conventions, (4) General language knowledge. Never mix competing
    variants once established."
 
@@ -4026,7 +4026,7 @@ SPECIAL DOMAIN INSTRUCTIONS:
 === CONSTRAINT LANGUAGE REQUIREMENTS ===
 Use strong, unambiguous language throughout the generated prompt:
 - "NON-NEGOTIABLE" for translation mandate and core rules
-- "LOCKED" and "MANDATORY" for glossary and style rules
+- "LOCKED" and "MANDATORY" for termbase and style rules
 - "ABSOLUTE" for formatting preservation requirements
 - "MUST" and "MUST NOT" throughout (never "should", "try to", or "consider")
 - Describe violations as critical errors
@@ -4041,7 +4041,7 @@ This section is marked "FOR MODEL UNDERSTANDING ONLY – DO NOT OUTPUT" in the f
 === OUTPUT INSTRUCTIONS ===
 1. The prompt content must be ready to use – NO placeholders like [Translation] or [Source Language]
 2. Use actual values: {source_lang} and {target_lang}
-3. Include ALL termbase terms in the glossary (do not summarize or sample)
+3. Include ALL termbase terms in the termbase section (do not summarize or sample)
 4. The prompt should be comprehensive (2000-5000 words)
 5. Output the prompt content between the delimiters shown below – NOTHING else
 

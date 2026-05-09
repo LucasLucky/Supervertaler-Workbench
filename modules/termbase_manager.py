@@ -326,7 +326,7 @@ class TermbaseManager:
                     INSERT INTO termbase_activation (termbase_id, project_id, is_active, priority)
                     VALUES (?, ?, 1, NULL)
                 """, (termbase_id, project_id))
-                self.log(f"  ✓ Created new activation record (background glossary)")
+                self.log(f"  ✓ Created new activation record (background termbase)")
 
             self.db_manager.connection.commit()
             self.log(f"✓ Activated termbase {termbase_id} for project {project_id}")
@@ -531,7 +531,7 @@ class TermbaseManager:
                 return False
 
             self.db_manager.connection.commit()
-            label = "Project glossary" if is_project else "Background"
+            label = "Project termbase" if is_project else "Background"
             self.log(f"✓ Set termbase {termbase_id} as {label} for project {project_id}")
             return True
         except Exception as e:

@@ -38,7 +38,7 @@ class TermbaseEntryEditor(QDialog):
         self.term_id = term_id
         self.term_data = None
         
-        self.setWindowTitle("Edit Glossary Entry" if term_id else "New Glossary Entry")
+        self.setWindowTitle("Edit Termbase Entry" if term_id else "New Termbase Entry")
         self.setModal(True)
         self.setMinimumWidth(550)
 
@@ -707,7 +707,7 @@ class TermbaseEntryEditor(QDialog):
         reply = QMessageBox.question(
             self,
             "Confirm Deletion",
-            f"Delete this glossary entry?\n\nSource: {self.source_edit.text()}\nTarget: {self.target_edit.text()}\n\nThis action cannot be undone.",
+            f"Delete this termbase entry?\n\nSource: {self.source_edit.text()}\nTarget: {self.target_edit.text()}\n\nThis action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -717,7 +717,7 @@ class TermbaseEntryEditor(QDialog):
                 cursor = self.db_manager.cursor
                 cursor.execute("DELETE FROM termbase_terms WHERE id = ?", (self.term_id,))
                 self.db_manager.connection.commit()
-                QMessageBox.information(self, "Success", "Glossary entry deleted")
+                QMessageBox.information(self, "Success", "Termbase entry deleted")
                 self.accept()  # Close dialog with success
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete entry: {e}")

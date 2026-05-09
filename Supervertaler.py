@@ -2569,8 +2569,8 @@ class ReadOnlyGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                "Please select text in both Source and Target cells before quick-adding to glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
+                "Please select text in both Source and Target cells before quick-adding to termbase.\n\n"
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
             )
             return
 
@@ -2725,7 +2725,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
             # Build tooltip text
             tooltip_text = ""
             if translation:
-                tooltip_text = f"Glossary: {translation}"
+                tooltip_text = f"Termbase: {translation}"
                 if termbase_name:
                     tooltip_text += f"\nFrom: {termbase_name}"
                 if notes:
@@ -2998,12 +2998,12 @@ class ReadOnlyGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                "Please select text in both Source and Target cells before adding to glossary.\\n\\n"
+                "Please select text in both Source and Target cells before adding to termbase.\\n\\n"
                 "Workflow:\\n"
                 "1. Select term in source cell\\n"
                 "2. Press Tab to cycle to target cell\\n"
                 "3. Select corresponding translation\\n"
-                f"4. Press {format_shortcut_for_display('Ctrl+Alt+T')} (or right-click) to add to glossary"
+                f"4. Press {format_shortcut_for_display('Ctrl+Alt+T')} (or right-click) to add to termbase"
             )
             return
         
@@ -3035,8 +3035,8 @@ class ReadOnlyGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                "Please select text in both Source and Target cells before quick-adding to glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
+                "Please select text in both Source and Target cells before quick-adding to termbase.\n\n"
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
             )
             return
 
@@ -3066,8 +3066,8 @@ class ReadOnlyGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                f"Please select text in both Source and Target cells before quick-adding to the glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Please select text in both Source and Target cells before quick-adding to the termbase.\n\n"
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
             )
             return
 
@@ -3410,22 +3410,22 @@ class ReadOnlyGridTextEditor(QTextEdit):
             pass
 
         # Add to glossary action (with dialogue)
-        add_to_tb_action = QAction(f"📖 Add to Glossary ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
+        add_to_tb_action = QAction(f"📖 Add to Termbase ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
         add_to_tb_action.triggered.connect(self._handle_add_to_termbase)
         menu.addAction(add_to_tb_action)
 
         # Quick add to glossary action (no dialog) - uses last-selected glossary from Ctrl+E
-        quick_add_action = QAction(f"⚡ Quick Add to Glossary ({format_shortcut_for_display('Alt+Left')})", self)
+        quick_add_action = QAction(f"⚡ Quick Add to Termbase ({format_shortcut_for_display('Alt+Left')})", self)
         quick_add_action.triggered.connect(self._handle_quick_add_to_termbase)
         menu.addAction(quick_add_action)
 
         # Quick add to Project glossary (no dialog)
-        quick_add_p1_action = QAction(f"⚡ Quick Add to Project Glossary ({format_shortcut_for_display('Alt+Up')})", self)
+        quick_add_p1_action = QAction(f"⚡ Quick Add to Project Termbase ({format_shortcut_for_display('Alt+Up')})", self)
         quick_add_p1_action.triggered.connect(lambda: self._handle_quick_add_to_glossary_priority(1))
         menu.addAction(quick_add_p1_action)
 
         # Quick add to Background glossary (no dialog)
-        quick_add_p2_action = QAction(f"⚡ Quick Add to Background Glossary ({format_shortcut_for_display('Alt+Down')})", self)
+        quick_add_p2_action = QAction(f"⚡ Quick Add to Background Termbase ({format_shortcut_for_display('Alt+Down')})", self)
         quick_add_p2_action.triggered.connect(lambda: self._handle_quick_add_to_glossary_priority(2))
         menu.addAction(quick_add_p2_action)
 
@@ -4019,8 +4019,8 @@ class EditableGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                "Please select text in both Source and Target cells before quick-adding to glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
+                "Please select text in both Source and Target cells before quick-adding to termbase.\n\n"
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
             )
             return
 
@@ -4049,8 +4049,8 @@ class EditableGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                f"Please select text in both Source and Target cells before quick-adding to the glossary.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a glossary and add metadata."
+                f"Please select text in both Source and Target cells before quick-adding to the termbase.\n\n"
+                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
             )
             return
 
@@ -4222,22 +4222,22 @@ class EditableGridTextEditor(QTextEdit):
             pass
 
         # Add to glossary action (with dialogue)
-        add_to_tb_action = QAction(f"📖 Add to Glossary ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
+        add_to_tb_action = QAction(f"📖 Add to Termbase ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
         add_to_tb_action.triggered.connect(self._handle_add_to_termbase)
         menu.addAction(add_to_tb_action)
 
         # Quick add to glossary action (no dialog) - uses last-selected glossary from Ctrl+E
-        quick_add_action = QAction(f"⚡ Quick Add to Glossary ({format_shortcut_for_display('Alt+Left')})", self)
+        quick_add_action = QAction(f"⚡ Quick Add to Termbase ({format_shortcut_for_display('Alt+Left')})", self)
         quick_add_action.triggered.connect(self._handle_quick_add_to_termbase)
         menu.addAction(quick_add_action)
 
         # Quick add to Project glossary (no dialog)
-        quick_add_p1_action = QAction(f"⚡ Quick Add to Project Glossary ({format_shortcut_for_display('Alt+Up')})", self)
+        quick_add_p1_action = QAction(f"⚡ Quick Add to Project Termbase ({format_shortcut_for_display('Alt+Up')})", self)
         quick_add_p1_action.triggered.connect(lambda: self._handle_quick_add_to_glossary_priority(1))
         menu.addAction(quick_add_p1_action)
 
         # Quick add to Background glossary (no dialog)
-        quick_add_p2_action = QAction(f"⚡ Quick Add to Background Glossary ({format_shortcut_for_display('Alt+Down')})", self)
+        quick_add_p2_action = QAction(f"⚡ Quick Add to Background Termbase ({format_shortcut_for_display('Alt+Down')})", self)
         quick_add_p2_action.triggered.connect(lambda: self._handle_quick_add_to_glossary_priority(2))
         menu.addAction(quick_add_p2_action)
 
@@ -5787,7 +5787,7 @@ class TermMetadataDialog(QDialog):
             pass
         
     def setup_ui(self):
-        self.setWindowTitle("Add Term to Glossary")
+        self.setWindowTitle("Add Term to Termbase")
         self.setMinimumWidth(550)
 
         # Auto-resize to fit screen (max 85% of screen height)
@@ -6132,7 +6132,7 @@ class TermMetadataDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
         
-        save_btn = QPushButton("Add to Glossary")
+        save_btn = QPushButton("Add to Termbase")
         save_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 15px; border: none; outline: none;")
         save_btn.clicked.connect(self._accept_and_save)
         save_btn.setDefault(True)
@@ -8008,7 +8008,7 @@ class SupervertalerQt(QMainWindow):
                 "Supervertaler stores your data in a folder of your choice, which contains things like:<br><br>"
                 "• API keys<br>"
                 "• Translation memories<br>"
-                "• Glossaries<br>"
+                "• Termbases<br>"
                 "• Prompts<br>"
                 "• Settings<br><br>"
                 "Choose a location that's easy to find and backup.<br>"
@@ -8228,7 +8228,7 @@ class SupervertalerQt(QMainWindow):
                 "Supervertaler stores your data in a folder of your choice:<br><br>"
                 "• <b>API keys</b> – Your LLM provider credentials<br>"
                 "• <b>Translation memories</b> – Reusable translation pairs<br>"
-                "• <b>Glossaries</b> – Terminology databases<br>"
+                "• <b>Termbases</b> – Terminology databases<br>"
                 "• <b>Prompts</b> – Custom AI prompts<br>"
                 "• <b>Settings</b> – Application configuration<br><br>"
                 "Choose a location that's easy to find and backup."
@@ -8293,7 +8293,7 @@ class SupervertalerQt(QMainWindow):
                     f"<b>📁 Data Folder:</b> <a href='file:///{data_folder_path}' "
                     f"style='color: #3b82f6;'>{data_folder_path}</a><br>"
                     "<span style='color: #666; font-size: 0.9em;'>"
-                    "Your settings, TMs, glossaries and prompts are stored here. "
+                    "Your settings, TMs, termbases and prompts are stored here. "
                     "Change in Settings → General.</span>"
                 )
                 data_folder_info.setWordWrap(True)
@@ -14006,7 +14006,7 @@ class SupervertalerQt(QMainWindow):
                                     target=match_data.get('translation', ''),  # 'translation' not 'target_term'
                                     relevance=100.0,
                                     match_type='Termbase',
-                                    provider=match_data.get('termbase_name', 'Glossary'),
+                                    provider=match_data.get('termbase_name', 'Termbase'),
                                     metadata={
                                         'termbase_name': match_data.get('termbase_name', ''),
                                         'ranking': match_data.get('ranking', 0),
@@ -14036,12 +14036,12 @@ class SupervertalerQt(QMainWindow):
         """Add a term pair to active termbase(s) with metadata dialog"""
         # Check if we have a current project
         if not hasattr(self, 'current_project') or not self.current_project:
-            QMessageBox.warning(self, "No Active Project", "Please open or create a project before adding terms to glossary.")
+            QMessageBox.warning(self, "No Active Project", "Please open or create a project before adding terms to termbase.")
             return
         
         # Get active termbases for current project
         if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
-            QMessageBox.critical(self, "Error", "Glossary manager not initialized")
+            QMessageBox.critical(self, "Error", "Termbase manager not initialized")
             return
         
         # Resolve project ID (prefer persistent project.id from loaded project)
@@ -14059,7 +14059,7 @@ class SupervertalerQt(QMainWindow):
         active_termbase_ids = set(self.termbase_mgr.get_active_termbase_ids(project_id)) if project_id else set()
         
         if not active_termbases:
-            QMessageBox.warning(self, "No Glossary", "Please create or activate at least one glossary in Resources → Glossaries tab.")
+            QMessageBox.warning(self, "No Termbase", "Please create or activate at least one termbase in Resources → Termbases tab.")
             return
         
         # Show metadata dialog with termbase selection
@@ -14100,11 +14100,11 @@ class SupervertalerQt(QMainWindow):
         ]
         if not selected_termbase_ids:
             QMessageBox.warning(
-                self, "No Writable Glossary",
-                "There are no glossaries marked <b>Write</b> for the current "
+                self, "No Writable Termbase",
+                "There are no termbases marked <b>Write</b> for the current "
                 "project.<br><br>"
                 "Open <b>Termbases → TM List</b> and tick the <b>Write</b> "
-                "checkbox on at least one active glossary, then try again."
+                "checkbox on at least one active termbase, then try again."
             )
             return
 
@@ -14202,13 +14202,13 @@ class SupervertalerQt(QMainWindow):
             try:
                 if hasattr(self, 'statusBar') and self.statusBar():
                     if success_count == 1:
-                        self.statusBar().showMessage(f"✓ Added glossary entry: {source_text} → {target_text} (to 1 glossary)", 3500)
+                        self.statusBar().showMessage(f"✓ Added termbase entry: {source_text} → {target_text} (to 1 termbase)", 3500)
                     else:
-                        self.statusBar().showMessage(f"✓ Added glossary entry to {success_count} glossaries: {source_text} → {target_text}", 3500)
+                        self.statusBar().showMessage(f"✓ Added termbase entry to {success_count} termbases: {source_text} → {target_text}", 3500)
             except Exception:
                 pass
 
-            QMessageBox.information(self, "Term Added", f"Successfully added term pair to {success_count} glossary(s):\\n\\nSource: {source_text}\\nTarget: {target_text}\\n\\nDomain: {metadata['domain'] or '(none)'}")
+            QMessageBox.information(self, "Term Added", f"Successfully added term pair to {success_count} termbase(s):\\n\\nSource: {source_text}\\nTarget: {target_text}\\n\\nDomain: {metadata['domain'] or '(none)'}")
             
             # Keep in-memory termbase search/index in sync with DB so new term appears immediately
             try:
@@ -14224,31 +14224,31 @@ class SupervertalerQt(QMainWindow):
             # IMPORTANT: Refresh the termbase list UI if it's currently open to update term counts
             # Find the termbase tab and call its refresh function
             if hasattr(self, 'termbase_tab_refresh_callback') and self.termbase_tab_refresh_callback:
-                self.log("🔄 Refreshing glossary list to update term counts")
+                self.log("🔄 Refreshing termbase list to update term counts")
                 self.termbase_tab_refresh_callback()
             else:
-                self.log("⚠️ No glossary refresh callback found (tab not initialized yet)")
+                self.log("⚠️ No termbase refresh callback found (tab not initialized yet)")
         else:
             if duplicate_count > 0 and error_count == 0:
                 self._play_sound_effect('glossary_term_duplicate')
                 try:
                     if hasattr(self, 'statusBar') and self.statusBar():
-                        self.statusBar().showMessage("⚠ Duplicate glossary entry (not added)", 3500)
+                        self.statusBar().showMessage("⚠ Duplicate termbase entry (not added)", 3500)
                 except Exception:
                     pass
                 QMessageBox.warning(
                     self,
                     "Duplicate Term",
-                    "This term already exists in the selected glossary(s). Duplicate terms are not allowed."
+                    "This term already exists in the selected termbase(s). Duplicate terms are not allowed."
                 )
             else:
                 self._play_sound_effect('glossary_term_error')
                 try:
                     if hasattr(self, 'statusBar') and self.statusBar():
-                        self.statusBar().showMessage("❌ Error adding glossary entry (see log)", 3500)
+                        self.statusBar().showMessage("❌ Error adding termbase entry (see log)", 3500)
                 except Exception:
                     pass
-                QMessageBox.warning(self, "Error Adding Term", "Failed to add term to any glossary. Check the log for details.")
+                QMessageBox.warning(self, "Error Adding Term", "Failed to add term to any termbase. Check the log for details.")
     
     def quick_add_term_pair_to_termbase(self, source_text: str, target_text: str):
         """Quick add a term pair to the last-used termbase without showing any dialogs (Ctrl+Q)
@@ -14258,36 +14258,36 @@ class SupervertalerQt(QMainWindow):
         """
         # Check if we have a current project
         if not hasattr(self, 'current_project') or not self.current_project:
-            QMessageBox.warning(self, "No Active Project", "Please open or create a project before adding terms to glossary.")
+            QMessageBox.warning(self, "No Active Project", "Please open or create a project before adding terms to termbase.")
             return
         
         # Get termbase manager
         if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
-            QMessageBox.critical(self, "Error", "Glossary manager not initialized")
+            QMessageBox.critical(self, "Error", "Termbase manager not initialized")
             return
         
         # Check if we have a last-selected termbase from Ctrl+E
         if not hasattr(self, '_last_selected_termbase_ids') or not self._last_selected_termbase_ids:
-            QMessageBox.information(self, "No Glossary Selected", 
-                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} first to select which glossary to save terms to.\n\n"
-                f"After that, {format_shortcut_for_display('Ctrl+Q')} will quick-save to the same glossary(s).")
+            QMessageBox.information(self, "No Termbase Selected",
+                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} first to select which termbase to save terms to.\n\n"
+                f"After that, {format_shortcut_for_display('Ctrl+Q')} will quick-save to the same termbase(s).")
             return
         
         # Get all termbases to find the ones matching the saved IDs
         all_termbases = self.termbase_mgr.get_all_termbases()
         
         if not all_termbases:
-            QMessageBox.warning(self, "No Glossary", 
-                "Please create at least one glossary in Resources → Glossaries tab.")
+            QMessageBox.warning(self, "No Termbase",
+                "Please create at least one termbase in Resources → Termbases tab.")
             return
         
         # Find the termbases that match the saved IDs
         target_termbases = [tb for tb in all_termbases if tb['id'] in self._last_selected_termbase_ids]
         
         if not target_termbases:
-            QMessageBox.warning(self, "Glossary Not Found", 
-                "The previously selected glossary(s) could not be found.\n\n"
-                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} to select a glossary again.")
+            QMessageBox.warning(self, "Termbase Not Found",
+                "The previously selected termbase(s) could not be found.\n\n"
+                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} to select a termbase again.")
             self._last_selected_termbase_ids = None
             return
         
@@ -14357,12 +14357,12 @@ class SupervertalerQt(QMainWindow):
             if duplicate_count > 0 and error_count == 0:
                 self._play_sound_effect('glossary_term_duplicate')
                 if hasattr(self, 'statusBar') and self.statusBar():
-                    self.statusBar().showMessage("⚠ Duplicate glossary entry (not added)", 3500)
-                QMessageBox.warning(self, "Duplicate Term", "This term already exists in the glossary. Duplicate terms are not allowed.")
+                    self.statusBar().showMessage("⚠ Duplicate termbase entry (not added)", 3500)
+                QMessageBox.warning(self, "Duplicate Term", "This term already exists in the termbase. Duplicate terms are not allowed.")
             else:
                 self._play_sound_effect('glossary_term_error')
                 if hasattr(self, 'statusBar') and self.statusBar():
-                    self.statusBar().showMessage("❌ Error adding glossary entry (see log)", 3500)
+                    self.statusBar().showMessage("❌ Error adding termbase entry (see log)", 3500)
                 QMessageBox.warning(self, "Error", "Failed to add term. Check the log for details.")
 
     def _quick_add_term_with_priority(self, target: str = "project"):
@@ -14408,7 +14408,7 @@ class SupervertalerQt(QMainWindow):
             return
 
         if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
-            self.statusBar().showMessage("Glossary manager not initialized", 3000)
+            self.statusBar().showMessage("Termbase manager not initialized", 3000)
             return
 
         project_id = self.current_project.id if hasattr(self.current_project, 'id') else None
@@ -14436,9 +14436,9 @@ class SupervertalerQt(QMainWindow):
                 target_termbase = tb
                 break
 
-        label = "Project glossary" if target == "project" else "Background glossary"
+        label = "Project termbase" if target == "project" else "Background termbase"
         if not target_termbase:
-            self.statusBar().showMessage(f"No {label} found – check Resources → Glossaries", 3000)
+            self.statusBar().showMessage(f"No {label} found – check Resources → Termbases", 3000)
             return
         
         # Get language codes
@@ -14919,7 +14919,7 @@ class SupervertalerQt(QMainWindow):
         terms_header.setStyleSheet("font-size: 13px; font-weight: bold;")
         terms_header_layout.addWidget(terms_header)
         
-        selected_tb_label = QLabel("Select a glossary to view/edit terms")
+        selected_tb_label = QLabel("Select a termbase to view/edit terms")
         selected_tb_label.setStyleSheet("color: #666; font-style: italic;")
         terms_header_layout.addWidget(selected_tb_label)
         terms_header_layout.addStretch()
@@ -15433,7 +15433,7 @@ class SupervertalerQt(QMainWindow):
                 # Read checkbox (green)
                 read_checkbox = CheckmarkCheckBox()
                 read_checkbox.setChecked(is_readable)
-                read_checkbox.setToolTip("Read: Glossary is used for terminology matching")
+                read_checkbox.setToolTip("Read: Termbase is used for terminology matching")
                 
                 def on_read_toggle(checked, tb_id=tb['id'], row_idx=row):
                     # Use 0 (global) when no project is loaded - allows Superlookup to work
@@ -15457,7 +15457,7 @@ class SupervertalerQt(QMainWindow):
                 # Write checkbox (blue)
                 write_checkbox = BlueCheckmarkCheckBox()
                 write_checkbox.setChecked(is_writable)
-                write_checkbox.setToolTip("Write: Glossary is updated with new terms")
+                write_checkbox.setToolTip("Write: Termbase is updated with new terms")
                 
                 def on_write_toggle(checked, tb_id=tb['id'], row_idx=row):
                     # Invert logic: checked = writable, so set read_only to NOT checked
@@ -15481,19 +15481,19 @@ class SupervertalerQt(QMainWindow):
                     is_project_glossary = (priority == 1)
                     project_checkbox = PinkCheckmarkCheckBox()
                     project_checkbox.setChecked(is_project_glossary)
-                    project_checkbox.setToolTip("Set as Project Glossary (highest priority, pink)")
+                    project_checkbox.setToolTip("Set as Project Termbase (highest priority, pink)")
 
                     def on_project_toggle(checked, tb_id=tb['id'], row_idx=row):
                         curr_proj = self.current_project if hasattr(self, 'current_project') else None
                         curr_proj_id = curr_proj.id if (curr_proj and hasattr(curr_proj, 'id')) else None
                         if not curr_proj_id:
-                            self.log(f"⚠️ No project loaded, cannot change project glossary")
+                            self.log(f"⚠️ No project loaded, cannot change project termbase")
                             return
 
                         new_priority = 1 if checked else None
                         success = termbase_mgr.set_termbase_priority(tb_id, curr_proj_id, new_priority)
                         if success:
-                            label = "Project glossary" if checked else "Background"
+                            label = "Project termbase" if checked else "Background"
                             self.log(f"✅ Set termbase {tb_id} as {label}")
 
                             # Update all rows: uncheck others if this was checked (exclusive)
@@ -15543,7 +15543,7 @@ class SupervertalerQt(QMainWindow):
                 ai_enabled = termbase_mgr.get_termbase_ai_inject(tb['id'])
                 ai_checkbox = OrangeCheckmarkCheckBox()
                 ai_checkbox.setChecked(ai_enabled)
-                ai_checkbox.setToolTip("AI: Send glossary terms to LLM with translation prompts")
+                ai_checkbox.setToolTip("AI: Send termbase terms to LLM with translation prompts")
 
                 def on_ai_toggle(checked, tb_id=tb['id'], tb_name=tb['name']):
                     if checked:
@@ -15553,11 +15553,11 @@ class SupervertalerQt(QMainWindow):
                         msg.setWindowTitle("Enable AI Injection")
                         msg.setText(f"Enable AI injection for '{tb_name}'?")
                         msg.setInformativeText(
-                            "When enabled, ALL terms from this glossary will be sent to the LLM "
+                            "When enabled, ALL terms from this termbase will be sent to the LLM "
                             "with every translation request.\n\n"
                             "This helps the AI consistently use your preferred terminology "
                             "throughout the translation.\n\n"
-                            "Recommended for small, curated glossaries (< 500 terms)."
+                            "Recommended for small, curated termbases (< 500 terms)."
                         )
                         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                         msg.setDefaultButton(QMessageBox.StandardButton.Yes)
@@ -15570,7 +15570,7 @@ class SupervertalerQt(QMainWindow):
                                 sender.blockSignals(False)
                             return
                     termbase_mgr.set_termbase_ai_inject(tb_id, checked)
-                    self.log(f"{'✅ Enabled' if checked else '❌ Disabled'} AI injection for glossary: {tb_name}")
+                    self.log(f"{'✅ Enabled' if checked else '❌ Disabled'} AI injection for termbase: {tb_name}")
 
                 ai_checkbox.toggled.connect(on_ai_toggle)
                 termbase_table.setCellWidget(row, 7, ai_checkbox)
@@ -15599,7 +15599,7 @@ class SupervertalerQt(QMainWindow):
         button_layout.addWidget(create_btn)
         
         extract_btn = QPushButton("🔍 Extract Terms")
-        extract_btn.setToolTip("Extract terminology from project segments to create project glossary")
+        extract_btn.setToolTip("Extract terminology from project segments to create project termbase")
         extract_btn.setEnabled(project_id is not None)  # Only enabled when project is loaded
         extract_btn.clicked.connect(lambda: self._show_term_extraction_dialog(termbase_mgr, refresh_termbase_list, project_id))
         button_layout.addWidget(extract_btn)
@@ -15635,14 +15635,14 @@ class SupervertalerQt(QMainWindow):
         from modules.termbase_manager import TermbaseManager
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("Create New Glossary")
+        dialog.setWindowTitle("Create New Termbase")
         dialog.setMinimumWidth(400)
         
         layout = QFormLayout()
         
         # Name
         name_field = QLineEdit()
-        layout.addRow("Glossary Name:", name_field)
+        layout.addRow("Termbase Name:", name_field)
         
         # Source language
         source_lang_field = QLineEdit()
@@ -15683,7 +15683,7 @@ class SupervertalerQt(QMainWindow):
         def create_termbase():
             name = name_field.text().strip()
             if not name:
-                QMessageBox.warning(dialog, "Error", "Please enter a glossary name")
+                QMessageBox.warning(dialog, "Error", "Please enter a termbase name")
                 return
             
             source_lang = source_lang_field.text().strip() or None
@@ -15704,11 +15704,11 @@ class SupervertalerQt(QMainWindow):
             
             if tb_id:
                 self._play_sound_effect('glossary_created')
-                QMessageBox.information(dialog, "Success", f"Glossary '{name}' created successfully!")
+                QMessageBox.information(dialog, "Success", f"Termbase '{name}' created successfully!")
                 refresh_callback()
                 dialog.accept()
             else:
-                QMessageBox.critical(dialog, "Error", "Failed to create glossary")
+                QMessageBox.critical(dialog, "Error", "Failed to create termbase")
         
         create_btn.clicked.connect(create_termbase)
         cancel_btn.clicked.connect(dialog.reject)
@@ -15733,7 +15733,7 @@ class SupervertalerQt(QMainWindow):
         layout = QVBoxLayout()
         
         # Info label
-        info_label = QLabel("Extract terminology from project source segments to create a project glossary.")
+        info_label = QLabel("Extract terminology from project source segments to create a project termbase.")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
@@ -15915,8 +15915,8 @@ class SupervertalerQt(QMainWindow):
         # Buttons
         button_layout = QHBoxLayout()
         
-        create_btn = QPushButton("Create Project Glossary")
-        create_btn.setToolTip("Create a new project glossary with selected terms")
+        create_btn = QPushButton("Create Project Termbase")
+        create_btn.setToolTip("Create a new project termbase with selected terms")
         
         cancel_btn = QPushButton("Cancel")
         
@@ -15961,7 +15961,7 @@ class SupervertalerQt(QMainWindow):
             )
             
             if not tb_id:
-                QMessageBox.critical(dialog, "Error", "Failed to create glossary. There may already be a project glossary for this project.")
+                QMessageBox.critical(dialog, "Error", "Failed to create termbase. There may already be a project termbase for this project.")
                 return
             
             # Add terms (source only, target = empty string)
@@ -16018,7 +16018,7 @@ class SupervertalerQt(QMainWindow):
         menu = QMenu(self)
         
         # Rename action
-        rename_action = QAction("✏️ Rename Glossary", self)
+        rename_action = QAction("✏️ Rename Termbase", self)
         rename_action.triggered.connect(
             lambda: self._rename_termbase_dialog(tb_id, tb_name, termbase_mgr, refresh_callback)
         )
@@ -16027,7 +16027,7 @@ class SupervertalerQt(QMainWindow):
         menu.addSeparator()
         
         # Delete action
-        delete_action = QAction("🗑️ Delete Glossary", self)
+        delete_action = QAction("🗑️ Delete Termbase", self)
         delete_action.triggered.connect(
             lambda: self._delete_termbase(termbase_mgr, termbase_table, refresh_callback)
         )
@@ -16041,7 +16041,7 @@ class SupervertalerQt(QMainWindow):
         
         new_name, ok = QInputDialog.getText(
             self,
-            "Rename Glossary",
+            "Rename Termbase",
             f"Enter new name for '{current_name}':",
             text=current_name
         )
@@ -16050,40 +16050,40 @@ class SupervertalerQt(QMainWindow):
             new_name = new_name.strip()
             if new_name != current_name:
                 if termbase_mgr.rename_termbase(termbase_id, new_name):
-                    self.log(f"✓ Renamed glossary '{current_name}' to '{new_name}'")
-                    QMessageBox.information(self, "Success", f"Glossary renamed to '{new_name}'")
+                    self.log(f"✓ Renamed termbase '{current_name}' to '{new_name}'")
+                    QMessageBox.information(self, "Success", f"Termbase renamed to '{new_name}'")
                     # Clear cache and refresh
                     with self.termbase_cache_lock:
                         self.termbase_cache.clear()
                     refresh_callback()
                 else:
-                    QMessageBox.critical(self, "Error", "Failed to rename glossary")
+                    QMessageBox.critical(self, "Error", "Failed to rename termbase")
     
     def _delete_termbase(self, termbase_mgr, termbase_table, refresh_callback):
         """Delete selected termbase"""
         selected_row = termbase_table.currentRow()
         if selected_row < 0:
-            QMessageBox.warning(self, "Error", "Please select a glossary to delete")
+            QMessageBox.warning(self, "Error", "Please select a termbase to delete")
             return
         
         # Get termbase info from Name column (column 1 - has ID stored in UserRole)
         name_item = termbase_table.item(selected_row, 1)
         if not name_item:
-            QMessageBox.warning(self, "Error", "Could not read glossary information")
+            QMessageBox.warning(self, "Error", "Could not read termbase information")
             return
         
         tb_name = name_item.text()
         termbase_id = name_item.data(Qt.ItemDataRole.UserRole)
         
         if not termbase_id:
-            QMessageBox.warning(self, "Error", "Could not find glossary ID")
+            QMessageBox.warning(self, "Error", "Could not find termbase ID")
             return
         
         # Confirm deletion
         reply = QMessageBox.question(
             self,
             "Confirm Deletion",
-            f"Are you sure you want to delete glossary '{tb_name}'?\n\nThis will permanently delete all terms in this glossary.",
+            f"Are you sure you want to delete termbase '{tb_name}'?\n\nThis will permanently delete all terms in this termbase.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
@@ -16099,15 +16099,15 @@ class SupervertalerQt(QMainWindow):
                     cursor.execute("DELETE FROM termbases WHERE id = ?", (termbase_id,))
                     self.db_manager.connection.commit()
                     
-                    self.log(f"✓ Deleted glossary: {tb_name}")
-                    QMessageBox.information(self, "Success", f"Glossary '{tb_name}' has been deleted")
+                    self.log(f"✓ Deleted termbase: {tb_name}")
+                    QMessageBox.information(self, "Success", f"Termbase '{tb_name}' has been deleted")
                     
                     # Clear cache and refresh
                     with self.termbase_cache_lock:
                         self.termbase_cache.clear()
                     refresh_callback()
                 except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to delete glossary: {str(e)}")
+                    QMessageBox.critical(self, "Error", f"Failed to delete termbase: {str(e)}")
                     self.log(f"✗ Error deleting termbase: {e}")
     
     def _refresh_termbase_table(self, termbase_table, termbase_mgr):
@@ -16138,27 +16138,27 @@ class SupervertalerQt(QMainWindow):
         """Import terms into selected termbase from TSV file"""
         selected_row = termbase_table.currentRow()
         if selected_row < 0:
-            QMessageBox.warning(self, "Error", "Please select a glossary to import into")
+            QMessageBox.warning(self, "Error", "Please select a termbase to import into")
             return
         
         # Get termbase info from Name column (column 1 - has ID stored in UserRole)
         name_item = termbase_table.item(selected_row, 1)
         if not name_item:
-            QMessageBox.warning(self, "Error", "Could not read glossary information")
+            QMessageBox.warning(self, "Error", "Could not read termbase information")
             return
         
         tb_name = name_item.text()
         termbase_id = name_item.data(Qt.ItemDataRole.UserRole)
         
         if not termbase_id:
-            QMessageBox.warning(self, "Error", "Could not find glossary ID")
+            QMessageBox.warning(self, "Error", "Could not find termbase ID")
             return
         
         # File dialog
         from PyQt6.QtWidgets import QFileDialog
         filepath, _ = QFileDialog.getOpenFileName(
             self,
-            "Import Glossary",
+            "Import Termbase",
             "",
             "TSV Files (*.tsv *.txt);;All Files (*.*)"
         )
@@ -16190,7 +16190,7 @@ class SupervertalerQt(QMainWindow):
         row_text = f"{row_count:,} row{'s' if row_count != 1 else ''}" if row_count > 0 else "unknown rows"
         info_label = QLabel(
             f'Import <b>{row_text}</b> from "<b>{file_name}</b>"'
-            f'<br>into glossary "<b>{tb_name}</b>" ({lang_pair})')
+            f'<br>into termbase "<b>{tb_name}</b>" ({lang_pair})')
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
@@ -16227,7 +16227,7 @@ class SupervertalerQt(QMainWindow):
         
         # Create progress dialog with scrolling log
         progress_dialog = QDialog(self)
-        progress_dialog.setWindowTitle("Importing Glossary")
+        progress_dialog.setWindowTitle("Importing Termbase")
         progress_dialog.setMinimumSize(600, 400)
         progress_dialog.setModal(True)
         
@@ -16375,20 +16375,20 @@ class SupervertalerQt(QMainWindow):
         """Export selected termbase to TSV file"""
         selected_row = termbase_table.currentRow()
         if selected_row < 0:
-            QMessageBox.warning(self, "Error", "Please select a glossary to export")
+            QMessageBox.warning(self, "Error", "Please select a termbase to export")
             return
         
         # Get termbase info from Name column (column 1 - has ID stored in UserRole)
         name_item = termbase_table.item(selected_row, 1)
         if not name_item:
-            QMessageBox.warning(self, "Error", "Could not read glossary information")
+            QMessageBox.warning(self, "Error", "Could not read termbase information")
             return
         
         tb_name = name_item.text()
         termbase_id = name_item.data(Qt.ItemDataRole.UserRole)
         
         if not termbase_id:
-            QMessageBox.warning(self, "Error", "Could not find glossary ID")
+            QMessageBox.warning(self, "Error", "Could not find termbase ID")
             return
         
         # File dialog
@@ -16396,7 +16396,7 @@ class SupervertalerQt(QMainWindow):
         default_filename = f"{tb_name.replace(' ', '_')}.tsv"
         filepath, _ = QFileDialog.getSaveFileName(
             self,
-            "Export Glossary",
+            "Export Termbase",
             default_filename,
             "TSV Files (*.tsv);;Text Files (*.txt);;All Files (*.*)"
         )
@@ -16412,7 +16412,7 @@ class SupervertalerQt(QMainWindow):
         layout = QVBoxLayout(options_dialog)
         
         # Info
-        info_label = QLabel(f"Exporting glossary: <b>{tb_name}</b>")
+        info_label = QLabel(f"Exporting termbase: <b>{tb_name}</b>")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
@@ -16473,20 +16473,20 @@ class SupervertalerQt(QMainWindow):
         """Show dialog to edit terms in selected termbase"""
         selected_row = termbase_table.currentRow()
         if selected_row < 0:
-            QMessageBox.warning(self, "Error", "Please select a glossary first")
+            QMessageBox.warning(self, "Error", "Please select a termbase first")
             return
         
         # Get termbase ID and name from table (column 1 is Name with ID stored in UserRole)
         name_item = termbase_table.item(selected_row, 1)
         if not name_item:
-            QMessageBox.warning(self, "Error", "Could not find selected glossary")
+            QMessageBox.warning(self, "Error", "Could not find selected termbase")
             return
         
         termbase_id = name_item.data(Qt.ItemDataRole.UserRole)
         tb_name = name_item.text()
         
         if not termbase_id:
-            QMessageBox.warning(self, "Error", "Could not find selected glossary")
+            QMessageBox.warning(self, "Error", "Could not find selected termbase")
             return
         
         # Create dialog
@@ -18794,7 +18794,7 @@ class SupervertalerQt(QMainWindow):
         # TM/Termbase lookup delay
         lookup_delay = general_prefs.get('lookup_delay', 1500)
         delay_layout = QHBoxLayout()
-        delay_label = QLabel("TM/Glossary lookup delay:")
+        delay_label = QLabel("TM/Termbase lookup delay:")
         delay_layout.addWidget(delay_label)
         delay_spin = QSpinBox()
         delay_spin.setMinimum(0)
@@ -19565,7 +19565,7 @@ class SupervertalerQt(QMainWindow):
         data_folder_layout = QVBoxLayout()
         
         data_folder_info = QLabel(
-            "Your translation memories, glossaries, prompts, and settings are stored here:"
+            "Your translation memories, termbases, prompts, and settings are stored here:"
         )
         data_folder_info.setWordWrap(True)
         data_folder_layout.addWidget(data_folder_info)
@@ -19679,7 +19679,7 @@ class SupervertalerQt(QMainWindow):
         sound_effects_cb = CheckmarkCheckBox("Enable minimalist sound effects")
         sound_effects_cb.setChecked(general_settings.get('enable_sound_effects', False))
         sound_effects_cb.setToolTip(
-            "Plays a subtle system beep for certain operations (e.g. glossary creation, match insertion).\n"
+            "Plays a subtle system beep for certain operations (e.g. termbase creation, match insertion).\n"
             "Disable if you prefer a silent workflow."
         )
         sound_layout.addWidget(sound_effects_cb)
@@ -19720,12 +19720,12 @@ class SupervertalerQt(QMainWindow):
         # Glossary entry added (term pair)
         default_term_added = sound_effects_map.get('glossary_term_added', 'asterisk')
         sound_event_combos['glossary_term_added'] = make_sound_combo(default_term_added)
-        event_rows.addRow("Glossary entry added:", sound_event_combos['glossary_term_added'])
+        event_rows.addRow("Termbase entry added:", sound_event_combos['glossary_term_added'])
 
         # Glossary created (collection)
         default_glossary_created = sound_effects_map.get('glossary_created', 'asterisk')
         sound_event_combos['glossary_created'] = make_sound_combo(default_glossary_created)
-        event_rows.addRow("Glossary created:", sound_event_combos['glossary_created'])
+        event_rows.addRow("Termbase created:", sound_event_combos['glossary_created'])
 
         # Compare Panel match inserted/replaced
         default_match_inserted = sound_effects_map.get('match_inserted', 'ok')
@@ -19735,12 +19735,12 @@ class SupervertalerQt(QMainWindow):
         # Glossary entry duplicate
         default_term_duplicate = sound_effects_map.get('glossary_term_duplicate', 'exclamation')
         sound_event_combos['glossary_term_duplicate'] = make_sound_combo(default_term_duplicate)
-        event_rows.addRow("Glossary entry duplicate:", sound_event_combos['glossary_term_duplicate'])
+        event_rows.addRow("Termbase entry duplicate:", sound_event_combos['glossary_term_duplicate'])
 
         # Glossary add error
         default_term_error = sound_effects_map.get('glossary_term_error', 'hand')
         sound_event_combos['glossary_term_error'] = make_sound_combo(default_term_error)
-        event_rows.addRow("Glossary add error:", sound_event_combos['glossary_term_error'])
+        event_rows.addRow("Termbase add error:", sound_event_combos['glossary_term_error'])
 
         # Segment confirmed (Ctrl+Enter)
         default_segment_confirmed = sound_effects_map.get('segment_confirmed', 'none')
@@ -19812,7 +19812,7 @@ class SupervertalerQt(QMainWindow):
         self.backup_interval_spin = backup_interval_spin
 
         # TM and glossary settings section
-        tm_termbase_group = QGroupBox("TM and glossary settings")
+        tm_termbase_group = QGroupBox("TM and termbase settings")
         tm_termbase_layout = QVBoxLayout()
         
         # Auto-propagate exact TM matches
@@ -19879,10 +19879,10 @@ class SupervertalerQt(QMainWindow):
         tm_termbase_layout.addLayout(tm_save_layout_h)
         
         # TM/Glossary matching toggle
-        tm_matching_cb = CheckmarkCheckBox("Enable TM && Glossary Matching")
+        tm_matching_cb = CheckmarkCheckBox("Enable TM && Termbase Matching")
         tm_matching_cb.setChecked(self.enable_tm_matching)  # Load current state
         tm_matching_cb.setToolTip(
-            "When enabled, TM and glossary searches are performed automatically\n"
+            "When enabled, TM and termbase searches are performed automatically\n"
             "when you select a segment (after a 1.5 second delay). Disable to improve performance\n"
             "when navigating quickly through segments."
         )
@@ -19890,17 +19890,17 @@ class SupervertalerQt(QMainWindow):
         tm_termbase_layout.addWidget(tm_matching_cb)
         
         # Glossary grid highlighting toggle
-        tb_highlight_cb = CheckmarkCheckBox("Highlight glossary matches in source cells")
+        tb_highlight_cb = CheckmarkCheckBox("Highlight termbase matches in source cells")
         tb_highlight_cb.setChecked(general_settings.get('enable_termbase_grid_highlighting', True))
         tb_highlight_cb.setToolTip(
-            "When enabled, glossary matches are highlighted with colored backgrounds in the source column.\n"
+            "When enabled, termbase matches are highlighted with colored backgrounds in the source column.\n"
             "Higher priority terms are shown with darker blue, lower priority with lighter blue.\n"
             "This provides visual feedback similar to memoQ's termbase highlighting."
         )
         tm_termbase_layout.addWidget(tb_highlight_cb)
 
         # Hide shorter matches checkbox
-        tb_hide_shorter_cb = CheckmarkCheckBox("Hide shorter glossary matches included in longer ones")
+        tb_hide_shorter_cb = CheckmarkCheckBox("Hide shorter termbase matches included in longer ones")
         tb_hide_shorter_cb.setChecked(general_settings.get('termbase_hide_shorter_matches', False))
         tb_hide_shorter_cb.setToolTip(
             "When enabled, shorter terms that are fully contained within longer matched terms are hidden.\n\n"
@@ -20118,7 +20118,7 @@ class SupervertalerQt(QMainWindow):
         
         # Glossary limit
         tb_layout = QHBoxLayout()
-        tb_layout.addWidget(QLabel("📚 Glossary matches:"))
+        tb_layout.addWidget(QLabel("📚 Termbase matches:"))
         tb_spin = QSpinBox()
         tb_spin.setRange(1, 50)
         tb_spin.setValue(current_limits.get("Termbases", 10))
@@ -20683,11 +20683,11 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(tab_position_group)
         
         # Glossary Highlight Style section
-        tb_highlight_group = QGroupBox("🏷️ Glossary Highlight Style")
+        tb_highlight_group = QGroupBox("🏷️ Termbase Highlight Style")
         tb_highlight_layout = QVBoxLayout()
         
         tb_highlight_info = QLabel(
-            "Choose how glossary matches are highlighted in the source text.\n"
+            "Choose how termbase matches are highlighted in the source text.\n"
             "Different styles offer varying levels of visual prominence."
         )
         tb_highlight_info.setStyleSheet("font-size: 8pt; padding: 8px; border-radius: 2px;")
@@ -27774,7 +27774,7 @@ class SupervertalerQt(QMainWindow):
                     dialog = QMessageBox(self)
                     dialog.setWindowTitle("Re-import Document")
                     dialog.setText(f"This file is already loaded in the current project:\n\n{os.path.basename(file_path)}")
-                    dialog.setInformativeText("Do you want to re-import it into the current project (keeping TM and glossary settings), or create a new project?")
+                    dialog.setInformativeText("Do you want to re-import it into the current project (keeping TM and termbase settings), or create a new project?")
 
                     reimport_btn = dialog.addButton("Re-import into Current Project", QMessageBox.ButtonRole.AcceptRole)
                     new_proj_btn = dialog.addButton("Create New Project", QMessageBox.ButtonRole.ActionRole)
@@ -39157,7 +39157,7 @@ class SupervertalerQt(QMainWindow):
             composition_parts.append(f"✓ {len(self.prompt_manager_qt.library.attached_prompts)} additional prompt(s) attached")
 
         if glossary_terms:
-            composition_parts.append(f"📚 {len(glossary_terms)} glossary term(s) injected")
+            composition_parts.append(f"📚 {len(glossary_terms)} termbase term(s) injected")
 
         if figure_info:
             composition_parts.append(figure_info)
@@ -39225,9 +39225,9 @@ class SupervertalerQt(QMainWindow):
             flags=re.IGNORECASE
         )
 
-        # Make "# GLOSSARY" bold and orange
+        # Make "# TERMBASE" bold and orange
         formatted_html = re.sub(
-            r'(#\s*GLOSSARY)',
+            r'(#\s*TERMBASE)',
             r'<span style="color: #FF9800; font-weight: bold; font-size: 11pt;">\1</span>',
             formatted_html,
             flags=re.IGNORECASE
@@ -40813,11 +40813,11 @@ class SupervertalerQt(QMainWindow):
                     btn = tabs.editor_widget.tm_toggle_btn
                     btn.blockSignals(True)
                     btn.setChecked(enabled)
-                    btn.setText("🔍 TM/Glossary ON" if enabled else "🚫 TM/Glossary OFF")
+                    btn.setText("🔍 TM/Termbase ON" if enabled else "🚫 TM/Termbase OFF")
                     btn.blockSignals(False)
 
         if enabled:
-            self.log("✓ TM and Glossary matching enabled")
+            self.log("✓ TM and Termbase matching enabled")
             # If a segment is currently selected, trigger lookup
             if hasattr(self, 'table') and self.table and hasattr(self, 'current_project') and self.current_project:
                 current_row = self.table.currentRow()
@@ -40825,7 +40825,7 @@ class SupervertalerQt(QMainWindow):
                     segment = self.current_project.segments[current_row]
                     self._schedule_delayed_lookup(segment, current_row)
         else:
-            self.log("⚠ TM and Glossary matching disabled")
+            self.log("⚠ TM and Termbase matching disabled")
             # Cancel any pending lookup
             if self.lookup_timer:
                 self.lookup_timer.stop()
@@ -40960,7 +40960,7 @@ class SupervertalerQt(QMainWindow):
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Re-import Document")
         dialog.setText(f"This file is already loaded in the current project:\n\n{os.path.basename(file_path)}")
-        dialog.setInformativeText("Do you want to re-import it into the current project (keeping TM and glossary settings), or create a new project?")
+        dialog.setInformativeText("Do you want to re-import it into the current project (keeping TM and termbase settings), or create a new project?")
 
         reimport_btn = dialog.addButton("Re-import into Current Project", QMessageBox.ButtonRole.AcceptRole)
         new_proj_btn = dialog.addButton("Create New Project", QMessageBox.ButtonRole.ActionRole)
@@ -43019,7 +43019,7 @@ class SupervertalerQt(QMainWindow):
         
         # Show status
         total_matches = tb_count + tm_count + nt_count
-        self.statusBar().showMessage(f"🔄 Refreshed: {tb_count} glossary, {tm_count} TM, {nt_count} NT matches", 5000)
+        self.statusBar().showMessage(f"🔄 Refreshed: {tb_count} termbase, {tm_count} TM, {nt_count} NT matches", 5000)
         self.log(f"🔄 Force refresh complete: {total_matches} total matches for segment {segment_id}")
 
     def show_goto_dialog(self):
@@ -43314,7 +43314,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(tm_group)
 
         # ─── Glossaries ───
-        gloss_group = QGroupBox("Glossaries")
+        gloss_group = QGroupBox("Termbases")
         gloss_layout = QVBoxLayout(gloss_group)
 
         active_tb_info = []
@@ -43325,13 +43325,13 @@ class SupervertalerQt(QMainWindow):
                     if self.termbase_mgr.is_termbase_active(tb['id'], proj.id):
                         active_tb_info.append((tb['name'], tb.get('term_count', 0)))
             except Exception as e:
-                self.log(f"Error getting glossary info: {e}")
+                self.log(f"Error getting termbase info: {e}")
 
         if active_tb_info:
             for tb_name, term_count in active_tb_info:
                 gloss_layout.addWidget(QLabel(f"<b>{tb_name}</b> ({term_count:,} terms)"))
         else:
-            gloss_layout.addWidget(QLabel("<span style='color: #999;'>No glossaries activated</span>"))
+            gloss_layout.addWidget(QLabel("<span style='color: #999;'>No termbases activated</span>"))
 
         layout.addWidget(gloss_group)
 
@@ -47469,10 +47469,10 @@ class SupervertalerQt(QMainWindow):
             
             if dialog.exec():
                 # Entry was edited, refresh termlens and translation results
-                self.log(f"✓ Glossary entry {term_id} updated")
+                self.log(f"✓ Termbase entry {term_id} updated")
                 self._refresh_current_segment_matches()
         except Exception as e:
-            self.log(f"✗ Error editing glossary entry: {e}")
+            self.log(f"✗ Error editing termbase entry: {e}")
     
     def _on_termlens_delete_entry(self, term_id: int, termbase_id: int, source_term: str, target_term: str):
         """Handle delete glossary entry request from TermLens"""
@@ -47483,7 +47483,7 @@ class SupervertalerQt(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "Confirm Deletion",
-                f"Delete glossary entry?\n\nSource: {source_term}\nTarget: {target_term}\n\nThis action cannot be undone.",
+                f"Delete termbase entry?\n\nSource: {source_term}\nTarget: {target_term}\n\nThis action cannot be undone.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -47492,16 +47492,16 @@ class SupervertalerQt(QMainWindow):
                 if self.termbase_mgr:
                     try:
                         if self.termbase_mgr.delete_term(term_id):
-                            self.log(f"✓ Deleted glossary entry: {source_term} → {target_term}")
+                            self.log(f"✓ Deleted termbase entry: {source_term} → {target_term}")
                             
                             # Refresh termlens and translation results
                             self._refresh_current_segment_matches()
                         else:
-                            self.log(f"✗ Failed to delete glossary entry")
+                            self.log(f"✗ Failed to delete termbase entry")
                     except Exception as e:
-                        self.log(f"✗ Error deleting glossary entry from database: {e}")
+                        self.log(f"✗ Error deleting termbase entry from database: {e}")
         except Exception as e:
-            self.log(f"✗ Error deleting glossary entry: {e}")
+            self.log(f"✗ Error deleting termbase entry: {e}")
     
     def _refresh_current_segment_matches(self):
         """Refresh termbase matches for the current segment (after edit/delete)"""
@@ -47524,11 +47524,11 @@ class SupervertalerQt(QMainWindow):
 
         # Update button text and style
         if checked:
-            button.setText("🔍 TM/Glossary ON")
-            self.log("✓ TM/Glossary lookups ENABLED from segment editor")
+            button.setText("🔍 TM/Termbase ON")
+            self.log("✓ TM/Termbase lookups ENABLED from segment editor")
         else:
-            button.setText("🚫 TM/Glossary OFF")
-            self.log("⚠️ TM/Glossary lookups DISABLED from segment editor (faster editing)")
+            button.setText("🚫 TM/Termbase OFF")
+            self.log("⚠️ TM/Termbase lookups DISABLED from segment editor (faster editing)")
 
     def _toggle_tag_view_via_shortcut(self):
         """Toggle tag view using keyboard shortcut (Ctrl+Shift+H) – cycles: tags → compact → wysiwyg"""
@@ -53764,7 +53764,7 @@ class SuperlookupTab(QWidget):
         # Action buttons
         button_layout = QHBoxLayout()
         
-        add_term_btn = QPushButton("➕ Add to Glossary")
+        add_term_btn = QPushButton("➕ Add to Termbase")
         add_term_btn.setToolTip("Add source text and selected translation as new term")
         add_term_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; border: none; outline: none;")
         add_term_btn.clicked.connect(self.add_to_termbase)
@@ -55581,7 +55581,7 @@ class SuperlookupTab(QWidget):
         else:
             print(f"[Superlookup]   Neither termbase_mgr nor db_manager available")
             # Add placeholder label
-            placeholder = QLabel("No database connection - Glossaries unavailable")
+            placeholder = QLabel("No database connection - Termbases unavailable")
             placeholder.setStyleSheet("color: #999; font-style: italic;")
             self.tb_scroll_layout.insertWidget(0, placeholder)
     
@@ -56466,11 +56466,11 @@ class SuperlookupTab(QWidget):
                         QTimer.singleShot(300, lambda: self._select_first_term_in_table(main))
                     QTimer.singleShot(200, set_filter_and_select)
                 
-                self.status_label.setText(f"Navigated to glossary entry: {source_term}")
-            
+                self.status_label.setText(f"Navigated to termbase entry: {source_term}")
+
         except Exception as e:
-            print(f"[Superlookup] Error navigating to glossary: {e}")
-            self.status_label.setText(f"Error navigating to glossary: {e}")
+            print(f"[Superlookup] Error navigating to termbase: {e}")
+            self.status_label.setText(f"Error navigating to termbase: {e}")
     
     def _select_first_term_in_table(self, main):
         """Select the first term in the filtered termbase terms table"""
@@ -56966,7 +56966,7 @@ class SuperlookupTab(QWidget):
                 target_text = target_item.text()
         
         if not self.termbase_mgr or not self.db_manager or not self.main_window:
-            QMessageBox.warning(self, "Database Not Available", "Glossary database is not initialized.")
+            QMessageBox.warning(self, "Database Not Available", "Termbase database is not initialized.")
             return
         
         # Show dialog to add term
@@ -56975,7 +56975,7 @@ class SuperlookupTab(QWidget):
     def show_add_term_dialog(self, source_text, target_text=""):
         """Show dialog to add new term to glossary"""
         dialog = QDialog(self)
-        dialog.setWindowTitle("Add Term to Glossary")
+        dialog.setWindowTitle("Add Term to Termbase")
         dialog.setMinimumWidth(500)
         
         layout = QVBoxLayout(dialog)
@@ -56990,8 +56990,8 @@ class SuperlookupTab(QWidget):
         target_edit = QLineEdit(target_text)
         layout.addWidget(target_edit)
         
-        # Glossary selection
-        layout.addWidget(QLabel("Select Glossary:"))
+        # Termbase selection
+        layout.addWidget(QLabel("Select Termbase:"))
         termbase_combo = QComboBox()
         
         # Get writable termbases
@@ -57004,14 +57004,14 @@ class SuperlookupTab(QWidget):
             writable_termbases = [tb for tb in all_termbases if not tb.get('read_only', True)]
             
             if not writable_termbases:
-                QMessageBox.warning(self, "No Writable Glossaries", 
-                    "No writable glossaries found. Please enable Write for at least one glossary in Resources → Glossaries.")
+                QMessageBox.warning(self, "No Writable Termbases",
+                    "No writable termbases found. Please enable Write for at least one termbase in Resources → Termbases.")
                 return
             
             for tb in writable_termbases:
                 termbase_combo.addItem(tb['name'], tb['id'])
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not load glossaries: {e}")
+            QMessageBox.warning(self, "Error", f"Could not load termbases: {e}")
             return
         
         layout.addWidget(termbase_combo)
@@ -57060,7 +57060,7 @@ class SuperlookupTab(QWidget):
 
                     try:
                         if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
-                            self.main_window.statusBar().showMessage("⚠ Duplicate glossary entry (not added)", 3500)
+                            self.main_window.statusBar().showMessage("⚠ Duplicate termbase entry (not added)", 3500)
                     except Exception:
                         pass
 
@@ -57077,14 +57077,14 @@ class SuperlookupTab(QWidget):
                 try:
                     if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
                         self.main_window.statusBar().showMessage(
-                            f"✓ Added glossary entry: {source} → {target} (to {termbase_combo.currentText()})",
+                            f"✓ Added termbase entry: {source} → {target} (to {termbase_combo.currentText()})",
                             3500,
                         )
                 except Exception:
                     pass
                 
                 QMessageBox.information(self, "Term Added", 
-                    f"Successfully added term:\n\n{source} → {target}\n\nto glossary: {termbase_combo.currentText()}")
+                    f"Successfully added term:\n\n{source} → {target}\n\nto termbase: {termbase_combo.currentText()}")
                 
                 # Refresh termbase results
                 self.perform_lookup()
@@ -57095,7 +57095,7 @@ class SuperlookupTab(QWidget):
 
                 try:
                     if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
-                        self.main_window.statusBar().showMessage("❌ Error adding glossary entry (see log)", 3500)
+                        self.main_window.statusBar().showMessage("❌ Error adding termbase entry (see log)", 3500)
                 except Exception:
                     pass
 

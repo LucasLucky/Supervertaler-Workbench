@@ -376,7 +376,7 @@ class DocumentAnalyzer:
                 'priority': 'medium',
                 'title': 'Rich Terminology Detected',
                 'description': f'Found {unique_terms} unique technical/specialized terms. '
-                             'Consider using a glossary for consistent translation.',
+                             'Consider using a termbase for consistent translation.',
                 'action': 'enable_glossary'
             })
         

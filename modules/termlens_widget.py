@@ -447,12 +447,12 @@ class TermBlock(QWidget):
         menu = QMenu(self)
         
         # Edit entry action
-        edit_action = QAction("✏️ Edit Glossary Entry", menu)
+        edit_action = QAction("✏️ Edit Termbase Entry", menu)
         edit_action.triggered.connect(self._edit_entry)
         menu.addAction(edit_action)
         
         # Delete entry action
-        delete_action = QAction("🗑️ Delete Glossary Entry", menu)
+        delete_action = QAction("🗑️ Delete Termbase Entry", menu)
         delete_action.triggered.connect(self._delete_entry)
         menu.addAction(delete_action)
         
@@ -1123,9 +1123,9 @@ class TermLensWidget(QWidget):
             # Show appropriate message based on status hint when no matches
             status_hint = getattr(self, '_status_hint', None)
             if status_hint == 'no_termbases_activated':
-                self.info_label.setText(f"No glossaries activated ({word_count} words)")
+                self.info_label.setText(f"No termbases activated ({word_count} words)")
             elif status_hint == 'wrong_language':
-                self.info_label.setText(f"Glossaries don't match language pair ({word_count} words)")
+                self.info_label.setText(f"Termbases don't match language pair ({word_count} words)")
             else:
                 self.info_label.setText(f"No matches in {word_count} words")
     

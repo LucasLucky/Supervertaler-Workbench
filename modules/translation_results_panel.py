@@ -249,10 +249,10 @@ class CompactMatchItem(QFrame):
 
         if self.match.match_type == "Termbase":
             menu = QMenu()
-            edit_action = QAction("✏️ Edit Glossary Entry", menu)
+            edit_action = QAction("✏️ Edit Termbase Entry", menu)
             edit_action.triggered.connect(self._edit_termbase_entry)
             menu.addAction(edit_action)
-            delete_action = QAction("🗑️ Delete Glossary Entry", menu)
+            delete_action = QAction("🗑️ Delete Termbase Entry", menu)
             delete_action.triggered.connect(self._delete_termbase_entry)
             menu.addAction(delete_action)
             menu.exec(pos)
@@ -313,7 +313,7 @@ class CompactMatchItem(QFrame):
             reply = QMessageBox.question(
                 parent_window,
                 "Confirm Deletion",
-                f"Delete glossary entry?\n\nSource: {source_term}\nTarget: {target_term}\n\nThis action cannot be undone.",
+                f"Delete termbase entry?\n\nSource: {source_term}\nTarget: {target_term}\n\nThis action cannot be undone.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -372,7 +372,7 @@ class CompactMatchItem(QFrame):
                                     if hasattr(source_widget, 'termbase_matches'):
                                         source_widget.termbase_matches = termbase_matches
                         
-                        QMessageBox.information(parent_window, "Success", "Glossary entry deleted")
+                        QMessageBox.information(parent_window, "Success", "Termbase entry deleted")
                         # Hide this match card since it's been deleted
                         self.hide()
                     except Exception as e:

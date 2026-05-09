@@ -131,7 +131,7 @@ class VoiceCommandManager(QObject):
                     "Stop voice recognition", "dictation"),
         
         # memoQ-specific (AHK v2)
-        VoiceCommand("glossary", ["add term", "add to glossary"], "ahk_inline",
+        VoiceCommand("termbase", ["add term", "add to termbase"], "ahk_inline",
                     'Send "!{Down}"',  # Alt+Down
                     "Add term pair to memoQ termbase", "memoq"),
         VoiceCommand("tag next", ["next tag", "insert tag"], "ahk_inline",
