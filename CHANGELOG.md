@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.481 (May 9, 2026)
+**Current Version:** v1.9.482 (May 9, 2026)
+
+
+## v1.9.482 – May 9, 2026
+
+### Changed (Add Term and Edit Termbase Entry are now one dialog)
+
+- The two near-duplicate dialog classes that handled adding and editing termbase entries (`TermMetadataDialog` and the old `TermbaseEntryEditor`) have been merged into a single canonical class, `TermbaseEntryEditor`, living in `modules/termbase_entry_editor.py`. ~660 lines of duplicated layout code removed from `Supervertaler.py`.
+- Mode is determined automatically by whether a `term_id` is supplied. If you pass `term_id`, you get the **Edit Termbase Entry** dialog (loads existing data, Delete button, Save UPDATEs the row). If you don't, you get the **Add Term to Termbase** dialog (Save just accepts and the caller does the INSERT). All five existing call sites continue to work unchanged.
+- One concrete consequence: any future tweak to the dialog (a new field, a different button arrangement, a colour change) only has to be made once instead of being kept in sync across two files.
+- Backward-compat alias `TermMetadataDialog = TermbaseEntryEditor` is kept in `Supervertaler.py` so any external scripts that imported the old name still resolve.
 
 
 ## v1.9.481 – May 9, 2026

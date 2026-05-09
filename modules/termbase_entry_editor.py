@@ -1,13 +1,27 @@
 """
-Glossary Entry Editor Dialog
+Termbase Entry Editor Dialog
 
-Dialog for editing individual glossary entries with all metadata fields.
-Can be opened from translation results panel (edit button or right-click menu).
+Single canonical dialog for both ADDING new terms to a termbase and EDITING
+existing termbase entries. Mode is determined by whether ``term_id`` is
+supplied:
+
+* **Edit mode** (``term_id`` is not None): title is "Edit Termbase Entry",
+  the dialog loads the row from the database on open, the Save button runs
+  ``save_term()`` (UPDATE + synonym save), and a Delete button is shown.
+* **Add mode** (``term_id`` is None): title is "Add Term to Termbase",
+  there is no Delete button, and the Save button just calls ``accept()``.
+  The caller reads the result via ``get_metadata()``, ``get_source_term()``,
+  ``get_target_term()``, ``get_source_synonyms()``, ``get_target_synonyms()``
+  and runs the INSERT itself.
+
+This class is the merged successor of the historic ``TermMetadataDialog``
+(add path) and the previous ``TermbaseEntryEditor`` (edit path); both
+visuals were already identical, so the merge is mostly a behavioural one.
 """
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QTextEdit, QSpinBox, QCheckBox, QPushButton, QGroupBox,
+    QTextEdit, QPushButton, QGroupBox,
     QMessageBox, QListWidget, QListWidgetItem, QMenu, QScrollArea,
     QWidget, QToolButton, QApplication, QFormLayout
 )
@@ -20,25 +34,61 @@ from modules.styled_widgets import CheckmarkCheckBox  # noqa: E402
 
 
 class TermbaseEntryEditor(QDialog):
-    """Dialog for editing a termbase entry"""
-    
-    def __init__(self, parent=None, db_manager=None, termbase_id: Optional[int] = None, term_id: Optional[int] = None):
+    """Unified dialog for adding/editing termbase entries."""
+
+    def __init__(
+        self,
+        parent=None,
+        *,
+        # Edit-mode kwargs (term exists in DB)
+        db_manager=None,
+        termbase_id: Optional[int] = None,
+        term_id: Optional[int] = None,
+        # Add-mode kwargs (caller does the INSERT)
+        source_term: str = "",
+        target_term: str = "",
+        active_termbases: Optional[list] = None,
+        user_data_path=None,
+        default_selected_termbase_ids=None,
+    ):
         """
-        Initialize termbase entry editor
-        
+        Initialise the termbase entry editor.
+
         Args:
-            parent: Parent widget
-            db_manager: DatabaseManager instance
-            termbase_id: Termbase ID
-            term_id: Term ID to edit (if None, creates new term)
+            parent: Parent widget.
+            db_manager: DatabaseManager instance (edit mode).
+            termbase_id: Termbase ID (used by both modes – edit mode targets
+                the row in this termbase; add mode passes it through for
+                callers that need it).
+            term_id: Term ID to edit. If ``None``, the dialog runs in
+                add mode.
+            source_term: Initial source-term value (add mode).
+            target_term: Initial target-term value (add mode).
+            active_termbases: List of termbases the caller has shortlisted
+                for the add operation. Stored for compatibility with the
+                old ``TermMetadataDialog`` API; the dialog itself no longer
+                shows a per-add picker.
+            user_data_path: Path to the user data dir; used for the
+                (no-op) saved-selection load/save shim.
+            default_selected_termbase_ids: Pre-selected termbase IDs;
+                stored for compatibility with the old API.
         """
         super().__init__(parent)
+        # Edit-mode state
         self.db_manager = db_manager
         self.termbase_id = termbase_id
         self.term_id = term_id
         self.term_data = None
-        
-        self.setWindowTitle("Edit Termbase Entry" if term_id else "New Termbase Entry")
+
+        # Add-mode state (stored for caller compatibility)
+        self.source_term = source_term
+        self.target_term = target_term
+        self.active_termbases = active_termbases or []
+        self.termbase_checkboxes = {}  # legacy attr; still referenced
+        self.user_data_path = user_data_path
+        self.default_selected_termbase_ids = set(default_selected_termbase_ids or [])
+        self.saved_selections = self._load_termbase_selections()
+
         self.setModal(True)
         self.setMinimumWidth(550)
 
@@ -51,38 +101,71 @@ class TermbaseEntryEditor(QDialog):
         self.resize(600, min(550, max_height))
 
         self.setup_ui()
-        
-        # Load existing term data if editing
-        if term_id and db_manager:
+
+        # Edit mode: load existing data after the UI is built
+        if self.term_id is not None and self.db_manager is not None:
             self.load_term_data()
-    
+
+    # ------------------------------------------------------------------
+    # Saved-selection shim (kept for behavioural parity with the old
+    # TermMetadataDialog – the helper methods it tries to call live on
+    # the main window, not on the dialog, so they raise AttributeError
+    # and the try/except silently swallows it. Keeping the shim verbatim
+    # so we don't change behaviour during the merge.)
+    # ------------------------------------------------------------------
+    def _load_termbase_selections(self):
+        """Load saved termbase selections from preferences."""
+        if not self.user_data_path:
+            return None
+        try:
+            prefs = self._load_settings_section("ui")
+            return prefs.get('add_term_termbase_selections', None)
+        except Exception:
+            return None
+
+    def _save_termbase_selections(self):
+        """Save current termbase selections to preferences."""
+        if not self.user_data_path:
+            return
+        try:
+            all_settings = self._load_unified_settings()
+            selected_ids = [tb_id for tb_id, cb in self.termbase_checkboxes.items() if cb.isChecked()]
+            all_settings.setdefault("ui", {})['add_term_termbase_selections'] = selected_ids
+            self._save_unified_settings(all_settings)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
     def setup_ui(self):
-        """Setup the user interface"""
+        """Build the dialog UI. Identical visual for both modes."""
+        # Title differs by mode
+        self.setWindowTitle(
+            "Edit Termbase Entry" if self.term_id is not None else "Add Term to Termbase"
+        )
+
+        # Create main layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Create scroll area for all content
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        
+
         content_widget = QWidget()
         layout = QVBoxLayout(content_widget)
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        # Term row – editable, side by side, mirrors the Add Term dialog
-        # (TermMetadataDialog) layout introduced in v1.9.475/.478.  Per
-        # language: term + abbreviation; the synonym group built later in
-        # this method drops into the same column.
+        # Term pair – editable, side by side (Trados-style).
         term_row = QHBoxLayout()
         term_row.setSpacing(12)
 
-        # Resolve language names from the main window's current project,
-        # so the column captions read e.g. "English" / "Dutch" rather
-        # than "Source" / "Target". Walk up the parent chain because
-        # this dialog is opened from contexts (TermLens, results panel)
-        # that aren't the main window directly.
+        # Resolve language names for the column captions. Walk up the
+        # parent chain because this dialog can be opened from contexts
+        # (TermLens, results panel) that aren't the main window directly.
         src_caption, tgt_caption = "Source", "Target"
         try:
             ancestor = self.parent()
@@ -96,12 +179,11 @@ class TermbaseEntryEditor(QDialog):
         except Exception:
             pass
 
-        # Source column: term + abbreviation (synonyms appended later)
+        # Source column: term, abbreviation, (later) synonyms
         source_col = QVBoxLayout()
         source_col.setSpacing(2)
         source_col.addWidget(QLabel(f"<b>{src_caption}:</b>"))
-        self.source_edit = QLineEdit()
-        self.source_edit.setPlaceholderText("Source language term...")
+        self.source_edit = QLineEdit(self.source_term)
         self.source_edit.setStyleSheet("padding: 4px;")
         source_col.addWidget(self.source_edit)
         source_col.addWidget(QLabel("Abbreviation:"))
@@ -109,12 +191,11 @@ class TermbaseEntryEditor(QDialog):
         self.source_abbr_edit.setStyleSheet("padding: 4px;")
         source_col.addWidget(self.source_abbr_edit)
 
-        # Target column: term + abbreviation
+        # Target column: term, abbreviation, (later) synonyms
         target_col = QVBoxLayout()
         target_col.setSpacing(2)
         target_col.addWidget(QLabel(f"<b>{tgt_caption}:</b>"))
-        self.target_edit = QLineEdit()
-        self.target_edit.setPlaceholderText("Target language term...")
+        self.target_edit = QLineEdit(self.target_term)
         self.target_edit.setStyleSheet("padding: 4px;")
         target_col.addWidget(self.target_edit)
         target_col.addWidget(QLabel("Abbreviation:"))
@@ -122,14 +203,76 @@ class TermbaseEntryEditor(QDialog):
         self.target_abbr_edit.setStyleSheet("padding: 4px;")
         target_col.addWidget(self.target_abbr_edit)
 
-        # Stash for synonym-group placement further down.
+        # Stash the column layouts so the synonym group widgets built
+        # later in this method can be dropped into the same columns as
+        # their respective term/abbreviation pair.
         self._source_col_layout = source_col
         self._target_col_layout = target_col
 
         term_row.addLayout(source_col, 1)
         term_row.addLayout(target_col, 1)
         layout.addLayout(term_row)
-        
+
+        # Metadata fields
+        meta_group = QGroupBox("Metadata (Optional)")
+        meta_layout = QFormLayout()
+
+        # Definition – Trados-style dedicated field, separate from notes.
+        self.definition_edit = QTextEdit()
+        self.definition_edit.setMaximumHeight(45)
+        self.definition_edit.setPlaceholderText("Brief definition or gloss...")
+        self.definition_edit.setStyleSheet("padding: 3px;")
+        meta_layout.addRow("Definition:", self.definition_edit)
+
+        # Domain
+        self.domain_edit = QLineEdit()
+        self.domain_edit.setPlaceholderText("e.g., Patents, Legal, Medical, IT...")
+        meta_layout.addRow("Domain:", self.domain_edit)
+
+        # Notes
+        self.notes_edit = QTextEdit()
+        self.notes_edit.setMaximumHeight(45)
+        self.notes_edit.setPlaceholderText("Usage notes, context...")
+        self.notes_edit.setStyleSheet("padding: 3px;")
+        meta_layout.addRow("Notes:", self.notes_edit)
+
+        # URL (optional)
+        self.url_edit = QLineEdit()
+        self.url_edit.setPlaceholderText("https://...")
+        meta_layout.addRow("URL:", self.url_edit)
+
+        # Client
+        self.client_edit = QLineEdit()
+        self.client_edit.setPlaceholderText("Optional client name...")
+        meta_layout.addRow("Client:", self.client_edit)
+
+        # Project
+        self.project_edit = QLineEdit()
+        self.project_edit.setPlaceholderText("Optional project name...")
+        meta_layout.addRow("Project:", self.project_edit)
+
+        # Non-translatable checkbox – when ticked, the target field is
+        # auto-synced to the source so the term copies through unchanged.
+        self.nontranslatable_check = CheckmarkCheckBox(
+            "Non-translatable (keep source text in target)"
+        )
+        self.nontranslatable_check.setToolTip(
+            "Mark this entry as non-translatable. The source term is kept "
+            "verbatim in the target whenever it appears in segments."
+        )
+        self.nontranslatable_check.toggled.connect(self._on_nontranslatable_toggled)
+        meta_layout.addRow("", self.nontranslatable_check)
+
+        # Forbidden term checkbox
+        self.forbidden_check = CheckmarkCheckBox(
+            "Forbidden term (warn when used in translation)"
+        )
+        self.forbidden_check.setToolTip("Forbidden terms trigger warnings when used")
+        meta_layout.addRow("", self.forbidden_check)
+
+        meta_group.setLayout(meta_layout)
+        layout.addWidget(meta_group)
+
         # Source Synonyms section (collapsible)
         source_syn_group = QGroupBox()
         source_syn_main_layout = QVBoxLayout()
@@ -155,58 +298,63 @@ class TermbaseEntryEditor(QDialog):
         source_syn_layout = QVBoxLayout(self.source_syn_content)
         source_syn_layout.setContentsMargins(0, 0, 0, 0)
         self.source_syn_content.setVisible(False)
-        
-        source_syn_info = QLabel("Alternative source terms. First item = preferred:")
+
+        # Instructions
+        source_syn_info = QLabel("Add alternative source terms. First item = preferred term:")
         source_syn_info.setStyleSheet("color: #666; font-size: 10px;")
         source_syn_layout.addWidget(source_syn_info)
-        
+
+        # Input field + Add button + Forbidden checkbox
         source_add_layout = QHBoxLayout()
         self.source_synonym_edit = QLineEdit()
-        self.source_synonym_edit.setPlaceholderText("Enter source synonym...")
-        self.source_synonym_edit.setStyleSheet("padding: 4px; font-size: 10px;")
+        self.source_synonym_edit.setPlaceholderText("Enter source synonym and press Add or Enter...")
         source_add_layout.addWidget(self.source_synonym_edit)
-        
+
         self.source_synonym_forbidden_check = CheckmarkCheckBox("Forbidden")
-        self.source_synonym_forbidden_check.setStyleSheet("font-size: 10px;")
+        self.source_synonym_forbidden_check.setToolTip("Mark this source synonym as forbidden")
         source_add_layout.addWidget(self.source_synonym_forbidden_check)
-        
-        source_add_btn = QPushButton("Add")
-        source_add_btn.setMaximumWidth(50)
-        source_add_btn.setStyleSheet("padding: 4px; font-size: 10px;")
-        source_add_btn.clicked.connect(self.add_source_synonym)
-        source_add_layout.addWidget(source_add_btn)
+
+        source_add_syn_btn = QPushButton("Add")
+        source_add_syn_btn.setMaximumWidth(60)
+        source_add_syn_btn.clicked.connect(self.add_source_synonym)
+        source_add_layout.addWidget(source_add_syn_btn)
         source_syn_layout.addLayout(source_add_layout)
-        
+
+        # Connect Enter key to add synonym
         self.source_synonym_edit.returnPressed.connect(self.add_source_synonym)
-        
+
+        # List of source synonyms with control buttons
         source_list_layout = QHBoxLayout()
+
         self.source_synonym_list = QListWidget()
-        self.source_synonym_list.setMaximumHeight(80)
+        self.source_synonym_list.setMaximumHeight(100)
         self.source_synonym_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.source_synonym_list.customContextMenuRequested.connect(self.show_source_synonym_context_menu)
         source_list_layout.addWidget(self.source_synonym_list)
-        
-        source_btn_col = QVBoxLayout()
-        source_up_btn = QPushButton("▲")
-        source_up_btn.setMaximumWidth(25)
-        source_up_btn.setToolTip("Move up")
-        source_up_btn.clicked.connect(lambda: self.move_synonym(self.source_synonym_list, -1))
-        source_btn_col.addWidget(source_up_btn)
-        
-        source_down_btn = QPushButton("▼")
-        source_down_btn.setMaximumWidth(25)
-        source_down_btn.setToolTip("Move down")
-        source_down_btn.clicked.connect(lambda: self.move_synonym(self.source_synonym_list, 1))
-        source_btn_col.addWidget(source_down_btn)
-        source_btn_col.addStretch()
-        
-        source_del_btn = QPushButton("✗")
-        source_del_btn.setMaximumWidth(25)
-        source_del_btn.setToolTip("Delete")
-        source_del_btn.clicked.connect(lambda: self.delete_synonym(self.source_synonym_list))
-        source_btn_col.addWidget(source_del_btn)
-        
-        source_list_layout.addLayout(source_btn_col)
+
+        # Up/Down buttons for source synonyms
+        source_button_col = QVBoxLayout()
+        source_move_up_btn = QPushButton("▲")
+        source_move_up_btn.setToolTip("Move synonym up (higher priority)")
+        source_move_up_btn.setMaximumWidth(30)
+        source_move_up_btn.clicked.connect(self.move_source_synonym_up)
+        source_button_col.addWidget(source_move_up_btn)
+
+        source_move_down_btn = QPushButton("▼")
+        source_move_down_btn.setToolTip("Move synonym down (lower priority)")
+        source_move_down_btn.setMaximumWidth(30)
+        source_move_down_btn.clicked.connect(self.move_source_synonym_down)
+        source_button_col.addWidget(source_move_down_btn)
+
+        source_button_col.addStretch()
+
+        source_delete_btn = QPushButton("✗")
+        source_delete_btn.setToolTip("Delete synonym")
+        source_delete_btn.setMaximumWidth(30)
+        source_delete_btn.clicked.connect(self.delete_selected_source_synonym)
+        source_button_col.addWidget(source_delete_btn)
+
+        source_list_layout.addLayout(source_button_col)
         source_syn_layout.addLayout(source_list_layout)
 
         # Add collapsible content to main layout
@@ -216,10 +364,11 @@ class TermbaseEntryEditor(QDialog):
         # Connect toggle button
         self.source_syn_toggle.clicked.connect(lambda: self.toggle_section(self.source_syn_toggle, self.source_syn_content))
 
-        # Drop into the source-language column rather than the main vertical
-        # layout – matches the Trados plugin's per-language column layout.
+        # Drop the synonym group into the source-language column rather
+        # than the main vertical layout – mirrors the Trados plugin's
+        # "everything for this language stacks under its term" layout.
         self._source_col_layout.addWidget(source_syn_group)
-        
+
         # Target Synonyms section (collapsible)
         target_syn_group = QGroupBox()
         target_syn_main_layout = QVBoxLayout()
@@ -245,58 +394,63 @@ class TermbaseEntryEditor(QDialog):
         target_syn_layout = QVBoxLayout(self.target_syn_content)
         target_syn_layout.setContentsMargins(0, 0, 0, 0)
         self.target_syn_content.setVisible(False)
-        
-        target_syn_info = QLabel("Alternative target terms. First item = preferred:")
+
+        # Instructions
+        target_syn_info = QLabel("Add alternative translations (synonyms). First item = preferred term:")
         target_syn_info.setStyleSheet("color: #666; font-size: 10px;")
         target_syn_layout.addWidget(target_syn_info)
-        
+
+        # Input field + Add button + Forbidden checkbox
         target_add_layout = QHBoxLayout()
         self.target_synonym_edit = QLineEdit()
-        self.target_synonym_edit.setPlaceholderText("Enter target synonym...")
-        self.target_synonym_edit.setStyleSheet("padding: 4px; font-size: 10px;")
+        self.target_synonym_edit.setPlaceholderText("Enter synonym and press Add or Enter...")
         target_add_layout.addWidget(self.target_synonym_edit)
-        
+
         self.target_synonym_forbidden_check = CheckmarkCheckBox("Forbidden")
-        self.target_synonym_forbidden_check.setStyleSheet("font-size: 10px;")
+        self.target_synonym_forbidden_check.setToolTip("Mark this synonym as forbidden (warning when used)")
         target_add_layout.addWidget(self.target_synonym_forbidden_check)
-        
-        target_add_btn = QPushButton("Add")
-        target_add_btn.setMaximumWidth(50)
-        target_add_btn.setStyleSheet("padding: 4px; font-size: 10px;")
-        target_add_btn.clicked.connect(self.add_target_synonym)
-        target_add_layout.addWidget(target_add_btn)
+
+        target_add_syn_btn = QPushButton("Add")
+        target_add_syn_btn.setMaximumWidth(60)
+        target_add_syn_btn.clicked.connect(self.add_target_synonym)
+        target_add_layout.addWidget(target_add_syn_btn)
         target_syn_layout.addLayout(target_add_layout)
-        
+
+        # Connect Enter key to add synonym
         self.target_synonym_edit.returnPressed.connect(self.add_target_synonym)
-        
+
+        # List of target synonyms with control buttons
         target_list_layout = QHBoxLayout()
+
         self.target_synonym_list = QListWidget()
-        self.target_synonym_list.setMaximumHeight(80)
+        self.target_synonym_list.setMaximumHeight(100)
         self.target_synonym_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.target_synonym_list.customContextMenuRequested.connect(self.show_target_synonym_context_menu)
         target_list_layout.addWidget(self.target_synonym_list)
-        
-        target_btn_col = QVBoxLayout()
-        target_up_btn = QPushButton("▲")
-        target_up_btn.setMaximumWidth(25)
-        target_up_btn.setToolTip("Move up")
-        target_up_btn.clicked.connect(lambda: self.move_synonym(self.target_synonym_list, -1))
-        target_btn_col.addWidget(target_up_btn)
-        
-        target_down_btn = QPushButton("▼")
-        target_down_btn.setMaximumWidth(25)
-        target_down_btn.setToolTip("Move down")
-        target_down_btn.clicked.connect(lambda: self.move_synonym(self.target_synonym_list, 1))
-        target_btn_col.addWidget(target_down_btn)
-        target_btn_col.addStretch()
-        
-        target_del_btn = QPushButton("✗")
-        target_del_btn.setMaximumWidth(25)
-        target_del_btn.setToolTip("Delete")
-        target_del_btn.clicked.connect(lambda: self.delete_synonym(self.target_synonym_list))
-        target_btn_col.addWidget(target_del_btn)
-        
-        target_list_layout.addLayout(target_btn_col)
+
+        # Up/Down buttons for target synonyms
+        target_button_col = QVBoxLayout()
+        target_move_up_btn = QPushButton("▲")
+        target_move_up_btn.setToolTip("Move synonym up (higher priority)")
+        target_move_up_btn.setMaximumWidth(30)
+        target_move_up_btn.clicked.connect(self.move_target_synonym_up)
+        target_button_col.addWidget(target_move_up_btn)
+
+        target_move_down_btn = QPushButton("▼")
+        target_move_down_btn.setToolTip("Move synonym down (lower priority)")
+        target_move_down_btn.setMaximumWidth(30)
+        target_move_down_btn.clicked.connect(self.move_target_synonym_down)
+        target_button_col.addWidget(target_move_down_btn)
+
+        target_button_col.addStretch()
+
+        target_delete_btn = QPushButton("✗")
+        target_delete_btn.setToolTip("Delete synonym")
+        target_delete_btn.setMaximumWidth(30)
+        target_delete_btn.clicked.connect(self.delete_selected_target_synonym)
+        target_button_col.addWidget(target_delete_btn)
+
+        target_list_layout.addLayout(target_button_col)
         target_syn_layout.addLayout(target_list_layout)
 
         # Add collapsible content to main layout
@@ -306,74 +460,14 @@ class TermbaseEntryEditor(QDialog):
         # Connect toggle button
         self.target_syn_toggle.clicked.connect(lambda: self.toggle_section(self.target_syn_toggle, self.target_syn_content))
 
-        # Drop into the target-language column (see source-side comment).
+        # Drop the synonym group into the target-language column.
         self._target_col_layout.addWidget(target_syn_group)
-        
-        # Metadata group – matches the Add Term dialog exactly: same
-        # QFormLayout (label-on-the-left), same field order, same
-        # placeholders. Editing and adding now look identical.
-        metadata_group = QGroupBox("Metadata")
-        metadata_layout = QFormLayout()
 
-        # Definition – Trados-style dedicated field, separate from notes.
-        self.definition_edit = QTextEdit()
-        self.definition_edit.setMaximumHeight(45)
-        self.definition_edit.setPlaceholderText("Brief definition or gloss...")
-        self.definition_edit.setStyleSheet("padding: 3px;")
-        metadata_layout.addRow("Definition:", self.definition_edit)
+        # Buttons row
+        button_layout = QHBoxLayout()
 
-        # Domain
-        self.domain_edit = QLineEdit()
-        self.domain_edit.setPlaceholderText("e.g., Patents, Legal, Medical, IT...")
-        metadata_layout.addRow("Domain:", self.domain_edit)
-
-        # Notes (kept as `note_edit` to preserve existing references in
-        # load_term_data / save_term elsewhere in this class).
-        self.note_edit = QTextEdit()
-        self.note_edit.setMaximumHeight(45)
-        self.note_edit.setPlaceholderText("Usage notes, context...")
-        self.note_edit.setStyleSheet("padding: 3px;")
-        metadata_layout.addRow("Notes:", self.note_edit)
-
-        # URL (column added in v1.9.478)
-        self.url_edit = QLineEdit()
-        self.url_edit.setPlaceholderText("https://...")
-        metadata_layout.addRow("URL:", self.url_edit)
-
-        # Client
-        self.client_edit = QLineEdit()
-        self.client_edit.setPlaceholderText("Optional client name...")
-        metadata_layout.addRow("Client:", self.client_edit)
-
-        # Project
-        self.project_edit = QLineEdit()
-        self.project_edit.setPlaceholderText("Optional project name...")
-        metadata_layout.addRow("Project:", self.project_edit)
-
-        # Non-translatable checkbox – when ticked, the target field is
-        # auto-synced to the source so the term copies through unchanged
-        # at translation time. Highlighted in pastel yellow in TermLens
-        # to match the convention used by the Trados plugin.
-        self.nontranslatable_check = CheckmarkCheckBox(
-            "Non-translatable (keep source text in target)"
-        )
-        self.nontranslatable_check.toggled.connect(self._on_nontranslatable_toggled)
-        metadata_layout.addRow("", self.nontranslatable_check)
-
-        # Forbidden term checkbox
-        self.forbidden_check = CheckmarkCheckBox(
-            "Forbidden term (warn when used in translation)"
-        )
-        metadata_layout.addRow("", self.forbidden_check)
-
-        metadata_group.setLayout(metadata_layout)
-        layout.addWidget(metadata_group)
-        
-        # Buttons
-        buttons_layout = QHBoxLayout()
-        
-        # Delete button (only show when editing existing term)
-        if self.term_id:
+        # Delete button (only when editing an existing term)
+        if self.term_id is not None:
             self.delete_btn = QPushButton("🗑️ Delete")
             self.delete_btn.setStyleSheet("""
                 QPushButton {
@@ -393,154 +487,44 @@ class TermbaseEntryEditor(QDialog):
                 }
             """)
             self.delete_btn.clicked.connect(self.delete_term)
-            buttons_layout.addWidget(self.delete_btn)
-        
-        buttons_layout.addStretch()
-        
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 20px;
-                font-size: 11px;
-                background-color: #f5f5f5;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        self.cancel_btn.clicked.connect(self.reject)
-        buttons_layout.addWidget(self.cancel_btn)
-        
-        self.save_btn = QPushButton("💾 Save")
-        self.save_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 20px;
-                font-size: 11px;
-                font-weight: bold;
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
-        """)
-        self.save_btn.clicked.connect(self.save_term)
-        buttons_layout.addWidget(self.save_btn)
-        
-        layout.addLayout(buttons_layout)
-        
+            button_layout.addWidget(self.delete_btn)
+
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("💾 Save")
+        save_btn.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-weight: bold; "
+            "padding: 5px 15px; border: none; outline: none;"
+        )
+        # Edit mode persists straight to the DB; add mode just accepts and
+        # leaves the INSERT to the caller (which reads back via getters).
+        if self.term_id is not None:
+            save_btn.clicked.connect(self.save_term)
+        else:
+            save_btn.clicked.connect(self._accept_and_save)
+        save_btn.setDefault(True)
+        button_layout.addWidget(save_btn)
+
+        layout.addLayout(button_layout)
+
         # Set the scroll area content
         scroll.setWidget(content_widget)
         main_layout.addWidget(scroll)
 
     def toggle_section(self, toggle_btn, content_widget):
-        """Toggle visibility of a collapsible section"""
+        """Toggle visibility of a collapsible section."""
         is_visible = content_widget.isVisible()
         content_widget.setVisible(not is_visible)
         toggle_btn.setText("▼" if is_visible else "▲")
 
-    def add_source_synonym(self):
-        """Add source synonym to list"""
-        text = self.source_synonym_edit.text().strip()
-        if text:
-            for i in range(self.source_synonym_list.count()):
-                if self.source_synonym_list.item(i).data(Qt.ItemDataRole.UserRole)['text'] == text:
-                    QMessageBox.warning(self, "Duplicate", "Synonym already added")
-                    return
-            
-            forbidden = self.source_synonym_forbidden_check.isChecked()
-            display = f"{'🚫 ' if forbidden else ''}{text}"
-            item = QListWidgetItem(display)
-            item.setData(Qt.ItemDataRole.UserRole, {'text': text, 'forbidden': forbidden})
-            if forbidden:
-                item.setForeground(QColor('#d32f2f'))
-            self.source_synonym_list.addItem(item)
-            self.source_synonym_edit.clear()
-            self.source_synonym_forbidden_check.setChecked(False)
-    
-    def add_target_synonym(self):
-        """Add target synonym to list"""
-        text = self.target_synonym_edit.text().strip()
-        if text:
-            for i in range(self.target_synonym_list.count()):
-                if self.target_synonym_list.item(i).data(Qt.ItemDataRole.UserRole)['text'] == text:
-                    QMessageBox.warning(self, "Duplicate", "Synonym already added")
-                    return
-            
-            forbidden = self.target_synonym_forbidden_check.isChecked()
-            display = f"{'🚫 ' if forbidden else ''}{text}"
-            item = QListWidgetItem(display)
-            item.setData(Qt.ItemDataRole.UserRole, {'text': text, 'forbidden': forbidden})
-            if forbidden:
-                item.setForeground(QColor('#d32f2f'))
-            self.target_synonym_list.addItem(item)
-            self.target_synonym_edit.clear()
-            self.target_synonym_forbidden_check.setChecked(False)
-    
-    def move_synonym(self, list_widget, direction):
-        """Move synonym up (-1) or down (1)"""
-        row = list_widget.currentRow()
-        if row < 0:
-            return
-        new_row = row + direction
-        if 0 <= new_row < list_widget.count():
-            item = list_widget.takeItem(row)
-            list_widget.insertItem(new_row, item)
-            list_widget.setCurrentRow(new_row)
-    
-    def delete_synonym(self, list_widget):
-        """Delete selected synonym"""
-        row = list_widget.currentRow()
-        if row >= 0:
-            list_widget.takeItem(row)
-    
-    def show_source_synonym_context_menu(self, position):
-        """Show context menu for source synonyms"""
-        self._show_synonym_context_menu(self.source_synonym_list, position)
-    
-    def show_target_synonym_context_menu(self, position):
-        """Show context menu for target synonyms"""
-        self._show_synonym_context_menu(self.target_synonym_list, position)
-    
-    def _show_synonym_context_menu(self, list_widget, position):
-        """Show context menu for synonym list"""
-        if list_widget.count() == 0:
-            return
-        
-        item = list_widget.currentItem()
-        if not item:
-            return
-        
-        menu = QMenu()
-        data = item.data(Qt.ItemDataRole.UserRole)
-        is_forbidden = data.get('forbidden', False)
-        
-        toggle_action = menu.addAction("Mark as Allowed" if is_forbidden else "Mark as Forbidden")
-        menu.addSeparator()
-        delete_action = menu.addAction("Delete")
-        
-        action = menu.exec(list_widget.mapToGlobal(position))
-        
-        if action == toggle_action:
-            data['forbidden'] = not is_forbidden
-            text = data['text']
-            display = f"{'🚫 ' if data['forbidden'] else ''}{text}"
-            item.setText(display)
-            item.setData(Qt.ItemDataRole.UserRole, data)
-            item.setForeground(QColor('#d32f2f') if data['forbidden'] else QColor('#000000'))
-        elif action == delete_action:
-            list_widget.takeItem(list_widget.row(item))
-    
+    # ========================================================================
+    # NON-TRANSLATABLE MIRROR
+    # ========================================================================
+
     def _on_nontranslatable_toggled(self, checked: bool):
         """When NT is turned on, mirror source into target so the entry
         renders as a copy-through. Untoggling leaves whatever the user
@@ -551,8 +535,282 @@ class TermbaseEntryEditor(QDialog):
             if source_text:
                 self.target_edit.setText(source_text)
 
+    # ========================================================================
+    # SOURCE SYNONYM METHODS
+    # ========================================================================
+
+    def add_source_synonym(self):
+        """Add a source synonym to the list."""
+        synonym = self.source_synonym_edit.text().strip()
+        if synonym:
+            # Check for duplicates
+            for i in range(self.source_synonym_list.count()):
+                item = self.source_synonym_list.item(i)
+                item_text = item.data(Qt.ItemDataRole.UserRole).get('text', '')
+                if item_text == synonym:
+                    QMessageBox.warning(self, "Duplicate", f"Source synonym '{synonym}' already added.")
+                    return
+
+            # Don't allow the main source term as a synonym
+            if synonym.lower() == self.source_term.lower():
+                QMessageBox.warning(self, "Invalid Synonym", "Cannot add the main source term as a synonym.")
+                return
+
+            # Create list item with stored data
+            is_forbidden = self.source_synonym_forbidden_check.isChecked()
+            display_text = f"{'🚫 ' if is_forbidden else ''}{synonym}"
+
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, {
+                'text': synonym,
+                'forbidden': is_forbidden
+            })
+
+            if is_forbidden:
+                item.setForeground(QColor('#d32f2f'))
+
+            self.source_synonym_list.addItem(item)
+            self.source_synonym_edit.clear()
+            self.source_synonym_forbidden_check.setChecked(False)
+            self.source_synonym_edit.setFocus()
+
+    def move_source_synonym_up(self):
+        """Move selected source synonym up in the list."""
+        current_row = self.source_synonym_list.currentRow()
+        if current_row > 0:
+            item = self.source_synonym_list.takeItem(current_row)
+            self.source_synonym_list.insertItem(current_row - 1, item)
+            self.source_synonym_list.setCurrentRow(current_row - 1)
+
+    def move_source_synonym_down(self):
+        """Move selected source synonym down in the list."""
+        current_row = self.source_synonym_list.currentRow()
+        if current_row < self.source_synonym_list.count() - 1 and current_row >= 0:
+            item = self.source_synonym_list.takeItem(current_row)
+            self.source_synonym_list.insertItem(current_row + 1, item)
+            self.source_synonym_list.setCurrentRow(current_row + 1)
+
+    def delete_selected_source_synonym(self):
+        """Delete selected source synonym."""
+        current_row = self.source_synonym_list.currentRow()
+        if current_row >= 0:
+            self.source_synonym_list.takeItem(current_row)
+
+    def show_source_synonym_context_menu(self, position):
+        """Show context menu for source synonym list."""
+        if self.source_synonym_list.count() == 0:
+            return
+
+        current_item = self.source_synonym_list.currentItem()
+        if not current_item:
+            return
+
+        menu = QMenu()
+
+        # Toggle forbidden status
+        data = current_item.data(Qt.ItemDataRole.UserRole)
+        is_forbidden = data.get('forbidden', False)
+
+        if is_forbidden:
+            toggle_action = menu.addAction("Mark as Allowed")
+        else:
+            toggle_action = menu.addAction("Mark as Forbidden")
+
+        menu.addSeparator()
+        delete_action = menu.addAction("Delete")
+
+        action = menu.exec(self.source_synonym_list.mapToGlobal(position))
+
+        if action == toggle_action:
+            # Toggle forbidden status
+            data['forbidden'] = not is_forbidden
+            text = data['text']
+            display_text = f"{'🚫 ' if data['forbidden'] else ''}{text}"
+            current_item.setText(display_text)
+            current_item.setData(Qt.ItemDataRole.UserRole, data)
+
+            if data['forbidden']:
+                current_item.setForeground(QColor('#d32f2f'))
+            else:
+                current_item.setForeground(QColor('#000000'))
+
+        elif action == delete_action:
+            self.source_synonym_list.takeItem(self.source_synonym_list.row(current_item))
+
+    def get_source_synonyms(self):
+        """Return list of source synonym dictionaries with text, forbidden flag, and order."""
+        synonyms = []
+        for i in range(self.source_synonym_list.count()):
+            item = self.source_synonym_list.item(i)
+            data = item.data(Qt.ItemDataRole.UserRole)
+            synonyms.append({
+                'text': data['text'],
+                'forbidden': data['forbidden'],
+                'order': i
+            })
+        return synonyms
+
+    # ========================================================================
+    # TARGET SYNONYM METHODS
+    # ========================================================================
+
+    def add_target_synonym(self):
+        """Add a target synonym to the list."""
+        synonym = self.target_synonym_edit.text().strip()
+        if synonym:
+            # Check for duplicates
+            for i in range(self.target_synonym_list.count()):
+                item = self.target_synonym_list.item(i)
+                item_text = item.data(Qt.ItemDataRole.UserRole).get('text', '')
+                if item_text == synonym:
+                    QMessageBox.warning(self, "Duplicate", f"Synonym '{synonym}' already added.")
+                    return
+
+            # Don't allow the main target term as a synonym
+            if synonym.lower() == self.target_term.lower():
+                QMessageBox.warning(self, "Invalid Synonym", "Cannot add the main target term as a synonym.")
+                return
+
+            # Create list item with stored data
+            is_forbidden = self.target_synonym_forbidden_check.isChecked()
+            display_text = f"{'🚫 ' if is_forbidden else ''}{synonym}"
+
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, {
+                'text': synonym,
+                'forbidden': is_forbidden
+            })
+
+            if is_forbidden:
+                item.setForeground(QColor('#d32f2f'))
+
+            self.target_synonym_list.addItem(item)
+            self.target_synonym_edit.clear()
+            self.target_synonym_forbidden_check.setChecked(False)
+            self.target_synonym_edit.setFocus()
+
+    def move_target_synonym_up(self):
+        """Move selected target synonym up in the list."""
+        current_row = self.target_synonym_list.currentRow()
+        if current_row > 0:
+            item = self.target_synonym_list.takeItem(current_row)
+            self.target_synonym_list.insertItem(current_row - 1, item)
+            self.target_synonym_list.setCurrentRow(current_row - 1)
+
+    def move_target_synonym_down(self):
+        """Move selected target synonym down in the list."""
+        current_row = self.target_synonym_list.currentRow()
+        if current_row < self.target_synonym_list.count() - 1 and current_row >= 0:
+            item = self.target_synonym_list.takeItem(current_row)
+            self.target_synonym_list.insertItem(current_row + 1, item)
+            self.target_synonym_list.setCurrentRow(current_row + 1)
+
+    def delete_selected_target_synonym(self):
+        """Delete selected target synonym."""
+        current_row = self.target_synonym_list.currentRow()
+        if current_row >= 0:
+            self.target_synonym_list.takeItem(current_row)
+
+    def show_target_synonym_context_menu(self, position):
+        """Show context menu for target synonym list."""
+        if self.target_synonym_list.count() == 0:
+            return
+
+        current_item = self.target_synonym_list.currentItem()
+        if not current_item:
+            return
+
+        menu = QMenu()
+
+        # Toggle forbidden status
+        data = current_item.data(Qt.ItemDataRole.UserRole)
+        is_forbidden = data.get('forbidden', False)
+
+        if is_forbidden:
+            toggle_action = menu.addAction("Mark as Allowed")
+        else:
+            toggle_action = menu.addAction("Mark as Forbidden")
+
+        menu.addSeparator()
+        delete_action = menu.addAction("Delete")
+
+        action = menu.exec(self.target_synonym_list.mapToGlobal(position))
+
+        if action == toggle_action:
+            # Toggle forbidden status
+            data['forbidden'] = not is_forbidden
+            text = data['text']
+            display_text = f"{'🚫 ' if data['forbidden'] else ''}{text}"
+            current_item.setText(display_text)
+            current_item.setData(Qt.ItemDataRole.UserRole, data)
+
+            if data['forbidden']:
+                current_item.setForeground(QColor('#d32f2f'))
+            else:
+                current_item.setForeground(QColor('#000000'))
+
+        elif action == delete_action:
+            self.target_synonym_list.takeItem(self.target_synonym_list.row(current_item))
+
+    def get_target_synonyms(self):
+        """Return list of target synonym dictionaries with text, forbidden flag, and order."""
+        synonyms = []
+        for i in range(self.target_synonym_list.count()):
+            item = self.target_synonym_list.item(i)
+            data = item.data(Qt.ItemDataRole.UserRole)
+            synonyms.append({
+                'text': data['text'],
+                'forbidden': data['forbidden'],
+                'order': i
+            })
+        return synonyms
+
+    # ========================================================================
+    # ADD-MODE GETTERS
+    # ========================================================================
+
+    def get_source_term(self):
+        """Return the (possibly edited) source term."""
+        return self.source_edit.text().strip()
+
+    def get_target_term(self):
+        """Return the (possibly edited) target term."""
+        return self.target_edit.text().strip()
+
+    def get_metadata(self):
+        """Return dictionary of metadata fields."""
+        return {
+            'definition': self.definition_edit.toPlainText().strip(),
+            'domain': self.domain_edit.text().strip(),
+            'notes': self.notes_edit.toPlainText().strip(),
+            'url': self.url_edit.text().strip(),
+            'project': self.project_edit.text().strip(),
+            'client': self.client_edit.text().strip(),
+            'source_abbreviation': self.source_abbr_edit.text().strip(),
+            'target_abbreviation': self.target_abbr_edit.text().strip(),
+            'forbidden': self.forbidden_check.isChecked(),
+            'is_nontranslatable': self.nontranslatable_check.isChecked(),
+        }
+
+    def get_selected_termbases(self):
+        """Compatibility shim – the dialog no longer asks the user to pick
+        target glossaries. The caller computes the destination set from
+        the Termbases tab's Read/Write toggles. Always returns an empty
+        list; existing call sites that pass it through to the insert
+        logic should treat empty-from-dialog as "use writable defaults"."""
+        return []
+
+    def _accept_and_save(self):
+        """Save termbase selections (no-op shim) and accept the dialog."""
+        self._save_termbase_selections()
+        self.accept()
+
+    # ========================================================================
+    # EDIT-MODE: DB LOAD / SAVE / DELETE
+    # ========================================================================
+
     def load_term_data(self):
-        """Load existing term data from database"""
+        """Load existing term data from the database (edit mode only)."""
         if not self.db_manager or not self.term_id:
             return
 
@@ -583,7 +841,7 @@ class TermbaseEntryEditor(QDialog):
                     'domain': row[2] or '',
                     'definition': row[3] or '',
                     'forbidden': row[4] or False,
-                    'note': row[5] or '',
+                    'notes': row[5] or '',
                     'project': row[6] or '',
                     'client': row[7] or '',
                     'is_nontranslatable': bool(row[8]),
@@ -599,7 +857,7 @@ class TermbaseEntryEditor(QDialog):
                 self.target_abbr_edit.setText(self.term_data['target_abbreviation'])
                 self.domain_edit.setText(self.term_data['domain'])
                 self.definition_edit.setPlainText(self.term_data['definition'])
-                self.note_edit.setPlainText(self.term_data['note'])
+                self.notes_edit.setPlainText(self.term_data['notes'])
                 self.url_edit.setText(self.term_data['url'])
                 self.project_edit.setText(self.term_data['project'])
                 self.client_edit.setText(self.term_data['client'])
@@ -610,27 +868,34 @@ class TermbaseEntryEditor(QDialog):
                 self.nontranslatable_check.blockSignals(True)
                 self.nontranslatable_check.setChecked(self.term_data['is_nontranslatable'])
                 self.nontranslatable_check.blockSignals(False)
-                
+
+                # Mirror source/target term into the instance attrs so the
+                # synonym-add validation ("can't be the same as the main
+                # term") checks against the freshly-loaded values rather
+                # than the empty add-mode defaults.
+                self.source_term = self.term_data['source_term']
+                self.target_term = self.term_data['target_term']
+
                 # Load synonyms
                 self.load_synonyms()
-                
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load term data: {e}")
-    
+
     def load_synonyms(self):
-        """Load synonyms for current term"""
+        """Load synonyms for the current term (edit mode only)."""
         if not self.db_manager or not self.term_id:
             return
-        
+
         try:
             cursor = self.db_manager.cursor
-            
+
             # Check if forbidden column exists (backward compatibility)
             cursor.execute("PRAGMA table_info(termbase_synonyms)")
             columns = [row[1] for row in cursor.fetchall()]
             has_forbidden = 'forbidden' in columns
             has_display_order = 'display_order' in columns
-            
+
             # Load source synonyms
             if has_forbidden and has_display_order:
                 cursor.execute("""
@@ -644,7 +909,7 @@ class TermbaseEntryEditor(QDialog):
                     WHERE term_id = ? AND language = 'source'
                     ORDER BY created_date ASC
                 """, (self.term_id,))
-            
+
             for row in cursor.fetchall():
                 text = row[0]
                 forbidden = bool(row[1]) if has_forbidden and len(row) > 1 else False
@@ -654,7 +919,7 @@ class TermbaseEntryEditor(QDialog):
                 if forbidden:
                     item.setForeground(QColor('#d32f2f'))
                 self.source_synonym_list.addItem(item)
-            
+
             # Load target synonyms
             if has_forbidden and has_display_order:
                 cursor.execute("""
@@ -668,7 +933,7 @@ class TermbaseEntryEditor(QDialog):
                     WHERE term_id = ? AND language = 'target'
                     ORDER BY created_date ASC
                 """, (self.term_id,))
-            
+
             for row in cursor.fetchall():
                 text = row[0]
                 forbidden = bool(row[1]) if has_forbidden and len(row) > 1 else False
@@ -678,16 +943,16 @@ class TermbaseEntryEditor(QDialog):
                 if forbidden:
                     item.setForeground(QColor('#d32f2f'))
                 self.target_synonym_list.addItem(item)
-                
+
         except Exception as e:
             # Silently fail for backward compatibility
             print(f"Warning: Could not load synonyms: {e}")
-    
+
     def delete_term(self):
-        """Delete this term from database"""
+        """Delete this term from the database (edit mode only)."""
         if not self.db_manager or not self.term_id:
             return
-        
+
         # Confirm deletion
         reply = QMessageBox.question(
             self,
@@ -696,7 +961,7 @@ class TermbaseEntryEditor(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
-        
+
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 cursor = self.db_manager.cursor
@@ -706,13 +971,13 @@ class TermbaseEntryEditor(QDialog):
                 self.accept()  # Close dialog with success
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete entry: {e}")
-    
+
     def save_term(self):
-        """Save term to database"""
+        """Save term to the database (edit mode only)."""
         # Validate inputs
         source_term = self.source_edit.text().strip()
         target_term = self.target_edit.text().strip()
-        
+
         if not source_term or not target_term:
             QMessageBox.warning(
                 self,
@@ -720,7 +985,7 @@ class TermbaseEntryEditor(QDialog):
                 "Both source and target terms are required."
             )
             return
-        
+
         if not self.db_manager:
             QMessageBox.critical(
                 self,
@@ -728,14 +993,14 @@ class TermbaseEntryEditor(QDialog):
                 "No database connection available."
             )
             return
-        
+
         try:
             cursor = self.db_manager.cursor
-            
+
             # Gather data
             definition = self.definition_edit.toPlainText().strip() if hasattr(self, 'definition_edit') else ""
             domain = self.domain_edit.text().strip()
-            note = self.note_edit.toPlainText().strip()
+            notes = self.notes_edit.toPlainText().strip()
             url = self.url_edit.text().strip() if hasattr(self, 'url_edit') else ""
             project = self.project_edit.text().strip()
             client = self.client_edit.text().strip()
@@ -754,50 +1019,53 @@ class TermbaseEntryEditor(QDialog):
                         forbidden = ?, is_nontranslatable = ?,
                         source_abbreviation = ?, target_abbreviation = ?
                     WHERE id = ?
-                """, (source_term, target_term, definition, domain, note, url,
+                """, (source_term, target_term, definition, domain, notes, url,
                       project, client, forbidden, 1 if is_nt else 0,
                       source_abbr, target_abbr, self.term_id))
             else:
-                # Insert new term
+                # Insert new term (this branch is reachable only if a caller
+                # constructs the dialog with a termbase_id but no term_id
+                # AND wires Save to save_term(). The standard add-path uses
+                # _accept_and_save() instead, so this is purely a safety net.)
                 cursor.execute("""
                     INSERT INTO termbase_terms
                     (termbase_id, source_term, target_term, definition, domain, notes, url,
                      project, client, forbidden, is_nontranslatable,
                      source_abbreviation, target_abbreviation)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (self.termbase_id, source_term, target_term, definition, domain, note, url,
+                """, (self.termbase_id, source_term, target_term, definition, domain, notes, url,
                       project, client, forbidden, 1 if is_nt else 0,
                       source_abbr, target_abbr))
-            
+
             self.db_manager.connection.commit()
-            
+
             # Save synonyms (get the term_id if this was a new term)
             if not self.term_id:
                 self.term_id = cursor.lastrowid
-            
+
             self.save_synonyms()
-            
+
             # Success
             self.accept()
-            
+
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Error",
                 f"Failed to save term: {e}"
             )
-    
+
     def save_synonyms(self):
-        """Save synonyms to database"""
+        """Save synonyms to the database (edit mode only)."""
         if not self.db_manager or not self.term_id:
             return
-        
+
         try:
             cursor = self.db_manager.cursor
-            
+
             # Delete existing synonyms for this term
             cursor.execute("DELETE FROM termbase_synonyms WHERE term_id = ?", (self.term_id,))
-            
+
             # Save source synonyms
             for i in range(self.source_synonym_list.count()):
                 item = self.source_synonym_list.item(i)
@@ -806,7 +1074,7 @@ class TermbaseEntryEditor(QDialog):
                     INSERT INTO termbase_synonyms (term_id, synonym_text, language, display_order, forbidden)
                     VALUES (?, ?, 'source', ?, ?)
                 """, (self.term_id, data['text'], i, 1 if data['forbidden'] else 0))
-            
+
             # Save target synonyms
             for i in range(self.target_synonym_list.count()):
                 item = self.target_synonym_list.item(i)
@@ -815,19 +1083,19 @@ class TermbaseEntryEditor(QDialog):
                     INSERT INTO termbase_synonyms (term_id, synonym_text, language, display_order, forbidden)
                     VALUES (?, ?, 'target', ?, ?)
                 """, (self.term_id, data['text'], i, 1 if data['forbidden'] else 0))
-            
+
             self.db_manager.connection.commit()
-            
+
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Failed to save synonyms: {e}")
-    
+
     def get_term_data(self) -> Optional[dict]:
-        """Get the current term data from the form fields"""
+        """Get the current term data from the form fields (legacy helper)."""
         return {
             'source_term': self.source_edit.text().strip(),
             'target_term': self.target_edit.text().strip(),
             'domain': self.domain_edit.text().strip(),
-            'note': self.note_edit.toPlainText().strip(),
+            'note': self.notes_edit.toPlainText().strip(),
             'project': self.project_edit.text().strip(),
             'client': self.client_edit.text().strip(),
             'forbidden': self.forbidden_check.isChecked(),
