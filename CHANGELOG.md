@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.471 (May 9, 2026)
+**Current Version:** v1.9.472 (May 9, 2026)
+
+
+## v1.9.472 – May 9, 2026
+
+### Fixed (Okapi sidecar v0.1.7: HTML, XLIFF, PO inline codes leaking as `[#$dpNN]` placeholders)
+
+- **HTML round-trip was producing visibly-corrupted output** in v1.9.470/471. An HTML test page imported, translated, and exported via the new Okapi-via menu came back with literal `[#$dp13]`, `[#$dp14]`, `[#$dp16]…` strings rendered as visible text on the page where the original had `<a href="…">`, `<img>`, and `<button>` markup. Verified: 14 unique placeholder leaks in the round-tripped HTML, 0 in the source.
+- **Root cause** was in the Okapi sidecar's `convertCodesToTags()`. It only knew how to emit friendly tag names (`<b>`, `<i>`, `<cf>`) for OOXML formatting codes (bold/italic/underline/colour). For HTML inline elements like `<a>`, `<button>`, `<span class>` – none of which match the OOXML formatting analysers – the function fell through to `fragment.toText()`, which serialises codes as raw `[#$dpNN]` Okapi placeholders. The LLM then saw the placeholders as literal text and copied them through; the merge regex (`<…>` only) didn't recognise them and they ended up as plain text in the output.
+- **Fix** in the sidecar (Java, v0.1.6 → v0.1.7): both `convertCodesToTags()` and `getTagNameForCode()` now fall back to a generic numbered tag scheme – `<gN>...</gN>` for opening/closing pairs, `<xN/>` for placeholders – using the source code's id. The merge path's tag-queue lookup pairs them back to source codes by name, and a new `placeholderById` map handles `<xN/>` round-trip. Result: HTML segments now appear in the Workbench grid as e.g. `<g1>Workbench</g1>` instead of `[#$dp16]Workbench</a>`, and the merged HTML reconstructs original anchors/buttons/images byte-perfectly.
+- The fix is generic – it benefits any Okapi-supported format with non-OOXML inline codes, not just HTML. XLIFF and PO files with inline tags will see the same improvement automatically.
+- **`EXPECTED_VERSION = "0.1.7"`** in `modules/okapi_sidecar.py` so a stale v0.1.6 sidecar gets restarted automatically when the user upgrades.
+
+### Notes
+
+- **Re-import any HTML / XLIFF / PO project** that was created with the broken v1.9.470/471 sidecar – the saved segments still contain the old `[#$dpNN]` placeholder text and will round-trip badly until re-extracted.
+- Sidecar source: [okapi-sidecar/src/main/java/com/supervertaler/sidecar/FilterService.java](okapi-sidecar/src/main/java/com/supervertaler/sidecar/FilterService.java).
 
 
 ## v1.9.471 – May 9, 2026

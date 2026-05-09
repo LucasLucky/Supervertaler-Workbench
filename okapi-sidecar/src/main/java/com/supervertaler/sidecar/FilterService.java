@@ -578,7 +578,16 @@ public class FilterService {
 
         String codedText = fragment.getCodedText();
 
-        // Pre-analyse opening codes to determine formatting
+        // Pre-analyse opening codes to determine the tags for each one.
+        // Recognised OOXML formatting (bold/italic/underline/colour) maps to
+        // friendly HTML names like <b>, <i>, <cf>. Anything else – HTML
+        // hyperlinks, buttons, spans, or any non-formatting inline code we
+        // don't have a special analyser for – falls back to a generic
+        // <gN>...</gN> pair using the code's id. Without this fallback, the
+        // function used to return fragment.toText() and the LLM would see
+        // raw Okapi placeholders like [#$dp13] which then leaked into the
+        // merged output as literal text. The merge path knows how to round
+        // trip <gN>/<xN/> tags back to source codes via getTagNameForCode().
         // Map: code ID → [openingTags, closingTags]
         Map<Integer, String[]> codeIdTags = new HashMap<>();
 
@@ -590,14 +599,13 @@ public class FilterService {
                 if (tags[0].isEmpty()) {
                     tags = analyzeCodeType(code.getType());
                 }
-                if (!tags[0].isEmpty()) {
-                    codeIdTags.put(code.getId(), tags);
+                if (tags[0].isEmpty()) {
+                    // Generic fallback: opaque numbered tag pair keyed by id.
+                    int id = code.getId();
+                    tags = new String[]{"<g" + id + ">", "</g" + id + ">"};
                 }
+                codeIdTags.put(code.getId(), tags);
             }
-        }
-
-        if (codeIdTags.isEmpty()) {
-            return fragment.toText(); // No recognisable formatting
         }
 
         // Build the tagged text
@@ -611,17 +619,26 @@ public class FilterService {
                 int codeIndex = TextFragment.toIndex(codedText.charAt(i + 1));
                 if (codeIndex >= 0 && codeIndex < codes.size()) {
                     Code code = codes.get(codeIndex);
-                    String[] tags = codeIdTags.get(code.getId());
-                    if (tags != null) {
-                        if (code.getTagType() == TextFragment.TagType.OPENING) {
+                    TextFragment.TagType tagType = code.getTagType();
+                    if (tagType == TextFragment.TagType.OPENING) {
+                        String[] tags = codeIdTags.get(code.getId());
+                        if (tags != null) {
                             result.append(tags[0]);
                             openTagStack.push(tags[1]);
-                        } else if (code.getTagType() == TextFragment.TagType.CLOSING) {
+                        }
+                    } else if (tagType == TextFragment.TagType.CLOSING) {
+                        String[] tags = codeIdTags.get(code.getId());
+                        if (tags != null) {
                             result.append(tags[1]);
                             if (!openTagStack.isEmpty()) openTagStack.pop();
                         }
+                    } else {
+                        // PLACEHOLDER (e.g. <br>, <img>, void elements that
+                        // become standalone codes). Emit <xN/> so the LLM
+                        // can preserve it positionally; the merge path will
+                        // round-trip it back to the original source code.
+                        result.append("<x").append(code.getId()).append("/>");
                     }
-                    // PLACEHOLDER codes (images, breaks, etc.) — skip
                 }
                 i += 2;
             } else {
@@ -777,22 +794,35 @@ public class FilterService {
 
     /**
      * Determine the primary HTML-like tag name for a source Code, based
-     * on Okapi's type descriptor (e.g. "x-bold;fonts:Arial;" → "b").
-     * Returns {@code null} if no recognisable formatting is found.
+     * on Okapi's type descriptor (e.g. "x-bold;fonts:Arial;" → "b") or
+     * a generic numbered fallback for codes we don't have a special
+     * analyser for (HTML hyperlinks, buttons, spans, etc.).
+     *
+     * <p>The fallback name pairs with {@link #convertCodesToTags} which
+     * emits the same {@code <gN>/<xN/>} tags during extract – so a code
+     * with id {@code 13} becomes {@code <g13>...</g13>} (or
+     * {@code <x13/>} for placeholders) on the way out, and the merge
+     * regex finds the matching source code via {@code tagQueues} on
+     * the way back in.</p>
      */
     private String getTagNameForCode(Code code) {
         String type = code.getType();
-        if (type == null) return null;
-        String t = type.toLowerCase();
-        if (t.contains("x-bold"))          return "b";
-        if (t.contains("x-italic"))        return "i";
-        if (t.contains("x-underlined"))    return "u";
-        if (t.contains("x-strikethrough")) return "s";
-        if (t.contains("x-superscript"))   return "sup";
-        if (t.contains("x-subscript"))     return "sub";
-        // Colour/font only (no primary formatting) → <cf>
-        if (t.contains("color:"))          return "cf";
-        return null;
+        if (type != null) {
+            String t = type.toLowerCase();
+            if (t.contains("x-bold"))          return "b";
+            if (t.contains("x-italic"))        return "i";
+            if (t.contains("x-underlined"))    return "u";
+            if (t.contains("x-strikethrough")) return "s";
+            if (t.contains("x-superscript"))   return "sup";
+            if (t.contains("x-subscript"))     return "sub";
+            // Colour/font only (no primary formatting) → <cf>
+            if (t.contains("color:"))          return "cf";
+        }
+        // Generic numbered fallback — pairs with convertCodesToTags above.
+        if (code.getTagType() == TextFragment.TagType.PLACEHOLDER) {
+            return "x" + code.getId();
+        }
+        return "g" + code.getId();
     }
 
     /**
@@ -831,6 +861,7 @@ public class FilterService {
         Map<String, Queue<Integer>> tagQueues = new LinkedHashMap<>();
         Map<Integer, Code> openingById = new LinkedHashMap<>();
         Map<Integer, Code> closingById = new LinkedHashMap<>();
+        Map<Integer, Code> placeholderById = new LinkedHashMap<>();
         Map<String, Deque<Code>> codesByData = new LinkedHashMap<>();
 
         for (Code c : srcCodes) {
@@ -842,6 +873,14 @@ public class FilterService {
                 }
             } else if (c.getTagType() == TextFragment.TagType.CLOSING) {
                 closingById.put(c.getId(), c);
+            } else {
+                // PLACEHOLDER — track so we can round-trip <xN/> tags
+                // emitted by convertCodesToTags.
+                placeholderById.put(c.getId(), c);
+                String tag = getTagNameForCode(c);
+                if (tag != null) {
+                    tagQueues.computeIfAbsent(tag, k -> new LinkedList<>()).add(c.getId());
+                }
             }
 
             String data = c.getData();
@@ -884,9 +923,20 @@ public class FilterService {
                 Code src = dataQueue.poll();
                 result.append(src.clone());
             } else if (isSelfClosing) {
-                // Self-closing placeholder with no matching source code
-                // (e.g. AI hallucinated a tag) – drop silently so it
-                // doesn't end up as literal text in the output.
+                // Self-closing tag (<xN/>, <br/>, etc.). Look up by tag
+                // name first – matches the <xN/> placeholders that
+                // convertCodesToTags emits for non-OOXML inline codes.
+                Queue<Integer> queue = tagQueues.get(tagName);
+                if (queue != null && !queue.isEmpty()) {
+                    int codeId = queue.poll();
+                    Code src = placeholderById.get(codeId);
+                    if (src != null) {
+                        result.append(src.clone());
+                    }
+                }
+                // else: AI-hallucinated tag with no matching source
+                // code – drop silently so it doesn't end up as
+                // literal text in the output.
             } else if (!isClosing) {
                 // ── OPENING tag ─────────────────────────────────
                 Queue<Integer> queue = tagQueues.get(tagName);
