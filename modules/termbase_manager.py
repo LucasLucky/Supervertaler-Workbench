@@ -978,7 +978,13 @@ class TermbaseManager:
             # Get full details for matching terms
             placeholders = ','.join('?' * len(matching_term_ids))
             sql = f"""
-                SELECT id, source_term, target_term, domain, definition, forbidden
+                SELECT id, source_term, target_term, domain, definition, forbidden,
+                       COALESCE(notes, ''),
+                       COALESCE(url, ''),
+                       COALESCE(source_abbreviation, ''),
+                       COALESCE(target_abbreviation, ''),
+                       COALESCE(project, ''),
+                       COALESCE(client, '')
                 FROM termbase_terms
                 WHERE id IN ({placeholders})
                 ORDER BY source_term ASC
@@ -997,7 +1003,13 @@ class TermbaseManager:
                     'target_term': row[2],
                     'domain': row[3],
                     'definition': row[4],
-                    'forbidden': row[5]
+                    'forbidden': row[5],
+                    'notes': row[6],
+                    'url': row[7],
+                    'source_abbreviation': row[8],
+                    'target_abbreviation': row[9],
+                    'project': row[10],
+                    'client': row[11],
                 })
 
                 # Add target synonyms as separate entries (memoQ style)
@@ -1010,7 +1022,13 @@ class TermbaseManager:
                         'target_term': syn['synonym_text'],  # Synonym as target
                         'domain': row[3],
                         'definition': row[4],
-                        'forbidden': syn['forbidden']  # Use synonym's forbidden flag
+                        'forbidden': syn['forbidden'],  # Use synonym's forbidden flag
+                        'notes': row[6],
+                        'url': row[7],
+                        'source_abbreviation': row[8],
+                        'target_abbreviation': row[9],
+                        'project': row[10],
+                        'client': row[11],
                     })
             
             return results

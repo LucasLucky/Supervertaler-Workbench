@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.478 (May 9, 2026)
+**Current Version:** v1.9.479 (May 9, 2026)
+
+
+## v1.9.479 – May 9, 2026
+
+### Changed (Edit Glossary Entry dialog – matches the new Add Term layout)
+
+- Right-clicking a term in TermLens (or anywhere else that opens the term editor for an existing entry) now opens a dialog with the same layout as the redesigned **Add Term to Glossary** dialog: side-by-side source / target language columns, abbreviation field directly beneath each term, source synonyms living inside the source column and target synonyms inside the target column, plus a metadata block with Definition, Domain, Notes, URL, Client, Project, Non-translatable and Forbidden in the same order as the Add dialog.
+- Language captions on the columns are resolved from the active project's source/target codes – e.g. "Source (English)" / "Target (Dutch)" – rather than the generic "Source" / "Target".
+- All four new fields (URL, source abbreviation, target abbreviation, definition) are now persisted on save. Previous edits to existing entries silently dropped the definition because the UPDATE statement didn't reference the column.
+- `load_term_data()` SELECT now uses `COALESCE(url, '')` etc. so editing rows on databases that pre-date the v1.9.478 migration no longer blows up the dialog.
 
 
 ## v1.9.478 – May 9, 2026

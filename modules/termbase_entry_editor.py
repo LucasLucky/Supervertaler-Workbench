@@ -71,38 +71,64 @@ class TermbaseEntryEditor(QDialog):
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        # Header
-        header = QLabel("📖 Glossary Entry Editor")
-        header.setStyleSheet("font-size: 12px; font-weight: bold; color: #333; padding: 4px;")
-        layout.addWidget(header)
-        
-        # Terms group
-        terms_group = QGroupBox("Terms")
-        terms_layout = QVBoxLayout()
-        terms_layout.setSpacing(4)
-        
-        # Source term
-        source_label = QLabel("Source Term:")
-        source_label.setStyleSheet("font-weight: bold;")
-        terms_layout.addWidget(source_label)
-        
+        # Term row – editable, side by side, mirrors the Add Term dialog
+        # (TermMetadataDialog) layout introduced in v1.9.475/.478.  Per
+        # language: term + abbreviation; the synonym group built later in
+        # this method drops into the same column.
+        term_row = QHBoxLayout()
+        term_row.setSpacing(12)
+
+        # Resolve language names from the main window's current project,
+        # so the column captions read e.g. "English" / "Dutch" rather
+        # than "Source" / "Target". Walk up the parent chain because
+        # this dialog is opened from contexts (TermLens, results panel)
+        # that aren't the main window directly.
+        src_caption, tgt_caption = "Source", "Target"
+        try:
+            ancestor = self.parent()
+            while ancestor is not None and not hasattr(ancestor, 'current_project'):
+                ancestor = ancestor.parent() if callable(getattr(ancestor, 'parent', None)) else None
+            proj = getattr(ancestor, 'current_project', None) if ancestor else None
+            if proj and getattr(proj, 'source_lang', None):
+                src_caption = proj.source_lang
+            if proj and getattr(proj, 'target_lang', None):
+                tgt_caption = proj.target_lang
+        except Exception:
+            pass
+
+        # Source column: term + abbreviation (synonyms appended later)
+        source_col = QVBoxLayout()
+        source_col.setSpacing(2)
+        source_col.addWidget(QLabel(f"<b>{src_caption}:</b>"))
         self.source_edit = QLineEdit()
-        self.source_edit.setPlaceholderText("Enter source language term...")
-        self.source_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        terms_layout.addWidget(self.source_edit)
-        
-        # Target term
-        target_label = QLabel("Target Term:")
-        target_label.setStyleSheet("font-weight: bold;")
-        terms_layout.addWidget(target_label)
-        
+        self.source_edit.setPlaceholderText("Source language term...")
+        self.source_edit.setStyleSheet("padding: 4px;")
+        source_col.addWidget(self.source_edit)
+        source_col.addWidget(QLabel("Abbreviation:"))
+        self.source_abbr_edit = QLineEdit()
+        self.source_abbr_edit.setStyleSheet("padding: 4px;")
+        source_col.addWidget(self.source_abbr_edit)
+
+        # Target column: term + abbreviation
+        target_col = QVBoxLayout()
+        target_col.setSpacing(2)
+        target_col.addWidget(QLabel(f"<b>{tgt_caption}:</b>"))
         self.target_edit = QLineEdit()
-        self.target_edit.setPlaceholderText("Enter target language term...")
-        self.target_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        terms_layout.addWidget(self.target_edit)
-        
-        terms_group.setLayout(terms_layout)
-        layout.addWidget(terms_group)
+        self.target_edit.setPlaceholderText("Target language term...")
+        self.target_edit.setStyleSheet("padding: 4px;")
+        target_col.addWidget(self.target_edit)
+        target_col.addWidget(QLabel("Abbreviation:"))
+        self.target_abbr_edit = QLineEdit()
+        self.target_abbr_edit.setStyleSheet("padding: 4px;")
+        target_col.addWidget(self.target_abbr_edit)
+
+        # Stash for synonym-group placement further down.
+        self._source_col_layout = source_col
+        self._target_col_layout = target_col
+
+        term_row.addLayout(source_col, 1)
+        term_row.addLayout(target_col, 1)
+        layout.addLayout(term_row)
         
         # Source Synonyms section (collapsible)
         source_syn_group = QGroupBox()
@@ -190,7 +216,9 @@ class TermbaseEntryEditor(QDialog):
         # Connect toggle button
         self.source_syn_toggle.clicked.connect(lambda: self.toggle_section(self.source_syn_toggle, self.source_syn_content))
 
-        layout.addWidget(source_syn_group)
+        # Drop into the source-language column rather than the main vertical
+        # layout – matches the Trados plugin's per-language column layout.
+        self._source_col_layout.addWidget(source_syn_group)
         
         # Target Synonyms section (collapsible)
         target_syn_group = QGroupBox()
@@ -278,67 +306,80 @@ class TermbaseEntryEditor(QDialog):
         # Connect toggle button
         self.target_syn_toggle.clicked.connect(lambda: self.toggle_section(self.target_syn_toggle, self.target_syn_content))
 
-        layout.addWidget(target_syn_group)
+        # Drop into the target-language column (see source-side comment).
+        self._target_col_layout.addWidget(target_syn_group)
         
-        # Metadata group
+        # Metadata group – field order matches the Add Term dialog so
+        # users see the same shape whether they're adding or editing.
         metadata_group = QGroupBox("Metadata")
         metadata_layout = QVBoxLayout()
         metadata_layout.setSpacing(4)
-        
+
+        def _label(text):
+            lbl = QLabel(text)
+            lbl.setStyleSheet("font-weight: bold;")
+            return lbl
+
+        # Definition (own column on termbase_terms; was previously folded
+        # into the Note field – now surfaced as its own row).
+        metadata_layout.addWidget(_label("Definition:"))
+        self.definition_edit = QTextEdit()
+        self.definition_edit.setPlaceholderText("Brief definition or gloss...")
+        self.definition_edit.setMaximumHeight(45)
+        self.definition_edit.setStyleSheet("padding: 3px; font-size: 10px;")
+        metadata_layout.addWidget(self.definition_edit)
+
         # Domain
-        domain_label = QLabel("Domain:")
-        domain_label.setStyleSheet("font-weight: bold;")
-        metadata_layout.addWidget(domain_label)
-        
+        metadata_layout.addWidget(_label("Domain:"))
         self.domain_edit = QLineEdit()
         self.domain_edit.setPlaceholderText("e.g., Patents, Legal, Medical, IT...")
         self.domain_edit.setStyleSheet("padding: 6px; font-size: 11px;")
         metadata_layout.addWidget(self.domain_edit)
-        
-        # Note
-        note_label = QLabel("Note:")
-        note_label.setStyleSheet("font-weight: bold;")
-        metadata_layout.addWidget(note_label)
-        
+
+        # Notes
+        metadata_layout.addWidget(_label("Notes:"))
         self.note_edit = QTextEdit()
-        self.note_edit.setPlaceholderText("Usage notes, context, definition, URLs...")
+        self.note_edit.setPlaceholderText("Usage notes, context...")
         self.note_edit.setMaximumHeight(45)
         self.note_edit.setStyleSheet("padding: 3px; font-size: 10px;")
         metadata_layout.addWidget(self.note_edit)
-        
-        # Project
-        project_label = QLabel("Project:")
-        project_label.setStyleSheet("font-weight: bold;")
-        metadata_layout.addWidget(project_label)
-        
-        self.project_edit = QLineEdit()
-        self.project_edit.setPlaceholderText("Optional project name...")
-        self.project_edit.setStyleSheet("padding: 6px; font-size: 11px;")
-        metadata_layout.addWidget(self.project_edit)
-        
+
+        # URL (column added in v1.9.478)
+        metadata_layout.addWidget(_label("URL:"))
+        self.url_edit = QLineEdit()
+        self.url_edit.setPlaceholderText("https://...")
+        self.url_edit.setStyleSheet("padding: 6px; font-size: 11px;")
+        metadata_layout.addWidget(self.url_edit)
+
         # Client
-        client_label = QLabel("Client:")
-        client_label.setStyleSheet("font-weight: bold;")
-        metadata_layout.addWidget(client_label)
-        
+        metadata_layout.addWidget(_label("Client:"))
         self.client_edit = QLineEdit()
         self.client_edit.setPlaceholderText("Optional client name...")
         self.client_edit.setStyleSheet("padding: 6px; font-size: 11px;")
         metadata_layout.addWidget(self.client_edit)
-        
-        # Forbidden checkbox
-        self.forbidden_check = CheckmarkCheckBox("⚠️ Mark as FORBIDDEN term (do not use)")
-        self.forbidden_check.setStyleSheet("font-weight: bold; color: #d32f2f;")
-        metadata_layout.addWidget(self.forbidden_check)
+
+        # Project
+        metadata_layout.addWidget(_label("Project:"))
+        self.project_edit = QLineEdit()
+        self.project_edit.setPlaceholderText("Optional project name...")
+        self.project_edit.setStyleSheet("padding: 6px; font-size: 11px;")
+        metadata_layout.addWidget(self.project_edit)
 
         # Non-translatable checkbox – when ticked, the target field is
         # auto-synced to the source so the term copies through unchanged
         # at translation time. Highlighted in pastel yellow in TermLens
         # to match the convention used by the Trados plugin.
-        self.nontranslatable_check = CheckmarkCheckBox("🚫 Mark as NON-TRANSLATABLE (copy source to target unchanged)")
-        self.nontranslatable_check.setStyleSheet("font-weight: bold; color: #b07d00;")
+        self.nontranslatable_check = CheckmarkCheckBox(
+            "Non-translatable (keep source text in target)"
+        )
         self.nontranslatable_check.toggled.connect(self._on_nontranslatable_toggled)
         metadata_layout.addWidget(self.nontranslatable_check)
+
+        # Forbidden term checkbox
+        self.forbidden_check = CheckmarkCheckBox(
+            "Forbidden term (warn when used in translation)"
+        )
+        metadata_layout.addWidget(self.forbidden_check)
 
         metadata_group.setLayout(metadata_layout)
         layout.addWidget(metadata_group)
@@ -535,10 +576,16 @@ class TermbaseEntryEditor(QDialog):
             # is_nontranslatable wrapped in COALESCE so legacy databases
             # that have not yet had the migration run come back as 0
             # rather than blowing up the SELECT.
+            # COALESCE on the new url / abbreviation columns so legacy
+            # databases that haven't run the v1.9.478 migration yet still
+            # return rows rather than blowing up the SELECT.
             cursor.execute("""
                 SELECT source_term, target_term, domain, definition, forbidden,
                        notes, project, client,
-                       COALESCE(is_nontranslatable, 0)
+                       COALESCE(is_nontranslatable, 0),
+                       COALESCE(url, ''),
+                       COALESCE(source_abbreviation, ''),
+                       COALESCE(target_abbreviation, '')
                 FROM termbase_terms
                 WHERE id = ?
             """, (self.term_id,))
@@ -549,21 +596,26 @@ class TermbaseEntryEditor(QDialog):
                     'source_term': row[0],
                     'target_term': row[1],
                     'domain': row[2] or '',
-                    'definition': row[3] or '',  # Legacy field
+                    'definition': row[3] or '',
                     'forbidden': row[4] or False,
                     'note': row[5] or '',
                     'project': row[6] or '',
                     'client': row[7] or '',
                     'is_nontranslatable': bool(row[8]),
+                    'url': row[9] or '',
+                    'source_abbreviation': row[10] or '',
+                    'target_abbreviation': row[11] or '',
                 }
 
                 # Populate fields
                 self.source_edit.setText(self.term_data['source_term'])
                 self.target_edit.setText(self.term_data['target_term'])
+                self.source_abbr_edit.setText(self.term_data['source_abbreviation'])
+                self.target_abbr_edit.setText(self.term_data['target_abbreviation'])
                 self.domain_edit.setText(self.term_data['domain'])
-                # Use note field if available, otherwise fall back to definition (legacy)
-                note_text = self.term_data['note'] or self.term_data['definition']
-                self.note_edit.setPlainText(note_text)
+                self.definition_edit.setPlainText(self.term_data['definition'])
+                self.note_edit.setPlainText(self.term_data['note'])
+                self.url_edit.setText(self.term_data['url'])
                 self.project_edit.setText(self.term_data['project'])
                 self.client_edit.setText(self.term_data['client'])
                 self.forbidden_check.setChecked(self.term_data['forbidden'])
@@ -696,32 +748,41 @@ class TermbaseEntryEditor(QDialog):
             cursor = self.db_manager.cursor
             
             # Gather data
+            definition = self.definition_edit.toPlainText().strip() if hasattr(self, 'definition_edit') else ""
             domain = self.domain_edit.text().strip()
             note = self.note_edit.toPlainText().strip()
+            url = self.url_edit.text().strip() if hasattr(self, 'url_edit') else ""
             project = self.project_edit.text().strip()
             client = self.client_edit.text().strip()
             forbidden = self.forbidden_check.isChecked()
             is_nt = self.nontranslatable_check.isChecked()
+            source_abbr = self.source_abbr_edit.text().strip() if hasattr(self, 'source_abbr_edit') else ""
+            target_abbr = self.target_abbr_edit.text().strip() if hasattr(self, 'target_abbr_edit') else ""
 
             if self.term_id:
                 # Update existing term
                 cursor.execute("""
                     UPDATE termbase_terms
                     SET source_term = ?, target_term = ?,
-                        domain = ?, notes = ?, project = ?, client = ?,
-                        forbidden = ?, is_nontranslatable = ?
+                        definition = ?, domain = ?, notes = ?, url = ?,
+                        project = ?, client = ?,
+                        forbidden = ?, is_nontranslatable = ?,
+                        source_abbreviation = ?, target_abbreviation = ?
                     WHERE id = ?
-                """, (source_term, target_term, domain, note, project, client,
-                      forbidden, 1 if is_nt else 0, self.term_id))
+                """, (source_term, target_term, definition, domain, note, url,
+                      project, client, forbidden, 1 if is_nt else 0,
+                      source_abbr, target_abbr, self.term_id))
             else:
                 # Insert new term
                 cursor.execute("""
                     INSERT INTO termbase_terms
-                    (termbase_id, source_term, target_term, domain, notes,
-                     project, client, forbidden, is_nontranslatable)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (self.termbase_id, source_term, target_term, domain, note,
-                      project, client, forbidden, 1 if is_nt else 0))
+                    (termbase_id, source_term, target_term, definition, domain, notes, url,
+                     project, client, forbidden, is_nontranslatable,
+                     source_abbreviation, target_abbreviation)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (self.termbase_id, source_term, target_term, definition, domain, note, url,
+                      project, client, forbidden, 1 if is_nt else 0,
+                      source_abbr, target_abbr))
             
             self.db_manager.connection.commit()
             

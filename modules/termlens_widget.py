@@ -309,13 +309,35 @@ class TermBlock(QWidget):
             else:
                 shortcut_hint = ""
             
+            # Helper: extra metadata block (definition, abbreviations, URL, domain)
+            def _meta_lines(tr):
+                lines = []
+                src_abbr = tr.get('source_abbreviation', '')
+                tgt_abbr = tr.get('target_abbreviation', '')
+                if src_abbr or tgt_abbr:
+                    pair = " / ".join(x for x in (src_abbr, tgt_abbr) if x)
+                    lines.append(f"<i>Abbr: {pair}</i>")
+                definition = tr.get('definition', '')
+                if definition:
+                    lines.append(f"<i>Definition: {definition}</i>")
+                domain = tr.get('domain', '')
+                if domain:
+                    lines.append(f"<i>Domain: {domain}</i>")
+                url = tr.get('url', '')
+                if url:
+                    lines.append(f"<i>URL: {url}</i>")
+                return lines
+
             # Set tooltip if multiple translations exist
             if len(self.translations) > 1:
                 tooltip_lines = [f"<b>{target_text}</b> (click to insert){shortcut_hint}<br>"]
                 # Add notes if available
                 notes = primary_translation.get('notes', '')
                 if notes:
-                    tooltip_lines.append(f"<br><i>Note: {notes}</i><br>")
+                    tooltip_lines.append(f"<br><i>Note: {notes}</i>")
+                meta = _meta_lines(primary_translation)
+                if meta:
+                    tooltip_lines.append("<br>" + "<br>".join(meta))
                 tooltip_lines.append("<br><b>Alternatives:</b>")
                 for i, trans in enumerate(self.translations[1:], 1):
                     alt_target = trans.get('target_term', trans.get('target', ''))
@@ -328,6 +350,9 @@ class TermBlock(QWidget):
                 notes = primary_translation.get('notes', '')
                 if notes:
                     tooltip_text += f"<br><i>Note: {notes}</i>"
+                meta = _meta_lines(primary_translation)
+                if meta:
+                    tooltip_text += "<br>" + "<br>".join(meta)
                 tooltip_text += "<br>(click to insert)"
                 target_label.setToolTip(tooltip_text)
             
