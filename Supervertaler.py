@@ -8729,8 +8729,11 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+Shift+F - Filter on selected text / Clear filter (toggle)
         create_shortcut("filter_selected_text", "Ctrl+Shift+F", self.filter_on_selected_text)
         
-        # Ctrl+Alt+T - Toggle Tag View
-        create_shortcut("view_toggle_tags", "Ctrl+Alt+T", self._toggle_tag_view_via_shortcut)
+        # Ctrl+Shift+H – Toggle Tag View. (Was Ctrl+Alt+T before v1.9.476;
+        # moved to free that combo for "Add term to glossary" which matches
+        # the Trados plugin's shortcut. Ctrl+Shift+H is Trados Studio's own
+        # default for the equivalent tag-display toggle.)
+        create_shortcut("view_toggle_tags", "Ctrl+Shift+H", self._toggle_tag_view_via_shortcut)
         
         # Page Up/Down - Navigate pagination pages
         create_shortcut("page_prev", "PgUp", self.go_to_prev_page)
@@ -23611,7 +23614,7 @@ class SupervertalerQt(QMainWindow):
         wysiwyg_btn.setCheckable(True)
         wysiwyg_btn.setChecked(False)
         wysiwyg_btn.setToolTip(
-            f"WYSIWYG View ({format_shortcut_for_display('Ctrl+Alt+T')})\nShows formatted text without raw tags"
+            f"WYSIWYG View ({format_shortcut_for_display('Ctrl+Shift+H')})\nShows formatted text without raw tags"
         )
         wysiwyg_btn.setStyleSheet(_seg_btn_base.format(
             radius="border-top-left-radius: 3px; border-bottom-left-radius: 3px;"
@@ -23637,7 +23640,7 @@ class SupervertalerQt(QMainWindow):
         tags_btn.setCheckable(True)
         tags_btn.setChecked(True)  # Default: Tags mode
         tags_btn.setToolTip(
-            f"Tag View ({format_shortcut_for_display('Ctrl+Alt+T')})\nShows raw tags like <b>bold</b>"
+            f"Tag View ({format_shortcut_for_display('Ctrl+Shift+H')})\nShows raw tags like <b>bold</b>"
         )
         tags_btn.setStyleSheet(_seg_btn_base.format(
             radius="border-top-right-radius: 3px; border-bottom-right-radius: 3px;"
@@ -47469,7 +47472,7 @@ class SupervertalerQt(QMainWindow):
             self.log("⚠️ TM/Glossary lookups DISABLED from segment editor (faster editing)")
 
     def _toggle_tag_view_via_shortcut(self):
-        """Toggle tag view using keyboard shortcut (Ctrl+Alt+T) – cycles: tags → compact → wysiwyg"""
+        """Toggle tag view using keyboard shortcut (Ctrl+Shift+H) – cycles: tags → compact → wysiwyg"""
         mode = getattr(self, 'tag_view_mode', 'tags')
         cycle = {'tags': 'compact', 'compact': 'wysiwyg', 'wysiwyg': 'tags'}
         self._set_tag_view_mode(cycle.get(mode, 'tags'))

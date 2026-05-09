@@ -114,9 +114,15 @@ class ShortcutManager:
             "action": "switch_to_document_view"
         },
         "view_toggle_tags": {
+            # Default moved Ctrl+Alt+T → Ctrl+Shift+H in v1.9.476 to free
+            # Ctrl+Alt+T for "Add term to glossary" (which matches the
+            # Trados plugin shortcut). Ctrl+Shift+H is Trados Studio's own
+            # default for the analogous "Show formatting characters / Tag
+            # display" toggle, so the rename keeps Workbench muscle memory
+            # aligned with Trados rather than introducing a new convention.
             "category": "View",
             "description": "Toggle Tag View",
-            "default": "Ctrl+Alt+T",
+            "default": "Ctrl+Shift+H",
             "action": "toggle_tag_view"
         },
         

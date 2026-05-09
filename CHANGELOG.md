@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.475 (May 9, 2026)
+**Current Version:** v1.9.476 (May 9, 2026)
+
+
+## v1.9.476 – May 9, 2026
+
+### Fixed (Ctrl+Alt+T shortcut collision)
+
+- **Toggle Tag View** moved from `Ctrl+Alt+T` to `Ctrl+Shift+H`. v1.9.475 reassigned `Ctrl+Alt+T` to "Add term to glossary" (matching the Trados plugin shortcut), which collided with the existing Toggle Tag View binding. The new `Ctrl+Shift+H` matches Trados Studio's own default for the analogous "Show formatting characters / Tag display" toggle, so muscle-memory consistency with Trados is preserved.
+- Tooltip text on the WYSIWYG / Tag toolbar buttons updated, plus the keyboard-shortcuts settings page, plus the inline docstrings.
 
 
 ## v1.9.475 – May 9, 2026
