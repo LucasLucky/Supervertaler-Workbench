@@ -121,7 +121,7 @@ class SuperlookupEngine:
         self.glossary_database = glossary_db
     
     def search_tm(self, text: str, max_results: int = 10, direction: str = 'both',
-                  source_lang: str = None, target_lang: str = None) -> List[LookupResult]:
+                  source_lang: str = None, target_lang: str = None, connection=None) -> List[LookupResult]:
         """
         Search translation memory for matches.
         Uses concordance search to find entries containing the search text.
@@ -154,7 +154,8 @@ class SuperlookupEngine:
                     tm_ids=tm_ids_to_use,
                     direction=direction,
                     source_lang=source_lang,
-                    target_lang=target_lang
+                    target_lang=target_lang,
+                    connection=connection,
                 )
                 print(f"[DEBUG] SuperlookupEngine.search_tm: Concordance search returned {len(matches)} matches")
                 

@@ -362,7 +362,7 @@ class AIActionSystem:
             # Auto-activate if requested
             if params.get('activate', False):
                 self.prompt_library.set_primary_prompt(relative_path)
-                message += f" and activated as primary"
+                message += " and set as the active Custom Prompt ⭐"
 
             return {
                 'success': True,

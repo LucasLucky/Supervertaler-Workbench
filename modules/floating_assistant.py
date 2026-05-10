@@ -145,9 +145,17 @@ class FloatingAssistant(QWidget):
         #
         # Trade-off accepted: you can't click a taskbar icon to bring
         # Sidekick back. Use Alt+K (global) or Ctrl+Q (in-app) instead.
+        # Tool + Frameless: no taskbar entry, no system chrome.
+        # WindowStaysOnTopHint: keep Sidekick above other application windows
+        # while it's visible. Without this, Trados Studio (and a few other
+        # apps with aggressive foreground-reclaim behaviour) push Sidekick
+        # behind themselves shortly after it's summoned via global hotkey.
+        # The flag only matters while the window is visible — Escape /
+        # _dismiss_to_tray hides it and the normal Z-order is restored.
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setMinimumSize(500, 350)
@@ -1357,8 +1365,15 @@ class FloatingAssistant(QWidget):
         if text:
             self._run_quicktrans(text)
 
-    def _run_quicktrans(self, text: str):
-        """Fetch translations from all enabled providers and display results."""
+    def _run_quicktrans(self, text: str, switch_to_quicktrans_tab: bool = True):
+        """Fetch translations from all enabled providers and display results.
+
+        switch_to_quicktrans_tab: when True (the Ctrl+Alt+Q path), switches the
+        SuperLookup inner sub-tab to QuickTrans. When False (the Ctrl+Alt+L
+        path), the caller has already chosen the inner sub-tab to land on
+        and we mustn't override it – we just kick off the MT fetch in the
+        background so QuickTrans is populated when the user navigates there.
+        """
         if not text:
             return
 
@@ -1369,22 +1384,23 @@ class FloatingAssistant(QWidget):
         # inner tab to QuickTrans.
         self._ensure_superlookup_tab()
 
-        # Outer: find Superlookup tab index (it's dynamic – Chat + possibly
-        # Superlookup, so don't hard-code a number).
-        outer_superlookup_idx = self._left_tabs.indexOf(self._superlookup_widget) \
-            if self._superlookup_widget is not None else -1
-        if outer_superlookup_idx >= 0:
-            self._left_tabs.setCurrentIndex(outer_superlookup_idx)
+        if switch_to_quicktrans_tab:
+            # Outer: find Superlookup tab index (it's dynamic – Chat + possibly
+            # Superlookup, so don't hard-code a number).
+            outer_superlookup_idx = self._left_tabs.indexOf(self._superlookup_widget) \
+                if self._superlookup_widget is not None else -1
+            if outer_superlookup_idx >= 0:
+                self._left_tabs.setCurrentIndex(outer_superlookup_idx)
 
-        # Inner: find QuickTrans inside the Superlookup results_tabs.
-        try:
-            rtabs = getattr(self._superlookup_widget, 'results_tabs', None)
-            if rtabs is not None:
-                qt_inner_idx = rtabs.indexOf(self._quicktrans_widget)
-                if qt_inner_idx >= 0:
-                    rtabs.setCurrentIndex(qt_inner_idx)
-        except Exception:
-            pass
+            # Inner: find QuickTrans inside the Superlookup results_tabs.
+            try:
+                rtabs = getattr(self._superlookup_widget, 'results_tabs', None)
+                if rtabs is not None:
+                    qt_inner_idx = rtabs.indexOf(self._quicktrans_widget)
+                    if qt_inner_idx >= 0:
+                        rtabs.setCurrentIndex(qt_inner_idx)
+            except Exception:
+                pass
 
         # Update source display
         self._qt_source_label.setText(text)
@@ -1570,17 +1586,18 @@ class FloatingAssistant(QWidget):
     def show_superlookup(self, text=None):
         """Show the assistant, switch to the SuperLookup tab, and optionally search.
 
-        When text is supplied, we also auto-fire QuickTrans for the same text
-        (via _run_quicktrans, which switches to the QuickTrans sub-tab and
-        kicks off the MT fetch). That means clicking the SuperLookup action
-        in the right-hand menu with text selected lands the user on a
-        populated QuickTrans sub-tab with translations already loading –
-        no need to click the Translate button separately.
+        When text is supplied, also fires MT in the background via
+        _run_quicktrans so the QuickTrans sub-tab has results ready when the
+        user navigates to it. The inner sub-tab the user actually lands on is
+        controlled by the user's "Ctrl+Alt+L lands on" preference in
+        SuperLookup Settings (defaults to Termbases), and is set
+        unconditionally on every press – even when text is empty –
+        so the sub-tab is never sticky from a previous visit.
         """
         self._ensure_superlookup_tab()
 
         if self._superlookup_widget is None:
-            self._backend.add_message("system", "\u26A0 SuperLookup not available.")
+            self._backend.add_message("system", "⚠ SuperLookup not available.")
             return
 
         # Ensure the window is visible and in the foreground
@@ -1590,20 +1607,112 @@ class FloatingAssistant(QWidget):
         self.activateWindow()
         self._force_foreground_focus()
 
-        # Switch to the SuperLookup tab
+        # Switch to the SuperLookup outer tab AND the user's preferred inner
+        # sub-tab BEFORE doing any heavy work, so the window paints with the
+        # correct view even if perform_lookup() then blocks the main thread
+        # for a moment.
         self._left_tabs.setCurrentWidget(self._superlookup_widget)
+        self._switch_superlookup_to_landing_tab()
 
-        # Populate search field and trigger search if text provided
+        # Cheap UI updates first – setting the search field is fast.
         if text and hasattr(self._superlookup_widget, 'source_text'):
             self._superlookup_widget.source_text.setEditText(text)
             self._sync_text_to_quicktrans(text)
-            if hasattr(self._superlookup_widget, 'perform_lookup'):
-                self._superlookup_widget.perform_lookup()
-            # Auto-fire QuickTrans as well. _run_quicktrans switches the
-            # SuperLookup sub-tab to QuickTrans and starts the provider
-            # fetches immediately – matches what Ctrl+Alt+Q does, so the
-            # user doesn't have to click "Translate" after navigating here.
-            self._run_quicktrans(text)
+            if hasattr(self._superlookup_widget, 'status_label'):
+                self._superlookup_widget.status_label.setText("\U0001F50D Searching...")
+
+        # Force the window to paint in its new state before any blocking work.
+        try:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
+        except Exception:
+            pass
+
+        # Defer the heavy lookup to the next event-loop tick so the paint we
+        # just triggered actually shows before the main thread blocks on TM /
+        # termbase / web-search work.
+        if text:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, lambda t=text: self._run_superlookup_search(t))
+
+    def _run_superlookup_search(self, text: str):
+        """Run the actual SuperLookup search after the window has painted.
+
+        Called from show_superlookup via QTimer.singleShot(0, ...), so the
+        outer/inner tab switch happens in one event-loop turn and the heavy
+        work runs on the next, with a paint in between.
+
+        Per the lazy-tabs principle: only the work for the user's landing
+        sub-tab is kicked off here. Other sub-tabs' work is deferred and
+        fired when the user actually navigates to them (handled in
+        SuperlookupTab.on_results_tab_changed). For Ctrl+Alt+L specifically:
+          - TM + Termbase search always runs (worker thread, cheap, results
+            populate even if user isn't on those tabs)
+          - QuickTrans MT only runs if landing is QuickTrans (otherwise we'd
+            spawn N provider HTTP calls AND momentarily create a hidden
+            WindowStaysOnTopHint dialog, which disturbs Windows' Z-order
+            state and pushes Sidekick behind aggressive apps like Trados)
+          - Web search is deferred entirely (handled in perform_lookup)
+        """
+        sl = self._superlookup_widget
+        if sl is None:
+            return
+        try:
+            if hasattr(sl, 'perform_lookup'):
+                sl.perform_lookup()
+        except Exception as e:
+            print(f"[Sidekick] SuperLookup search failed: {e}")
+
+        # Decide whether to fire QuickTrans MT eagerly based on landing pref.
+        landing = 'termbases'
+        try:
+            if hasattr(sl, '_load_superlookup_landing_pref'):
+                landing = sl._load_superlookup_landing_pref()
+        except Exception:
+            pass
+
+        if landing == 'quicktrans':
+            try:
+                self._run_quicktrans(text, switch_to_quicktrans_tab=False)
+            except Exception as e:
+                print(f"[Sidekick] QuickTrans dispatch failed: {e}")
+        else:
+            # Defer: stash text on the SuperLookup widget. When the user
+            # navigates to the QuickTrans sub-tab, on_results_tab_changed
+            # will fire _run_quicktrans with this text.
+            sl._quicktrans_pending_text = text
+
+    def _switch_superlookup_to_landing_tab(self):
+        """Switch the SuperLookup inner sub-tab to the user's configured landing tab.
+
+        Reads SuperlookupTab.SUPERLOOKUP_LANDING_TAB_KEY from general_settings
+        (default: 'termbases') and matches it against the sub-tab labels
+        ("QuickTrans", "TMs", "Termbases", "Web Resources"). Falls back to
+        Termbases if the configured value is unrecognised.
+        """
+        sl = self._superlookup_widget
+        if sl is None:
+            return
+        rtabs = getattr(sl, 'results_tabs', None)
+        if rtabs is None:
+            return
+
+        pref = getattr(sl, 'SUPERLOOKUP_LANDING_TAB_DEFAULT', 'termbases')
+        labels = getattr(sl, 'SUPERLOOKUP_LANDING_TAB_LABELS', {
+            'quicktrans': 'QuickTrans', 'tms': 'TMs',
+            'termbases': 'Termbases', 'webresources': 'Web Resources',
+        })
+        try:
+            if hasattr(sl, '_load_superlookup_landing_pref'):
+                pref = sl._load_superlookup_landing_pref()
+        except Exception:
+            pass
+
+        target_label = labels.get(pref, 'Termbases')
+        for i in range(rtabs.count()):
+            if target_label in rtabs.tabText(i):
+                rtabs.setCurrentIndex(i)
+                return
 
     def _sync_superlookup_to_quicktrans(self):
         """Called when the Superlookup search button is clicked manually."""
@@ -1830,7 +1939,7 @@ class FloatingAssistant(QWidget):
         try:
             user_data = getattr(self._parent_app, 'user_data_path', None)
             self._superlookup_widget = self._superlookup_class(
-                self._parent_app, user_data_path=user_data)
+                self._parent_app, user_data_path=user_data, is_sidekick=True)
             self._superlookup_widget.set_compact_mode(True)
             self._left_tabs.addTab(
                 self._superlookup_widget, "\U0001F50D SuperLookup")

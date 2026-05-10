@@ -83,17 +83,26 @@ class TermbaseManager:
             self.log(f"✗ Error creating termbase: {e}")
             return None
     
-    def get_all_termbases(self) -> List[Dict]:
+    def get_all_termbases(self, connection=None) -> List[Dict]:
         """
         Get all termbases (global and project-specific)
-        
+
+        Args:
+            connection: Optional sqlite3.Connection to use (for thread-safe access
+                from worker threads). When None, uses the main-thread cursor.
+
         Returns:
-            List of termbase dictionaries with fields: id, name, source_lang, target_lang, 
+            List of termbase dictionaries with fields: id, name, source_lang, target_lang,
             project_id, description, is_global, is_active, term_count, created_date, modified_date
         """
         try:
-            cursor = self.db_manager.cursor
-            
+            if connection is not None:
+                cursor = connection.cursor()
+                _close_cursor = True
+            else:
+                cursor = self.db_manager.cursor
+                _close_cursor = False
+
             cursor.execute("""
                 SELECT 
                     t.id, t.name, t.source_lang, t.target_lang, t.project_id,
@@ -124,7 +133,12 @@ class TermbaseManager:
                     'modified_date': row[12],
                     'term_count': row[13] or 0
                 })
-            
+
+            if _close_cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
             return termbases
         except Exception as e:
             self.log(f"✗ Error fetching termbases: {e}")
@@ -825,11 +839,21 @@ class TermbaseManager:
             self.log(f"✗ Error toggling NT flag on term {term_id}: {e}")
             return False
     
-    def get_terms(self, termbase_id: int) -> List[Dict]:
-        """Get all terms in a termbase"""
+    def get_terms(self, termbase_id: int, connection=None) -> List[Dict]:
+        """Get all terms in a termbase.
+
+        connection: Optional sqlite3.Connection for thread-safe access from
+            worker threads (uses connection.cursor() instead of the shared
+            main-thread self.db_manager.cursor).
+        """
         try:
-            cursor = self.db_manager.cursor
-            
+            if connection is not None:
+                cursor = connection.cursor()
+                _close_cursor = True
+            else:
+                cursor = self.db_manager.cursor
+                _close_cursor = False
+
             cursor.execute("""
                 SELECT id, source_term, target_term, domain, notes,
                        project, client, forbidden, term_uuid
@@ -851,7 +875,12 @@ class TermbaseManager:
                     'forbidden': row[7],
                     'term_uuid': row[8]
                 })
-            
+
+            if _close_cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
             return terms
         except Exception as e:
             self.log(f"✗ Error fetching terms: {e}")

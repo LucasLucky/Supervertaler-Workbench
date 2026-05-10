@@ -346,7 +346,7 @@ class TMDatabase:
         return results
 
     def concordance_search(self, query: str, tm_ids: List[str] = None, direction: str = 'both',
-                            source_lang: str = None, target_lang: str = None) -> List[Dict]:
+                            source_lang: str = None, target_lang: str = None, connection=None) -> List[Dict]:
         """
         Search for text in both source and target
         
@@ -360,7 +360,8 @@ class TMDatabase:
         Returns: List of matching entries
         """
         results = self.db.concordance_search(query=query, tm_ids=tm_ids, direction=direction,
-                                              source_lang=source_lang, target_lang=target_lang)
+                                              source_lang=source_lang, target_lang=target_lang,
+                                              connection=connection)
         
         # Format for UI
         formatted = []

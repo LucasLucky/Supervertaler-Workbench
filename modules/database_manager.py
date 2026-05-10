@@ -17,6 +17,7 @@ import sqlite3
 import os
 import json
 import hashlib
+import threading
 import unicodedata
 import re
 from datetime import datetime
@@ -71,7 +72,50 @@ class DatabaseManager:
         
         self.connection = None
         self.cursor = None
-    
+
+        # Per-thread read-only connections for use from worker threads.
+        # The main self.connection is owned by the thread that called connect()
+        # (sqlite3 connections default to check_same_thread=True). Worker threads
+        # that want to run SELECTs concurrently — e.g. the Sidekick lookup fan-out —
+        # should call get_reader_connection() to obtain their own connection.
+        self._thread_local = threading.local()
+
+    def get_reader_connection(self) -> sqlite3.Connection:
+        """Return a read-only sqlite3.Connection scoped to the current thread.
+
+        Each thread gets its own lazily-opened connection that is reused for the
+        thread's lifetime. WAL is set on the file by connect(), so opening more
+        connections is cheap and they coexist with the main writer connection
+        without blocking. query_only=1 prevents accidental writes from worker
+        threads.
+        """
+        conn = getattr(self._thread_local, 'reader', None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=15)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA query_only=1")
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.close()
+            self._thread_local.reader = conn
+        return conn
+
+    def close_reader_connection(self):
+        """Close the current thread's reader connection if one exists.
+
+        Worker threads (e.g. QRunnable.run()) should call this just before
+        returning so the connection is released promptly rather than living
+        until the thread is destroyed.
+        """
+        conn = getattr(self._thread_local, 'reader', None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._thread_local.reader = None
+
     def connect(self):
         """Connect to database and create tables if needed"""
         try:
@@ -1673,25 +1717,35 @@ class DatabaseManager:
         return True
 
     def concordance_search(self, query: str, tm_ids: List[str] = None, direction: str = 'both',
-                            source_lang = None, target_lang = None) -> List[Dict]:
+                            source_lang = None, target_lang = None, connection=None) -> List[Dict]:
         """
         Search for text in source and/or target (concordance search)
         Uses FTS5 full-text search for fast matching on millions of segments.
         Falls back to LIKE queries if FTS5 fails.
-        
+
         Language filters define what you're searching FOR and what translation you want:
         - "From: Dutch, To: English" = Search for Dutch text, show English translations
         - Searches ALL TMs (regardless of their stored language pair direction)
         - Automatically swaps columns when needed (e.g., finds Dutch in target column of EN→NL TM)
         - This is MORE intuitive than traditional CAT tools that only search specific TM directions
-        
+
         Args:
             query: Text to search for
             tm_ids: List of TM IDs to search (None = all)
             direction: 'source' = search source only, 'target' = search target only, 'both' = bidirectional
             source_lang: Filter by source language - can be a string OR a list of language variants (None = any)
             target_lang: Filter by target language - can be a string OR a list of language variants (None = any)
+            connection: Optional sqlite3.Connection for thread-safe access from worker threads.
         """
+        # Resolve cursor: caller may pass a thread-local connection (e.g. from
+        # the SuperLookup worker), otherwise we use the main-thread cursor.
+        if connection is not None:
+            cur = connection.cursor()
+            _close_cur = True
+        else:
+            cur = self.cursor
+            _close_cur = False
+
         # Normalize language filters to lists for consistent handling
         source_langs = source_lang if isinstance(source_lang, list) else ([source_lang] if source_lang else None)
         target_langs = target_lang if isinstance(target_lang, list) else ([target_lang] if target_lang else None)
@@ -1752,9 +1806,9 @@ class DatabaseManager:
                     params.extend(target_langs)
             
             fts_sql += " ORDER BY tu.modified_date DESC LIMIT 100"
-            
-            self.cursor.execute(fts_sql, params)
-            raw_results = [dict(row) for row in self.cursor.fetchall()]
+
+            cur.execute(fts_sql, params)
+            raw_results = [dict(row) for row in cur.fetchall()]
             
             # Smart search: Filter and swap based on language metadata
             if use_smart_search:
@@ -1826,7 +1880,10 @@ class DatabaseManager:
                                 processed_row['source'] = row['source_text']
                                 processed_row['target'] = row['target_text']
                                 processed_results.append(processed_row)
-                
+
+                if _close_cur:
+                    try: cur.close()
+                    except Exception: pass
                 return processed_results
             else:
                 # No language filters - just rename columns
@@ -1836,8 +1893,11 @@ class DatabaseManager:
                     processed_row['source'] = row['source_text']
                     processed_row['target'] = row['target_text']
                     processed_results.append(processed_row)
+                if _close_cur:
+                    try: cur.close()
+                    except Exception: pass
                 return processed_results
-            
+
         except Exception as e:
             # Fallback to LIKE query if FTS5 fails (e.g., index not built)
             print(f"[TM] FTS5 search failed, falling back to LIKE: {e}")
@@ -1878,9 +1938,13 @@ class DatabaseManager:
                 params.extend(target_langs)
             
             sql += " ORDER BY modified_date DESC LIMIT 100"
-            
-            self.cursor.execute(sql, params)
-            return [dict(row) for row in self.cursor.fetchall()]
+
+            cur.execute(sql, params)
+            results = [dict(row) for row in cur.fetchall()]
+            if _close_cur:
+                try: cur.close()
+                except Exception: pass
+            return results
     
     def rebuild_fts_index(self) -> int:
         """

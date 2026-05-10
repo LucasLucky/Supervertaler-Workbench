@@ -320,7 +320,7 @@ try:
         QFrame, QListWidget, QListWidgetItem, QStackedWidget, QTreeWidget, QTreeWidgetItem,
         QScrollArea, QSizePolicy, QSlider, QToolButton, QAbstractItemView
     )
-    from PyQt6.QtCore import Qt, QSize, QTimer, pyqtSignal, pyqtSlot, QObject, QUrl, QThread
+    from PyQt6.QtCore import Qt, QSize, QTimer, pyqtSignal, pyqtSlot, QObject, QUrl, QThread, QRunnable, QThreadPool
     from PyQt6.QtGui import QFont, QAction, QKeySequence, QIcon, QTextOption, QColor, QDesktopServices, QTextCharFormat, QTextCursor, QBrush, QSyntaxHighlighter, QPalette, QTextBlockFormat, QCursor, QFontMetrics
     from PyQt6.QtWidgets import QStyleOptionViewItem, QStyle
     from PyQt6.QtCore import QRectF
@@ -16959,8 +16959,12 @@ class SupervertalerQt(QMainWindow):
         mt_tab = self._create_mt_settings_tab()
         settings_tabs.addTab(scroll_area_wrapper(mt_tab), "🌐 MT Settings")
 
-        # ===== TAB 5: MT Quick Lookup Settings =====
-        mt_quick_tab = self._create_mt_quick_lookup_settings_tab()
+        # ===== TAB 5: QuickTrans Settings =====
+        # The actual settings widget now lives in Sidekick → SuperLookup →
+        # SuperLookup Settings → QuickTrans, so it sits next to where it's
+        # used. This tab is just a stub linking there to preserve discover-
+        # ability for users who look in Workbench Settings out of habit.
+        mt_quick_tab = self._create_quicktrans_stub_tab()
         settings_tabs.addTab(scroll_area_wrapper(mt_quick_tab), "⚡ QuickTrans")
         self.mt_quick_lookup_tab_index = settings_tabs.count() - 1  # Store index for opening
 
@@ -18377,6 +18381,90 @@ class SupervertalerQt(QMainWindow):
         layout.addStretch()
 
         return tab
+
+    def _create_quicktrans_stub_tab(self):
+        """Stub for Workbench Settings → QuickTrans.
+
+        The actual QuickTrans settings widget now lives inside the Sidekick
+        (SuperLookup → SuperLookup Settings → QuickTrans sub-sub-tab) so it
+        sits next to where users actually invoke QuickTrans from. This stub
+        keeps the Workbench Settings entry point discoverable: users looking
+        for QuickTrans config in the old place find a clear pointer + a
+        one-click button that opens Sidekick navigated to the right sub-tab.
+        """
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        info = QLabel(
+            "⚡ <b>QuickTrans settings have moved.</b><br><br>"
+            "They now live in the Sidekick, next to where you use them:<br><br>"
+            "&nbsp;&nbsp;<b>Sidekick → SuperLookup → SuperLookup Settings → ⚡ QuickTrans</b>"
+        )
+        info.setTextFormat(Qt.TextFormat.RichText)
+        info.setWordWrap(True)
+        info.setStyleSheet(
+            "font-size: 10pt; padding: 16px; background-color: #E3F2FD; "
+            "border-radius: 4px; color: #222;"
+        )
+        layout.addWidget(info)
+
+        btn_row = QHBoxLayout()
+        open_btn = QPushButton("Open in Sidekick")
+        open_btn.setStyleSheet("padding: 8px 16px; font-weight: bold;")
+        open_btn.clicked.connect(self._open_quicktrans_in_sidekick)
+        btn_row.addWidget(open_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        layout.addStretch()
+        return tab
+
+    def _open_quicktrans_in_sidekick(self):
+        """Open Sidekick and navigate to SuperLookup → SuperLookup Settings →
+        QuickTrans sub-sub-tab. Wired up by the Workbench Settings stub."""
+        fa = getattr(self, '_floating_assistant', None)
+        if fa is None:
+            try:
+                self.log("⚠ Sidekick (Floating Assistant) is not available.")
+            except Exception:
+                pass
+            return
+        try:
+            if not fa.isVisible():
+                fa.show()
+            fa.raise_()
+            fa.activateWindow()
+            if hasattr(fa, '_force_foreground_focus'):
+                fa._force_foreground_focus()
+            if hasattr(fa, '_ensure_superlookup_tab'):
+                fa._ensure_superlookup_tab()
+            sl = getattr(fa, '_superlookup_widget', None)
+            if sl is None:
+                return
+            # Outer tab → SuperLookup
+            if hasattr(fa, '_left_tabs'):
+                fa._left_tabs.setCurrentWidget(sl)
+            # Inner sub-tab → SuperLookup Settings
+            rtabs = getattr(sl, 'results_tabs', None)
+            if rtabs is not None:
+                for i in range(rtabs.count()):
+                    if "Settings" in rtabs.tabText(i):
+                        rtabs.setCurrentIndex(i)
+                        break
+            # Sub-sub-tab → QuickTrans
+            ssubtabs = getattr(sl, 'settings_subtabs', None)
+            if ssubtabs is not None:
+                for i in range(ssubtabs.count()):
+                    if "QuickTrans" in ssubtabs.tabText(i):
+                        ssubtabs.setCurrentIndex(i)
+                        break
+        except Exception as e:
+            try:
+                self.log(f"⚠ Could not open QuickTrans settings in Sidekick: {e}")
+            except Exception:
+                print(f"[Workbench] Could not open QuickTrans settings in Sidekick: {e}")
 
     def _create_mt_quick_lookup_settings_tab(self):
         """Create MT Quick Lookup settings tab content"""
@@ -52694,17 +52782,124 @@ class _ReadOnlyHtmlCell(QTextEdit):
             self._highlighter = None
 
 
+class _SuperLookupSearchSignals(QObject):
+    """Signals emitted by the SuperLookup background search worker.
+
+    A separate QObject because QRunnable is not a QObject and so cannot have
+    signals of its own.
+    """
+    tm_ready = pyqtSignal(list)        # list of TM result dicts
+    termbase_ready = pyqtSignal(list)  # list of LookupResult
+    error = pyqtSignal(str)
+    finished = pyqtSignal()
+
+
+class _SuperLookupSearchWorker(QRunnable):
+    """Run TM concordance + termbase search off the Qt main thread.
+
+    Both searches share a single thread-local sqlite3 connection obtained via
+    DatabaseManager.get_reader_connection(). The connection is released at the
+    end of run() so QThreadPool worker reuse doesn't accumulate connections.
+
+    Cancellation: callers set self.cancel_event when a newer search begins.
+    The flag is checked at coarse-grained checkpoints between phases — we
+    don't try to interrupt a SQLite query mid-execution. If the flag is set
+    after a phase completes, we just don't emit that phase's signal so the UI
+    keeps showing whatever the newer worker produces.
+    """
+
+    def __init__(self, tab, text, search_direction, from_lang, to_lang,
+                 selected_tm_ids, tm_search_disabled):
+        super().__init__()
+        self.setAutoDelete(False)  # we manage lifetime via tab._active_search_worker
+        self.tab = tab
+        self.text = text
+        self.search_direction = search_direction
+        self.from_lang = from_lang
+        self.to_lang = to_lang
+        self.selected_tm_ids = selected_tm_ids
+        self.tm_search_disabled = tm_search_disabled
+        self.signals = _SuperLookupSearchSignals()
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
+
+    @pyqtSlot()
+    def run(self):
+        db_manager = self.tab.db_manager
+        conn = None
+        try:
+            if db_manager is None:
+                return
+            if self.cancel_event.is_set():
+                return
+
+            try:
+                conn = db_manager.get_reader_connection()
+            except Exception as e:
+                print(f"[SuperLookupWorker] Failed to open reader connection: {e}")
+                self.signals.error.emit(str(e))
+                return
+
+            # --- TM search ---
+            tm_results = []
+            if not self.tm_search_disabled and self.tab.tm_database and self.tab.engine:
+                try:
+                    tm_results = self.tab.engine.search_tm(
+                        self.text,
+                        direction=self.search_direction,
+                        source_lang=self.from_lang,
+                        target_lang=self.to_lang,
+                        connection=conn,
+                    )
+                except Exception as e:
+                    print(f"[SuperLookupWorker] TM search error: {e}")
+
+            if self.cancel_event.is_set():
+                return
+            self.signals.tm_ready.emit(tm_results)
+
+            # --- Termbase search ---
+            tb_results = []
+            try:
+                tb_results = self.tab.search_termbases(
+                    self.text,
+                    source_lang=self.from_lang,
+                    target_lang=self.to_lang,
+                    connection=conn,
+                )
+            except Exception as e:
+                print(f"[SuperLookupWorker] Termbase search error: {e}")
+
+            if self.cancel_event.is_set():
+                return
+            self.signals.termbase_ready.emit(tb_results)
+        finally:
+            try:
+                if conn is not None and db_manager is not None:
+                    db_manager.close_reader_connection()
+            except Exception:
+                pass
+            self.signals.finished.emit()
+
+
 class SuperlookupTab(QWidget):
     """
     Superlookup - System-wide translation lookup
     Works anywhere on your computer: in CAT tools, browsers, Word, any text box
     """
     
-    def __init__(self, parent=None, user_data_path=None):
+    def __init__(self, parent=None, user_data_path=None, is_sidekick=False):
         super().__init__(parent)
         self.main_window = parent  # Store reference to main window for database access
         self.user_data_path = user_data_path  # Store user data path for web cache
-        
+        # When this SuperlookupTab is hosted inside the Sidekick (FloatingAssistant),
+        # is_sidekick=True. Used to decide whether to mount the QuickTrans
+        # settings widget here (only one place in the app should mount it,
+        # since it owns shared state on the main window via _mtql_checkboxes).
+        self.is_sidekick = is_sidekick
+
         print("[Superlookup] SuperlookupTab.__init__ called")
         
         # Get theme manager from main window (try parent first, then parent's parent for dialogs)
@@ -53279,18 +53474,27 @@ class SuperlookupTab(QWidget):
         self.mt_provider_status_label.setText(status_text)
     
     def _perform_mt_lookup(self, text: str, source_lang: str = None, target_lang: str = None):
-        """Call enabled MT providers and return results"""
-        results = []
-        
+        """Call enabled MT providers in parallel and return results.
+
+        Skips entirely when this SuperlookupTab instance has no MT results table
+        (e.g. inside the Floating Assistant / Sidekick, where MT is handled by
+        QuickTrans's own MTFetchWorker). In that case the previous implementation
+        was making blocking HTTP calls and discarding the results, freezing the
+        UI for up to ~30 s on every Ctrl+Alt+L press.
+        """
+        # Sidekick / Floating Assistant has no MT table — don't burn HTTP calls.
+        if not hasattr(self, 'mt_results_table'):
+            return []
+
         if not self.main_window:
-            return results
-        
+            return []
+
         # Get languages from main window if not provided
         if not source_lang:
             source_lang = getattr(self.main_window, 'source_language', 'en')
         if not target_lang:
             target_lang = getattr(self.main_window, 'target_language', 'nl')
-        
+
         # Get API keys and enabled providers from Settings
         api_keys = {}
         enabled_providers = {}
@@ -53298,7 +53502,7 @@ class SuperlookupTab(QWidget):
             api_keys = self.main_window.load_api_keys()
         if hasattr(self.main_window, 'load_provider_enabled_states'):
             enabled_providers = self.main_window.load_provider_enabled_states()
-        
+
         # Define MT providers with their settings keys and API key names
         providers = [
             ("DeepL", "mt_deepl", "deepl"),
@@ -53308,54 +53512,79 @@ class SuperlookupTab(QWidget):
             ("ModernMT", "mt_modernmt", "modernmt"),
             ("MyMemory", "mt_mymemory", None),
         ]
-        
+
+        # Build the list of provider call closures to dispatch in parallel.
+        active_calls = []
         for provider_name, enabled_key, api_key_name in providers:
-            # Check if provider is enabled in Settings
             is_enabled = enabled_providers.get(enabled_key, True)
             has_key = api_key_name is None or bool(api_keys.get(api_key_name))
-            
             if not is_enabled or not has_key:
                 continue
-            
-            try:
-                translation = None
-                
-                if provider_name == "DeepL" and hasattr(self.main_window, 'call_deepl'):
-                    translation = self.main_window.call_deepl(text, source_lang, target_lang, api_keys.get('deepl'))
-                
-                elif provider_name == "Google Translate" and hasattr(self.main_window, 'call_google_translate'):
-                    translation = self.main_window.call_google_translate(text, source_lang, target_lang, api_keys.get('google_translate'))
-                
-                elif provider_name == "Microsoft Translator" and hasattr(self.main_window, 'call_microsoft_translate'):
-                    translation = self.main_window.call_microsoft_translate(text, source_lang, target_lang, api_keys.get('microsoft_translate'))
-                
-                elif provider_name == "Amazon Translate" and hasattr(self.main_window, 'call_amazon_translate'):
-                    region = api_keys.get('amazon_translate_region', 'us-east-1')
-                    translation = self.main_window.call_amazon_translate(text, source_lang, target_lang, api_keys.get('amazon_translate'), region)
-                
-                elif provider_name == "ModernMT" and hasattr(self.main_window, 'call_modernmt'):
-                    translation = self.main_window.call_modernmt(text, source_lang, target_lang, api_keys.get('modernmt'))
-                
-                elif provider_name == "MyMemory":
-                    # MyMemory is free, call directly
-                    translation = self._call_mymemory(text, source_lang, target_lang)
-                
+
+            mw = self.main_window
+            if provider_name == "DeepL" and hasattr(mw, 'call_deepl'):
+                call = lambda mw=mw, k=api_keys.get('deepl'): mw.call_deepl(text, source_lang, target_lang, k)
+            elif provider_name == "Google Translate" and hasattr(mw, 'call_google_translate'):
+                call = lambda mw=mw, k=api_keys.get('google_translate'): mw.call_google_translate(text, source_lang, target_lang, k)
+            elif provider_name == "Microsoft Translator" and hasattr(mw, 'call_microsoft_translate'):
+                call = lambda mw=mw, k=api_keys.get('microsoft_translate'): mw.call_microsoft_translate(text, source_lang, target_lang, k)
+            elif provider_name == "Amazon Translate" and hasattr(mw, 'call_amazon_translate'):
+                region = api_keys.get('amazon_translate_region', 'us-east-1')
+                call = lambda mw=mw, k=api_keys.get('amazon_translate'), r=region: mw.call_amazon_translate(text, source_lang, target_lang, k, r)
+            elif provider_name == "ModernMT" and hasattr(mw, 'call_modernmt'):
+                call = lambda mw=mw, k=api_keys.get('modernmt'): mw.call_modernmt(text, source_lang, target_lang, k)
+            elif provider_name == "MyMemory":
+                call = lambda: self._call_mymemory(text, source_lang, target_lang)
+            else:
+                continue
+
+            active_calls.append((provider_name, call))
+
+        if not active_calls:
+            return []
+
+        # Fan out: every provider runs concurrently. Total wall-clock is now
+        # max(provider_times) instead of sum(provider_times). Per-future timeout
+        # caps a single misbehaving provider; the overall as_completed wait
+        # caps the whole batch so the UI can never stall longer than that.
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+        import time
+
+        per_provider_timeout = 5.0
+        overall_timeout = 6.0  # small slack over per-provider so timeouts surface as errors
+        results = []
+        deadline = time.monotonic() + overall_timeout
+
+        with ThreadPoolExecutor(max_workers=len(active_calls), thread_name_prefix="sv-mt") as executor:
+            future_to_name = {executor.submit(call): name for name, call in active_calls}
+            for future, provider_name in list(future_to_name.items()):
+                remaining = max(0.0, min(per_provider_timeout, deadline - time.monotonic()))
+                try:
+                    translation = future.result(timeout=remaining)
+                except FuturesTimeout:
+                    future.cancel()
+                    results.append({
+                        'provider': provider_name,
+                        'translation': "[Error: timed out]",
+                        'is_error': True,
+                    })
+                    continue
+                except Exception as e:
+                    print(f"[Superlookup] MT error ({provider_name}): {e}")
+                    results.append({
+                        'provider': provider_name,
+                        'translation': f"[Error: {str(e)}]",
+                        'is_error': True,
+                    })
+                    continue
+
                 if translation:
-                    is_error = translation.startswith('[')
                     results.append({
                         'provider': provider_name,
                         'translation': translation,
-                        'is_error': is_error
+                        'is_error': translation.startswith('['),
                     })
-                    
-            except Exception as e:
-                print(f"[Superlookup] MT error ({provider_name}): {e}")
-                results.append({
-                    'provider': provider_name,
-                    'translation': f"[Error: {str(e)}]",
-                    'is_error': True
-                })
-        
+
         return results
     
     def _call_mymemory(self, text: str, source_lang: str, target_lang: str) -> str:
@@ -54180,16 +54409,49 @@ class SuperlookupTab(QWidget):
         if hasattr(self, 'web_lang_info_label'):
             self.web_lang_info_label.setText(f"Languages: {from_display} → {to_display}")
     
-    def _perform_web_search(self, search_all: bool = False):
+    def _schedule_lazy_web_views(self, query: str, resources, idx: int):
+        """Defer-create / setUrl one QWebEngineView per event-loop tick.
+
+        Recursively schedules itself for the next index until all resources
+        are processed. Yielding to the event loop between each web-view
+        creation keeps the main thread responsive and stops Windows DWM
+        from ghosting the Sidekick window during the lookup.
+
+        Cancellation: if a newer search has fired (self._web_search_query
+        differs from the query this chain was started with), abort.
+        """
+        if getattr(self, '_web_search_query', None) != query:
+            return
+        if idx >= len(resources):
+            return
+        resource = resources[idx]
+        try:
+            url = self._build_web_search_url(resource, query)
+            if url:
+                if resource['id'] not in self.web_views:
+                    self._create_web_view_for_resource(resource)
+                if resource['id'] in self.web_views:
+                    self.web_views[resource['id']].setUrl(QUrl(url))
+        except Exception as e:
+            print(f"[SuperLookup] Lazy web view error for {resource.get('name', '?')}: {e}")
+        QTimer.singleShot(0, lambda: self._schedule_lazy_web_views(query, resources, idx + 1))
+
+    def _perform_web_search(self, search_all: bool = False, silent: bool = False):
         """Perform web search with the selected resource(s)
-        
+
         Args:
             search_all: If True, search all enabled resources (for embedded mode)
+            silent: If True, do NOT touch self.status_label. Used when called from
+                perform_lookup, where the central status line is owned by the
+                background search worker (so its "✓ Found N results" message
+                isn't clobbered by a "Searching all web resources for X" set
+                from this synchronous code path).
         """
         # Use the main Superlookup source text field
         query = self.source_text.currentText().strip()
         if not query:
-            self.status_label.setText("Please enter a search term in the Source Text field above")
+            if not silent:
+                self.status_label.setText("Please enter a search term in the Source Text field above")
             return
         
         # Cache the query for when user switches between resources
@@ -54198,25 +54460,50 @@ class SuperlookupTab(QWidget):
         if self.web_browser_mode == 'embedded' and self.web_engine_available:
             # Embedded mode - load in web views
             if search_all:
-                # Search all resources - create views lazily as needed
-                for resource in self.web_resources:
-                    url = self._build_web_search_url(resource, query)
-                    if url:
-                        if resource['id'] not in self.web_views:
-                            self._create_web_view_for_resource(resource)
-                        if resource['id'] in self.web_views:
-                            self.web_views[resource['id']].setUrl(QUrl(url))
-                # Ensure the currently-selected resource's view is actually
-                # shown in the stack – without this, the stack can remain on
-                # the startup welcome view and the tab looks blank.
-                try:
-                    current_resource = self.web_resources[self.current_web_resource_index]
-                    idx = self._get_web_view_index(current_resource['id'])
-                    if idx >= 0:
-                        self.web_view_stack.setCurrentIndex(idx)
-                except Exception:
-                    pass
-                self.status_label.setText(f"Searching all web resources for '{query}'")
+                # IMPORTANT: each QWebEngineView creation is 100-500 ms on Windows.
+                # Doing 16+ of them in a synchronous loop blocks the main thread
+                # for 3-8 s, which exceeds Windows DWM's "Not Responding"
+                # threshold (~5 s). DWM then ghosts the Sidekick window – it
+                # loses Z-order and apps like Trados Studio (aggressive about
+                # foreground reclaim) immediately pop in front, making Sidekick
+                # appear to "disappear" while the search is running.
+                #
+                # Mitigation: do the currently-visible resource synchronously
+                # (so the user sees results in the active sub-tab right away),
+                # then schedule the rest one-per-event-loop-tick via QTimer.
+                # Total wall-clock is similar but the main thread keeps yielding
+                # to the event loop, so the UI stays responsive and DWM doesn't
+                # mark the app as Not Responding.
+                self._web_search_query = query  # used by deferred ticks for cancellation
+
+                current_idx = self.current_web_resource_index
+                current_resource = (self.web_resources[current_idx]
+                                    if 0 <= current_idx < len(self.web_resources)
+                                    else None)
+
+                # 1. Currently-visible resource: create + setUrl immediately so
+                #    the active sub-tab has results without delay.
+                if current_resource:
+                    try:
+                        url = self._build_web_search_url(current_resource, query)
+                        if url:
+                            if current_resource['id'] not in self.web_views:
+                                self._create_web_view_for_resource(current_resource)
+                            if current_resource['id'] in self.web_views:
+                                self.web_views[current_resource['id']].setUrl(QUrl(url))
+                                view_idx = self._get_web_view_index(current_resource['id'])
+                                if view_idx >= 0:
+                                    self.web_view_stack.setCurrentIndex(view_idx)
+                    except Exception as e:
+                        print(f"[SuperLookup] Web search (current resource) error: {e}")
+
+                # 2. Other resources: schedule lazily, one per event-loop tick.
+                other_resources = [r for i, r in enumerate(self.web_resources) if i != current_idx]
+                if other_resources:
+                    QTimer.singleShot(0, lambda: self._schedule_lazy_web_views(query, other_resources, 0))
+
+                if not silent:
+                    self.status_label.setText(f"Searching all web resources for '{query}'")
             else:
                 # Search current resource only
                 resource = self.web_resources[self.current_web_resource_index]
@@ -54232,7 +54519,8 @@ class SuperlookupTab(QWidget):
                         idx = self._get_web_view_index(resource['id'])
                         if idx >= 0:
                             self.web_view_stack.setCurrentIndex(idx)
-                    self.status_label.setText(f"Loaded {resource['name']} search")
+                    if not silent:
+                        self.status_label.setText(f"Loaded {resource['name']} search")
         else:
             # External mode - open in browser
             resource = self.web_resources[self.current_web_resource_index]
@@ -54259,7 +54547,8 @@ class SuperlookupTab(QWidget):
                 
                 # Open in default browser
                 QDesktopServices.openUrl(QUrl(url))
-                self.status_label.setText(f"Opened {resource['name']} search in browser")
+                if not silent:
+                    self.status_label.setText(f"Opened {resource['name']} search in browser")
     
     def search_all_web_resources(self, query: str):
         """Search all web resources with the given query (called from Superlookup integration)
@@ -54498,18 +54787,28 @@ class SuperlookupTab(QWidget):
             else:
                 self.status_label.setText("Enter a search term in the Source Text field first")
     
+    # Setting key + valid values for the Ctrl+Alt+L landing sub-tab.
+    SUPERLOOKUP_LANDING_TAB_KEY = 'superlookup_landing_tab'
+    SUPERLOOKUP_LANDING_TAB_DEFAULT = 'termbases'
+    SUPERLOOKUP_LANDING_TAB_LABELS = {
+        'quicktrans': 'QuickTrans',
+        'tms': 'TMs',
+        'termbases': 'Termbases',
+        'webresources': 'Web Resources',
+    }
+
     def create_settings_tab(self):
         """Create the Settings tab with sub-tabs for each resource type"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(5)
-        
+
         # Header
         header = QLabel("⚙️ Search Resources Configuration")
         header.setStyleSheet("font-size: 14pt; font-weight: bold; color: #1976D2;")
         layout.addWidget(header, 0)
-        
+
         # Description
         desc = QLabel(
             "Configure which resources to search. Each resource type has its own tab below."
@@ -54517,7 +54816,44 @@ class SuperlookupTab(QWidget):
         desc.setWordWrap(True)
         desc.setStyleSheet("color: #666; padding: 5px 0;")
         layout.addWidget(desc, 0)
-        
+
+        # Ctrl+Alt+L landing-tab preference. Lives above the sub-sub-tabs so
+        # it's visible regardless of which resource sub-tab is selected.
+        # We use a QFrame + QLabel rather than a QGroupBox to dodge the
+        # theme_manager's QGroupBox styling, and CheckmarkRadioButton rather
+        # than plain QRadioButton because the theme strips QRadioButton's
+        # native checked-state indicator (see theme_manager.py:475-486).
+        landing_frame = QFrame()
+        landing_frame.setFrameShape(QFrame.Shape.NoFrame)
+        landing_outer = QVBoxLayout(landing_frame)
+        landing_outer.setContentsMargins(0, 5, 0, 5)
+        landing_outer.setSpacing(2)
+
+        landing_label = QLabel("Ctrl+Alt+L lands on:")
+        landing_label.setStyleSheet("font-weight: bold;")
+        landing_outer.addWidget(landing_label)
+
+        landing_row = QHBoxLayout()
+        landing_row.setContentsMargins(0, 0, 0, 0)
+        landing_row.setSpacing(15)
+
+        self._landing_tab_buttons = {}
+        self._landing_tab_button_group = QButtonGroup(landing_frame)
+        self._landing_tab_button_group.setExclusive(True)
+        current_pref = self._load_superlookup_landing_pref()
+        for value, label in self.SUPERLOOKUP_LANDING_TAB_LABELS.items():
+            rb = CheckmarkRadioButton(label)
+            rb.setChecked(value == current_pref)
+            rb.toggled.connect(
+                lambda checked, v=value: self._on_landing_pref_changed(v, checked)
+            )
+            self._landing_tab_buttons[value] = rb
+            self._landing_tab_button_group.addButton(rb)
+            landing_row.addWidget(rb)
+        landing_row.addStretch()
+        landing_outer.addLayout(landing_row)
+        layout.addWidget(landing_frame, 0)
+
         # Create sub-tabs for each resource type
         self.settings_subtabs = QTabWidget()
         self.settings_subtabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -54537,11 +54873,64 @@ class SuperlookupTab(QWidget):
         # Web Settings sub-tab
         web_settings_tab = self.create_web_settings_subtab()
         self.settings_subtabs.addTab(web_settings_tab, "🌐 Web Resources")
-        
+
+        # QuickTrans Settings sub-tab — only mounted in the Sidekick context
+        # (Workbench Settings → QuickTrans is now a stub that opens this).
+        # Single mount point keeps _mtql_checkboxes / _mtql_llm_combos on the
+        # main window unambiguous.
+        #
+        # The widget is sized for full-window space (Workbench Settings wraps
+        # it in _wrap_in_scroll), so we MUST wrap it in a scroll area here
+        # too — Sidekick is a compact floating window and the un-scrolled
+        # widget gets visually crushed on smaller screens.
+        if self.is_sidekick and self.main_window is not None and \
+           hasattr(self.main_window, '_create_mt_quick_lookup_settings_tab'):
+            try:
+                qt_settings_tab = self.main_window._create_mt_quick_lookup_settings_tab()
+                if hasattr(self.main_window, '_wrap_in_scroll'):
+                    qt_settings_tab = self.main_window._wrap_in_scroll(qt_settings_tab)
+                else:
+                    # Fallback: wrap in a basic QScrollArea so the content is
+                    # at least scrollable in the compact Sidekick window.
+                    scroll = QScrollArea()
+                    scroll.setWidgetResizable(True)
+                    scroll.setFrameShape(QFrame.Shape.NoFrame)
+                    scroll.setWidget(qt_settings_tab)
+                    qt_settings_tab = scroll
+                self.settings_subtabs.addTab(qt_settings_tab, "⚡ QuickTrans")
+            except Exception as e:
+                print(f"[Superlookup] Could not mount QuickTrans settings sub-tab: {e}")
+
         layout.addWidget(self.settings_subtabs, stretch=1)
-        
+
         return tab
-    
+
+    def _load_superlookup_landing_pref(self) -> str:
+        """Read the user's preferred Ctrl+Alt+L landing sub-tab from settings."""
+        try:
+            mw = self.main_window
+            if mw and hasattr(mw, 'load_general_settings'):
+                settings = mw.load_general_settings() or {}
+                value = settings.get(self.SUPERLOOKUP_LANDING_TAB_KEY)
+                if value in self.SUPERLOOKUP_LANDING_TAB_LABELS:
+                    return value
+        except Exception as e:
+            print(f"[Superlookup] Could not load landing tab pref: {e}")
+        return self.SUPERLOOKUP_LANDING_TAB_DEFAULT
+
+    def _on_landing_pref_changed(self, value: str, checked: bool):
+        """Persist the new Ctrl+Alt+L landing sub-tab preference."""
+        if not checked:
+            return  # only react to the newly-selected button
+        try:
+            mw = self.main_window
+            if mw and hasattr(mw, 'load_general_settings') and hasattr(mw, 'save_general_settings'):
+                settings = mw.load_general_settings() or {}
+                settings[self.SUPERLOOKUP_LANDING_TAB_KEY] = value
+                mw.save_general_settings(settings)
+        except Exception as e:
+            print(f"[Superlookup] Could not save landing tab pref: {e}")
+
     def create_tm_settings_subtab(self):
         """Create TM settings sub-tab"""
         tab = QWidget()
@@ -54771,24 +55160,71 @@ class SuperlookupTab(QWidget):
         return tab
     
     def on_results_tab_changed(self, index):
-        """Handle results tab change - refresh resource lists when Settings is viewed.
+        """Handle results tab change.
 
-        Current tab layout after MT and Supermemory tabs were removed:
-        TM=0, Termbase=1, Web Resources=2, Settings=3.
-        Look up the Settings tab dynamically by title so this keeps working
-        if more tabs are added/removed later.
+        Lazy-activation: each sub-tab's work is fired here when (and only
+        when) the user navigates to it.
+
+        - Settings tab: refresh resource lists.
+        - Web Resources tab: fire any pending web search (deferred from
+          perform_lookup so we don't pay the QWebEngineView creation cost
+          when the user never opens this tab).
+        - QuickTrans tab: fire any pending MT fan-out (deferred so we don't
+          spawn N provider HTTP calls when the user never opens this tab,
+          and don't momentarily create the hidden WindowStaysOnTopHint
+          dialog that the MTQuickPopup constructor would otherwise create —
+          which disturbs Z-order and pushes Sidekick behind Trados).
+
+        Look up tabs dynamically by title so this keeps working if more
+        tabs are added / removed later.
         """
         settings_index = -1
+        web_index = -1
+        quicktrans_index = -1
         for i in range(self.results_tabs.count()):
-            if "Settings" in self.results_tabs.tabText(i):
+            label = self.results_tabs.tabText(i)
+            if settings_index < 0 and "Settings" in label:
                 settings_index = i
-                break
+            if web_index < 0 and "Web Resources" in label:
+                web_index = i
+            if quicktrans_index < 0 and "QuickTrans" in label:
+                quicktrans_index = i
 
         if index == settings_index and settings_index >= 0:
             print("[Superlookup] Settings tab viewed - refreshing resource lists")
             self.refresh_tm_list()
             self.refresh_termbase_list()
             self.populate_language_dropdowns()
+
+        if index == web_index and web_index >= 0:
+            if getattr(self, '_web_search_pending', False):
+                self._web_search_pending = False
+                if hasattr(self, 'web_browser_mode') and self.web_browser_mode == 'embedded' \
+                   and hasattr(self, 'web_engine_available') and self.web_engine_available:
+                    try:
+                        self._perform_web_search(search_all=True, silent=True)
+                    except Exception as e:
+                        print(f"[SuperLookup] Deferred web search error: {e}")
+                elif hasattr(self, 'web_browser_mode') and self.web_browser_mode == 'external':
+                    try:
+                        self._perform_web_search(search_all=False, silent=True)
+                    except Exception as e:
+                        print(f"[SuperLookup] Deferred web search (external) error: {e}")
+
+        if index == quicktrans_index and quicktrans_index >= 0:
+            pending = getattr(self, '_quicktrans_pending_text', None)
+            if pending:
+                self._quicktrans_pending_text = None
+                mw = self.main_window
+                fa = getattr(mw, '_floating_assistant', None) if mw else None
+                if fa and hasattr(fa, '_run_quicktrans'):
+                    try:
+                        # switch_to_quicktrans_tab=False because we're
+                        # already on the QuickTrans sub-tab (that's why
+                        # this handler is firing).
+                        fa._run_quicktrans(pending, switch_to_quicktrans_tab=False)
+                    except Exception as e:
+                        print(f"[SuperLookup] Deferred QuickTrans dispatch failed: {e}")
     
     def on_tm_search_toggled(self, state):
         """Handle TM search checkbox toggle"""
@@ -55185,18 +55621,23 @@ class SuperlookupTab(QWidget):
     
     def perform_lookup(self):
         """Perform lookup on the source text.
-        
-        Uses Superlookup's OWN checkbox selections (independent from Resources tab).
+
+        TM and termbase searches run on a background QRunnable so the UI stays
+        responsive even with very large termbases. Results stream back via
+        signals (tm_ready / termbase_ready / finished). MT and web-search
+        stay on the main thread for now — MT is fast (early-outs in Sidekick,
+        parallel via ThreadPoolExecutor in main window), web-search is slow
+        but its cost is QWebEngineView creation, not SQLite.
         """
         text = self.source_text.currentText().strip()
-        
+
         if not text:
             self.status_label.setText("⚠️ No text to search. Enter or capture text first.")
             return
-        
+
         # Add to search history
         self._add_to_search_history(text)
-        
+
         # Always ensure we have the latest databases from main window
         if self.main_window:
             if hasattr(self.main_window, 'tm_database') and self.main_window.tm_database:
@@ -55205,98 +55646,150 @@ class SuperlookupTab(QWidget):
                 self.termbase_mgr = self.main_window.termbase_mgr
             if hasattr(self.main_window, 'db_manager') and self.main_window.db_manager:
                 self.db_manager = self.main_window.db_manager
-        
+
         # Populate language dropdowns if not yet populated (fallback)
         if not self._languages_populated and self.db_manager:
             self.populate_language_dropdowns()
             self._languages_populated = True
-        
+
         if not self.engine:
             # Initialize engine
             self.engine = SuperlookupEngine(mode='universal')
-        
+
         # Always update the engine with current tm_database
         if self.tm_database and self.engine:
             self.engine.set_tm_database(self.tm_database)
-        
+
         self.status_label.setText("🔍 Searching...")
-        QApplication.processEvents()
-        
+
+        # Cancel any in-flight search so its results don't overwrite ours when
+        # they arrive late. Disconnect signals first so even if the worker
+        # emits after we've moved on, the slots aren't called.
+        prev = getattr(self, '_active_search_worker', None)
+        if prev is not None:
+            try:
+                prev.cancel()
+            except Exception:
+                pass
+            for sig in (prev.signals.tm_ready, prev.signals.termbase_ready,
+                        prev.signals.finished, prev.signals.error):
+                try:
+                    sig.disconnect()
+                except Exception:
+                    pass
+
         # Set enabled TM IDs from Superlookup's own checkboxes (independent selection).
-        # NEW BEHAVIOUR (all-checked-by-default model): unchecking every TM in
-        # the Settings → Translation Memories sub-tab disables TM search
-        # entirely. If any TM checkboxes exist but none are selected, skip
-        # the TM search. If the list hasn't been built yet (no checkboxes at
-        # all), fall back to searching everything so we don't silently return
-        # zero results on first use.
         selected_tm_ids = self.get_selected_tm_ids()
         search_direction = self.get_search_direction()
         from_lang, to_lang = self.get_language_filters()
-
         tm_search_disabled = bool(self.tm_checkboxes) and not selected_tm_ids
 
         if self.engine:
-            # None = no filter (search all). When a non-empty selection exists,
-            # restrict to those IDs.
             self.engine.set_enabled_tm_ids(selected_tm_ids if selected_tm_ids else None)
 
-        # Perform TM lookup with direction and language filters
-        tm_results = []
-        if self.tm_database and not tm_search_disabled:
-            tm_results = self.engine.search_tm(text, direction=search_direction,
-                                                source_lang=from_lang, target_lang=to_lang)
-
-        # Perform termbase lookup (search Supervertaler termbases directly)
+        # Clear panels immediately so the user doesn't see stale data while
+        # the new search is in flight.
         try:
-            termbase_results = self.search_termbases(text, source_lang=from_lang, target_lang=to_lang)
+            self.display_tm_results([])
         except Exception:
-            termbase_results = []
-        
-        # Perform Supermemory semantic search
-        supermemory_count = self.search_supermemory(text)
-        
-        # Perform MT lookup with selected providers
-        mt_results = self._perform_mt_lookup(text, from_lang, to_lang)
-        
-        # Display results
-        self.display_tm_results(tm_results)
-        self.display_termbase_results(termbase_results)
-        self.display_mt_results(mt_results)
-        
-        # Build detailed status message showing breakdown (full names for clarity)
-        status_parts = []
-        if tm_results:
-            status_parts.append(f"TM: {len(tm_results)}")
-        if termbase_results:
-            status_parts.append(f"Termbase: {len(termbase_results)}")
-        if supermemory_count:
-            status_parts.append(f"Supermemory: {supermemory_count}")
+            pass
+        try:
+            self.display_termbase_results([])
+        except Exception:
+            pass
 
-        # Trigger web resource searches.
-        # NEW BEHAVIOUR (all-checked-by-default model): unchecking every web
-        # resource in the Settings → Web Resources sub-tab disables web search
-        # entirely. The individual checkbox.stateChanged handler already
-        # hides the corresponding sidebar button, so if NONE are checked the
-        # Web Resources tab has nothing to show – skip the per-engine URL
-        # loads so we don't fire requests to disabled sites.
+        # Track the latest counts so _on_search_finished can update the status.
+        self._search_in_flight_tm = []
+        self._search_in_flight_termbase = []
+
+        # Dispatch the heavy DB work to a worker thread.
+        worker = _SuperLookupSearchWorker(
+            tab=self,
+            text=text,
+            search_direction=search_direction,
+            from_lang=from_lang,
+            to_lang=to_lang,
+            selected_tm_ids=selected_tm_ids,
+            tm_search_disabled=tm_search_disabled,
+        )
+        worker.signals.tm_ready.connect(self._on_search_tm_ready)
+        worker.signals.termbase_ready.connect(self._on_search_termbase_ready)
+        worker.signals.finished.connect(self._on_search_finished)
+        self._active_search_worker = worker
+        QThreadPool.globalInstance().start(worker)
+
+        # MT and supermemory still run synchronously on the main thread:
+        # _perform_mt_lookup early-outs in the Sidekick context (no
+        # mt_results_table) and is parallelised via ThreadPoolExecutor
+        # otherwise, so it doesn't block significantly. Supermemory is a no-op
+        # currently. Both are cheap compared to TM/termbase SQL.
+        self._search_in_flight_supermemory = self.search_supermemory(text) or 0
+        try:
+            mt_results = self._perform_mt_lookup(text, from_lang, to_lang)
+            self.display_mt_results(mt_results)
+        except Exception as e:
+            print(f"[SuperLookup] MT lookup error: {e}")
+
+        # Web Resources – DEFERRED. We do NOT fire _perform_web_search here.
+        # Creating 16+ QWebEngineViews per search is heavy (each spawns a
+        # Chromium subprocess, touches OS-level windowing, and the cumulative
+        # effect on slower machines disrupts Sidekick's Z-order — Trados
+        # Studio aggressively reclaims foreground when our process is busy
+        # creating subprocesses, and Sidekick ends up behind Trados even
+        # though it was never hidden in Qt's view of the world).
+        #
+        # Instead, we just remember that a web search is pending. When (and
+        # only when) the user actually navigates to the Web Resources sub-tab,
+        # on_results_tab_changed fires the search. If the user never opens
+        # the Web Resources tab — and most users using SuperLookup as a
+        # termbase/TM lookup don't — we never pay the cost at all.
         any_web_checked = True
         if hasattr(self, 'web_resource_checkboxes') and self.web_resource_checkboxes:
             any_web_checked = any(cb.isChecked() for cb in self.web_resource_checkboxes)
 
         if hasattr(self, 'web_browser_mode') and any_web_checked:
-            if self.web_browser_mode == 'embedded' and hasattr(self, 'web_engine_available') and self.web_engine_available:
-                self._perform_web_search(search_all=True)
-                status_parts.append("Web Resources")
-            elif self.web_browser_mode == 'external':
-                self._perform_web_search(search_all=False)
-                status_parts.append("Web (external)")
+            self._web_search_pending = True
+        else:
+            self._web_search_pending = False
 
-        total_results = len(tm_results) + len(termbase_results) + (supermemory_count or 0)
-        
-        if status_parts:
-            self.status_label.setText(f"✓ Found {total_results} results ({', '.join(status_parts)})")
+    def _on_search_tm_ready(self, results):
+        """Slot: TM concordance results have arrived from the worker."""
+        self._search_in_flight_tm = results or []
+        try:
+            self.display_tm_results(self._search_in_flight_tm)
+        except Exception as e:
+            print(f"[SuperLookup] display_tm_results error: {e}")
+
+    def _on_search_termbase_ready(self, results):
+        """Slot: termbase results have arrived from the worker."""
+        self._search_in_flight_termbase = results or []
+        try:
+            self.display_termbase_results(self._search_in_flight_termbase)
+        except Exception as e:
+            print(f"[SuperLookup] display_termbase_results error: {e}")
+
+    def _on_search_finished(self):
+        """Slot: worker done – update the status line with final counts."""
+        tm_count = len(getattr(self, '_search_in_flight_tm', []) or [])
+        tb_count = len(getattr(self, '_search_in_flight_termbase', []) or [])
+        sm_count = getattr(self, '_search_in_flight_supermemory', 0) or 0
+
+        parts = []
+        if tm_count:
+            parts.append(f"TM: {tm_count}")
+        if tb_count:
+            parts.append(f"Termbase: {tb_count}")
+        if sm_count:
+            parts.append(f"Supermemory: {sm_count}")
+
+        total = tm_count + tb_count + sm_count
+        if parts:
+            self.status_label.setText(f"✓ Found {total} results ({', '.join(parts)})")
         else:
             self.status_label.setText("No results found")
+
+        # Drop the worker reference so it can be garbage-collected.
+        self._active_search_worker = None
     
     def search_with_query(self, query: str, switch_to_vertical: bool = True, 
                           source_lang: str = None, target_lang: str = None):
@@ -56110,16 +56603,24 @@ class SuperlookupTab(QWidget):
         # Return as-is (already a code like 'en', 'nl')
         return lang_lower
     
-    def search_termbases(self, text, source_lang = None, target_lang = None):
+    # Hard cap on termbase results to keep the UI responsive when very large
+    # termbases are loaded (otherwise we'd build thousands of QTableWidgetItems
+    # synchronously and freeze on render).
+    SUPERLOOKUP_TERMBASE_RESULT_CAP = 500
+
+    def search_termbases(self, text, source_lang=None, target_lang=None, connection=None):
         """Search Supervertaler termbases for matching terms.
-        
+
         Uses Superlookup's OWN checkbox selections (independent from Resources > Termbases).
         Respects the search direction setting (source only, target only, or both).
-        
+
         Args:
             text: Text to search for
             source_lang: Filter by source language - can be a string OR a list of variants (None = any)
             target_lang: Filter by target language - can be a string OR a list of variants (None = any)
+            connection: Optional sqlite3.Connection for thread-safe access (used by the
+                SuperLookup background search worker). When None, the main-thread
+                cursor is used via termbase_mgr.
         """
         results = []
         
@@ -56158,7 +56659,7 @@ class SuperlookupTab(QWidget):
             # list hasn't been built yet (no checkboxes at all), fall back to
             # searching all termbases so first-use returns results.
             selected_tb_ids = self.get_selected_termbase_ids()
-            all_termbases = self.termbase_mgr.get_all_termbases()
+            all_termbases = self.termbase_mgr.get_all_termbases(connection=connection)
 
             if self.tb_checkboxes and not selected_tb_ids:
                 # User has explicitly unchecked every termbase → disabled.
@@ -56198,7 +56699,7 @@ class SuperlookupTab(QWidget):
                         continue
                 
                 print(f"[DEBUG search_termbases] Searching in '{termbase['name']}'")
-                terms = self.termbase_mgr.get_terms(termbase_id)
+                terms = self.termbase_mgr.get_terms(termbase_id, connection=connection)
                 
                 for term in terms:
                     source_term = term.get('source_term', '').lower()
@@ -56262,7 +56763,12 @@ class SuperlookupTab(QWidget):
                                 'forbidden': term.get('forbidden', False)
                             }
                         ))
-            
+                        if len(results) >= self.SUPERLOOKUP_TERMBASE_RESULT_CAP:
+                            break
+                if len(results) >= self.SUPERLOOKUP_TERMBASE_RESULT_CAP:
+                    print(f"[search_termbases] Hit result cap of {self.SUPERLOOKUP_TERMBASE_RESULT_CAP}; stopping early.")
+                    break
+
             # Remove duplicates
             seen = set()
             unique_results = []
@@ -57098,18 +57604,21 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Error in hotkey handler: {e}")
 
     def _read_clipboard_for_superlookup(self):
-        """Read clipboard and dispatch to Superlookup in the floating assistant."""
-        text = pyperclip.paste()
-        if not text:
-            return
+        """Read clipboard and dispatch to Superlookup in the floating assistant.
+
+        We open the Sidekick window even when the clipboard is empty so the
+        user always gets visible feedback for Ctrl+Alt+L. Without text we just
+        skip the auto-search; the user can type into the search field manually.
+        """
+        text = pyperclip.paste() or ""
 
         # Route to the floating assistant's Superlookup tab if available
         mw = self.main_window
         assistant = getattr(mw, '_floating_assistant', None) if mw else None
         if assistant and hasattr(assistant, 'show_superlookup'):
             assistant.show_superlookup(text)
-        else:
-            # Fallback to main window Superlookup
+        elif text:
+            # Fallback to main window Superlookup (only useful with text)
             self.on_ahk_capture(text)
 
     @pyqtSlot()

@@ -29,22 +29,21 @@ class ChatViewWidget(QWidget):
 
     Parameters:
         backend: ChatBackend instance (shared across views)
-        show_autoprompt: show the AutoPrompt header button
         compact: tighter spacing for embedding in a floating window
+
+    Note: the AutoPrompt button used to live in this widget (gated by a
+    ``show_autoprompt`` constructor flag). It now lives in the Prompt
+    Library toolbar instead, since AutoPrompt creates a prompt that
+    naturally belongs in the library next to other prompts.
     """
 
     # Emitted when the user presses Escape in the input field
     escape_pressed = pyqtSignal()
 
-    # Emitted when AutoPrompt button is clicked (caller wires the action)
-    autoprompt_requested = pyqtSignal()
-
     def __init__(self, backend: ChatBackend, parent=None, *,
-                 show_autoprompt: bool = False,
                  compact: bool = False):
         super().__init__(parent)
         self._backend = backend
-        self._show_autoprompt = show_autoprompt
         self._compact = compact
 
         self._chat_display: QListWidget = None
@@ -67,22 +66,6 @@ class ChatViewWidget(QWidget):
         m = 2 if self._compact else 5
         layout.setContentsMargins(m, m, m, m)
         layout.setSpacing(3 if self._compact else 5)
-
-        # Optional AutoPrompt button
-        if self._show_autoprompt:
-            btn = QPushButton("\U0001F50D AutoPrompt")
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #1976D2; color: white;
-                    font-size: 11pt; font-weight: bold;
-                    padding: 10px; border-radius: 5px;
-                }
-                QPushButton:hover { background-color: #1565C0; }
-                QPushButton:pressed { background-color: #0D47A1; }
-                QPushButton:focus { outline: none; }
-            """)
-            btn.clicked.connect(self.autoprompt_requested.emit)
-            layout.addWidget(btn, 0)
 
         # Chat display
         self._chat_display = QListWidget()

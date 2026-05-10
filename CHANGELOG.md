@@ -2,7 +2,49 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.482 (May 9, 2026)
+**Current Version:** v1.9.484 (May 11, 2026)
+
+
+## v1.9.484 – May 11, 2026
+
+### Changed (AutoPrompt – button moved out of the AI chat view)
+
+- The AutoPrompt button no longer lives at the top of the AI Assistant chat view. Its previous styling – 11pt bold white on a solid full-width blue bar – read as a section heading rather than an action, and a user pointed out it was easy to miss. It now sits in the **Prompt Library toolbar** in the Prompt Manager sub-tab as **"✨ AutoPrompt"**, next to **+ New** and **📁 New Folder**, because all three create a prompt entry – manual, folder, or auto-generated. Tooltip explains what it does on hover.
+- After AutoPrompt creates a prompt, the user is now navigated straight to it: the AI tab switches to **Prompt Manager**, the new prompt is selected in the Prompt Library tree (parents auto-expanded, scrolled into view), and the prompt's content loads into the Prompt Editor pane on the right. Previously the user was left in the chat view with only a confirmation message and had to click around to find the prompt that was just created.
+- Terminology consistency: the panel title that read **"Active Prompt"** is now **"Custom Prompt"**, matching the field label inside it (`Custom Prompt ⭐:`). The chat confirmation message changed from "and activated as primary" to **"and set as the active Custom Prompt ⭐"**, and the status-bar log message changed from `✓ Set primary: X` to `✓ Set Custom Prompt ⭐: X`. One concept, one set of words.
+- `ChatViewWidget` is now leaner – the `show_autoprompt` constructor flag and `autoprompt_requested` signal were removed since no caller used them after the move.
+- Internal cleanup: the unused `_create_header()` method in `unified_prompt_manager_qt.py` (76 lines, never called) was deleted. It was a near-duplicate of `_create_library_buttons()` and caused real "wrong twin" confusion when the AutoPrompt button was first added to it instead of the live toolbar.
+
+
+## v1.9.483 – May 11, 2026
+
+### Changed (SuperLookup overhaul – responsiveness, deferral, focus race fix)
+
+The Sidekick's SuperLookup tab was unresponsive on every Ctrl+Alt+L press, sometimes for long enough that Python crashed. Root cause was a stack of issues all hitting the main Qt thread at once on every search. Fixed in layers:
+
+- **TM and termbase searches now run on a background `QRunnable` worker.** The worker uses a thread-local SQLite reader connection (new `DatabaseManager.get_reader_connection()` infrastructure with WAL + busy_timeout=15s + query_only=1) so it can read while Trados (cross-process) is writing without contention. Cancellation flag means a second Ctrl+Alt+L press immediately abandons the in-flight search instead of letting stale results overwrite the new ones. Hard cap of 500 termbase results prevents UI death on pathological matches.
+- **MT providers (DeepL, Google, Microsoft, Amazon, ModernMT, MyMemory) now run in parallel** via `concurrent.futures.ThreadPoolExecutor` instead of one-at-a-time. Per-provider timeout dropped to 5s, overall batch capped at 6s. In the Sidekick context (where MT is handled separately by QuickTrans's own worker), `_perform_mt_lookup` now early-outs entirely – it was making N HTTP calls per Ctrl+Alt+L press and discarding the results. Was the dominant freeze cause.
+- **Web Resources search is fully deferred until the user opens the Web Resources sub-tab.** Creating 16+ `QWebEngineView` instances during `perform_lookup` (each spawns a Chromium subprocess) was 3–8s of main-thread block – exceeding Windows DWM's "Not Responding" threshold and ghosting the Sidekick window. Now we just set a pending flag; `on_results_tab_changed` fires the search lazily when the tab is actually viewed. Users who never open Web Resources never pay the cost.
+- **QuickTrans MT fan-out is deferred unless the user's landing tab is QuickTrans.** Same reasoning – spawning N provider calls and creating a hidden `WindowStaysOnTopHint` `MTQuickPopup` dialog every Ctrl+Alt+L press was wasted work plus a Z-order disturbance. The MT fetch now fires on demand when the user navigates to the QuickTrans sub-tab.
+- **Sidekick's window flags now include `Qt.WindowType.WindowStaysOnTopHint`.** The actual fix for the "Sidekick gets buried by Trados while results load" symptom – Trados Studio aggressively reclaims foreground after a global hotkey fires, and no amount of `SetForegroundWindow` / `AttachThreadInput` / topmost-flip-then-drop could win that race because Trados re-fires its claim a few hundred ms after Sidekick appears. Putting Sidekick in the topmost Z-order class durably prevents the bury. The flag only matters while Sidekick is visible – Escape hides it and the normal Z-order is restored.
+
+### Added (Configurable Ctrl+Alt+L landing tab)
+
+- New radio-button group at the top of **SuperLookup → SuperLookup Settings** lets the user pick which sub-tab Ctrl+Alt+L lands on: **QuickTrans**, **TMs**, **Termbases** (default), or **Web Resources**. Persists in `general_settings.json` under `superlookup_landing_tab`.
+- The chosen sub-tab is set unconditionally on every Ctrl+Alt+L press, so the inner sub-tab is no longer sticky from the user's last visit.
+- Empty-clipboard no-op fixed: pressing Ctrl+Alt+L with nothing on the clipboard now opens the Sidekick window correctly (just doesn't auto-search). Previously it silently returned without showing the window.
+- Uses `CheckmarkRadioButton` (existing custom class) for the radio buttons since the global theme stylesheet strips QRadioButton's native checked-state indicator – plain `QRadioButton` rendered as squares with no visible "selected" feedback.
+
+### Changed (QuickTrans settings moved to SuperLookup Settings)
+
+- The QuickTrans configuration page (provider on/off + LLM model selectors + Save) has moved out of **Workbench Settings → ⚡ QuickTrans** into a new **⚡ QuickTrans** sub-sub-tab inside **Sidekick → SuperLookup → SuperLookup Settings**, so it sits next to where it's actually used.
+- Workbench Settings → QuickTrans is now a stub page with a brief explanation and a one-click **"Open in Sidekick"** button that opens Sidekick and navigates to the new location (outer SuperLookup, inner SuperLookup Settings, sub-sub-tab QuickTrans). Discoverability for users looking in the old place is preserved.
+- `SuperlookupTab.__init__` now takes an `is_sidekick=False` flag. Only the Sidekick instance mounts the QuickTrans widget – keeps `_mtql_checkboxes` / `_mtql_llm_combos` on the main window unambiguous (single source of truth, single set of widget references).
+- The widget is wrapped in `_wrap_in_scroll` when mounted in the Sidekick context so the form scrolls vertically inside the compact floating window.
+
+### Fixed (status line clobbering)
+
+- `_perform_web_search` no longer overwrites the SuperLookup status line with `Searching all web resources for 'X'` when invoked from `perform_lookup`. The status line is now owned solely by the background search worker and shows the final `✓ Found N results (TM: X, Termbase: Y)` correctly. Web search keeps its own status updates when invoked from the Web Resources tab's "Search All" button or other entry points (new `silent` parameter).
 
 
 ## v1.9.482 – May 9, 2026

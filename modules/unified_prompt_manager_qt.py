@@ -937,12 +937,11 @@ class UnifiedPromptManagerQt:
         # in Supervertaler.py so it's visible alongside the translation grid.
         self.assistant_tab = self._create_ai_assistant_tab()
 
-        # Tab 3: AI Assistant (full-width view, for use without a project open)
-        self._ai_tab_chat_view = ChatViewWidget(
-            self.chat_backend,
-            show_autoprompt=True,
-        )
-        self._ai_tab_chat_view.autoprompt_requested.connect(self._analyze_and_generate)
+        # Tab 3: AI Assistant (full-width view, for use without a project open).
+        # AutoPrompt is no longer shown here — it now lives in the Prompt
+        # Library toolbar (Prompt Manager tab) where the created prompt
+        # immediately appears and can be edited.
+        self._ai_tab_chat_view = ChatViewWidget(self.chat_backend)
         self._ai_tab_chat_view._do_send = self._context_aware_send
         self._ai_tab_chat_view.escape_pressed.connect(self._return_from_assistant)
         self.sub_tabs.addTab(self._ai_tab_chat_view, "💬 Assistant")
@@ -1105,11 +1104,26 @@ class UnifiedPromptManagerQt:
         btn_new = QPushButton("+ New")
         btn_new.clicked.connect(self._new_prompt)
         btn_layout.addWidget(btn_new)
-        
+
         btn_folder = QPushButton("📁 New Folder")
         btn_folder.clicked.connect(self._new_folder)
         btn_layout.addWidget(btn_folder)
-        
+
+        # AutoPrompt: create a domain-specific prompt automatically by analysing
+        # the current document. Lives next to "+ New" and "📁 New Folder"
+        # because both create a new prompt entry — manual vs auto-generated.
+        # Was previously a misleading heading-styled button at the top of the
+        # AI chat view; moved here so the generated prompt appears in-place
+        # and the user can immediately see and edit it.
+        btn_auto = QPushButton("✨ AutoPrompt")
+        btn_auto.setToolTip(
+            "Analyse the current document (domain, tone, terminology) and "
+            "auto-generate a tailored translation prompt."
+        )
+        btn_auto.setStyleSheet("font-weight: bold; color: #1976D2;")
+        btn_auto.clicked.connect(self._analyze_and_generate)
+        btn_layout.addWidget(btn_auto)
+
         btn_settings = QPushButton("⚙️ System Prompts")
         btn_settings.clicked.connect(self._open_system_prompts_settings)
         btn_settings.setToolTip("Configure mode-specific system prompts (Settings)")
@@ -1140,12 +1154,11 @@ class UnifiedPromptManagerQt:
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
 
-        # Chat view widget (with AutoPrompt button + context chips)
-        self._grid_chat_view = ChatViewWidget(
-            self.chat_backend,
-            show_autoprompt=True,
-        )
-        self._grid_chat_view.autoprompt_requested.connect(self._analyze_and_generate)
+        # Chat view widget (context chips). AutoPrompt was previously
+        # shown here too as a header-styled button — moved to the Prompt
+        # Library toolbar where it sits with related actions and the
+        # generated prompt immediately appears in-place.
+        self._grid_chat_view = ChatViewWidget(self.chat_backend)
         self._grid_chat_view._do_send = self._context_aware_send
         self._grid_chat_view.escape_pressed.connect(self._return_from_assistant)
         layout.addWidget(self._grid_chat_view, 1)
@@ -1792,67 +1805,6 @@ class UnifiedPromptManagerQt:
         view._do_send = self._context_aware_send
         return view
 
-    def _create_header(self) -> QWidget:
-        """Create header - matches TMX Editor style exactly"""
-        header_container = QWidget()
-        layout = QVBoxLayout(header_container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(5)  # Reduced from 10 to 5 for tighter spacing
-        
-        # Header (matches TMX Editor style)
-        title = QLabel("📋 Prompt Manager")
-        title.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
-        layout.addWidget(title, 0)  # 0 = no stretch, stays compact
-        
-        # Description box (matches TMX Editor style)
-        desc_text = QLabel(
-            f"Custom instructions for AI translation.\n"
-            f"• Mode: {self._get_mode_display_name()}"
-        )
-        desc_text.setWordWrap(True)
-        desc_text.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(desc_text, 0)  # 0 = no stretch, stays compact
-        self.mode_label = desc_text  # Store reference for updates
-        
-        # Toolbar buttons row
-        toolbar = QWidget()
-        toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(0, 5, 0, 0)
-        toolbar_layout.setSpacing(5)
-        
-        btn_new = QPushButton("+ New")
-        btn_new.clicked.connect(self._new_prompt)
-        toolbar_layout.addWidget(btn_new)
-        
-        btn_folder = QPushButton("📁 New Folder")
-        btn_folder.clicked.connect(self._new_folder)
-        toolbar_layout.addWidget(btn_folder)
-        
-        btn_settings = QPushButton("⚙️ System Prompts")
-        btn_settings.clicked.connect(self._open_system_prompts_settings)
-        btn_settings.setToolTip("Configure mode-specific system prompts (Settings)")
-        toolbar_layout.addWidget(btn_settings)
-        
-        btn_refresh = QPushButton("🔄 Refresh")
-        btn_refresh.clicked.connect(self._refresh_library)
-        toolbar_layout.addWidget(btn_refresh)
-
-        btn_collapse_all = QPushButton("▸ Collapse all")
-        btn_collapse_all.setToolTip("Collapse all folders in the Prompt Library tree")
-        btn_collapse_all.clicked.connect(self._collapse_prompt_library_tree)
-        toolbar_layout.addWidget(btn_collapse_all)
-
-        btn_expand_all = QPushButton("▾ Expand all")
-        btn_expand_all.setToolTip("Expand all folders in the Prompt Library tree")
-        btn_expand_all.clicked.connect(self._expand_prompt_library_tree)
-        toolbar_layout.addWidget(btn_expand_all)
-        
-        toolbar_layout.addStretch()
-        
-        layout.addWidget(toolbar, 0)
-        
-        return header_container
-    
     def _create_library_tree_panel(self) -> QWidget:
         """Create left panel with folder tree"""
         panel = QWidget()
@@ -1874,7 +1826,9 @@ class UnifiedPromptManagerQt:
     
     def _create_active_config_panel(self) -> QGroupBox:
         """Create active prompt configuration panel"""
-        group = QGroupBox("Active Prompt")
+        # GroupBox title matches the field label inside ("Custom Prompt ⭐")
+        # so the user sees one consistent term throughout the UI.
+        group = QGroupBox("Custom Prompt")
         layout = QVBoxLayout()
         
         # Mode info (read-only, auto-selected)
@@ -2798,7 +2752,7 @@ class UnifiedPromptManagerQt:
             prompt_data = self.library.prompts[relative_path]
             self.primary_prompt_label.setText(prompt_data.get('name', 'Unnamed'))
             self.primary_prompt_label.setStyleSheet("color: #000; font-weight: bold;")
-            self.log_message(f"✓ Set primary: {prompt_data.get('name')}")
+            self.log_message(f"✓ Set Custom Prompt ⭐: {prompt_data.get('name')}")
             # Also display in the editor
             self._load_prompt_in_editor(relative_path)
     
@@ -4809,6 +4763,10 @@ IMPORTANT:
                     self._refresh_tree()
                 if hasattr(self, '_update_active_prompt_display'):
                     self._update_active_prompt_display()
+                # Navigate the user to the newly-created prompt so they can
+                # immediately see and edit it (rather than leaving them in
+                # the chat view with just a confirmation message).
+                self._navigate_to_created_prompt(result.get('path'))
             else:
                 self._add_chat_message("system", f"⚠ Failed to create prompt: {result.get('message', 'Unknown error')}")
         except Exception as e:
@@ -4824,6 +4782,43 @@ IMPORTANT:
                 self._refresh_tree()
             if hasattr(self, '_update_active_prompt_display'):
                 self._update_active_prompt_display()
+            # If a prompt was created, navigate the user to it so they can
+            # immediately see and edit it.
+            for r in action_results:
+                if r.get('success') and r.get('action') == 'create_prompt':
+                    res = r.get('result') or {}
+                    path = res.get('path')
+                    if path:
+                        self._navigate_to_created_prompt(path)
+                        break
+
+    def _navigate_to_created_prompt(self, relative_path: str):
+        """After a prompt is auto-created (AutoPrompt), bring the user to it.
+
+        Switches the AI tab to the Prompt Manager sub-tab, selects the new
+        prompt in the library tree, scrolls it into view, and loads it into
+        the Prompt Editor pane. Best-effort — silently no-ops if any of the
+        UI pieces aren't available (e.g. headless contexts).
+        """
+        if not relative_path:
+            return
+        try:
+            # 1. Switch to Prompt Manager sub-tab
+            if hasattr(self, 'sub_tabs') and self.sub_tabs is not None:
+                for i in range(self.sub_tabs.count()):
+                    if "Prompt Manager" in self.sub_tabs.tabText(i):
+                        self.sub_tabs.setCurrentIndex(i)
+                        break
+
+            # 2. Select + reveal the prompt in the library tree
+            if hasattr(self, '_select_and_reveal_prompt'):
+                self._select_and_reveal_prompt(relative_path, prefer_library_tree=True)
+
+            # 3. Load it into the Prompt Editor pane
+            if hasattr(self, '_load_prompt_in_editor'):
+                self._load_prompt_in_editor(relative_path)
+        except Exception as e:
+            self.log_message(f"[AI Assistant] Could not navigate to new prompt: {e}")
 
     def _reload_chat_display(self):
         """Reload chat display from history – now handled by ChatViewWidget via signals."""
