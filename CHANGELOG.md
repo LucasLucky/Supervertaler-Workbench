@@ -439,7 +439,7 @@ Two distinct bugs surfaced after the v1.9.449 Sidekick scaling work, both report
 
 ### Added (context-sensitive "?" help button on the Clipboard tab)
 
-- Second placement of the [`HelpButton`](modules/styled_widgets.py) introduced in v1.9.445. Sits next to the "Clear all" button in the [Clipboard tab header](modules/clipboard_manager_widget.py) and opens the [Clipboard GitBook page](https://supervertaler.gitbook.io/help/workbench/sidekick/clipboard) in the user's default browser.
+- Second placement of the [`HelpButton`](modules/styled_widgets.py) introduced in v1.9.445. Sits next to the "Clear all" button in the [Clipboard tab header](modules/clipboard_manager_widget.py) and opens the [Clipboard GitBook page](https://supervertaler.gitbook.io/help/get-started-1/workbench/sidekick/clipboard) in the user's default browser.
 
 ---
 
@@ -450,7 +450,7 @@ Two distinct bugs surfaced after the v1.9.449 Sidekick scaling work, both report
 - Mirrors the Trados plugin's convention: a small flat 22×22 px circular grey "?" button sits at the top-right of a section / tab / dialog and one click opens the corresponding GitBook help page in the user's default browser.
 - New shared widget [`HelpButton`](modules/styled_widgets.py) – takes a topic identifier from [`Topics`](modules/help_system.py) (e.g. `Topics.AUTOFINGERS`), wires up the click → `open_help(topic)` itself, no boilerplate at the call site. Tooltip defaults to "Open help for this section". Doesn't grab tab focus, so it doesn't interfere with form navigation.
 - Pairs with the existing F1 system: F1 walks the widget tree to find the nearest `set_topic`-tagged ancestor, so adding a `HelpButton` AND tagging the same widget gives users two equivalent paths to the same documentation page.
-- First placement: top-right of the [AutoFingers tab header](modules/autofingers_tab.py) → opens the [AutoFingers GitBook page](https://supervertaler.gitbook.io/help/workbench/sidekick/autofingers). More to follow as we sprinkle "?" buttons across other Workbench surfaces (Settings, dialogs, Sidekick tabs).
+- First placement: top-right of the [AutoFingers tab header](modules/autofingers_tab.py) → opens the [AutoFingers GitBook page](https://supervertaler.gitbook.io/help/get-started-1/workbench/sidekick/autofingers). More to follow as we sprinkle "?" buttons across other Workbench surfaces (Settings, dialogs, Sidekick tabs).
 
 ---
 
@@ -933,7 +933,7 @@ Privacy: the bridge listens only on `127.0.0.1`, requires a per-session Bearer t
 
 ### Fixed
 
-- **Help → Supervertaler Workbench Help now opens the current GitBook docs site.** The menu item, the placeholder Help tab label, and the `_open_superdocs_tab` fallback all still pointed to the deprecated VitePress site `https://help.supervertaler.com/`. They now open `https://supervertaler.gitbook.io/help/workbench/` — the unified GitBook site that hosts both the Workbench and Trados plugin documentation. Reported by a user.
+- **Help → Supervertaler Workbench Help now opens the current GitBook docs site.** The menu item, the placeholder Help tab label, and the `_open_superdocs_tab` fallback all still pointed to the deprecated VitePress site `https://help.supervertaler.com/`. They now open `https://supervertaler.gitbook.io/help/get-started-1/workbench/` — the unified GitBook site that hosts both the Workbench and Trados plugin documentation. Reported by a user.
 
 ---
 
