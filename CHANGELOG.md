@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.488 (May 11, 2026)
+**Current Version:** v1.9.489 (May 11, 2026)
+
+
+## v1.9.489 – May 11, 2026
+
+### Fixed (Tabs still centred on macOS — v1.9.486 fix was ineffective)
+
+- v1.9.486 added `QTabWidget::tab-bar { alignment: left; }` to the global app stylesheet to left-align tabs on macOS. The rule looked right but was completely ineffective because of two stylesheet-precedence issues that I missed:
+  - `modules/theme_manager.py:apply_theme()` calls `app.setStyleSheet(stylesheet)` and **replaces** the entire app stylesheet — wiping out the alignment rule the moment any theme is applied.
+  - Several individual `QTabWidget` instances (e.g. `main_tabs` in `Supervertaler.py:9666`) call their own `setStyleSheet(...)`, which shadows the app stylesheet for that specific widget. Even if the app-level rule survives the theme, it can't reach those widgets.
+- Proper fix lives in the existing `_NoFocusRectStyle` QProxyStyle: extended to also override `styleHint(SH_TabBar_Alignment)` returning `Qt.AlignmentFlag.AlignLeft`. Style hints are queried by every `QTabBar` at paint time and are **not** affected by stylesheets, so this path reaches every tab bar in the app regardless of theme changes, per-widget overrides, or future stylesheet additions.
+- The previous CSS rule is kept as belt-and-braces but the proxy-style override is the load-bearing piece.
 
 
 ## v1.9.488 – May 11, 2026

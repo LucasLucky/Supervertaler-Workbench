@@ -58863,10 +58863,12 @@ def main():
             outline: none;
         }
         /* Left-align every QTabWidget's tab bar.
-           Without this rule the Fusion style still centres tabs on macOS
-           – which doesn't match the Windows / Linux layout users expect.
-           Applies to every QTabWidget app-wide, including nested
-           sub-tabs and the SuperLookup results sub-tabs. */
+           Belt-and-braces with the QProxyStyle SH_TabBar_Alignment
+           override below — the proxy-style path is the load-bearing
+           one because theme_manager.apply_theme() resets the app
+           stylesheet (wiping any per-stylesheet rule), and per-widget
+           setStyleSheet calls shadow the app stylesheet for that
+           widget. Style hints are CSS-independent and survive both. */
         QTabWidget::tab-bar {
             alignment: left;
         }
@@ -58898,6 +58900,22 @@ def main():
             if element == QStyle.PrimitiveElement.PE_FrameFocusRect:
                 return
             super().drawPrimitive(element, option, painter, widget)
+
+        def styleHint(self, hint, option=None, widget=None, returnData=None):
+            # Force left-alignment on every QTabBar in the app.
+            # QMacStyle returns AlignCenter for SH_TabBar_Alignment, and
+            # even on Fusion we can't rely on the app stylesheet rule
+            # (`QTabWidget::tab-bar { alignment: left }`) because
+            # theme_manager.apply_theme() replaces the app stylesheet
+            # wholesale, and individual QTabWidgets routinely set their
+            # own per-widget stylesheet which shadows the app rule for
+            # that widget. Style hints are queried by the widget at paint
+            # time and are not affected by stylesheets, so this override
+            # is the only path that reliably reaches every QTabBar
+            # regardless of theme / per-widget overrides.
+            if hint == QStyle.StyleHint.SH_TabBar_Alignment:
+                return int(Qt.AlignmentFlag.AlignLeft)
+            return super().styleHint(hint, option, widget, returnData)
 
     app.setStyle(_NoFocusRectStyle(app.style()))
 
