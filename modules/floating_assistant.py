@@ -687,7 +687,6 @@ class FloatingAssistant(QWidget):
         self._chat_view = ChatViewWidget(
             self._backend,
             compact=True,
-            show_autoprompt=False,
         )
         if hasattr(self._parent_app, 'prompt_manager_qt'):
             self._chat_view._do_send = self._parent_app.prompt_manager_qt._context_aware_send

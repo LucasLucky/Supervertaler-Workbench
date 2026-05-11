@@ -12113,6 +12113,19 @@ class SupervertalerQt(QMainWindow):
             for tu_id, sub_segs in tu_groups.items():
                 sub_segs.sort(key=lambda pair: pair[0])
                 combined = ' '.join(t for _, t in sub_segs)
+
+                # Strip Okapi-internal run tags (<run1>, </run2>, …) that
+                # occasionally leak through from the source-to-cf
+                # conversion when SRX segments split inside an inline run.
+                # Our format uses <cf>/<b>/<i> etc.; <run\d+> tags should
+                # never appear in user-facing translations. If they reach
+                # /merge they unbalance Okapi's tag stack and crash the
+                # OpenXML writer with NoSuchElementException — see the
+                # BlockTextUnitWriter.writeCode → ArrayDeque.pop crash
+                # reported by a Mac user on v1.9.484 with a docx whose
+                # paragraphs had inline run boundaries mid-sentence.
+                combined = _re.sub(r'</?run\d+>', '', combined)
+
                 translations.append({
                     'id': tu_id,
                     'segmentIndex': 0,

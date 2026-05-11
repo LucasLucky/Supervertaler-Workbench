@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.484 (May 11, 2026)
+**Current Version:** v1.9.485 (May 11, 2026)
+
+
+## v1.9.485 – May 11, 2026
+
+### Fixed (Floating Assistant / Sidekick failed to load on v1.9.484)
+
+- The AutoPrompt cleanup in v1.9.484 removed the `show_autoprompt` constructor parameter from `ChatViewWidget` and updated the two callers that passed `show_autoprompt=True`. A third caller in `modules/floating_assistant.py` still passed `show_autoprompt=False`, which threw `TypeError: ChatViewWidget.__init__() got an unexpected keyword argument 'show_autoprompt'` during Sidekick construction. The error was caught and logged (`⚠ Failed to create Floating Assistant`) so the rest of the app still ran, but the Sidekick was unavailable for the entire session. Fix is a single deletion of the now-redundant kwarg.
+
+### Fixed (Okapi DOCX merge crashed with NoSuchElementException on documents with inline runs split mid-sentence)
+
+- A Mac user reported their docx export aborting with `Okapi merge failed, falling back to standard: None`. Sidecar log showed Okapi's `BlockTextUnitWriter.writeCode` popping from an empty tag stack — `ArrayDeque.pop` threw `NoSuchElementException` — because our combined translation contained a dangling `</run2>` with no matching opener. Root cause: when SRX segments a paragraph at a sentence boundary that falls inside an inline run (e.g. `<run1>GENERAL CAUTION</run1><run2>:  </run2>Read this entire ...`), the closing `</run2>` ends up at the start of segment 2, and the source-to-cf converter passes it through verbatim. Our `/merge` sub-segment combiner then concatenates two translations into a string that Okapi can't reconstruct.
+- Fix is a one-line strip in the combiner: `combined = re.sub(r'</?run\d+>', '', combined)`. `<run\d+>` are Okapi-internal markers; user-facing translations only use `<cf>`/`<b>`/`<i>`/etc. Stripping any that leak through is safe because Okapi rebuilds the proper inline-code structure from the source codes table — our job is only to deliver the translated text + content tags.
+- The fallback path (using the original document as a template) still kicks in for any remaining /merge failures, so users never lose their translation — they just lose Okapi's higher-fidelity inline-code reconstruction for that specific document.
+
+### Fixed (Okapi sidecar download URL still pointed at v0.1.6)
+
+- `modules/okapi_sidecar.py:EXPECTED_VERSION` has been `"0.1.7"` since v1.9.472 but `INSTALLER_URL_JAR_ONLY` was still pinned to the v0.1.6 asset at the `v1.9.416` release tag. pip-installed users on macOS Intel / Linux (the platforms that go through the JAR-only download path) ended up with a v0.1.6 sidecar and a "Sidecar JAR reports v0.1.6 but client expects v0.1.7 – rebuild required" warning on every launch. Updated URL to the v0.1.7 JAR now attached to the v1.9.484 release.
+- Caveats: the Windows-with-bundled-JRE (`INSTALLER_URL_WINDOWS`) and macOS-ARM64-with-bundled-JRE (`INSTALLER_URL_MACOS_ARM64`) URLs still point at v0.1.6 bundles because v0.1.7 bundles haven't been rebuilt yet. Those bundles need a separate build pass (rebuild → re-upload as release assets) and are tracked for a follow-up release. pip users on Windows / macOS-ARM64 will still see the version-mismatch warning until those bundles are refreshed.
 
 
 ## v1.9.484 – May 11, 2026
