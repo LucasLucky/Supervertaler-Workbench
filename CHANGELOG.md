@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.485 (May 11, 2026)
+**Current Version:** v1.9.486 (May 11, 2026)
+
+
+## v1.9.486 – May 11, 2026
+
+### Fixed (Tabs centred on macOS instead of left-aligned)
+
+- All `QTabWidget` tab bars now left-align their tabs on macOS, matching the Windows / Linux layout. Affects the main top-level tabs (Editor / TMs / Termbases / AI / Settings) and every nested sub-tab and sub-sub-tab. The macOS Fusion style we already switch to in v1.9.452 (because the native `QMacStyle` ignores `setExpanding(False)`) still centred tabs by default; the fix is a one-line global stylesheet rule — `QTabWidget::tab-bar { alignment: left; }` — applied app-wide in `Supervertaler.py:app.setStyleSheet(...)`.
 
 
 ## v1.9.485 – May 11, 2026

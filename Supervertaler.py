@@ -58860,6 +58860,14 @@ def main():
         QTabBar::tab:focus {
             outline: none;
         }
+        /* Left-align every QTabWidget's tab bar.
+           Without this rule the Fusion style still centres tabs on macOS
+           – which doesn't match the Windows / Linux layout users expect.
+           Applies to every QTabWidget app-wide, including nested
+           sub-tabs and the SuperLookup results sub-tabs. */
+        QTabWidget::tab-bar {
+            alignment: left;
+        }
         QTreeView::item:focus, QListView::item:focus, QTableView::item:focus {
             outline: none;
         }
