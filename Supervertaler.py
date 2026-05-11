@@ -33021,7 +33021,9 @@ class SupervertalerQt(QMainWindow):
                 QMessageBox.warning(
                     self, "Invalid Format",
                     "This file does not appear to be a Phrase bilingual DOCX.\n\n"
-                    "Expected format: Multiple tables with 7-8 columns and segment IDs containing ':'."
+                    "Expected: a table with 7 or 8 columns whose first column "
+                    "contains segment IDs of the form <id>:<index> "
+                    "(e.g. SSOMDWjYi5xvD7wq_dc10:0)."
                 )
                 return
 

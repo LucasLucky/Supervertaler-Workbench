@@ -123,11 +123,16 @@ class PhraseDOCXHandler:
                 print(f"ERROR: No tables found in {file_path}")
                 return False
 
-            # Find content tables (tables with many rows and 7-8 columns)
+            # Find content tables (rows of segments). A Phrase content
+            # table has 7 or 8 columns and its first data row's first
+            # cell contains a segment ID of the form ``<id>:<index>``
+            # (e.g. ``SSOMDWjYi5xvD7wq_dc10:0``). Matches the relaxed
+            # detection in detect_phrase_docx() — short documents and
+            # the newer 8-column export variant are both valid.
             self.content_tables = []
             for idx, table in enumerate(self.doc.tables):
                 rows = table.rows
-                if len(rows) > 100 and len(rows[0].cells) >= 7:
+                if len(rows) >= 2 and len(rows[0].cells) in (7, 8):
                     # Check if first cell looks like a Phrase segment ID
                     first_cell = rows[0].cells[0].text.strip()
                     if ':' in first_cell:  # Segment IDs have format "xxx:nnn"
@@ -490,21 +495,32 @@ def detect_phrase_docx(file_path: str) -> bool:
     """
     Detect if a DOCX file is a Phrase bilingual file.
 
-    Returns:
-        bool: True if this appears to be a Phrase bilingual DOCX
+    Phrase bilingual DOCX layout (as exported by phrase.com / Memsource):
+      * Several intro tables (instructions, header preamble)
+      * One or more *content tables* whose rows are translation segments
+
+    A content table has:
+      * 7 or 8 columns (Phrase shipped a 7-column variant historically;
+        newer exports add an extra trailing column → 8). Earlier versions
+        of this detector required *exactly* 7, which rejected current
+        Phrase exports.
+      * 2+ data rows. The previous threshold of >100 rows was wrong:
+        short documents (e.g. one-page certificates) can have far fewer
+        segments and were rejected as "not Phrase".
+      * First cell of the first data row contains a Phrase segment ID of
+        the form ``<base32-ish>:<index>`` (e.g. ``SSOMDWjYi5xvD7wq_dc10:0``).
+        The literal ``':' in first_cell`` test stays — it's distinctive
+        enough on its own; header rows in other tables either use ``ID``
+        or are empty.
     """
     try:
         doc = Document(file_path)
 
-        if len(doc.tables) < 3:
+        if not doc.tables:
             return False
 
-        # Look for content tables with Phrase characteristics:
-        # - Many rows (>100)
-        # - 7 columns
-        # - First cell contains ':' (segment ID format)
         for table in doc.tables:
-            if len(table.rows) > 100 and len(table.rows[0].cells) == 7:
+            if len(table.rows) >= 2 and len(table.rows[0].cells) in (7, 8):
                 first_cell = table.rows[0].cells[0].text.strip()
                 if ':' in first_cell:
                     return True

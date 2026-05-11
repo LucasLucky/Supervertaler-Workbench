@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.486 (May 11, 2026)
+**Current Version:** v1.9.487 (May 11, 2026)
+
+
+## v1.9.487 – May 11, 2026
+
+### Fixed (Phrase bilingual DOCX import rejected valid files)
+
+- A user reported their Phrase-exported bilingual DOCX (`Praxe_PC-cs-de_de-TR.docx`, 63 segments) being rejected with `"This file does not appear to be a Phrase bilingual DOCX. Expected format: Multiple tables with 7-8 columns and segment IDs containing ':'."` even though the file was genuinely a Phrase export with valid segment IDs (e.g. `SSOMDWjYi5xvD7wq_dc10:0`).
+- Two bugs in `modules/phrase_docx_handler.py`:
+  - **The detector required more than 100 rows in the content table.** Short documents (one-page certificates, single-section files) routinely have fewer. The user's file had 63 rows. Threshold lowered to ≥ 2 rows (the colon-in-first-cell test is distinctive enough on its own — header rows in other tables use `ID` or are empty).
+  - **The detector required exactly 7 columns.** Newer Phrase exports add a trailing column → 8. The parser already accepted ≥ 7, but the detector rejected before the parser got a chance. Now both accept 7 or 8.
+- The error message also rewritten to describe the actual signal (column count plus segment-ID format with an example) rather than the old vague "Multiple tables" wording.
 
 
 ## v1.9.486 – May 11, 2026
