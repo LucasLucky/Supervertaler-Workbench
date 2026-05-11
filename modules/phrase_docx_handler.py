@@ -155,6 +155,37 @@ class PhraseDOCXHandler:
             traceback.print_exc()
             return False
 
+    @staticmethod
+    def _unique_cells(row):
+        """Return row.cells deduplicated by identity.
+
+        Phrase bilingual DOCX files exist in two on-disk shapes:
+
+          * 7-grid-column tables — every visual column is its own grid
+            column, so ``row.cells`` returns 7 distinct cell objects.
+          * 8-grid-column tables — the source column is a single
+            ``<w:tc>`` with ``<w:gridSpan w:val="2"/>`` spanning two
+            adjacent grid columns. python-docx reports this as TWO
+            entries in ``row.cells`` that are the *same* cell object
+            (``cells[3] is cells[4]``). Word renders 7 visual columns.
+
+        Both shapes carry the same 7 logical columns:
+            [ID, ICU, #, Source, Target, Status, Comment]
+
+        Deduplicating by identity collapses the merged duplicate so the
+        same fixed indices work for both shapes. Without this, the
+        parser silently shifted Target → Status → Comment by one
+        column on every 8-grid-column file and corrupted the user's
+        translation on export.
+        """
+        seen = set()
+        unique = []
+        for cell in row.cells:
+            if id(cell) not in seen:
+                seen.add(id(cell))
+                unique.append(cell)
+        return unique
+
     def extract_source_segments(self) -> List[PhraseSegment]:
         """
         Extract all source segments from the Phrase bilingual DOCX.
@@ -172,11 +203,11 @@ class PhraseDOCXHandler:
         for table_obj, table_idx in self.content_tables:
             for row_idx, row in enumerate(table_obj.rows):
                 try:
-                    cells = row.cells
+                    cells = self._unique_cells(row)
 
-                    # Extract data from columns
+                    # Logical columns: [ID, ICU, #, Source, Target, Status, Comment]
                     segment_id = cells[0].text.strip()
-                    # Column 1 is empty
+                    # Column 1 (ICU) is empty in our use
                     segment_num = cells[2].text.strip()
 
                     # Extract source and target with formatting as HTML tags
@@ -186,7 +217,7 @@ class PhraseDOCXHandler:
                     target_text = self._cell_to_tagged_text(target_cell)
 
                     status_code = cells[5].text.strip()
-                    # Column 6 is empty
+                    # Column 6 (Comment) is read-only — not consumed here
 
                     # Create PhraseSegment
                     segment = PhraseSegment(
@@ -221,19 +252,28 @@ class PhraseDOCXHandler:
         updated_count = 0
 
         # Build a lookup map: segment_id -> (table_obj, row_idx)
+        # The ID column is always the first logical column — no gridSpan
+        # merge there, so row.cells[0] is fine in both 7- and 8-grid
+        # variants.
         segment_map = {}
         for table_obj, table_idx in self.content_tables:
             for row_idx, row in enumerate(table_obj.rows):
                 segment_id = row.cells[0].text.strip()
                 segment_map[segment_id] = (table_obj, row_idx)
 
-        # Update translations
+        # Update translations. Use _unique_cells to handle the
+        # 8-grid-column variant where the Source column has gridSpan=2
+        # (Word shows 7 visual columns, python-docx returns 8 with a
+        # duplicate entry for Source). Writing into cells[4] in that
+        # case would write into the source-duplicate slot, not Target —
+        # the bug a user reported on 2026-05-11 with a 63-segment file.
         for segment_id, translation in translations.items():
             if segment_id in segment_map:
                 table_obj, row_idx = segment_map[segment_id]
                 row = table_obj.rows[row_idx]
-                source_cell = row.cells[3]  # Column 4 (source)
-                target_cell = row.cells[4]  # Column 5 (target)
+                cells = self._unique_cells(row)
+                source_cell = cells[3]  # Logical Source column
+                target_cell = cells[4]  # Logical Target column
 
                 # Clear existing target content
                 self._clear_cell(target_cell)

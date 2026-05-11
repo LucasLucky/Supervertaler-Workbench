@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.487 (May 11, 2026)
+**Current Version:** v1.9.488 (May 11, 2026)
+
+
+## v1.9.488 – May 11, 2026
+
+### Fixed (Phrase bilingual DOCX import shifted target → status column by one)
+
+- Follow-up to v1.9.487: a user pointed out the file they sent had 7 visible columns in Word, not 8. Investigation showed the underlying DOCX has 8 *grid* columns, but the Source column uses `<w:gridSpan w:val="2"/>` to span two adjacent grid positions. python-docx surfaces this as `row.cells[3] is row.cells[4]` — the same cell object returned twice — while Word shows a single visual Source column. v1.9.487 made the detector accept these files, but the parser still used hardcoded `cells[4]` as Target, which was actually a *duplicate of Source*. As a result, every 8-grid-column Phrase file silently shifted Target → Status → Comment by one column. Untranslated rows looked fine (source = "target" because both indices pointed to the same source cell); the moment the user translated and exported, their work would have been written to the source-duplicate slot — corrupted on round-trip.
+- Fix introduces `PhraseDOCXHandler._unique_cells(row)` that deduplicates `row.cells` by Python object identity. Merged-source duplicates collapse to one entry, leaving 7 logical columns in either layout: `[ID, ICU, #, Source, Target, Status, Comment]`. Both the extract path (`extract_source_segments`) and the write path (`update_targets`) now use this helper, so 7- and 8-grid-column files behave identically end-to-end.
+- 7-grid-column files (no merge) are unaffected — `_unique_cells` returns the same 7 cells in the same order.
 
 
 ## v1.9.487 – May 11, 2026
