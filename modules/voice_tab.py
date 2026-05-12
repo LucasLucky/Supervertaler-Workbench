@@ -95,8 +95,9 @@ class VoiceTab(QWidget):
         header_row.setContentsMargins(8, 4, 8, 4)
         header = QLabel(
             "🎤 <b>Voice</b> – commands and dictation.<br>"
-            "Toggle Always-On to listen continuously, or press <b>F9</b> "
-            "(or Ctrl+Alt+D anywhere) to dictate on demand."
+            "Toggle Always-On to listen continuously, or hold your "
+            "dictation hotkey (<b>Ctrl+Shift+Space</b> by default, "
+            "rebindable in Settings → Keyboard Shortcuts) to dictate."
         )
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setWordWrap(True)
@@ -185,8 +186,8 @@ class VoiceTab(QWidget):
         )
         self._commands_only_cb.setToolTip(
             "When checked, Always-On fires voice commands but ignores any "
-            "speech that doesn't match a command. Use Ctrl+Alt+D (or F9 in "
-            "the editor) for one-off dictation.\n\n"
+            "speech that doesn't match a command. Hold your dictation "
+            "hotkey (Ctrl+Shift+Space by default) for one-off dictation.\n\n"
             "Has no effect when the engine is set to Vosk – Vosk's grammar-"
             "constrained recogniser already only emits text for known "
             "command phrases; everything else is silently dropped."
@@ -289,12 +290,14 @@ class VoiceTab(QWidget):
         left_layout.addWidget(self._whisper_group)
 
         # Push-to-Talk
-        ptt_group = QGroupBox("🎯 Push-to-Talk Mode (F9)")
+        ptt_group = QGroupBox("🎯 Push-to-Talk Mode")
         ptt_layout = QVBoxLayout()
         ptt_info = QLabel(
-            "Controls how the F9 key (and the Dictate button in the "
-            "translation grid) start and stop recording. The global "
-            "<b>Ctrl+Alt+D</b> hotkey always uses Toggle mode."
+            "Controls how your dictation hotkey "
+            "(<b>Ctrl+Shift+Space</b> by default; rebindable in "
+            "Settings → Keyboard Shortcuts) starts and stops recording. "
+            "Hold-to-talk works everywhere – inside the Workbench grid "
+            "and in any other app on your computer."
         )
         ptt_info.setTextFormat(Qt.TextFormat.RichText)
         ptt_info.setWordWrap(True)
@@ -342,10 +345,13 @@ class VoiceTab(QWidget):
         ptt_row.addWidget(QLabel("Mode:"))
         self._ptt_combo = QComboBox()
         self._ptt_combo.addItem(
-            "Toggle (press F9 to start, press again to stop)", "toggle")
+            "Hold-to-talk (hold the hotkey, release to stop) – recommended", "hold")
         self._ptt_combo.addItem(
-            "Hold-to-talk (hold F9, release to stop)", "hold")
-        saved_ptt = settings.get('pushtotalk_mode', 'toggle')
+            "Toggle (press the hotkey to start, press again to stop)", "toggle")
+        # v1.9.492: hold-to-talk is now the default and works everywhere
+        # (in the editor and in any app on your computer). Toggle is kept
+        # for users who'd rather not hold a key for long dictations.
+        saved_ptt = settings.get('pushtotalk_mode', 'hold')
         for i in range(self._ptt_combo.count()):
             if self._ptt_combo.itemData(i) == saved_ptt:
                 self._ptt_combo.setCurrentIndex(i)
@@ -819,7 +825,7 @@ class VoiceTab(QWidget):
           dropdown shows the *resolved* engine after auto-routing
           (auto + Vosk → faster-whisper, auto + API → API, etc.) so
           the user always knows which backend will run when they
-          press Ctrl+Alt+D / F9.
+          hold their dictation hotkey.
         """
         try:
             idx = self._engine_combo.currentIndex()
@@ -867,8 +873,8 @@ class VoiceTab(QWidget):
                        "(online, fast, requires API key).")
             else:
                 txt = ("ℹ️ Push-to-talk will use: <b>faster-whisper</b> "
-                       "(offline). Vosk is commands-only – Ctrl+Alt+D / "
-                       "F9 always falls through to a Whisper engine for "
+                       "(offline). Vosk is commands-only – push-to-talk "
+                       "always falls through to a Whisper engine for "
                        "running text. Pick 'OpenAI Whisper API' above if "
                        "you'd rather have the API handle dictation.")
             self._ptt_engine_label.setText(txt)

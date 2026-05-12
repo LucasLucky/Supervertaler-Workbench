@@ -1874,60 +1874,6 @@ class _DoubleTapShiftEventFilter(QObject):
         return False
 
 
-class _F9HoldReleaseFilter(QObject):
-    """App-level event filter for Voice hold-to-talk dictation mode.
-
-    The F9 press is handled by the existing ``voice_dictate`` QShortcut
-    (which calls ``start_voice_dictation``). This filter only acts on F9
-    releases when the user has set ``pushtotalk_mode = 'hold'`` in the
-    Voice tab – releasing F9 stops the active dictation recording so
-    transcription fires immediately, walkie-talkie style.
-
-    In ``toggle`` mode (the default) this filter is a no-op. Auto-repeat
-    releases (which Qt fires when a key is held) are ignored so the stop
-    only triggers on the genuine release.
-    """
-
-    def __init__(self, main_window):
-        super().__init__(main_window)
-        self._main_window = main_window
-
-    def eventFilter(self, obj, event):
-        from PyQt6.QtCore import QEvent
-
-        if event.type() != QEvent.Type.KeyRelease:
-            return False
-        if event.key() != Qt.Key.Key_F9:
-            return False
-        if event.isAutoRepeat():
-            return False
-
-        mw = self._main_window
-        if not mw or not mw.isActiveWindow():
-            return False
-
-        try:
-            settings = mw.load_dictation_settings()
-        except Exception:
-            return False
-        if settings.get('pushtotalk_mode', 'toggle') != 'hold':
-            return False
-
-        thread = getattr(mw, 'dictation_thread', None)
-        if thread is None:
-            return False
-        try:
-            if thread.isRunning() and getattr(thread, 'is_recording', False):
-                thread.stop_recording()
-                if hasattr(mw, 'log'):
-                    mw.log("⏹️ Hold-to-talk: F9 released, transcribing…")
-        except Exception:
-            pass
-
-        # Don't consume – other handlers may want to see the release too.
-        return False
-
-
 class _WheelGuard(QObject):
     """Stops a hovered slider / spinbox / combo from eating the mouse wheel.
 
@@ -7105,6 +7051,15 @@ class SupervertalerQt(QMainWindow):
         # Voice model download tracking
         self.is_loading_model = False
         self.loading_model_name = None
+
+        # Voice push-to-talk via a single low-level keyboard listener
+        # (replaces the old Windows RegisterHotKey path so we get release
+        # events for hold-to-talk). Created lazily on first use; see
+        # _get_voice_hotkey_listener. The 200 ms debounce timestamp guards
+        # against the in-editor QShortcut and the global listener both
+        # calling start_voice_dictation on the same press.
+        self._voice_hotkey_listener = None
+        self._voice_dictate_last_press_ms = 0
         
         # Target editor signal suppression (prevents load-time churn)
         self._suppress_target_change_handlers = False
@@ -8105,14 +8060,15 @@ class SupervertalerQt(QMainWindow):
             self._double_shift_event_filter = _DoubleTapShiftEventFilter(self)
             QApplication.instance().installEventFilter(self._double_shift_event_filter)
 
-        # F9 hold-to-talk release detection – only acts when Voice is
-        # set to hold-to-talk mode. Press is handled by the voice_dictate
-        # QShortcut as usual; this filter just stops the recording on F9 up.
-        if not hasattr(self, '_f9_hold_release_filter'):
-            from PyQt6.QtWidgets import QApplication
-            self._f9_hold_release_filter = _F9HoldReleaseFilter(self)
-            QApplication.instance().installEventFilter(self._f9_hold_release_filter)
-        
+        # Hold-to-talk release detection is now handled by the global
+        # GlobalHotkeyListener (single low-level keyboard hook delivers
+        # both press and release for the user's voice_dictate chord, in or
+        # out of the editor). The legacy _F9HoldReleaseFilter only worked
+        # for the F9 key inside the Workbench window and only when the
+        # user's shortcut happened to be F9 – it was effectively dead code
+        # for the Ctrl+Shift+Space default. Removed in v1.9.492.
+
+
         # Ctrl+Shift+Enter - Always confirm all selected segments
         create_shortcut("editor_confirm_selected", "Ctrl+Shift+Return", self.confirm_selected_segments)
         
@@ -20882,7 +20838,7 @@ class SupervertalerQt(QMainWindow):
         Skipped entirely when the user has set Always-On to commands-only
         mode (Voice tab → "Listen for commands only"). In that mode
         unmatched speech is logged but not typed – dictation is reserved
-        for the explicit Ctrl+Alt+D / F9 push-to-talk paths.
+        for the explicit push-to-talk path (hold the dictation hotkey).
         """
         try:
             settings = self.load_dictation_settings()
@@ -21242,16 +21198,16 @@ class SupervertalerQt(QMainWindow):
         quick_ref_group = QGroupBox("📖 Quick Reference")
         quick_ref_layout = QVBoxLayout()
         quick_ref = QLabel(
-            "<b>F9</b> – push-to-talk dictation in the translation grid (toggle "
-            "or hold mode, configurable in Sidekick).<br>"
-            "<b>Ctrl+Alt+D</b> – global push-to-talk dictation, works in any "
-            "app on your computer.<br>"
+            "<b>Dictation hotkey</b> (default <b>Ctrl+Shift+Space</b>) – "
+            "hold to dictate, release to transcribe. Works in the "
+            "Workbench grid and in any other app on your computer.<br>"
             "<b>Always-On</b> – toggleable in Sidekick → Voice tab; "
             "listens continuously, hands-free.<br>"
             "<b>Voice commands</b> – say a phrase to execute keystrokes, "
             "AutoHotkey scripts, or built-in actions. Editable in Sidekick.<br><br>"
-            "All hotkeys (including Ctrl+Alt+D) can be rebound in "
-            "<b>Settings → Keyboard Shortcuts → Global</b>."
+            "Rebind the dictation hotkey to any key you like "
+            "(numpad+, a function key, anything) in "
+            "<b>Settings → Keyboard Shortcuts → Special → Voice dictation</b>."
         )
         quick_ref.setTextFormat(Qt.TextFormat.RichText)
         quick_ref.setWordWrap(True)
@@ -45064,12 +45020,128 @@ class SupervertalerQt(QMainWindow):
                 except:
                     pass
 
+    def _get_voice_release_poller(self):
+        """Lazy-create the GetAsyncKeyState-based release poller.
+
+        Single instance per app. Returns ``None`` on platforms where
+        polling isn't implemented (currently macOS / Linux). The poller
+        installs no keyboard hook – press detection stays on
+        RegisterHotKey, this just watches the key state while the chord
+        is held.
+        """
+        existing = getattr(self, '_voice_release_poller', None)
+        if existing is not None:
+            return existing
+        try:
+            from modules.voice_release_poller import KeyReleasePoller, IS_WINDOWS
+        except Exception as e:
+            self.log(f"⚠ Voice release poller unavailable: {e}")
+            self._voice_release_poller = None
+            return None
+        if not IS_WINDOWS:
+            self._voice_release_poller = None
+            return None
+        poller = KeyReleasePoller(parent=self)
+        poller.released.connect(self.stop_voice_dictation_if_recording)
+        self._voice_release_poller = poller
+        return poller
+
+    def _register_voice_pushtotalk_deferred(self, qt_shortcut: str):
+        """Install the push-to-talk keyboard listener and bind a shortcut.
+
+        Called via QTimer from SuperlookupTab.register_global_hotkey so
+        that pynput's blocking hook-install doesn't delay the rest of the
+        global-hotkey registration during Workbench startup. Safe to call
+        repeatedly (re-registration after a shortcut change is the main
+        non-startup caller).
+        """
+        listener = self._get_voice_hotkey_listener()
+        if listener is None:
+            return
+        listener.unregister('voice_dictate')
+        if listener.register('voice_dictate', qt_shortcut):
+            self.log(f"🎤 Push-to-talk armed: {qt_shortcut} (hold to dictate, release to transcribe)")
+        else:
+            self.log(f"⚠ Could not parse push-to-talk shortcut: {qt_shortcut!r}")
+
+    def _get_voice_hotkey_listener(self):
+        """Lazy-create the global push-to-talk hotkey listener.
+
+        Returns the running listener instance, or None if pynput / the
+        low-level keyboard hook is unavailable. Single instance per app.
+        Signals are wired here (not at __init__) so they reach the
+        already-existing dictation infrastructure.
+        """
+        if self._voice_hotkey_listener is not None:
+            return self._voice_hotkey_listener
+        try:
+            from modules.voice_hotkey_listener import GlobalHotkeyListener
+        except Exception as e:
+            self.log(f"⚠ Voice hotkey listener unavailable: {e}")
+            return None
+        listener = GlobalHotkeyListener(self)
+
+        def _on_chord_pressed(binding_id):
+            if binding_id == 'voice_dictate':
+                self.start_voice_dictation()
+
+        def _on_chord_released(binding_id):
+            if binding_id == 'voice_dictate':
+                self.stop_voice_dictation_if_recording()
+
+        listener.chord_pressed.connect(_on_chord_pressed)
+        listener.chord_released.connect(_on_chord_released)
+        if not listener.start():
+            self.log("⚠ Voice hotkey listener failed to start – push-to-talk will not work")
+            return None
+        self._voice_hotkey_listener = listener
+        return listener
+
+    def stop_voice_dictation_if_recording(self):
+        """Stop an active dictation recording on release (hold-to-talk).
+
+        No-op if:
+          - no recording is in progress, or
+          - the user has explicitly set ``pushtotalk_mode = 'toggle'``
+            (in which case release should not stop the recording – the
+            user wants press-to-start / press-to-stop semantics).
+
+        Called from the global keyboard listener on release of the
+        voice_dictate chord.
+        """
+        try:
+            mode = self.load_dictation_settings().get('pushtotalk_mode', 'hold')
+        except Exception:
+            mode = 'hold'
+        if mode == 'toggle':
+            return
+
+        thread = getattr(self, 'dictation_thread', None)
+        if thread is None:
+            return
+        try:
+            if thread.isRunning() and getattr(thread, 'is_recording', False):
+                thread.stop_recording()
+                self.log("⏹️ Hold-to-talk: hotkey released, transcribing…")
+                # Dismiss the listening toast immediately on user-initiated
+                # stop; on_dictation_finished will also try to dismiss but
+                # the visual feedback should disappear right now.
+                try:
+                    toast = getattr(self, '_dictation_toast', None)
+                    if toast is not None:
+                        toast.dismiss()
+                        self._dictation_toast = None
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def start_voice_dictation(self):
         """Start or stop voice dictation (toggle behavior).
 
-        Old behaviour (pre-Vosk): if always-on was active, F9/Ctrl+Alt+D
-        would toggle it OFF instead of dictating, because both paths used
-        Whisper and shared the mic exclusively.
+        Old behaviour (pre-Vosk): if always-on was active, the dictation
+        hotkey would toggle it OFF instead of dictating, because both
+        paths used Whisper and shared the mic exclusively.
 
         New behaviour (Vosk + faster-whisper coexisting): always-on uses
         Vosk for command recognition, push-to-talk uses faster-whisper
@@ -45080,6 +45152,19 @@ class SupervertalerQt(QMainWindow):
         ``_resume_alwayson_after_dictation`` once the dictation thread
         signals ``finished``.
         """
+        # Debounce: the in-editor QShortcut and the global keyboard listener
+        # can both fire start_voice_dictation for the same physical press
+        # (the listener fires on the OS hook ~1 ms before Qt routes the
+        # event to the QShortcut). Without this guard the second call sees
+        # is_recording=True and aborts the recording milliseconds after it
+        # started. 200 ms window comfortably covers the worst-case Qt
+        # dispatch lag without affecting genuinely re-issued presses.
+        import time as _time
+        now_ms = int(_time.monotonic() * 1000)
+        if now_ms - self._voice_dictate_last_press_ms < 200:
+            return
+        self._voice_dictate_last_press_ms = now_ms
+
         # If always-on is currently running, pause it (don't kill it) so
         # push-to-talk can use the mic alone, then resume after.
         alwayson_was_running = bool(
@@ -45258,7 +45343,7 @@ class SupervertalerQt(QMainWindow):
                 return
 
         # Otherwise route as dictation text – same cross-app path Always-On
-        # uses, so F9 and Ctrl+Alt+D work in any app.
+        # uses, so push-to-talk works in any app.
         self._insert_dictated_text(text)
 
     def _insert_dictated_text(self, text: str):
@@ -57194,7 +57279,7 @@ class SuperlookupTab(QWidget):
             qt_shortcut = 'ctrl+alt+q'
             sk_shortcut = 'alt+k'
             cb_shortcut = 'ctrl+shift+c'
-            pt_shortcut = 'ctrl+alt+d'
+            pt_shortcut = 'ctrl+shift+space'
             ao_shortcut = 'ctrl+alt+a'
 
         # No platform-specific rewrite needed: GlobalHotkeyManager's macOS
@@ -57207,12 +57292,25 @@ class SuperlookupTab(QWidget):
         # and produced different physical chords for local vs global; that
         # parser was fixed in modules/platform_helpers.py:_MacNSEventHotkey._parse.
 
-        # --- Attempt 1: WinAPI / pynput (cross-platform) ---
-        import sys as _sys
+        # Logging helper. Defined here (above the push-to-talk listener
+        # setup) so both the listener block and the RegisterHotKey block
+        # below can use the same mirror-to-main-window-log behaviour.
         def _log(m):
             print(m, flush=True)
             if self.main_window and hasattr(self.main_window, 'log'):
                 self.main_window.log(m)
+
+        # --- Push-to-talk routing ---
+        # Press detection: RegisterHotKey (in the _bindings list below).
+        # Release detection: GetAsyncKeyState polling triggered when the
+        # press handler fires; no keyboard hook is installed, so this
+        # doesn't interfere with AHK's hook chain (which was the problem
+        # the earlier pynput.keyboard.Listener-based attempt ran into).
+        # See modules/voice_release_poller.py.
+        _log(f"[Voice] Push-to-talk: press via RegisterHotKey, release via GetAsyncKeyState polling ({pt_shortcut or 'unset'})")
+
+        # --- Attempt 1: WinAPI / pynput (cross-platform) ---
+        import sys as _sys
         try:
             from modules.platform_helpers import GlobalHotkeyManager, CrossPlatformKeySender
             manager = GlobalHotkeyManager()
@@ -57357,11 +57455,30 @@ class SuperlookupTab(QWidget):
         recording on the main Workbench, exactly as F9 does. The dictation
         result is then routed by ``_insert_dictated_text``, which falls
         back to AHK SendText / osascript / pynput typing when focus is
-        outside Supervertaler – so this works in any app."""
+        outside Supervertaler – so this works in any app.
+
+        Hold-to-talk: after starting the recording, kick off a
+        ``KeyReleasePoller`` (GetAsyncKeyState polling, no keyboard hook)
+        that watches the bound chord and fires
+        ``stop_voice_dictation_if_recording`` the moment any required
+        key is released. Respects the user's ``pushtotalk_mode``
+        setting: ``hold`` → release stops; ``toggle`` → release is
+        ignored (next press stops).
+        """
         try:
             mw = self.main_window or self.window()
             if mw and hasattr(mw, 'start_voice_dictation'):
                 mw.start_voice_dictation()
+                # Arm release-detection. Cheap to call repeatedly:
+                # set_chord re-parses the user's current binding so a
+                # shortcut change picked up between presses is honoured.
+                if hasattr(mw, '_get_voice_release_poller'):
+                    poller = mw._get_voice_release_poller()
+                    if poller is not None:
+                        sm = getattr(mw, 'shortcut_manager', None)
+                        chord_str = sm.get_shortcut('voice_dictate') if sm else ''
+                        if chord_str and poller.set_chord(chord_str):
+                            poller.start()
             else:
                 print("[Voice] Workbench unavailable for push-to-talk")
         except Exception as e:

@@ -354,6 +354,12 @@ _MOD_ALT = 0x0001
 _MOD_CONTROL = 0x0002
 _MOD_SHIFT = 0x0004
 _MOD_WIN = 0x0008
+# MOD_NOREPEAT (Win7+) makes RegisterHotKey fire WM_HOTKEY *only* on the
+# initial press, not at the system keyboard-repeat rate. Critical for
+# push-to-talk hold-to-talk dictation – without it, holding the hotkey
+# spawns a fresh recording every ~500 ms (the system's keyboard repeat
+# delay), each ~200 ms long, which Whisper then hallucinates over.
+_MOD_NOREPEAT = 0x4000
 _WM_HOTKEY = 0x0312
 
 
@@ -512,7 +518,13 @@ class GlobalHotkeyManager:
 
             all_ok = True
             for hk_id, mods, vk, shortcut in registrations:
-                if not user32.RegisterHotKey(None, hk_id, mods, vk):
+                # Always OR in MOD_NOREPEAT – we never want WM_HOTKEY to
+                # auto-fire while a key is held. Push-to-talk dictation
+                # depends on a single press = single recording session;
+                # toggle-style hotkeys (Ctrl+Alt+K etc.) don't benefit
+                # from auto-repeat either.
+                mods_norepeat = mods | _MOD_NOREPEAT
+                if not user32.RegisterHotKey(None, hk_id, mods_norepeat, vk):
                     print(f"[GlobalHotkeyManager] Failed to register {shortcut} "
                           f"(may be in use by another application)")
                     self.failed_hotkeys.append(shortcut)
