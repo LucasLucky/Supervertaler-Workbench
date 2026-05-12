@@ -413,12 +413,14 @@ def detect_bilingual_docx_type(file_path: str) -> str:
         if headers and headers[0] == "ID":
             return "cafetran"
 
-        # Phrase (Memsource): Check for multiple large tables with 7-8 columns and segment IDs containing ':'
-        # Look for content tables with Phrase characteristics
+        # Phrase (Memsource): a content table with 7 or 8 columns and a first-row
+        # first cell containing a segment ID of the form <id>:<index>. Don't gate
+        # on row count — short documents (one-page certificates, etc.) have far
+        # fewer than 100 segments and were previously rejected.
         for table in doc.tables:
-            if len(table.rows) > 100 and len(table.rows[0].cells) >= 7:
+            if len(table.rows) >= 2 and len(table.rows[0].cells) in (7, 8):
                 first_cell = table.rows[0].cells[0].text.strip()
-                if ':' in first_cell:  # Segment IDs have format "xxx:nnn"
+                if ':' in first_cell:
                     return "phrase"
 
         # memoQ: Usually has different structure

@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.489 (May 11, 2026)
+**Current Version:** v1.9.490 (May 12, 2026)
+
+
+## v1.9.490 – May 12, 2026
+
+### Fixed (Phrase bilingual DOCX import still rejected short files via the omnibus detector)
+
+- Same user, same file: `Praxe_PC-cs-de_de-TR.docx` (63 segments, 8 grid columns) was rejected again on import despite v1.9.487's fix, with the same warning. Root cause: there are two Phrase detectors. The dedicated `detect_phrase_docx` in `modules/phrase_docx_handler.py` was fixed in v1.9.487 to drop the `> 100 rows` threshold and accept 7- or 8-column tables. But `import_phrase_bilingual` in `Supervertaler.py` calls `detect_bilingual_docx_type` in `modules/trados_docx_handler.py` — the omnibus detector that dispatches Trados / CafeTran / Phrase / memoQ — and *that* one still had the old `len(table.rows) > 100 and cells >= 7` check. v1.9.487 had only updated one of the two paths.
+- Fix aligns the Phrase branch in `detect_bilingual_docx_type` with the corrected logic: `len(rows) >= 2 and len(cells) in (7, 8) and ':' in first_cell`. Single source of truth would be cleaner, but this is the minimum change that unblocks the user; consolidation can come later.
 
 
 ## v1.9.489 – May 11, 2026
