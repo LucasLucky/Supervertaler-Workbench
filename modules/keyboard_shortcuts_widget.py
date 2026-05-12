@@ -67,8 +67,23 @@ class KeySequenceEdit(QLineEdit):
         if modifiers & Qt.KeyboardModifier.MetaModifier:
             parts.append("Meta")
 
+        # Numpad keys: Qt's QKeySequence renders Num+, Num0–9, Num*, Num-,
+        # Num/, Num., NumEnter all as their bare symbol/digit (so numpad +
+        # comes back as "+", identical to Shift+= on the main keyboard).
+        # That makes a binding to numpad+ also match main-keyboard +,
+        # which is rarely what the user wants. Qt does expose the source
+        # via Qt.KeyboardModifier.KeypadModifier on the event – use that
+        # to prefix the stored name with "Num" so the hotkey registration
+        # path can map it to VK_ADD (0x6B) instead of VK_OEM_PLUS (0xBB).
+        is_keypad = bool(modifiers & Qt.KeyboardModifier.KeypadModifier)
+
         # Get key name
         key_name = QKeySequence(key).toString()
+        if is_keypad and key_name:
+            # QKeySequence may already have stripped any modifiers from
+            # key_name (it usually has, for plain numpad keys); add the
+            # Num prefix unconditionally so the parser can disambiguate.
+            key_name = "Num" + key_name
         if key_name:
             parts.append(key_name)
 

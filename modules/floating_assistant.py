@@ -2111,12 +2111,23 @@ class FloatingAssistant(QWidget):
 
     def _open_workbench_settings(self):
         """Bring the main Workbench window to the foreground and switch to
-        its Settings tab. The floating assistant stays open so the user
-        can reference it while adjusting settings."""
+        its Settings tab.
+
+        Sidekick is a WindowStaysOnTopHint window, so even after Workbench
+        is .raise_()'d and .activateWindow()'d, Sidekick stays painted on
+        top and the user can't see what they navigated to. Hide Sidekick
+        first; the user can re-summon it with Ctrl+Q (or by clicking the
+        tray icon) when they're done in Settings.
+        """
         mw = self._parent_app
         if not mw:
             return
         try:
+            # Dismiss Sidekick before bringing Workbench forward, so the
+            # always-on-top floating window doesn't cover what we just
+            # navigated to. _dismiss_to_tray just .hide()s the window –
+            # Sidekick's state (open tabs, position) is preserved.
+            self._dismiss_to_tray()
             if mw.isMinimized():
                 mw.showNormal()
             mw.show()

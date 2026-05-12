@@ -348,6 +348,21 @@ _VK_MAP = {
     'f11': 0x7A, 'f12': 0x7B,
     'space': 0x20, 'enter': 0x0D, 'return': 0x0D, 'tab': 0x09,
     'escape': 0x1B, 'esc': 0x1B, 'backspace': 0x08, 'delete': 0x2E,
+    # Numpad keys – distinguished from their main-keyboard counterparts
+    # by the "num" prefix when captured via KeySequenceEdit (Qt's
+    # KeypadModifier). RegisterHotKey treats numpad as a separate VK
+    # family from the main row, so binding "Num+" alone only fires for
+    # the numpad + key, not for Shift+= on the main keyboard.
+    'num+': 0x6B, 'numadd': 0x6B, 'numplus': 0x6B,
+    'numpad+': 0x6B, 'keypad+': 0x6B,
+    'num-': 0x6D, 'numsub': 0x6D, 'numminus': 0x6D,
+    'numpad-': 0x6D, 'keypad-': 0x6D,
+    'num*': 0x6A, 'nummul': 0x6A, 'numpad*': 0x6A,
+    'num/': 0x6F, 'numdiv': 0x6F, 'numpad/': 0x6F,
+    'num.': 0x6E, 'numdot': 0x6E, 'numdecimal': 0x6E,
+    'num0': 0x60, 'num1': 0x61, 'num2': 0x62, 'num3': 0x63, 'num4': 0x64,
+    'num5': 0x65, 'num6': 0x66, 'num7': 0x67, 'num8': 0x68, 'num9': 0x69,
+    'numenter': 0x0D,
 }
 
 _MOD_ALT = 0x0001
@@ -580,12 +595,24 @@ class GlobalHotkeyManager:
 
     @staticmethod
     def _parse_shortcut_winapi(shortcut: str):
-        """Parse ``'ctrl+alt+l'`` into (modifiers, vk_code) for RegisterHotKey."""
-        parts = shortcut.lower().split('+')
+        """Parse ``'ctrl+alt+l'`` into (modifiers, vk_code) for RegisterHotKey.
+
+        Handles a trailing ``+`` as part of the last key, so "Num+" stays
+        as a single token rather than splitting into ['Num', ''] and
+        losing the symbol that disambiguates "numpad plus" from "numpad"
+        alone. Same trick for "Numpad+" / "Keypad+" if written that way.
+        """
+        # Split, then re-attach a trailing empty part as a '+' suffix on
+        # the previous token. "Num+" → ['Num', ''] → ['Num+'].
+        parts = [p.strip() for p in shortcut.lower().split('+')]
+        while len(parts) >= 2 and parts[-1] == '':
+            parts.pop()
+            if parts:
+                parts[-1] = parts[-1] + '+'
+
         mods = 0
         vk = None
         for part in parts:
-            part = part.strip()
             if part in ('ctrl', 'control'):
                 mods |= _MOD_CONTROL
             elif part == 'alt':

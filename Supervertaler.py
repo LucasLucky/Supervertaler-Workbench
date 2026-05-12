@@ -9723,6 +9723,7 @@ class SupervertalerQt(QMainWindow):
         # 4. SETTINGS
         settings_tab = self.create_settings_tab()
         self.main_tabs.addTab(settings_tab, "⚙️ Settings")
+        self.settings_tab_index = self.main_tabs.count() - 1
         
         # Set startup tab to Grid (index 0)
         self.main_tabs.setCurrentIndex(0)
@@ -16970,6 +16971,9 @@ class SupervertalerQt(QMainWindow):
         from modules.keyboard_shortcuts_widget import KeyboardShortcutsWidget
         shortcuts_tab = KeyboardShortcutsWidget(self)
         settings_tabs.addTab(shortcuts_tab, "⌨️ Keyboard Shortcuts")
+        # Index stored so the Voice tab's "Change in Settings → Keyboard
+        # Shortcuts" link can jump straight here.
+        self.keyboard_shortcuts_tab_index = settings_tabs.count() - 1
 
         # ===== TAB 13: Log (moved from main tabs) =====
         log_tab = self.create_log_tab()
@@ -21241,6 +21245,70 @@ class SupervertalerQt(QMainWindow):
             opener()
         except Exception as e:
             QMessageBox.warning(self, "Could not open Voice", str(e))
+
+    def open_settings_to_keyboard_shortcuts(self):
+        """Jump to Settings → Keyboard Shortcuts.
+
+        Called from the Voice tab's "Change in Settings → Keyboard
+        Shortcuts" link. Switches the main window to the Settings page
+        and selects the Keyboard Shortcuts sub-tab.
+
+        Sidekick is a WindowStaysOnTopHint window – if we don't hide it
+        here, it will stay painted over Workbench and the user can't
+        see the page we just navigated them to. Dismissing Sidekick
+        only hides it (state preserved); they can re-summon with Ctrl+Q.
+        """
+        try:
+            # Hide Sidekick first so it doesn't cover Workbench.
+            fa = getattr(self, '_floating_assistant', None)
+            if fa is not None and hasattr(fa, '_dismiss_to_tray'):
+                try:
+                    fa._dismiss_to_tray()
+                except Exception:
+                    pass
+
+            main_tabs = getattr(self, 'main_tabs', None)
+            settings_tabs = getattr(self, 'settings_tabs', None)
+            settings_idx = getattr(self, 'settings_tab_index', None)
+            kb_idx = getattr(self, 'keyboard_shortcuts_tab_index', None)
+            if main_tabs is not None and settings_idx is not None:
+                main_tabs.setCurrentIndex(settings_idx)
+            if settings_tabs is not None and kb_idx is not None:
+                settings_tabs.setCurrentIndex(kb_idx)
+
+            # Bring Workbench forward. show()/raise_()/activateWindow()
+            # is usually enough; on Windows we also use the
+            # SetForegroundWindow + AttachThreadInput dance so we win the
+            # foreground race against whatever app last had focus.
+            if self.isMinimized():
+                self.showNormal()
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            import sys
+            if sys.platform == 'win32':
+                try:
+                    import ctypes
+                    hwnd = int(self.winId())
+                    fg = ctypes.windll.user32.GetForegroundWindow()
+                    fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg, None)
+                    our_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+                    if fg_thread != our_thread:
+                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, True)
+                        ctypes.windll.user32.SetForegroundWindow(hwnd)
+                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, False)
+                    else:
+                        ctypes.windll.user32.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+        except Exception as e:
+            QMessageBox.information(
+                self, "Open Keyboard Shortcuts",
+                f"Couldn't auto-navigate (\"{e}\"). Open the main "
+                "Workbench window → Settings → Keyboard Shortcuts and "
+                "find <b>Voice dictation / push-to-talk</b> under "
+                "<b>Special</b>."
+            )
 
     def reload_global_hotkeys(self):
         """Re-register the global hotkey set with current ShortcutManager values.

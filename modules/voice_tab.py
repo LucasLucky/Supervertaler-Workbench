@@ -127,8 +127,31 @@ class VoiceTab(QWidget):
         left_scroll.setWidget(left_body)
         self._splitter.addWidget(left_scroll)
 
-        # Always-On Listening
-        alwayson_group = QGroupBox("🎧 Always-On Listening")
+        # The recognition_engine setting is hard-pinned to 'vosk' for
+        # Always-On in v1.9.493 onward – Always-On's sole job is voice
+        # command recognition. Free-form dictation lives entirely on
+        # the push-to-talk path (the user's choice of offline / online
+        # is exposed in the Push-to-Talk group below). The dropdown for
+        # Always-On engine is gone; users who had a non-Vosk engine
+        # saved get migrated to Vosk on next save, with their
+        # previously-chosen Whisper engine kept as the push-to-talk
+        # backend so nothing they actually relied on disappears.
+        self._engine_combo = None  # not displayed; kept as None so
+        # _sync_engine_dependent_widgets / save paths can detect absence
+
+        # Migrate a legacy Whisper-as-Always-On engine setting into the
+        # push-to-talk engine slot so the user keeps their preferred
+        # dictation backend even though Always-On is now Vosk-only.
+        legacy_eng = settings.get('recognition_engine', 'vosk')
+        if legacy_eng in ('faster_whisper', 'local', 'api'):
+            existing_ptt = settings.get('pushtotalk_engine')
+            if not existing_ptt or existing_ptt == 'auto':
+                self._set_dictation_keys(pushtotalk_engine=(
+                    'api' if legacy_eng == 'api' else 'faster_whisper'))
+            self._set_dictation_keys(recognition_engine='vosk')
+
+        # --- Voice commands (Always-On Vosk listener) ---
+        alwayson_group = QGroupBox("🎤 Voice commands (Always-On listening)")
         ao_layout = QVBoxLayout()
 
         ao_status_row = QHBoxLayout()
@@ -141,32 +164,6 @@ class VoiceTab(QWidget):
         self._toggle_btn.clicked.connect(self._toggle_alwayson)
         ao_status_row.addWidget(self._toggle_btn)
         ao_layout.addLayout(ao_status_row)
-
-        engine_row = QHBoxLayout()
-        engine_row.addWidget(QLabel("Engine:"))
-        self._engine_combo = QComboBox()
-        # Order matters – first item is the default for fresh installs.
-        # Item index → engine string mapping is fixed below in
-        # _on_engine_changed and _engine_at_index.
-        self._engine_combo.addItems([
-            "Vosk (offline, free, commands only) — recommended",
-            "faster-whisper (offline, dictates running text)",
-            "OpenAI Whisper API (online, fast, dictates running text)",
-        ])
-        # Default to Vosk on fresh installs. Migrate the legacy
-        # ``recognition_engine='local'`` setting to ``'faster_whisper'``.
-        eng = settings.get('recognition_engine', 'vosk')
-        if eng == 'local':
-            eng = 'faster_whisper'
-        idx_for_engine = {
-            'vosk': 0,
-            'faster_whisper': 1,
-            'api': 2,
-        }
-        self._engine_combo.setCurrentIndex(idx_for_engine.get(eng, 0))
-        self._engine_combo.currentIndexChanged.connect(self._on_engine_changed)
-        engine_row.addWidget(self._engine_combo, stretch=1)
-        ao_layout.addLayout(engine_row)
 
         sens_row = QHBoxLayout()
         sens_row.addWidget(QLabel("Mic sensitivity:"))
@@ -181,32 +178,20 @@ class VoiceTab(QWidget):
         sens_row.addWidget(self._sensitivity_combo, stretch=1)
         ao_layout.addLayout(sens_row)
 
-        self._commands_only_cb = CheckmarkCheckBox(
-            "Listen for commands only – don't type unmatched speech as dictation"
-        )
-        self._commands_only_cb.setToolTip(
-            "When checked, Always-On fires voice commands but ignores any "
-            "speech that doesn't match a command. Hold your dictation "
-            "hotkey (Ctrl+Shift+Space by default) for one-off dictation.\n\n"
-            "Has no effect when the engine is set to Vosk – Vosk's grammar-"
-            "constrained recogniser already only emits text for known "
-            "command phrases; everything else is silently dropped."
-        )
-        self._commands_only_cb.setChecked(
-            bool(settings.get('alwayson_commands_only', False)))
-        self._commands_only_cb.toggled.connect(self._on_commands_only_toggled)
-        ao_layout.addWidget(self._commands_only_cb)
-        # Disable + grey out when Vosk is the active engine, since Vosk's
-        # grammar mode is structurally "commands only" and the checkbox
-        # would otherwise confuse the user. Re-enables when they switch
-        # to faster-whisper or the OpenAI API.
-        self._sync_commands_only_for_engine()
+        # "Listen for commands only" checkbox has been removed in v1.9.493:
+        # Always-On now always uses Vosk, which is grammar-constrained
+        # ("commands only" is its only mode). Kept as a hidden attribute
+        # so _sync_engine_dependent_widgets and the save path can no-op
+        # cleanly without raising AttributeError.
+        self._commands_only_cb = None
+        self._ao_api_tip = None
 
         ao_focus_hint = QLabel(
-            "ℹ️ <b>How it works:</b> commands and dictation go to whichever "
-            "app is in the foreground when you speak. After turning Always-On "
-            "on, click into Word, Trados, memoQ, or wherever you want the "
-            "text to land – then speak. Press <b>Esc</b> to hide Sidekick."
+            "ℹ️ Always-On uses <b>Vosk</b> for voice command recognition – "
+            "offline, free, ~zero CPU. It only ever fires commands; "
+            "free-text dictation lives on the push-to-talk path below. "
+            "Commands and dictation both go to whichever app is in the "
+            "foreground when you speak."
         )
         ao_focus_hint.setTextFormat(Qt.TextFormat.RichText)
         ao_focus_hint.setWordWrap(True)
@@ -215,47 +200,96 @@ class VoiceTab(QWidget):
             " border: 1px solid #FFE082; border-radius: 4px; padding: 6px;"
         )
         ao_layout.addWidget(ao_focus_hint)
-
-        # The "OpenAI API recommended" hint is only relevant when the user
-        # has a Whisper engine selected. With Vosk (the new default) it's
-        # actively misleading – Vosk is purpose-built for commands and
-        # cheaper than the API – so we hide it under Vosk via
-        # _sync_engine_dependent_widgets() below.
-        self._ao_api_tip = QLabel(
-            "💡 OpenAI API mode is recommended for Always-On if you also "
-            "want running-text dictation in always-on – much faster and "
-            "more accurate than the local Whisper fallback. Requires an "
-            "OpenAI API key (Settings → AI Settings)."
-        )
-        self._ao_api_tip.setWordWrap(True)
-        self._ao_api_tip.setStyleSheet(
-            "font-size: 8pt; color: #555; background-color: #E8F5E9;"
-            " border-radius: 4px; padding: 6px;"
-        )
-        ao_layout.addWidget(self._ao_api_tip)
         alwayson_group.setLayout(ao_layout)
         left_layout.addWidget(alwayson_group)
 
-        # Whisper-specific settings group. Used by push-to-talk dictation
-        # (always) and by Always-On when the engine is faster-whisper or
-        # the OpenAI API. NOT used when Always-On engine is Vosk – Vosk
-        # picks its own model from the Language setting below. We retitle
-        # the group so it's obvious which engine these knobs control.
-        self._whisper_group = QGroupBox(
-            "🤖 faster-whisper Model (offline; used for push-to-talk and "
-            "Always-On if engine = faster-whisper)"
+        # --- Dictation (push-to-talk faster-whisper) ---
+        # Engine is hard-pinned to faster-whisper here in v1.9.493+: the
+        # OpenAI API option was removed because local models cover the
+        # use case fine and the API choice was adding noise without
+        # value. The Whisper Model controls (model size, max duration,
+        # language) live INSIDE this group now rather than as a separate
+        # section, since they only affect this dictation path.
+        ptt_group = QGroupBox("🗣️ Dictation (push-to-talk)")
+        ptt_layout = QVBoxLayout()
+
+        # Show the current hotkey (read from the user's shortcut_manager
+        # binding). Read-only display – rebinding happens in
+        # Settings → Keyboard Shortcuts, where the capture widget can
+        # handle numpad keys etc. We refresh this label on every showEvent
+        # so the user sees their current binding without having to
+        # reopen Sidekick.
+        hk_row = QHBoxLayout()
+        hk_row.addWidget(QLabel("Hotkey:"))
+        self._hotkey_label = QLabel("Ctrl+Shift+Space")
+        self._hotkey_label.setTextFormat(Qt.TextFormat.RichText)
+        self._hotkey_label.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace; "
+            "font-size: 9pt; padding: 2px 6px; "
+            "background-color: #F5F5F5; border: 1px solid #DDD; border-radius: 3px;"
         )
-        model_layout = QVBoxLayout()
+        hk_row.addWidget(self._hotkey_label)
+        hk_row.addStretch()
+        hk_hint = QLabel(
+            "<a href='change-hotkey' style='color: #1976D2;'>Change in Settings → Keyboard Shortcuts</a>"
+        )
+        hk_hint.setTextFormat(Qt.TextFormat.RichText)
+        hk_hint.setStyleSheet("font-size: 8pt;")
+        hk_hint.linkActivated.connect(lambda _: self._open_keyboard_shortcuts_settings())
+        hk_row.addWidget(hk_hint)
+        ptt_layout.addLayout(hk_row)
+
+        ptt_info = QLabel(
+            "Hold the hotkey to dictate, release to transcribe. "
+            "Works inside the Workbench grid and in any other app on "
+            "your computer. Try binding numpad <b>+</b> (or any other "
+            "key) for one-finger dictation."
+        )
+        ptt_info.setTextFormat(Qt.TextFormat.RichText)
+        ptt_info.setWordWrap(True)
+        ptt_info.setStyleSheet("font-size: 8pt; color: #666;")
+        ptt_layout.addWidget(ptt_info)
+
+        ptt_row = QHBoxLayout()
+        ptt_row.addWidget(QLabel("Mode:"))
+        self._ptt_combo = QComboBox()
+        self._ptt_combo.addItem(
+            "Hold-to-talk (hold the hotkey, release to stop) – recommended", "hold")
+        self._ptt_combo.addItem(
+            "Toggle (press the hotkey to start, press again to stop)", "toggle")
+        saved_ptt = settings.get('pushtotalk_mode', 'hold')
+        for i in range(self._ptt_combo.count()):
+            if self._ptt_combo.itemData(i) == saved_ptt:
+                self._ptt_combo.setCurrentIndex(i)
+                break
+        self._ptt_combo.currentIndexChanged.connect(self._on_ptt_changed)
+        ptt_row.addWidget(self._ptt_combo, stretch=1)
+        ptt_layout.addLayout(ptt_row)
+
+        # Hard-pin push-to-talk to faster-whisper. If the user previously
+        # had pushtotalk_engine='api', force it back to faster_whisper so
+        # the rest of the app's routing reads a sensible value. The UI
+        # widget is gone; advanced users who really want the API can hand-
+        # edit dictation_settings.json (the backend still honours 'api').
+        if settings.get('pushtotalk_engine') != 'faster_whisper':
+            self._set_dictation_keys(pushtotalk_engine='faster_whisper')
+        self._ptt_engine_combo = None  # widget removed in v1.9.493
+
+        # Whisper Model controls live inside this group now, since
+        # they only affect this dictation path (Always-On is Vosk).
+        # Separator label tells the user what model means.
         model_info = QLabel(
-            "faster-whisper model size (larger = more accurate but slower).\n"
-            "Does not apply to the OpenAI Whisper API – that always uses "
-            "whisper-1 server-side regardless of this setting.\n"
-            "• tiny ~75 MB  • base ~142 MB (recommended)  • small ~466 MB\n"
-            "• medium ~1.5 GB  • large ~2.9 GB"
+            "<b>Whisper model</b> – larger = more accurate but slower to "
+            "load and transcribe.<br>"
+            "<span style='color:#888;'>"
+            "tiny ~75 MB · base ~142 MB (recommended) · small ~466 MB · "
+            "medium ~1.5 GB · large ~2.9 GB</span>"
         )
-        model_info.setStyleSheet("font-size: 8pt; color: #555;")
+        model_info.setTextFormat(Qt.TextFormat.RichText)
+        model_info.setStyleSheet(
+            "font-size: 8pt; color: #555; padding-top: 6px;")
         model_info.setWordWrap(True)
-        model_layout.addWidget(model_info)
+        ptt_layout.addWidget(model_info)
 
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel("Model:"))
@@ -271,7 +305,7 @@ class VoiceTab(QWidget):
         self._duration_spin.setValue(settings.get('max_duration', 10))
         self._duration_spin.setSuffix(" sec")
         model_row.addWidget(self._duration_spin)
-        model_layout.addLayout(model_row)
+        ptt_layout.addLayout(model_row)
 
         lang_row = QHBoxLayout()
         lang_row.addWidget(QLabel("Language:"))
@@ -285,80 +319,13 @@ class VoiceTab(QWidget):
         self._lang_combo.setCurrentText(
             settings.get('language', 'Auto (use project target language)'))
         lang_row.addWidget(self._lang_combo, stretch=1)
-        model_layout.addLayout(lang_row)
-        self._whisper_group.setLayout(model_layout)
-        left_layout.addWidget(self._whisper_group)
+        ptt_layout.addLayout(lang_row)
 
-        # Push-to-Talk
-        ptt_group = QGroupBox("🎯 Push-to-Talk Mode")
-        ptt_layout = QVBoxLayout()
-        ptt_info = QLabel(
-            "Controls how your dictation hotkey "
-            "(<b>Ctrl+Shift+Space</b> by default; rebindable in "
-            "Settings → Keyboard Shortcuts) starts and stops recording. "
-            "Hold-to-talk works everywhere – inside the Workbench grid "
-            "and in any other app on your computer."
-        )
-        ptt_info.setTextFormat(Qt.TextFormat.RichText)
-        ptt_info.setWordWrap(True)
-        ptt_info.setStyleSheet("font-size: 8pt; color: #666;")
-        ptt_layout.addWidget(ptt_info)
+        # The separate Whisper Model group is gone in v1.9.493 – its
+        # controls are above. _whisper_group kept as None for the
+        # _sync_engine_dependent_widgets back-compat path.
+        self._whisper_group = None
 
-        # Push-to-talk dictation engine (separate from Always-On engine
-        # because the two paths have different needs: Always-On wants
-        # cheap continuous listening, push-to-talk wants snappy running-
-        # text transcription on demand). "Same as Always-On" preserves
-        # the v1.9.435 default routing (Vosk → faster-whisper, API → API)
-        # but lets the user override – e.g. Vosk for continuous commands
-        # PLUS OpenAI API for fast push-to-talk dictation.
-        ptt_engine_row = QHBoxLayout()
-        ptt_engine_row.addWidget(QLabel("Dictation engine:"))
-        self._ptt_engine_combo = QComboBox()
-        self._ptt_engine_combo.addItem(
-            "Same as Always-On (auto-route)", "auto")
-        self._ptt_engine_combo.addItem(
-            "faster-whisper (offline)", "faster_whisper")
-        self._ptt_engine_combo.addItem(
-            "OpenAI Whisper API (online, fast, requires API key)", "api")
-        saved_ptt_engine = settings.get('pushtotalk_engine', 'auto')
-        for i in range(self._ptt_engine_combo.count()):
-            if self._ptt_engine_combo.itemData(i) == saved_ptt_engine:
-                self._ptt_engine_combo.setCurrentIndex(i)
-                break
-        self._ptt_engine_combo.currentIndexChanged.connect(
-            self._on_ptt_engine_changed)
-        ptt_engine_row.addWidget(self._ptt_engine_combo, stretch=1)
-        ptt_layout.addLayout(ptt_engine_row)
-
-        # Inline indicator: tells the user the *resolved* engine (after
-        # auto-routing). Hidden when the user has picked an explicit
-        # engine, since then the dropdown itself already states it.
-        self._ptt_engine_label = QLabel("")
-        self._ptt_engine_label.setTextFormat(Qt.TextFormat.RichText)
-        self._ptt_engine_label.setWordWrap(True)
-        self._ptt_engine_label.setStyleSheet(
-            "font-size: 8pt; color: #555; background-color: #FFF8E1;"
-            " border: 1px solid #FFE082; border-radius: 4px; padding: 6px;"
-        )
-        ptt_layout.addWidget(self._ptt_engine_label)
-        ptt_row = QHBoxLayout()
-        ptt_row.addWidget(QLabel("Mode:"))
-        self._ptt_combo = QComboBox()
-        self._ptt_combo.addItem(
-            "Hold-to-talk (hold the hotkey, release to stop) – recommended", "hold")
-        self._ptt_combo.addItem(
-            "Toggle (press the hotkey to start, press again to stop)", "toggle")
-        # v1.9.492: hold-to-talk is now the default and works everywhere
-        # (in the editor and in any app on your computer). Toggle is kept
-        # for users who'd rather not hold a key for long dictations.
-        saved_ptt = settings.get('pushtotalk_mode', 'hold')
-        for i in range(self._ptt_combo.count()):
-            if self._ptt_combo.itemData(i) == saved_ptt:
-                self._ptt_combo.setCurrentIndex(i)
-                break
-        self._ptt_combo.currentIndexChanged.connect(self._on_ptt_changed)
-        ptt_row.addWidget(self._ptt_combo, stretch=1)
-        ptt_layout.addLayout(ptt_row)
         ptt_group.setLayout(ptt_layout)
         left_layout.addWidget(ptt_group)
 
@@ -522,6 +489,7 @@ class VoiceTab(QWidget):
         self._populate_table()
         self._sync_alwayson_from_listener()
         self._ahk_status_label.setText(self._ahk_status_text())
+        self._refresh_hotkey_label()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -801,85 +769,25 @@ class VoiceTab(QWidget):
             return False
 
     def _on_engine_changed(self, idx: int):
-        # Mirrors the order of items added in __init__'s engine_combo block.
-        engine_at_index = {0: 'vosk', 1: 'faster_whisper', 2: 'api'}
-        self._set_dictation_keys(
-            recognition_engine=engine_at_index.get(idx, 'vosk'))
-        # Vosk is grammar-constrained → the "commands only" checkbox is
-        # implicit. Whisper engines accept any speech → checkbox is meaningful.
-        self._sync_commands_only_for_engine()
+        # Vestigial – the Always-On engine dropdown is gone in v1.9.493
+        # (Always-On is always Vosk). Kept as a no-op so any straggling
+        # currentIndexChanged signal from old wiring doesn't crash.
+        return
 
     def _sync_commands_only_for_engine(self):
         """Back-compat shim – delegates to the new unified sync method."""
         self._sync_engine_dependent_widgets()
 
     def _sync_engine_dependent_widgets(self):
-        """Show / hide / update widgets whose relevance depends on the
-        currently-selected Always-On engine *and* the push-to-talk engine
-        override.
+        """No-op kept as a safe call site.
 
-        - Always-On engine = Vosk: hides the "commands only" checkbox
-          (structural no-op for Vosk) and the legacy OpenAI-API tip.
-        - Push-to-talk dictation engine: dropdown lets the user pick
-          'auto' / 'faster_whisper' / 'api'. The label below the
-          dropdown shows the *resolved* engine after auto-routing
-          (auto + Vosk → faster-whisper, auto + API → API, etc.) so
-          the user always knows which backend will run when they
-          hold their dictation hotkey.
+        v1.9.493 removed both engine dropdowns (Always-On is always Vosk;
+        push-to-talk is always faster-whisper). The Whisper Model
+        controls are always relevant now – nothing needs syncing. The
+        method stays so older code paths that call it (init, the
+        legacy _sync_commands_only_for_engine shim) don't raise.
         """
-        try:
-            idx = self._engine_combo.currentIndex()
-        except Exception:
-            return
-
-        is_vosk = (idx == 0)
-
-        try:
-            self._commands_only_cb.setVisible(not is_vosk)
-            self._commands_only_cb.setEnabled(not is_vosk)
-        except Exception:
-            pass
-
-        try:
-            # The OpenAI-API recommendation tip was historical advice
-            # from before Vosk landed. Hide it across the board – the
-            # engine selector itself now carries the recommendation.
-            self._ao_api_tip.setVisible(False)
-        except Exception:
-            pass
-
-        # Tell the user explicitly which engine push-to-talk dictation
-        # will use. The override dropdown below it has three options:
-        #   - 'auto'           → mirror Always-On (vosk → faster-whisper)
-        #   - 'faster_whisper' → always faster-whisper
-        #   - 'api'            → always OpenAI Whisper API
-        try:
-            ptt_pref = self._ptt_engine_combo.currentData() or 'auto'
-        except Exception:
-            ptt_pref = 'auto'
-
-        # Resolve 'auto' to the concrete engine that will actually run.
-        if ptt_pref == 'auto':
-            if idx == 2:  # Always-On = OpenAI API
-                resolved = 'api'
-            else:
-                resolved = 'faster_whisper'
-        else:
-            resolved = ptt_pref
-
-        try:
-            if resolved == 'api':
-                txt = ("ℹ️ Push-to-talk will use: <b>OpenAI Whisper API</b> "
-                       "(online, fast, requires API key).")
-            else:
-                txt = ("ℹ️ Push-to-talk will use: <b>faster-whisper</b> "
-                       "(offline). Vosk is commands-only – push-to-talk "
-                       "always falls through to a Whisper engine for "
-                       "running text. Pick 'OpenAI Whisper API' above if "
-                       "you'd rather have the API handle dictation.")
-            self._ptt_engine_label.setText(txt)
-        except Exception:
-            pass
+        return
 
     def _on_sensitivity_changed(self, idx: int):
         sensitivity = ['low', 'medium', 'high'][idx]
@@ -897,11 +805,64 @@ class VoiceTab(QWidget):
         self._set_dictation_keys(pushtotalk_mode=mode)
 
     def _on_ptt_engine_changed(self, idx: int):
-        """Persist the user's push-to-talk engine override and refresh
-        the resolved-engine indicator label below the dropdown."""
-        engine = self._ptt_engine_combo.itemData(idx) or 'auto'
+        """Persist the user's push-to-talk engine choice and refresh
+        the Whisper Model group's enabled state (which depends on it)."""
+        engine = self._ptt_engine_combo.itemData(idx) or 'faster_whisper'
         self._set_dictation_keys(pushtotalk_engine=engine)
         self._sync_engine_dependent_widgets()
+
+    def _refresh_hotkey_label(self):
+        """Update the read-only hotkey display from shortcut_manager.
+
+        Called on showEvent so the user always sees their current
+        binding without having to dismiss + re-summon Sidekick after
+        rebinding in Settings → Keyboard Shortcuts.
+        """
+        try:
+            sm = getattr(self._parent_app, 'shortcut_manager', None)
+            if sm is None:
+                return
+            shortcut = sm.get_shortcut('voice_dictate') or 'Ctrl+Shift+Space'
+            # Use the platform-aware display formatter so macOS sees
+            # ⌃⇧Space rather than literal "Ctrl+Shift+Space".
+            try:
+                from modules.shortcut_display import format_shortcut_for_display
+                display = format_shortcut_for_display(shortcut)
+            except Exception:
+                display = shortcut
+            self._hotkey_label.setText(display)
+        except Exception:
+            pass
+
+    def _open_keyboard_shortcuts_settings(self):
+        """Bounce the user to Settings → Keyboard Shortcuts to rebind.
+
+        Sidekick lives in a floating window; Settings lives in the main
+        Workbench. We open the main window's Settings tab and select
+        Keyboard Shortcuts. Falls back to a help-message if the main
+        app doesn't expose the entry point.
+        """
+        mw = self._parent_app
+        opener = getattr(mw, 'open_settings_to_keyboard_shortcuts', None)
+        if callable(opener):
+            try:
+                opener()
+                return
+            except Exception:
+                pass
+        # Fallback: tell the user where to look manually.
+        try:
+            QMessageBox.information(
+                self,
+                "Rebind dictation hotkey",
+                "Open the main Workbench window → <b>Settings</b> → "
+                "<b>Keyboard Shortcuts</b>. Find "
+                "<b>Voice dictation / push-to-talk</b> in the "
+                "<b>Special</b> category, click the shortcut field, "
+                "and press the key combo you want (numpad + works).",
+            )
+        except Exception:
+            pass
 
     def _on_commands_only_toggled(self, checked: bool):
         self._set_dictation_keys(alwayson_commands_only=bool(checked))
