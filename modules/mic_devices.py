@@ -8,11 +8,20 @@ microphone picker all need to ask sounddevice the same two questions:
      record time, because indices can shuffle between sessions (USB
      devices added / removed, default device changed, etc.)
 
-This module centralises both calls so the engines and the UI agree on
-device identity and on what "default" means.
+PortAudio (sounddevice's underlying lib) exposes the same physical mic
+through several Windows host APIs (MME, DirectSound, WASAPI, WDM-KS),
+which means ``sd.query_devices()`` returns ~12 entries for what Windows
+Settings shows as 2 mics. MME also truncates device names to 32 chars,
+which makes the user pick between "Microphone (BRIO 4K Stream Edit"
+and "Microphone (BRIO 4K Stream Edition)" without knowing they're the
+same device. To match what the OS's own sound settings show, filter to
+the platform's modern host API: WASAPI on Windows, Core Audio on
+macOS, ALSA on Linux. The selected host API also gives us clean,
+non-truncated device names.
 """
 from __future__ import annotations
 
+import sys
 from typing import List, Optional
 
 
@@ -23,11 +32,38 @@ from typing import List, Optional
 DEFAULT_SENTINEL = "__default__"
 
 
-def list_input_devices() -> List[str]:
-    """Return the list of available *input* devices' names.
+def _preferred_hostapi_index() -> Optional[int]:
+    """Return the sounddevice host-API index that matches the OS's own
+    sound settings, or ``None`` if we can't find it (fall back to no
+    filter, the same behaviour as before this filter existed).
+    """
+    try:
+        import sounddevice as sd
+        hostapis = sd.query_hostapis()
+    except Exception:
+        return None
 
-    Empty list on any sounddevice failure (no PortAudio host, etc.) –
-    the UI then just shows "System default" as the only option.
+    if sys.platform == 'win32':
+        preferred = 'Windows WASAPI'
+    elif sys.platform == 'darwin':
+        preferred = 'Core Audio'
+    else:
+        preferred = 'ALSA'
+
+    for idx, api in enumerate(hostapis):
+        try:
+            if api.get('name') == preferred:
+                return idx
+        except Exception:
+            continue
+    return None
+
+
+def list_input_devices() -> List[str]:
+    """Return the list of available *input* devices' names, filtered
+    to the platform's modern host API so the user sees the same set
+    as their OS sound settings (no MME-truncated duplicates, no
+    DirectSound virtual entries, no WDM-KS low-level handles).
     """
     try:
         import sounddevice as sd
@@ -35,11 +71,14 @@ def list_input_devices() -> List[str]:
     except Exception:
         return []
 
+    hostapi_idx = _preferred_hostapi_index()
     seen = set()
     names: List[str] = []
     for dev in devices:
         try:
             if dev.get('max_input_channels', 0) <= 0:
+                continue
+            if hostapi_idx is not None and dev.get('hostapi') != hostapi_idx:
                 continue
         except Exception:
             continue
@@ -53,6 +92,13 @@ def list_input_devices() -> List[str]:
 
 def resolve_device_index(saved_name: Optional[str]) -> Optional[int]:
     """Map a saved device name to the current sounddevice device index.
+
+    Filters by the same host API as ``list_input_devices`` so the index
+    we return matches the device the user actually saw + picked. Without
+    this filter we'd resolve to the first match across *all* host APIs,
+    which can be the MME-truncated variant of the same physical mic –
+    works, but uses a legacy API path with worse latency and dropped
+    audio characteristics.
 
     Returns:
         - ``None`` if ``saved_name`` is empty, the default sentinel, or
@@ -69,9 +115,12 @@ def resolve_device_index(saved_name: Optional[str]) -> Optional[int]:
         devices = sd.query_devices()
     except Exception:
         return None
+    hostapi_idx = _preferred_hostapi_index()
     for idx, dev in enumerate(devices):
         try:
             if dev.get('max_input_channels', 0) <= 0:
+                continue
+            if hostapi_idx is not None and dev.get('hostapi') != hostapi_idx:
                 continue
             if dev.get('name') == saved_name:
                 return idx
