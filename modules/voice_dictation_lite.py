@@ -53,13 +53,18 @@ class QuickDictationThread(QThread):
     model_loading_started = pyqtSignal(str)  # Model name being loaded/downloaded
     model_loading_finished = pyqtSignal()  # Model loaded successfully
 
-    def __init__(self, model_name="base", language="auto", duration=10, use_api: bool = False, api_key: str | None = None):
+    def __init__(self, model_name="base", language="auto", duration=10, use_api: bool = False, api_key: str | None = None, mic_device: str | None = None):
         super().__init__()
         self.model_name = model_name
         self.language = None if language == "auto" else language
         self.duration = duration  # Max recording duration
         self.use_api = use_api
         self.api_key = api_key
+        # Saved device *name* from dictation_settings (None ⇒ OS default).
+        # Resolved to a sounddevice index inside run() via
+        # modules.mic_devices, so we always honour the *current* device
+        # mapping rather than a stale index from __init__ time.
+        self.mic_device = mic_device
         self.sample_rate = 16000
         self.is_recording = False
         self.stop_requested = False
@@ -92,12 +97,24 @@ class QuickDictationThread(QThread):
             self.is_recording = True
             self.stop_requested = False
 
+            # Resolve the saved mic-device name to a current index.
+            # ``None`` → sd uses the OS default input. Done here (not
+            # in __init__) so we honour the live device mapping –
+            # devices the user plugged in after launching Workbench
+            # are picked up without a restart.
+            try:
+                from modules.mic_devices import resolve_device_index
+                device_idx = resolve_device_index(self.mic_device)
+            except Exception:
+                device_idx = None
+
             # Start recording
             recording = sd.rec(
                 int(self.duration * self.sample_rate),
                 samplerate=self.sample_rate,
                 channels=1,
-                dtype='float32'
+                dtype='float32',
+                device=device_idx,
             )
 
             # Wait for recording to complete OR manual stop

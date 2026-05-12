@@ -694,7 +694,8 @@ class ContinuousVoiceListener(QObject):
                  engine: str = ENGINE_VOSK,
                  api_key: str = None,
                  user_data_path=None,
-                 vosk_model_key: str = None):
+                 vosk_model_key: str = None,
+                 mic_device: str = None):
         super().__init__()
         self.command_manager = command_manager
         self.model_name = model_name
@@ -708,6 +709,11 @@ class ContinuousVoiceListener(QObject):
         self.api_key = api_key
         self.user_data_path = user_data_path  # required for Vosk model storage
         self.vosk_model_key = vosk_model_key  # auto-resolved from language if None
+        # Saved device *name* from the Voice tab's Microphone dropdown
+        # (None ⇒ OS default). Resolved to a sounddevice index inside
+        # the audio thread via modules.mic_devices, so we always pick up
+        # the *current* device mapping rather than a stale index.
+        self.mic_device = mic_device
 
         # VAD settings
         self.speech_threshold = 0.02  # RMS threshold to detect speech (adjustable)
@@ -1078,6 +1084,17 @@ class _VADListenerThread(QObject):
             worker = _threading.Thread(target=transcription_worker, daemon=True)
             worker.start()
 
+            # Resolve the user's saved mic-device name to a current
+            # sounddevice index. ``None`` → OS default. Done here (in
+            # the audio thread, just before opening the stream) so we
+            # honour the live device mapping – mics plugged in after
+            # Workbench launched are picked up without a restart.
+            try:
+                from modules.mic_devices import resolve_device_index
+                device_idx = resolve_device_index(self.mic_device)
+            except Exception:
+                device_idx = None
+
             # Keep the InputStream open for the full session so the OS mic
             # indicator never flickers – transcription now happens off-thread.
             with sd.InputStream(
@@ -1086,6 +1103,7 @@ class _VADListenerThread(QObject):
                 dtype='float32',
                 blocksize=chunk_samples,
                 callback=audio_callback,
+                device=device_idx,
             ):
                 while self._running:
                     time.sleep(0.1)

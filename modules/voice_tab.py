@@ -150,6 +150,39 @@ class VoiceTab(QWidget):
                     'api' if legacy_eng == 'api' else 'faster_whisper'))
             self._set_dictation_keys(recognition_engine='vosk')
 
+        # --- Microphone (top-level – applies to both surfaces) ---
+        # Both Always-On (Vosk) and push-to-talk (faster-whisper) record
+        # from the same physical mic, so this is a single setting that
+        # governs all voice input. Stored as the device *name* so it
+        # survives across sessions (device indices shuffle when USB
+        # devices are added / removed). Lookup happens at record time
+        # via mic_devices.resolve_device_index – if the saved device is
+        # gone, sounddevice silently falls back to the OS default.
+        from modules.mic_devices import list_input_devices, DEFAULT_SENTINEL
+        mic_row = QHBoxLayout()
+        mic_row.addWidget(QLabel("Microphone:"))
+        self._mic_combo = QComboBox()
+        self._mic_combo.addItem(
+            "System default (currently selected in Windows)",
+            DEFAULT_SENTINEL,
+        )
+        for name in list_input_devices():
+            self._mic_combo.addItem(name, name)
+        # Restore saved selection if the device is still attached;
+        # otherwise leave the combo on "System default" (index 0).
+        saved_mic = settings.get('mic_device', DEFAULT_SENTINEL)
+        for i in range(self._mic_combo.count()):
+            if self._mic_combo.itemData(i) == saved_mic:
+                self._mic_combo.setCurrentIndex(i)
+                break
+        self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
+        mic_row.addWidget(self._mic_combo, stretch=1)
+        # Wrap in a tiny widget so we can give it left/right margins
+        # consistent with the group boxes below it.
+        mic_widget = QWidget()
+        mic_widget.setLayout(mic_row)
+        left_layout.addWidget(mic_widget)
+
         # --- Voice commands (Always-On Vosk listener) ---
         alwayson_group = QGroupBox("🎤 Voice commands (Always-On listening)")
         ao_layout = QVBoxLayout()
@@ -798,6 +831,20 @@ class VoiceTab(QWidget):
         legacy _sync_commands_only_for_engine shim) don't raise.
         """
         return
+
+    def _on_mic_changed(self, idx: int):
+        """Persist the user's microphone choice.
+
+        Stored as the device name (or the DEFAULT_SENTINEL string) so the
+        next session re-binds to the same physical mic even if its index
+        has shifted due to other USB devices being attached. The engines
+        resolve name → index at record time via mic_devices.resolve_device_index.
+        """
+        try:
+            saved = self._mic_combo.itemData(idx)
+            self._set_dictation_keys(mic_device=saved)
+        except Exception:
+            pass
 
     def _on_sensitivity_changed(self, idx: int):
         sensitivity = ['low', 'medium', 'high'][idx]

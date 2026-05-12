@@ -20533,6 +20533,7 @@ class SupervertalerQt(QMainWindow):
                     engine=engine,
                     api_key=api_key,
                     user_data_path=str(self.user_data_path) if hasattr(self, 'user_data_path') else None,
+                    mic_device=dictation_settings.get('mic_device'),
                 )
                 
                 # Set sensitivity from persisted settings (the Voice tab
@@ -45360,13 +45361,18 @@ class SupervertalerQt(QMainWindow):
             else:
                 lang_code = lang_map.get(target_lang, 'auto')
 
-            # Create dictation thread with user settings
+            # Create dictation thread with user settings. mic_device is
+            # the saved device *name* from the Voice tab's Microphone
+            # dropdown; the thread resolves it to a sounddevice index at
+            # record time via modules.mic_devices (None ⇒ OS default).
+            mic_device = dictation_settings.get('mic_device')
             self.dictation_thread = QuickDictationThread(
                 model_name=model_name,
                 language=lang_code,
                 duration=max_duration,
                 use_api=use_api,
-                api_key=api_key
+                api_key=api_key,
+                mic_device=mic_device,
             )
 
             # Connect signals
