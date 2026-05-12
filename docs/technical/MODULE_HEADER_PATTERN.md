@@ -1,7 +1,7 @@
 # Standardized Tab Header Pattern
 
 ## Overview
-This document defines the standardized pattern for tab headers in Supervertaler. All tabs use a consistent style matching Universal Lookup and AutoFingers.
+This document defines the standardized pattern for tab headers in Supervertaler. All tabs use a consistent style matching Universal Lookup and Voice.
 
 ## Standard Tab Header Pattern
 
@@ -62,12 +62,12 @@ def create_tab(self, parent):
     main_layout.setContentsMargins(10, 10, 10, 10)
     main_layout.setSpacing(5)  # Tighter spacing
     
-    # Header (matches Universal Lookup / AutoFingers style)
+    # Header (matches Universal Lookup / Voice style)
     header = QLabel("🔍 Module Name")
     header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
     main_layout.addWidget(header, 0)  # 0 = no stretch, stays compact
     
-    # Description box (matches Universal Lookup / AutoFingers style)
+    # Description box (matches Universal Lookup / Voice style)
     description = QLabel(
         "Brief description of what this module does.\n"
         "Second line with additional info if needed."
@@ -95,7 +95,7 @@ def create_your_tab(self) -> QWidget:
     layout.setContentsMargins(10, 10, 10, 10)
     layout.setSpacing(5)  # Tighter spacing
     
-    # Header (matches Universal Lookup / AutoFingers / PDF Rescue style)
+    # Header (matches Universal Lookup / Voice / PDF Rescue style)
     header = QLabel("📝 Module Name")
     header.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
     layout.addWidget(header, 0)  # 0 = no stretch
@@ -121,7 +121,7 @@ def create_your_tab(self) -> QWidget:
 - 🔍 **Universal Lookup** - Search/lookup functionality
 - 🔍 **PDF Rescue** - PDF/OCR extraction
 - 📝 **TMX Editor** - Editing/writing
-- 🤖 **AutoFingers** - Automation
+- 🤖 **Voice** - Automation
 - 🏠 **Project Home** - Home/dashboard
 - 📚 **Termbases** - Terminology management
 - 🚫 **Non-Translatables** - Exclusions/blocking
@@ -190,7 +190,7 @@ layout.addWidget(description)
 ## Current Implementation Status
 
 ✅ **Universal Lookup** - Fully standardized with blue header and stretch factors  
-✅ **AutoFingers** - Fully standardized with blue header and stretch factors  
+✅ **Voice** - Fully standardized with blue header and stretch factors  
 ✅ **PDF Rescue** - Fully standardized with blue header and stretch factors  
 ✅ **TMX Editor** - Fully standardized with blue header and stretch factors  
 🔲 **Other tabs** - Update as needed when created

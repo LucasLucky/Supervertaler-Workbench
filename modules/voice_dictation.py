@@ -101,7 +101,7 @@ class TranscriptionThread(QThread):
                     "faster-whisper is not installed in this environment.\n\n"
                     "Re-install Supervertaler:\n"
                     "  pip install --upgrade supervertaler\n\n"
-                    "Or switch to 'OpenAI Whisper API' in Sidekick → AutoFingers."
+                    "Or switch to 'OpenAI Whisper API' in Sidekick → Voice."
                 )
                 self.error.emit(msg)
                 return

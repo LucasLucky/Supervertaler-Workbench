@@ -57,7 +57,7 @@ class FeatureModule:
 FEATURE_MODULES: Dict[str, FeatureModule] = {
     "voice": FeatureModule(
         id="voice",
-        name="AutoFingers (Voice Commands & Dictation)",
+        name="Voice (Commands & Dictation)",
         description=(
             "Voice dictation and hands-free commands. Works via the OpenAI Whisper API (recommended). "
             "Optional offline Local Whisper is available via the 'local-whisper' extra."

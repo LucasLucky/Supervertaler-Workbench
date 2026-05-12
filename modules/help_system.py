@@ -124,10 +124,10 @@ class Topics:
 
     # Sidekick
     SIDEKICK            = "sidekick/overview"
-    AUTOFINGERS         = "sidekick/autofingers"
+    VOICE               = "sidekick/voice"
     CLIPBOARD           = "sidekick/clipboard"
 
-    # Tools (TOOL_VOICE removed – voice/dictation is now AutoFingers in Sidekick)
+    # Tools (TOOL_VOICE removed – voice/dictation is the Voice tab in Sidekick)
     TOOL_PDF_RESCUE     = "tools/pdf-rescue"
     TOOL_TMX_EDITOR     = "tools/tmx-editor"
     TOOL_IMAGE_EXTRACT  = "tools/image-extractor"

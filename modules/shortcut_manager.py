@@ -593,9 +593,9 @@ class ShortcutManager:
             "action": "open_clipboard_tab",
             "global": True,
         },
-        "autofingers_alwayson_toggle": {
+        "voice_alwayson_toggle": {
             "category": "Special",
-            "description": "AutoFingers Always-On (toggle)",
+            "description": "Voice Always-On (toggle)",
             "default": "Ctrl+Alt+A",
             "action": "toggle_alwayson",
             "global": True,
@@ -689,6 +689,19 @@ class ShortcutManager:
             self.disabled_shortcuts = old_disabled
             self.save_shortcuts()
 
+        # Migrate autofingers_alwayson_toggle → voice_alwayson_toggle (v1.9.491+).
+        # The internal feature was renamed from "AutoFingers" to "Voice".
+        if 'autofingers_alwayson_toggle' in self.custom_shortcuts:
+            if 'voice_alwayson_toggle' not in self.custom_shortcuts:
+                self.custom_shortcuts['voice_alwayson_toggle'] = \
+                    self.custom_shortcuts['autofingers_alwayson_toggle']
+            del self.custom_shortcuts['autofingers_alwayson_toggle']
+            self.save_shortcuts()
+        if 'autofingers_alwayson_toggle' in self.disabled_shortcuts:
+            self.disabled_shortcuts.discard('autofingers_alwayson_toggle')
+            self.disabled_shortcuts.add('voice_alwayson_toggle')
+            self.save_shortcuts()
+
         # Migrate quickmenu → quicklauncher → sidekick shortcut IDs.
         # The global hotkey was renamed to "sidekick" to match the user-facing
         # feature name; the editor-only QuickLauncher kept its name.
@@ -735,7 +748,7 @@ class ShortcutManager:
             'global_sidekick':          'sidekick_open',
             'global_clipboard':         'sidekick_open_clipboard',
             'global_pushtotalk':        'voice_dictate',
-            'global_alwayson_toggle':   'autofingers_alwayson_toggle',
+            'global_alwayson_toggle':   'voice_alwayson_toggle',
         }
         merge_changed = False
         for old_id, new_id in _GLOBAL_TO_MERGED.items():
@@ -811,7 +824,9 @@ class ShortcutManager:
             'global_sidekick':        'sidekick_open',
             'global_clipboard':       'sidekick_open_clipboard',
             'global_pushtotalk':      'voice_dictate',
-            'global_alwayson_toggle': 'autofingers_alwayson_toggle',
+            'global_alwayson_toggle':       'voice_alwayson_toggle',
+            # Voice rename (v1.9.491): AutoFingers → Voice
+            'autofingers_alwayson_toggle':  'voice_alwayson_toggle',
         }
         shortcut_id = _LEGACY_IDS.get(shortcut_id, shortcut_id)
 

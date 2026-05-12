@@ -175,7 +175,7 @@ class FloatingAssistant(QWidget):
         esc_shortcut.activated.connect(self._dismiss_to_tray)
 
         # Ctrl+Tab / Ctrl+Shift+Tab cycle through the Sidekick's left tabs
-        # (Chat → SuperLookup → Clipboard → AutoFingers → wrap). Standard
+        # (Chat → SuperLookup → Clipboard → Voice → wrap). Standard
         # Qt convention; matches what users expect from any tabbed app.
         next_tab_sc = QShortcut(QKeySequence("Ctrl+Tab"), self)
         next_tab_sc.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -224,13 +224,13 @@ class FloatingAssistant(QWidget):
             print(f"[FloatingAssistant] Sidekick bridge server failed to start: {e}")
 
         # Schedule a warm-up of the lazy-built tabs (Superlookup,
-        # Clipboard, AutoFingers) shortly after the main window has had
+        # Clipboard, Voice) shortly after the main window has had
         # a chance to finish its own initialisation.
         #
         # Without this, the very first press of Alt+K / Ctrl+Shift+C
         # spent 4-5 seconds constructing the SuperlookupTab widget
         # (heavy: it brings up TM / termbase managers, MT engines, web
-        # resources) plus the Clipboard tab + AutoFingers tab. Reported
+        # resources) plus the Clipboard tab + Voice tab. Reported
         # as a noticeable hitch on every cold-start hotkey press.
         # 2 500 ms gives the main window time to paint, the Okapi
         # sidecar to hand over, and the database to settle, then we
@@ -241,7 +241,7 @@ class FloatingAssistant(QWidget):
         QTimer.singleShot(2500, self._warm_up_lazy_tabs)
 
     def _warm_up_lazy_tabs(self):
-        """Pre-build the Superlookup / Clipboard / AutoFingers tabs so
+        """Pre-build the Superlookup / Clipboard / Voice tabs so
         the first hotkey press doesn't pay the construction cost.
 
         Idempotent: safe to call repeatedly. Each individual ``_ensure_*``
@@ -251,7 +251,7 @@ class FloatingAssistant(QWidget):
         manually (the lazy paths still run on first show as a fallback).
         """
         try:
-            self._ensure_superlookup_tab()  # also cascades into clipboard + autofingers
+            self._ensure_superlookup_tab()  # also cascades into clipboard + voice
         except Exception as e:
             print(f"[FloatingAssistant] Warm-up failed (lazy paths still active): {e}")
 
@@ -670,8 +670,8 @@ class FloatingAssistant(QWidget):
         # Force tabs to fit their full text instead of clipping to ellipsis.
         # On macOS the default ElideRight kicks in even with plenty of width
         # available because the QTabBar's metric calculation differs from
-        # Windows; without this, tabs like "Clipboard", "AutoFingers",
-        # "SuperLookup" all get clipped to "Clipb…", "AutoFi…", "SuperLo…".
+        # Windows; without this, tabs like "Clipboard", "Voice",
+        # "SuperLookup" all get clipped to "Clipb…", "Voi…", "SuperLo…".
         self._left_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
         self._left_tabs.tabBar().setUsesScrollButtons(False)
 
@@ -712,11 +712,11 @@ class FloatingAssistant(QWidget):
         set_help_topic(self._clipboard_widget, HelpTopics.CLIPBOARD)
         self._clipboard_tab_added = False
 
-        # AutoFingers tab – voice commands + dictation. Lazy because it relies on
+        # Voice tab – voice commands + dictation. Lazy because it relies on
         # parent_app.voice_command_manager and other attrs that may not be
         # ready when the FloatingAssistant is first constructed.
-        self._autofingers_widget = None
-        self._autofingers_tab_added = False
+        self._voice_widget = None
+        self._voice_tab_added = False
 
         # F1 from anywhere in Sidekick that has no more specific topic → overview
         set_help_topic(self, HelpTopics.SIDEKICK)
@@ -990,7 +990,7 @@ class FloatingAssistant(QWidget):
         tools_cat = self._make_category("\U0001F6E0 Tools", expanded=True)
         self._add_tree_action(tools_cat, "\U0001F50D SuperLookup", self._on_superlookup)
         self._add_tree_action(tools_cat, "\U0001F4CB Clipboard", self._on_clipboard)
-        self._add_tree_action(tools_cat, "\U0001F3A4 AutoFingers", self._on_autofingers)
+        self._add_tree_action(tools_cat, "\U0001F3A4 Voice", self._on_voice)
 
         # -- Prompt library items (grouped by folder) --
         self._populate_prompt_library_tree()
@@ -1807,7 +1807,7 @@ class FloatingAssistant(QWidget):
         0: "AI chat assistant – ask questions, get translations, save answers to your memory bank",
         1: "SuperLookup – QuickTrans (Ctrl+Alt+Q), TMs, termbases (Ctrl+Alt+L), and web resources in one place",
         2: "Clipboard history – click any item to paste it; pasted items are shown in grey",
-        3: "AutoFingers – voice commands and dictation; toggle Always-On to listen continuously across all apps",
+        3: "Voice – commands and dictation; toggle Always-On to listen continuously across all apps",
     }
 
     def _update_info_label(self, index):
@@ -1834,22 +1834,22 @@ class FloatingAssistant(QWidget):
         # Load persisted history now that db_manager is ready
         self._clipboard_widget.ensure_db_loaded()
 
-    def _ensure_autofingers_tab(self):
-        """Add the AutoFingers tab on first call (guarded). Always added last so
-        the tab order stays Chat → SuperLookup → Clipboard → AutoFingers."""
-        if self._autofingers_tab_added:
+    def _ensure_voice_tab(self):
+        """Add the Voice tab on first call (guarded). Always added last so
+        the tab order stays Chat → SuperLookup → Clipboard → Voice."""
+        if self._voice_tab_added:
             return
         try:
-            from modules.autofingers_tab import AutoFingersTab
-            self._autofingers_widget = AutoFingersTab(self._parent_app)
-            self._autofingers_tab_added = True
-            self._left_tabs.addTab(self._autofingers_widget, "\U0001F3A4 AutoFingers")
+            from modules.voice_tab import VoiceTab
+            self._voice_widget = VoiceTab(self._parent_app)
+            self._voice_tab_added = True
+            self._left_tabs.addTab(self._voice_widget, "\U0001F3A4 Voice")
         except Exception as e:
             import traceback
             traceback.print_exc()
             log = getattr(self._parent_app, 'log', None)
             if log:
-                log(f"⚠ FloatingAssistant: Could not load AutoFingers tab: {e}")
+                log(f"⚠ FloatingAssistant: Could not load Voice tab: {e}")
 
     def _open_to_clipboard(self, source_window=None):
         """Open the Sidekick directly to the Clipboard tab and focus the list."""
@@ -1879,20 +1879,20 @@ class FloatingAssistant(QWidget):
         self._open_to_clipboard()
 
     # ------------------------------------------------------------------
-    # AutoFingers action
+    # Voice action
     # ------------------------------------------------------------------
 
-    def _open_to_autofingers(self, source_window=None):
-        """Open the Sidekick directly to the AutoFingers tab."""
+    def _open_to_voice(self, source_window=None):
+        """Open the Sidekick directly to the Voice tab."""
         self._ensure_superlookup_tab()
-        self._ensure_autofingers_tab()
-        idx = self._left_tabs.indexOf(self._autofingers_widget) if self._autofingers_widget else -1
+        self._ensure_voice_tab()
+        idx = self._left_tabs.indexOf(self._voice_widget) if self._voice_widget else -1
         self.show_at_cursor(start_tab=idx if idx >= 0 else None,
                             source_window=source_window)
 
-    def _on_autofingers(self):
-        """Action-panel handler: show the AutoFingers tab."""
-        self._open_to_autofingers()
+    def _on_voice(self):
+        """Action-panel handler: show the Voice tab."""
+        self._open_to_voice()
 
     # ------------------------------------------------------------------
     # Default-tab preference (right-click on tab bar)
@@ -1971,8 +1971,8 @@ class FloatingAssistant(QWidget):
 
         # Clipboard tab always goes after SuperLookup
         self._ensure_clipboard_tab()
-        # AutoFingers tab always goes last
-        self._ensure_autofingers_tab()
+        # Voice tab always goes last
+        self._ensure_voice_tab()
 
     # ------------------------------------------------------------------
     # Show / toggle

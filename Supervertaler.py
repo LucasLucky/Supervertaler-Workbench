@@ -11,7 +11,7 @@ For the classic tkinter edition, see Supervertaler_tkinter.py
 Key Features:
 - Complete Translation Matching: Termbase + TM + MT + Multi-LLM
 - Project Termbases: Dedicated terminology per project with automatic extraction
-- AutoFingers: AI-enhanced voice dictation (100+ languages via OpenAI Whisper)
+- Voice: AI-enhanced commands and dictation (100+ languages via OpenAI Whisper)
 - Superimage: Extract images from DOCX files with preview
 - Google Cloud Translation API integration
 - Multi-LLM Support: OpenAI GPT, Claude, Google Gemini
@@ -57,7 +57,7 @@ def _read_version():
 
 __version__ = _read_version()
 __phase__ = "0.9"
-__release_date__ = "2026-04-30"
+__release_date__ = "2026-05-12"
 __edition__ = "Qt"
 
 # --- macOS Finder crash logging (v1.9.275) ---
@@ -1875,12 +1875,12 @@ class _DoubleTapShiftEventFilter(QObject):
 
 
 class _F9HoldReleaseFilter(QObject):
-    """App-level event filter for AutoFingers hold-to-talk dictation mode.
+    """App-level event filter for Voice hold-to-talk dictation mode.
 
     The F9 press is handled by the existing ``voice_dictate`` QShortcut
     (which calls ``start_voice_dictation``). This filter only acts on F9
     releases when the user has set ``pushtotalk_mode = 'hold'`` in the
-    AutoFingers tab – releasing F9 stops the active dictation recording so
+    Voice tab – releasing F9 stops the active dictation recording so
     transcription fires immediately, walkie-talkie style.
 
     In ``toggle`` mode (the default) this filter is a no-op. Auto-repeat
@@ -7102,7 +7102,7 @@ class SupervertalerQt(QMainWindow):
         self.source_language = "English"
         self.target_language = "Dutch"
 
-        # AutoFingers model download tracking
+        # Voice model download tracking
         self.is_loading_model = False
         self.loading_model_name = None
         
@@ -7266,7 +7266,7 @@ class SupervertalerQt(QMainWindow):
         self.log(f"Welcome to Supervertaler Workbench v{__version__}")
         self.log("Supervertaler: The Ultimate Translation Workbench.")
 
-        # Bring up the AutoFingers tray icon now (in its inactive/grey
+        # Bring up the Voice tray icon now (in its inactive/grey
         # state) so the system tray slot is allocated up-front. Allocating
         # it on first Always-On activation would cause a one-time bounce
         # of neighbouring tray icons; doing it at startup folds that into
@@ -8105,7 +8105,7 @@ class SupervertalerQt(QMainWindow):
             self._double_shift_event_filter = _DoubleTapShiftEventFilter(self)
             QApplication.instance().installEventFilter(self._double_shift_event_filter)
 
-        # F9 hold-to-talk release detection – only acts when AutoFingers is
+        # F9 hold-to-talk release detection – only acts when Voice is
         # set to hold-to-talk mode. Press is handled by the voice_dictate
         # QShortcut as usual; this filter just stops the recording on F9 up.
         if not hasattr(self, '_f9_hold_release_filter'):
@@ -8178,7 +8178,7 @@ class SupervertalerQt(QMainWindow):
         )
         create_shortcut("sidekick_open", "Alt+K", self.open_quicklauncher)
         create_shortcut(
-            "autofingers_alwayson_toggle", "Ctrl+Alt+A",
+            "voice_alwayson_toggle", "Ctrl+Alt+A",
             self._toggle_alwayson_listening,
         )
 
@@ -10949,8 +10949,8 @@ class SupervertalerQt(QMainWindow):
         been retired; the SuperlookupTab construction stays because the
         global hotkey registration happens as a side-effect of __init__.
 
-        AutoFingers (voice commands / dictation) is registered separately
-        via Sidekick (modules/autofingers_tab.py).
+        Voice (commands / dictation) is registered separately
+        via Sidekick (modules/voice_tab.py).
         """
         lookup_tab = SuperlookupTab(self, user_data_path=self.user_data_path)
         lookup_tab.hide()  # Never shown – purely for hotkey side effects
@@ -16960,9 +16960,9 @@ class SupervertalerQt(QMainWindow):
         model_mgmt_tab = self._create_model_management_tab()
         settings_tabs.addTab(scroll_area_wrapper(model_mgmt_tab), "🤖 AI Models")
 
-        # ===== TAB: AutoFingers (voice commands & dictation, lives in Sidekick) =====
-        autofingers_tab = self._create_autofingers_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(autofingers_tab), "🎤 AutoFingers")
+        # ===== TAB: Voice (commands & dictation, lives in Sidekick) =====
+        voice_tab = self._create_voice_settings_tab()
+        settings_tabs.addTab(scroll_area_wrapper(voice_tab), "🎤 Voice")
 
         # ===== TAB 3: Language Pair Settings =====
         lang_tab = self._create_language_pair_tab()
@@ -20467,7 +20467,7 @@ class SupervertalerQt(QMainWindow):
         return tab
 
     def _populate_voice_commands_table(self):
-        """Refresh the AutoFingers voice-command table in Sidekick (if open).
+        """Refresh the Voice command table in Sidekick (if open).
 
         Called whenever the underlying voice_command_manager has changed
         (commands added, edited, removed, or reset).
@@ -20476,7 +20476,7 @@ class SupervertalerQt(QMainWindow):
             return
         sidekick = getattr(self, '_floating_assistant', None)
         if sidekick is not None:
-            af = getattr(sidekick, '_autofingers_widget', None)
+            af = getattr(sidekick, '_voice_widget', None)
             if af is not None:
                 try:
                     af._populate_table()
@@ -20575,7 +20575,7 @@ class SupervertalerQt(QMainWindow):
                     user_data_path=str(self.user_data_path) if hasattr(self, 'user_data_path') else None,
                 )
                 
-                # Set sensitivity from persisted settings (the AutoFingers tab
+                # Set sensitivity from persisted settings (the Voice tab
                 # writes this key directly via _set_dictation_keys).
                 sensitivity = dictation_settings.get('alwayson_sensitivity', 'medium')
                 if sensitivity in ('low', 'medium', 'high'):
@@ -20711,10 +20711,10 @@ class SupervertalerQt(QMainWindow):
                     }
                 """)
 
-        # Update Sidekick's AutoFingers tab if it has been created.
+        # Update Sidekick's Voice tab if it has been created.
         sidekick = getattr(self, '_floating_assistant', None)
         if sidekick is not None:
-            af = getattr(sidekick, '_autofingers_widget', None)
+            af = getattr(sidekick, '_voice_widget', None)
             if af is not None:
                 try:
                     af.set_alwayson_status(status)
@@ -20793,7 +20793,7 @@ class SupervertalerQt(QMainWindow):
         change as state changes.
 
         Single-click toggles Always-On. Right-click shows a small menu
-        with the same toggle plus an "Open AutoFingers in Sidekick"
+        with the same toggle plus an "Open Voice in Sidekick"
         shortcut.
         """
         if hasattr(self, '_alwayson_tray_icon'):
@@ -20810,14 +20810,14 @@ class SupervertalerQt(QMainWindow):
         self._alwayson_tray_icon_red = self._draw_mic_icon(QColor(0xC6, 0x28, 0x28))
 
         tray = QSystemTrayIcon(self._alwayson_tray_icon_normal, self)
-        tray.setToolTip("AutoFingers – Always-On is OFF. Click to start.")
+        tray.setToolTip("Voice – Always-On is OFF. Click to start.")
 
         menu = QMenu(self)
         toggle_action = menu.addAction("▶ Start Always-On")
         toggle_action.triggered.connect(self._toggle_alwayson_listening)
         menu.addSeparator()
-        open_action = menu.addAction("🎤 Open AutoFingers in Sidekick")
-        open_action.triggered.connect(self._open_autofingers_in_sidekick)
+        open_action = menu.addAction("🎤 Open Voice in Sidekick")
+        open_action.triggered.connect(self._open_voice_in_sidekick)
         tray.setContextMenu(menu)
         self._alwayson_tray_toggle_action = toggle_action
 
@@ -20856,8 +20856,8 @@ class SupervertalerQt(QMainWindow):
             else self._alwayson_tray_icon_normal
         )
         tray.setToolTip(
-            "AutoFingers – Always-On listening. Click to stop." if active
-            else "AutoFingers – Always-On is OFF. Click to start."
+            "Voice – Always-On listening. Click to stop." if active
+            else "Voice – Always-On is OFF. Click to start."
         )
         action = getattr(self, '_alwayson_tray_toggle_action', None)
         if action is not None:
@@ -20876,11 +20876,11 @@ class SupervertalerQt(QMainWindow):
         """Handle dictation text from always-on listener (no command matched).
 
         Routes through the shared cross-app helper so Always-On, F9
-        push-to-talk, and the AutoFingers global hotkey all behave the same
+        push-to-talk, and the Voice global hotkey all behave the same
         way regardless of which app has focus.
 
         Skipped entirely when the user has set Always-On to commands-only
-        mode (AutoFingers tab → "Listen for commands only"). In that mode
+        mode (Voice tab → "Listen for commands only"). In that mode
         unmatched speech is logged but not typed – dictation is reserved
         for the explicit Ctrl+Alt+D / F9 push-to-talk paths.
         """
@@ -21192,13 +21192,13 @@ class SupervertalerQt(QMainWindow):
         self.log(f"✓ User identity saved: translator name = {display}")
         QMessageBox.information(self, "Settings Saved", f"User identity saved.\nTranslator name: {display}")
 
-    def _create_autofingers_settings_tab(self):
-        """Create the AutoFingers info/redirect tab.
+    def _create_voice_settings_tab(self):
+        """Create the Voice info/redirect tab.
 
-        AutoFingers (voice commands & dictation) lives in Sidekick. This
+        Voice (commands & dictation) lives in Sidekick. This
         Workbench Settings tab is just a signpost: a brief explanation, a
         quick-reference card for the hotkeys, and a button that opens
-        Sidekick directly to the AutoFingers tab.
+        Sidekick directly to the Voice tab.
         """
         from PyQt6.QtWidgets import QGroupBox, QPushButton
 
@@ -21207,19 +21207,19 @@ class SupervertalerQt(QMainWindow):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        header = QLabel("🎤 <b>AutoFingers</b> – voice commands and dictation")
+        header = QLabel("🎤 <b>Voice</b> – commands and dictation")
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setStyleSheet("font-size: 14pt; padding: 8px;")
         layout.addWidget(header)
 
         info = QLabel(
-            "AutoFingers is Supervertaler's voice command and dictation system. "
+            "Voice is Supervertaler's command and dictation system. "
             "Its full settings panel lives in <b>Supervertaler Sidekick</b>, the "
             "floating companion window you can summon from anywhere on your "
             "computer.<br><br>"
             "<b>Why is it there and not here?</b><br>"
             "Sidekick stays accessible even when Workbench is hidden – and "
-            "AutoFingers' Always-On listening + global hotkeys are designed to "
+            "Voice's Always-On listening + global hotkeys are designed to "
             "work across every app on your computer (Word, Trados, memoQ, "
             "browsers, etc.), not just inside Workbench."
         )
@@ -21231,12 +21231,12 @@ class SupervertalerQt(QMainWindow):
         )
         layout.addWidget(info)
 
-        open_btn = QPushButton("🎤  Open AutoFingers in Sidekick")
+        open_btn = QPushButton("🎤  Open Voice in Sidekick")
         open_btn.setStyleSheet(
             "background-color: #4CAF50; color: white; font-weight: bold;"
             " padding: 12px; font-size: 11pt; border: none;"
         )
-        open_btn.clicked.connect(self._open_autofingers_in_sidekick)
+        open_btn.clicked.connect(self._open_voice_in_sidekick)
         layout.addWidget(open_btn)
 
         quick_ref_group = QGroupBox("📖 Quick Reference")
@@ -21246,7 +21246,7 @@ class SupervertalerQt(QMainWindow):
             "or hold mode, configurable in Sidekick).<br>"
             "<b>Ctrl+Alt+D</b> – global push-to-talk dictation, works in any "
             "app on your computer.<br>"
-            "<b>Always-On</b> – toggleable in Sidekick → AutoFingers tab; "
+            "<b>Always-On</b> – toggleable in Sidekick → Voice tab; "
             "listens continuously, hands-free.<br>"
             "<b>Voice commands</b> – say a phrase to execute keystrokes, "
             "AutoHotkey scripts, or built-in actions. Editable in Sidekick.<br><br>"
@@ -21263,8 +21263,8 @@ class SupervertalerQt(QMainWindow):
         layout.addStretch()
         return tab
 
-    def _open_autofingers_in_sidekick(self):
-        """Open Sidekick directly to its AutoFingers tab from a Settings link."""
+    def _open_voice_in_sidekick(self):
+        """Open Sidekick directly to its Voice tab from a Settings link."""
         fa = getattr(self, '_floating_assistant', None)
         if fa is None:
             QMessageBox.information(
@@ -21273,18 +21273,18 @@ class SupervertalerQt(QMainWindow):
                 "Try again in a moment, or press Ctrl+Q to summon it manually."
             )
             return
-        opener = getattr(fa, '_open_to_autofingers', None)
+        opener = getattr(fa, '_open_to_voice', None)
         if not callable(opener):
             QMessageBox.warning(
-                self, "Could not open AutoFingers",
-                "Sidekick is loaded but the AutoFingers entry point is missing. "
-                "Press Ctrl+Q and click the AutoFingers tab manually."
+                self, "Could not open Voice",
+                "Sidekick is loaded but the Voice entry point is missing. "
+                "Press Ctrl+Q and click the Voice tab manually."
             )
             return
         try:
             opener()
         except Exception as e:
-            QMessageBox.warning(self, "Could not open AutoFingers", str(e))
+            QMessageBox.warning(self, "Could not open Voice", str(e))
 
     def reload_global_hotkeys(self):
         """Re-register the global hotkey set with current ShortcutManager values.
@@ -37257,7 +37257,7 @@ class SupervertalerQt(QMainWindow):
             self.log(f"⚠ Could not save general settings: {str(e)}")
 
     def load_dictation_settings(self) -> Dict[str, Any]:
-        """Load AutoFingers settings"""
+        """Load Voice settings"""
         defaults = {
             'model': 'base',
             'max_duration': 10,
@@ -37274,7 +37274,7 @@ class SupervertalerQt(QMainWindow):
             return defaults
 
     def save_dictation_settings(self, model: str, duration: int, language: str):
-        """Save AutoFingers settings"""
+        """Save Voice settings"""
         # Load existing preferences to check if model changed
         all_settings = self._load_unified_settings()
         prefs = all_settings.setdefault("ui", {})
@@ -37299,11 +37299,11 @@ class SupervertalerQt(QMainWindow):
         # Save back
         try:
             self._save_unified_settings(all_settings)
-            self.log(f"✓ AutoFingers settings saved: Model={model}, Duration={duration}s")
+            self.log(f"✓ Voice settings saved: Model={model}, Duration={duration}s")
 
             # Build message
             message = (
-                f"AutoFingers settings saved successfully!\n\n"
+                f"Voice settings saved successfully!\n\n"
                 f"Model: {model}\n"
                 f"Max Duration: {duration} seconds\n"
                 f"Language: {language}"
@@ -37326,7 +37326,7 @@ class SupervertalerQt(QMainWindow):
 
             QMessageBox.information(self, "Settings Saved", message)
         except Exception as e:
-            self.log(f"⚠ Could not save AutoFingers settings: {str(e)}")
+            self.log(f"⚠ Could not save Voice settings: {str(e)}")
             QMessageBox.warning(self, "Save Error", f"Could not save settings:\n{str(e)}")
 
     def _load_language_pair_from_disk(self):
@@ -45137,7 +45137,7 @@ class SupervertalerQt(QMainWindow):
             # Push-to-talk dictation engine. Three sources, in order:
             #
             #   1. User's explicit ``pushtotalk_engine`` setting (added
-            #      in v1.9.441 as a separate dropdown in AutoFingers)
+            #      in v1.9.441 as a separate dropdown in the Voice tab)
             #   2. ``'auto'`` → mirror the Always-On engine
             #   3. Always-On engine (with Vosk → faster-whisper since Vosk
             #      is commands-only and push-to-talk needs running text)
@@ -45274,7 +45274,7 @@ class SupervertalerQt(QMainWindow):
            manually with whatever shortcut their app uses.
 
         Used by both ``on_dictation_complete`` (F9 push-to-talk and the
-        global AutoFingers hotkey) and ``_on_alwayson_dictation``
+        global Voice hotkey) and ``_on_alwayson_dictation``
         (continuous listener) so behaviour is identical across surfaces.
         """
         focused_widget = QApplication.focusWidget()
@@ -45416,10 +45416,10 @@ class SupervertalerQt(QMainWindow):
         model_exists = any(os.path.exists(os.path.join(cache_dir, f)) for f in model_files)
 
         if model_exists:
-            self.status_bar.showMessage(f"🎤 AutoFingers: Loading '{model_name}' model...", 10000)
+            self.status_bar.showMessage(f"🎤 Voice: Loading '{model_name}' model...", 10000)
             self.log(f"⏳ Loading Whisper model '{model_name}' from cache...")
         else:
-            self.status_bar.showMessage(f"📥 AutoFingers: Downloading '{model_name}' model ({size})...", 60000)
+            self.status_bar.showMessage(f"📥 Voice: Downloading '{model_name}' model ({size})...", 60000)
             self.log(f"")
             self.log(f"📥 DOWNLOADING Whisper model '{model_name}' ({size})...")
             self.log(f"   This is a one-time download. Please be patient!")
@@ -45432,7 +45432,7 @@ class SupervertalerQt(QMainWindow):
         model_name = self.loading_model_name  # Save before clearing
         self.is_loading_model = False
         self.loading_model_name = None
-        self.status_bar.showMessage(f"🎤 AutoFingers: '{model_name}' model ready", 3000)
+        self.status_bar.showMessage(f"🎤 Voice: '{model_name}' model ready", 3000)
         self.log(f"✅ Model '{model_name}' loaded successfully")
 
     def _set_dictation_button_recording(self, is_recording):
@@ -48450,8 +48450,8 @@ class SupervertalerQt(QMainWindow):
 
             reply = QMessageBox.warning(
                 self,
-                "⚠️ AutoFingers Model Downloading",
-                f"AutoFingers is currently downloading the '{self.loading_model_name}' model ({size}).\n\n"
+                "⚠️ Voice Model Downloading",
+                f"Voice is currently downloading the '{self.loading_model_name}' model ({size}).\n\n"
                 f"If you close now, the download will be interrupted and the model\n"
                 f"file may become corrupted. You would need to delete the incomplete\n"
                 f"file manually and re-download.\n\n"
@@ -57136,7 +57136,7 @@ class SuperlookupTab(QWidget):
     
     def register_global_hotkey(self):
         """Register global hotkeys for Superlookup, QuickTrans, Sidekick,
-        Clipboard, AutoFingers push-to-talk, and AutoFingers Always-On
+        Clipboard, Voice push-to-talk, and Voice Always-On
         toggle.
 
         Idempotent: if a manager from a previous registration is still
@@ -57175,7 +57175,7 @@ class SuperlookupTab(QWidget):
             sk_shortcut = sm.get_shortcut('sidekick_open').lower()
             cb_shortcut = sm.get_shortcut('sidekick_open_clipboard').lower()
             pt_shortcut = sm.get_shortcut('voice_dictate').lower()
-            ao_shortcut = sm.get_shortcut('autofingers_alwayson_toggle').lower()
+            ao_shortcut = sm.get_shortcut('voice_alwayson_toggle').lower()
 
             # Honour the per-shortcut enabled flag and the `global` field:
             # if disabled, or if the entry is no longer flagged global, skip
@@ -57188,7 +57188,7 @@ class SuperlookupTab(QWidget):
             if _skip('sidekick_open'):                sk_shortcut = ''
             if _skip('sidekick_open_clipboard'):      cb_shortcut = ''
             if _skip('voice_dictate'):                pt_shortcut = ''
-            if _skip('autofingers_alwayson_toggle'):  ao_shortcut = ''
+            if _skip('voice_alwayson_toggle'):  ao_shortcut = ''
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+q'
@@ -57340,7 +57340,7 @@ class SuperlookupTab(QWidget):
             print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
 
     def _on_pynput_pushtotalk(self):
-        """AutoFingers global push-to-talk hotkey – fires on the pynput
+        """Voice global push-to-talk hotkey – fires on the pynput
         background thread.
 
         IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
@@ -57349,7 +57349,7 @@ class SuperlookupTab(QWidget):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self._handle_pushtotalk_hotkey)
         except Exception as e:
-            print(f"[AutoFingers] Error signaling main thread: {e}")
+            print(f"[Voice] Error signaling main thread: {e}")
 
     @pyqtSlot()
     def _handle_pushtotalk_hotkey(self):
@@ -57363,12 +57363,12 @@ class SuperlookupTab(QWidget):
             if mw and hasattr(mw, 'start_voice_dictation'):
                 mw.start_voice_dictation()
             else:
-                print("[AutoFingers] Workbench unavailable for push-to-talk")
+                print("[Voice] Workbench unavailable for push-to-talk")
         except Exception as e:
-            print(f"[AutoFingers] Error in push-to-talk hotkey handler: {e}")
+            print(f"[Voice] Error in push-to-talk hotkey handler: {e}")
 
     def _on_pynput_alwayson_toggle(self):
-        """AutoFingers Always-On toggle hotkey – fires on the pynput
+        """Voice Always-On toggle hotkey – fires on the pynput
         background thread.
 
         IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
@@ -57377,7 +57377,7 @@ class SuperlookupTab(QWidget):
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self._handle_alwayson_toggle_hotkey)
         except Exception as e:
-            print(f"[AutoFingers] Error signaling main thread: {e}")
+            print(f"[Voice] Error signaling main thread: {e}")
 
     @pyqtSlot()
     def _handle_alwayson_toggle_hotkey(self):
@@ -57386,16 +57386,16 @@ class SuperlookupTab(QWidget):
         Unlike push-to-talk (which records a single utterance), this
         starts continuous listening that stays on until pressed again.
         Visual feedback: the system tray icon appears when Always-On is
-        active, plus the grid toolbar button + Sidekick AutoFingers tab
+        active, plus the grid toolbar button + Sidekick Voice tab
         update via _update_alwayson_ui."""
         try:
             mw = self.main_window or self.window()
             if mw and hasattr(mw, '_toggle_alwayson_listening'):
                 mw._toggle_alwayson_listening()
             else:
-                print("[AutoFingers] Workbench unavailable for Always-On toggle")
+                print("[Voice] Workbench unavailable for Always-On toggle")
         except Exception as e:
-            print(f"[AutoFingers] Error in Always-On toggle handler: {e}")
+            print(f"[Voice] Error in Always-On toggle handler: {e}")
 
     def _try_ahk_library_method(self):
         """Try to register hotkey using ahk Python library

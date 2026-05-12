@@ -903,7 +903,7 @@ class _VADListenerThread(QObject):
                         "Vosk is not installed.\n\n"
                         "Re-install Supervertaler:\n"
                         "  pip install --upgrade supervertaler\n\n"
-                        "Or switch the AutoFingers engine to 'OpenAI Whisper API' / "
+                        "Or switch the Voice engine to 'OpenAI Whisper API' / "
                         "'faster-whisper' in the meantime."
                     )
                     self._running = False
@@ -982,7 +982,7 @@ class _VADListenerThread(QObject):
                         "faster-whisper is not installed.\n\n"
                         "Re-install Supervertaler:\n"
                         "  pip install --upgrade supervertaler\n\n"
-                        "Or switch the AutoFingers engine to 'Vosk' or "
+                        "Or switch the Voice engine to 'Vosk' or "
                         "'OpenAI Whisper API'."
                     )
                     self._running = False

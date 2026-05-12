@@ -11,7 +11,7 @@
   - Image Context
   - Prompt Manager 
 - Tools:
-  - AutoFingers (Automated translation pasting for memoQ from TMX files)
+  - Voice (voice commands and dictation; was named AutoFingers prior to v1.9.491)
   - PDF Rescue (AI OCR)
   - Superbench (LLM Translation Quality Benchmarking System)
   - Superlookup: unified concordance search

@@ -1,7 +1,7 @@
 """Dialog for adding and editing voice commands.
 
 Extracted from Supervertaler.py so that both the legacy Tools tab and the
-Sidekick AutoFingers tab can use it without creating a circular import (modules/
+Sidekick Voice tab can use it without creating a circular import (modules/
 must not import from Supervertaler.py).
 """
 from PyQt6.QtCore import Qt
@@ -135,7 +135,7 @@ _ACTION_CHEAT_SHEETS = {
         "</ul><br>"
         "Tip: keep reusable scripts in one folder, reference them by full path. "
         "Use the AutoHotkey Integration → <b>Open Scripts Folder</b> button on "
-        "the AutoFingers tab to jump there."
+        "the Voice tab to jump there."
     ),
 }
 

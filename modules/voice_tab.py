@@ -1,4 +1,4 @@
-"""AutoFingers tab – voice commands and dictation control panel.
+"""Voice tab – voice commands and dictation control panel.
 
 Designed to live inside Supervertaler Sidekick (modules/floating_assistant.py)
 as a 4th tab, but works standalone with any parent that exposes the same
@@ -14,10 +14,15 @@ contract on the parent_app object:
     - _open_voice_scripts_folder() -> None
 
 Always-On status is pushed by the main app's _update_alwayson_ui, which
-locates this widget via parent_app._floating_assistant._autofingers_widget.
+locates this widget via parent_app._floating_assistant._voice_widget.
 Voice-command CRUD broadcasts back to the parent app's
 _populate_voice_commands_table so any future surface tied into that
 refresh entry point also updates.
+
+Historically named "AutoFingers"; the internal name was simplified to
+"Voice" in v1.9.491. The persisted layout key reads legacy
+``autofingers_layout`` settings as a one-time fallback so existing users
+keep their splitter / column widths.
 """
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -50,7 +55,7 @@ _COL_ACTION   = 4
 _COL_CATEGORY = 5
 
 
-class AutoFingersTab(QWidget):
+class VoiceTab(QWidget):
     """Voice commands + dictation control panel."""
 
     def __init__(self, parent_app, parent=None):
@@ -65,7 +70,7 @@ class AutoFingersTab(QWidget):
         # Initial population
         self._populate_table()
         self._sync_alwayson_from_listener()
-        set_help_topic(self, HelpTopics.AUTOFINGERS)
+        set_help_topic(self, HelpTopics.VOICE)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -89,7 +94,7 @@ class AutoFingersTab(QWidget):
         header_row = QHBoxLayout(header_widget)
         header_row.setContentsMargins(8, 4, 8, 4)
         header = QLabel(
-            "🎤 <b>AutoFingers</b> – voice commands and dictation.<br>"
+            "🎤 <b>Voice</b> – commands and dictation.<br>"
             "Toggle Always-On to listen continuously, or press <b>F9</b> "
             "(or Ctrl+Alt+D anywhere) to dictate on demand."
         )
@@ -98,8 +103,8 @@ class AutoFingersTab(QWidget):
         header.setStyleSheet("font-size: 9pt; color: #444;")
         header_row.addWidget(header, stretch=1)
         header_row.addWidget(
-            HelpButton(HelpTopics.AUTOFINGERS,
-                       tooltip="Open AutoFingers help"),
+            HelpButton(HelpTopics.VOICE,
+                       tooltip="Open Voice help"),
             alignment=Qt.AlignmentFlag.AlignTop,
         )
         outer.addWidget(header_widget)
@@ -374,7 +379,7 @@ class AutoFingersTab(QWidget):
         left_layout.addWidget(ahk_group)
 
         # Save button
-        save_btn = QPushButton("💾 Save AutoFingers Settings")
+        save_btn = QPushButton("💾 Save Voice Settings")
         save_btn.setStyleSheet(
             "background-color: #4CAF50; color: white; font-weight: bold;"
             " padding: 8px; border: none;"
@@ -463,7 +468,7 @@ class AutoFingersTab(QWidget):
     # ------------------------------------------------------------------
 
     def _save_layout(self):
-        self._set_dictation_keys(autofingers_layout={
+        self._set_dictation_keys(voice_layout={
             'splitter': self._splitter.sizes(),
             'columns': [
                 self._table.columnWidth(col)
@@ -472,7 +477,10 @@ class AutoFingersTab(QWidget):
         })
 
     def _restore_layout(self):
-        layout = self._load_settings().get('autofingers_layout', {})
+        settings = self._load_settings()
+        # v1.9.491: settings key was renamed from autofingers_layout → voice_layout.
+        # Fall back to the legacy key for existing users so they keep their layout.
+        layout = settings.get('voice_layout') or settings.get('autofingers_layout') or {}
         sizes = layout.get('splitter')
         if sizes and len(sizes) == 2:
             self._splitter.setSizes(sizes)
@@ -900,10 +908,10 @@ class AutoFingersTab(QWidget):
         )
         if ok:
             QMessageBox.information(
-                self, "AutoFingers Settings", "Settings saved.")
+                self, "Voice Settings", "Settings saved.")
         else:
             QMessageBox.warning(
-                self, "AutoFingers Settings",
+                self, "Voice Settings",
                 "Couldn't save settings – check the log for details.")
 
     def _open_ahk_folder(self):
