@@ -45320,9 +45320,18 @@ class SupervertalerQt(QMainWindow):
                     )
                     return
 
-            # Determine language
-            if lang_setting == 'Auto (use project target language)':
-                # Use project's target language
+            # Determine language. Two flavours of "Auto":
+            #   - "Auto-detect (Whisper picks per utterance)" – pass
+            #     language=None to Whisper so it detects per utterance.
+            #     Right for mixed-language workflows.
+            #   - "Auto (use project target language)" – read the
+            #     Workbench project's target language and pin Whisper
+            #     to it. Right for single-language workflows.
+            if lang_setting.startswith('Auto-detect'):
+                # Sentinel value 'auto' is converted to None by
+                # QuickDictationThread before being passed to Whisper.
+                target_lang = '__autodetect__'
+            elif lang_setting == 'Auto (use project target language)':
                 target_lang = getattr(self, 'target_language', 'English')
             else:
                 # Use override language from settings
@@ -45343,7 +45352,13 @@ class SupervertalerQt(QMainWindow):
                 'Japanese': 'ja',
                 'Korean': 'ko'
             }
-            lang_code = lang_map.get(target_lang, 'auto')
+            if target_lang == '__autodetect__':
+                # 'auto' is the sentinel that QuickDictationThread maps
+                # to language=None at transcribe time, triggering
+                # Whisper's per-utterance language detection.
+                lang_code = 'auto'
+            else:
+                lang_code = lang_map.get(target_lang, 'auto')
 
             # Create dictation thread with user settings
             self.dictation_thread = QuickDictationThread(

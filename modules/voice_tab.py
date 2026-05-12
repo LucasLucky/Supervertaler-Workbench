@@ -310,7 +310,17 @@ class VoiceTab(QWidget):
         lang_row = QHBoxLayout()
         lang_row.addWidget(QLabel("Language:"))
         self._lang_combo = QComboBox()
+        # "Auto-detect" (top) lets Whisper analyse each utterance and pick
+        # the language itself – useful when you regularly dictate in more
+        # than one language without wanting to flip this setting. Needs
+        # ~1 s of speech to be reliable; very short utterances can
+        # mis-detect, so explicit language is still recommended when you
+        # know you'll only ever dictate in one language for a session.
+        # "Auto (use project target language)" is the legacy behaviour –
+        # reads the language from the Workbench project so a single-
+        # language project doesn't have to be told what it is twice.
         self._lang_combo.addItems([
+            "Auto-detect (Whisper picks per utterance)",
             "Auto (use project target language)",
             "English", "Dutch", "German", "French", "Spanish",
             "Italian", "Portuguese", "Polish", "Russian",
