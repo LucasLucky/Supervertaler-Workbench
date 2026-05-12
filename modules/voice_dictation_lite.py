@@ -102,11 +102,22 @@ class QuickDictationThread(QThread):
             # in __init__) so we honour the live device mapping –
             # devices the user plugged in after launching Workbench
             # are picked up without a restart.
+            #
+            # extra_settings: when the user explicitly picked a WASAPI
+            # device (as opposed to "System default"), enable WASAPI's
+            # auto sample-rate conversion. Without it, WASAPI rejects
+            # our 16 kHz capture because shared-mode WASAPI forces the
+            # OS mixer rate (typically 48 kHz). MME devices and the
+            # default-fallback path don't need this.
             try:
-                from modules.mic_devices import resolve_device_index
+                from modules.mic_devices import (
+                    resolve_device_index, wasapi_autoconvert_settings,
+                )
                 device_idx = resolve_device_index(self.mic_device)
+                extra = wasapi_autoconvert_settings(device_idx)
             except Exception:
                 device_idx = None
+                extra = None
 
             # Start recording
             recording = sd.rec(
@@ -115,6 +126,7 @@ class QuickDictationThread(QThread):
                 channels=1,
                 dtype='float32',
                 device=device_idx,
+                extra_settings=extra,
             )
 
             # Wait for recording to complete OR manual stop

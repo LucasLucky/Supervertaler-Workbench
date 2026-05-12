@@ -90,6 +90,47 @@ def list_input_devices() -> List[str]:
     return names
 
 
+def _is_wasapi_device(device_idx: Optional[int]) -> bool:
+    """True iff ``device_idx`` is a Windows WASAPI device.
+
+    Used by ``wasapi_autoconvert_settings`` to decide whether to attach
+    an auto-resampling flag. WASAPI in shared mode forces the OS
+    mixer's sample rate (typically 48000 Hz) on any capture stream,
+    while our pipeline asks for Whisper's required 16000 Hz. Without
+    the auto-convert flag, opening a capture stream at 16000 Hz on a
+    WASAPI device fails with "Invalid sample rate"; with it, WASAPI
+    transparently resamples between the device's mixer rate and the
+    rate we ask for.
+    """
+    if device_idx is None:
+        return False
+    try:
+        import sounddevice as sd
+        info = sd.query_devices(device_idx)
+        hostapis = sd.query_hostapis()
+        return hostapis[info['hostapi']].get('name') == 'Windows WASAPI'
+    except Exception:
+        return False
+
+
+def wasapi_autoconvert_settings(device_idx: Optional[int]):
+    """Return an ``extra_settings`` kwarg for ``sd.rec`` / ``sd.InputStream``
+    that enables WASAPI's automatic sample-rate conversion for the given
+    device, or ``None`` if the device isn't WASAPI (no special settings
+    needed; MME handles resampling on its own).
+
+    Must be called fresh per recording – the underlying object isn't
+    safe to re-use across streams in some sounddevice builds.
+    """
+    if not _is_wasapi_device(device_idx):
+        return None
+    try:
+        import sounddevice as sd
+        return sd.WasapiSettings(auto_convert=True)
+    except Exception:
+        return None
+
+
 def resolve_device_index(saved_name: Optional[str]) -> Optional[int]:
     """Map a saved device name to the current sounddevice device index.
 

@@ -1089,11 +1089,21 @@ class _VADListenerThread(QObject):
             # the audio thread, just before opening the stream) so we
             # honour the live device mapping – mics plugged in after
             # Workbench launched are picked up without a restart.
+            #
+            # extra_settings: for WASAPI devices, enable auto sample-
+            # rate conversion. Without it, WASAPI shared mode rejects
+            # our 16 kHz request because it forces the OS mixer rate
+            # (typically 48 kHz). MME and the default-fallback don't
+            # need this.
             try:
-                from modules.mic_devices import resolve_device_index
+                from modules.mic_devices import (
+                    resolve_device_index, wasapi_autoconvert_settings,
+                )
                 device_idx = resolve_device_index(self.mic_device)
+                extra = wasapi_autoconvert_settings(device_idx)
             except Exception:
                 device_idx = None
+                extra = None
 
             # Keep the InputStream open for the full session so the OS mic
             # indicator never flickers – transcription now happens off-thread.
@@ -1104,6 +1114,7 @@ class _VADListenerThread(QObject):
                 blocksize=chunk_samples,
                 callback=audio_callback,
                 device=device_idx,
+                extra_settings=extra,
             ):
                 while self._running:
                     time.sleep(0.1)
