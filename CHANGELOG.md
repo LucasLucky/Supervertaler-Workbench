@@ -2,7 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.9 (May 13, 2026)
+**Current Version:** v1.10.10 (May 13, 2026)
+
+
+## v1.10.10 – May 13, 2026
+
+### Removed (Sidekick dead-code sweep: floating_assistant.py deleted and all defensive paths pruned)
+
+- v1.10.4 retired Sidekick at the user-visible level – the floating-assistant window stopped being constructed and the Ctrl+Alt+K hotkey was unbound – but kept the module file (`modules/floating_assistant.py`) and 23 `getattr(self, '_floating_assistant', None)` defensive call-sites in the tree for a follow-up sweep. This release is that sweep.
+- **Files deleted**: `modules/floating_assistant.py` (~2400 lines) is gone outright. Nothing imports it any more; the last reference inside `Supervertaler.py` (the `self._floating_assistant = None` stub) has also been removed along with all 23 `getattr` checks that referenced the attribute.
+- **Methods deleted from `Supervertaler.py`**:
+  - `_create_quicktrans_stub_tab` and `_open_quicktrans_in_sidekick`: the Workbench Settings → ⚡ QuickTrans tab used to be a stub that told users "settings live inside Sidekick" with a button to navigate there. With Sidekick gone the real `_create_mt_quick_lookup_settings_tab()` widget is now mounted directly in Workbench Settings → QuickTrans where users would have looked for it in the first place.
+  - `show_quicklauncher_external`, `_show_quicklauncher_external_legacy`, `_run_external_quicklauncher_prompt`, `_launch_superlookup_external`, `_handle_sidekick_hotkey`, `_read_clipboard_for_sidekick`, `_on_pynput_sidekick`: the Ctrl+Alt+K hotkey handler chain plus a QMenu-based fallback popup that ran when Sidekick was unavailable. All unreachable since v1.10.4.
+- **`SuperlookupTab.is_sidekick` parameter removed**: it gated mounting of the QuickTrans settings widget as a sub-sub-tab inside Sidekick's SuperLookup pane. QuickTrans settings now live in Workbench Settings (see above), so the flag and its branch are unnecessary.
+- **`shortcut_manager.py` cleanup**: the `sidekick_open` and `sidekick_open_clipboard` shortcut IDs are kept (so users' customisations survive) but their `category` is now "Hotkeys" instead of "Sidekick" and the descriptions are rewritten to describe the actual target (SuperLookup tab / Clipboard tab) rather than the retired Sidekick window. The default-value upgrade path for `sidekick_open` (Alt+K → Ctrl+Alt+K, originally a Mac dead-key workaround) is gone; Alt+K is back as the default and is in-app-only.
+- **Docstring sweep**: the file-level docstrings in `modules/clipboard_manager_widget.py`, `modules/voice_tab.py`, and `modules/sidekick_bridge_server.py` were rewritten to describe the post-Sidekick reality. References that just mention Sidekick historically (e.g. `chat_message_delegate.py:33` "You / Supervertaler Sidekick" avatar height comment) are left alone – they're accurate as historical comments and not user-visible.
+
+### Restored (Trados bridge wiring – orphaned in v1.10.4, re-attached to the Chat tab)
+
+- The HTTP bridge that lets the Supervertaler-for-Trados plugin push QuickLauncher prompts into Workbench (`modules/sidekick_bridge_server.py`) was previously started inside `FloatingAssistant.__init__`. v1.10.4 stopped constructing FloatingAssistant, which left the bridge silently un-started despite the v1.10.4 changelog claiming "Trados bridge is preserved" – which it wasn't, in fact. (No user reported this because Trados plugin → Workbench QuickLauncher prompts are a niche feature and apparently no one used them between v1.10.4 and v1.10.10.)
+- `SidekickBridgeServer` is now constructed directly from `SupervertalerQt.__init__` and its `run_prompt_requested` signal is wired to the new main-window method `_on_bridge_prompt_request`, which mirrors the old `FloatingAssistant._on_bridge_prompt_request` behaviour: bring Workbench forward (full hammer chain), switch right panel to Chat, post the user message, send the expanded prompt via `chat_backend.send_ai_request`, post the response.
+- The class name `SidekickBridgeServer`, the module name `sidekick_bridge_server.py`, and the handshake filename `sidekick-bridge.json` are deliberately *not* renamed. The Trados side (`Core/SidekickBridge.cs`) looks up the bridge by exactly those names; renaming would break deployed plugin versions. Only the consumer changed (from `FloatingAssistant` to Workbench's Chat tab), which the protocol doesn't expose.
 
 
 ## v1.10.9 – May 13, 2026

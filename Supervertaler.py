@@ -8174,19 +8174,30 @@ class SupervertalerQt(QMainWindow):
             self.bottom_notes_edit.setFocus()
     
     def open_clipboard_tab(self):
-        """Open the Sidekick directly to the Clipboard tab (Ctrl+Shift+C)."""
+        """In-app Ctrl+Shift+C: jump to Workbench's Clipboard top tab.
+
+        Pre-v1.10.4 this opened the (now-retired) Sidekick window
+        to its Clipboard pane. From v1.10.10 it routes to the
+        in-Workbench Clipboard top tab introduced in v1.10.0.
+        """
         try:
-            if hasattr(self, '_floating_assistant') and self._floating_assistant:
-                self._floating_assistant._open_to_clipboard()
+            if hasattr(self, 'open_workbench_to_clipboard'):
+                self.open_workbench_to_clipboard()
             else:
-                self.log("⚠ Floating Assistant not available")
+                self.log("⚠ Clipboard tab not available")
         except Exception as e:
             self.log(f"❌ Error opening Clipboard tab: {e}")
 
     def open_quicklauncher(self):
-        """Open the Floating Assistant (replaces the old QMenu-based QuickLauncher).
+        """In-app Alt+K: jump to Workbench's SuperLookup top tab with
+        the current selection seeded into the search field.
 
-        Captures selected text before toggling the floating window.
+        Pre-v1.10.4 this toggled the Sidekick floating window with
+        the captured text. With Sidekick retired (v1.10.4) and the
+        QuickLauncher concept merged into the Clipboard tab's
+        action menu (v1.10.0 Phase 3) plus SuperLookup, the
+        closest equivalent for a selection-driven lookup is the
+        SuperLookup top tab.
         """
         try:
             # Capture selected text before focus changes
@@ -8198,10 +8209,10 @@ class SupervertalerQt(QMainWindow):
             except Exception:
                 pass
 
-            if hasattr(self, '_floating_assistant') and self._floating_assistant:
-                self._floating_assistant.toggle(captured_text=selected_text)
+            if hasattr(self, 'open_workbench_to_superlookup'):
+                self.open_workbench_to_superlookup(selected_text or "")
             else:
-                self.log("⚠ Floating Assistant not available")
+                self.log("⚠ SuperLookup tab not available")
 
         except Exception as e:
             self.log(f"❌ Error opening QuickLauncher: {e}")
@@ -8240,6 +8251,69 @@ class SupervertalerQt(QMainWindow):
             print(f"[Assistant] Error navigating to assistant: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_bridge_prompt_request(self, expanded: str, display_prompt: str, prompt_name: str):
+        """Handle a QuickLauncher prompt forwarded by the Trados plugin.
+
+        Connected via Qt::QueuedConnection (cross-thread emit from the
+        bridge's HTTP handler thread) so this always runs on the GUI
+        thread. We:
+
+          1. Bring Workbench forward (full hammer chain – Trados is
+             the source of these requests and aggressive about
+             foreground retention).
+          2. Switch the right panel to the Chat tab.
+          3. Echo the *display* version of the prompt as a "user"
+             message (the Trados plugin builds a redacted display
+             version – e.g. "[source document – N segments]" instead
+             of the full project text – so the chat doesn't get
+             spammed with kilobytes of context the LLM needs but the
+             user has already seen).
+          4. Send the fully-expanded prompt to the LLM directly via
+             ``ChatBackend.send_ai_request``. We bypass the chat
+             view's ``_context_aware_send`` override because the
+             Trados side has already done all the context
+             substitution; running it again would prepend Workbench's
+             idea of the active context, which would be wrong for a
+             Trados-originated prompt.
+
+        Pre-v1.10.4 this lived on FloatingAssistant; moved to the
+        main window in v1.10.10 along with the Sidekick retirement.
+        """
+        try:
+            self._bring_workbench_forward()
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, 'main_tabs'):
+                self.main_tabs.setCurrentIndex(0)  # Grid tab → right panel visible
+            if hasattr(self, 'right_tabs') and hasattr(self, '_assistant_tab_index'):
+                self.right_tabs.setCurrentIndex(self._assistant_tab_index)
+        except Exception:
+            pass
+
+        backend = getattr(
+            getattr(self, 'prompt_manager_qt', None), 'chat_backend', None
+        )
+        if backend is None:
+            self.log("⚠ Trados bridge: chat backend unavailable")
+            return
+
+        label = f"[{prompt_name}] " if prompt_name else ""
+        try:
+            backend.add_message("user", label + (display_prompt or expanded))
+            system_prompt = "You are an AI assistant. Follow the instructions precisely."
+            response, metadata = backend.send_ai_request(expanded, system_prompt)
+            if response and response.strip():
+                backend.add_message("assistant", response, metadata=metadata)
+            else:
+                backend.add_message("system", "⚠ No response received.")
+        except Exception as e:
+            try:
+                backend.add_message("system", f"⚠ Error: {e}")
+            except Exception:
+                print(f"[Trados bridge] Error handling prompt: {e}")
 
     def show_term_insert_popup(self):
         """Show memoQ-style popup listing glossary terms + NTs for the current segment.
@@ -9702,18 +9776,35 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, '_preview_tab_index'):
                 self._preview_tab_index += 1
 
-        # Sidekick (Floating Assistant) retired in v1.10.4 (issue #199
-        # phase 4). All four of its tabs now live in Workbench itself:
-        #   Chat        → right_tabs "💬 Chat" (label renamed in v1.10.5)
+        # Sidekick (Floating Assistant) was retired in v1.10.4 and its
+        # four tabs now live in Workbench itself:
+        #   Chat        → right_tabs "💬 Chat"
         #   Clipboard   → main_tabs "📋 Clipboard"
         #   Voice       → main_tabs "🎤 Voice"
         #   SuperLookup → main_tabs "🔍 SuperLookup"
-        # The attribute is kept as None so the 23 surviving
-        # `getattr(self, '_floating_assistant', None)` defensive checks
-        # in this file (and across modules) silently no-op rather than
-        # crash. They'll be pruned in a follow-up sweep along with
-        # floating_assistant.py itself.
-        self._floating_assistant = None
+        # v1.10.10 finished the cleanup: floating_assistant.py is
+        # deleted and no code path references _floating_assistant
+        # any more.
+
+        # Sidekick Bridge server – inverse of the Trados-side bridge.
+        # Lets the Trados plugin POST a QuickLauncher prompt here for
+        # the Workbench Chat panel to run. The class / file / wire
+        # paths keep the "Sidekick" name because Core/SidekickBridge.cs
+        # on the Trados side looks up the handshake by that name; only
+        # the consumer (here) changed from FloatingAssistant to the
+        # in-Workbench Chat tab when Sidekick was retired. See
+        # modules/sidekick_bridge_server.py for the wire format.
+        self._bridge_server = None
+        try:
+            from modules.sidekick_bridge_server import SidekickBridgeServer
+            self._bridge_server = SidekickBridgeServer(self)
+            self._bridge_server.run_prompt_requested.connect(
+                self._on_bridge_prompt_request
+            )
+            self._bridge_server.start()
+            QApplication.instance().aboutToQuit.connect(self._bridge_server.stop)
+        except Exception as e:
+            self.log(f"⚠ Trados bridge server failed to start: {e}")
 
         # Keep backward compatibility reference
         self.document_views_widget = self.main_tabs
@@ -10585,11 +10676,11 @@ class SupervertalerQt(QMainWindow):
             )
 
             # No-query path: focus the input, reset language dropdowns to "Any",
-            # and switch to vertical view, mirroring the original behaviour now
-            # that Superlookup lives inside Sidekick.
+            # and switch to vertical view. Targets the in-Workbench
+            # SuperLookup top tab (v1.10.10 cleanup; pre-v1.10.4 this
+            # walked through Sidekick's _superlookup_widget).
             if not initial_query:
-                assistant = getattr(self, '_floating_assistant', None)
-                widget = getattr(assistant, '_superlookup_widget', None) if assistant else None
+                widget = getattr(self, '_superlookup_top_widget', None)
                 if widget is not None:
                     if hasattr(widget, 'source_text'):
                         widget.source_text.setFocus()
@@ -10917,7 +11008,6 @@ class SupervertalerQt(QMainWindow):
             widget = SuperlookupTab(
                 self,
                 user_data_path=getattr(self, 'user_data_path', None),
-                is_sidekick=False,
             )
             self._superlookup_top_widget = widget
             placeholder = self.main_tabs.widget(self.superlookup_tab_index)
@@ -17178,11 +17268,13 @@ class SupervertalerQt(QMainWindow):
         settings_tabs.addTab(scroll_area_wrapper(mt_tab), "🌐 MT Settings")
 
         # ===== TAB 5: QuickTrans Settings =====
-        # The actual settings widget now lives in Sidekick → SuperLookup →
-        # SuperLookup Settings → QuickTrans, so it sits next to where it's
-        # used. This tab is just a stub linking there to preserve discover-
-        # ability for users who look in Workbench Settings out of habit.
-        mt_quick_tab = self._create_quicktrans_stub_tab()
+        # Prior to v1.10.10 this was a stub pointing users to
+        # Sidekick → SuperLookup → SuperLookup Settings → QuickTrans
+        # (a sub-sub-tab Sidekick mounted via the is_sidekick=True
+        # branch on SuperlookupTab). With Sidekick retired the real
+        # QuickTrans settings widget now lives directly here, where
+        # users would have looked for it in the first place.
+        mt_quick_tab = self._create_mt_quick_lookup_settings_tab()
         settings_tabs.addTab(scroll_area_wrapper(mt_quick_tab), "⚡ QuickTrans")
         self.mt_quick_lookup_tab_index = settings_tabs.count() - 1  # Store index for opening
 
@@ -18603,89 +18695,13 @@ class SupervertalerQt(QMainWindow):
 
         return tab
 
-    def _create_quicktrans_stub_tab(self):
-        """Stub for Workbench Settings → QuickTrans.
-
-        The actual QuickTrans settings widget now lives inside the Sidekick
-        (SuperLookup → SuperLookup Settings → QuickTrans sub-sub-tab) so it
-        sits next to where users actually invoke QuickTrans from. This stub
-        keeps the Workbench Settings entry point discoverable: users looking
-        for QuickTrans config in the old place find a clear pointer + a
-        one-click button that opens Sidekick navigated to the right sub-tab.
-        """
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
-
-        info = QLabel(
-            "⚡ <b>QuickTrans settings have moved.</b><br><br>"
-            "They now live in the Sidekick, next to where you use them:<br><br>"
-            "&nbsp;&nbsp;<b>Sidekick → SuperLookup → SuperLookup Settings → ⚡ QuickTrans</b>"
-        )
-        info.setTextFormat(Qt.TextFormat.RichText)
-        info.setWordWrap(True)
-        info.setStyleSheet(
-            "font-size: 10pt; padding: 16px; background-color: #E3F2FD; "
-            "border-radius: 4px; color: #222;"
-        )
-        layout.addWidget(info)
-
-        btn_row = QHBoxLayout()
-        open_btn = QPushButton("Open in Sidekick")
-        open_btn.setStyleSheet("padding: 8px 16px; font-weight: bold;")
-        open_btn.clicked.connect(self._open_quicktrans_in_sidekick)
-        btn_row.addWidget(open_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
-
-        layout.addStretch()
-        return tab
-
-    def _open_quicktrans_in_sidekick(self):
-        """Open Sidekick and navigate to SuperLookup → SuperLookup Settings →
-        QuickTrans sub-sub-tab. Wired up by the Workbench Settings stub."""
-        fa = getattr(self, '_floating_assistant', None)
-        if fa is None:
-            try:
-                self.log("⚠ Sidekick (Floating Assistant) is not available.")
-            except Exception:
-                pass
-            return
-        try:
-            if not fa.isVisible():
-                fa.show()
-            fa.raise_()
-            fa.activateWindow()
-            if hasattr(fa, '_force_foreground_focus'):
-                fa._force_foreground_focus()
-            if hasattr(fa, '_ensure_superlookup_tab'):
-                fa._ensure_superlookup_tab()
-            sl = getattr(fa, '_superlookup_widget', None)
-            if sl is None:
-                return
-            # Outer tab → SuperLookup
-            if hasattr(fa, '_left_tabs'):
-                fa._left_tabs.setCurrentWidget(sl)
-            # Inner sub-tab → SuperLookup Settings
-            rtabs = getattr(sl, 'results_tabs', None)
-            if rtabs is not None:
-                for i in range(rtabs.count()):
-                    if "Settings" in rtabs.tabText(i):
-                        rtabs.setCurrentIndex(i)
-                        break
-            # Sub-sub-tab → QuickTrans
-            ssubtabs = getattr(sl, 'settings_subtabs', None)
-            if ssubtabs is not None:
-                for i in range(ssubtabs.count()):
-                    if "QuickTrans" in ssubtabs.tabText(i):
-                        ssubtabs.setCurrentIndex(i)
-                        break
-        except Exception as e:
-            try:
-                self.log(f"⚠ Could not open QuickTrans settings in Sidekick: {e}")
-            except Exception:
-                print(f"[Workbench] Could not open QuickTrans settings in Sidekick: {e}")
+    # _create_quicktrans_stub_tab and _open_quicktrans_in_sidekick
+    # were removed in v1.10.10. Pre-retirement they advertised that
+    # QuickTrans settings lived inside Sidekick and provided a button
+    # to navigate there; with Sidekick gone the real settings widget
+    # is now mounted directly in Workbench Settings → QuickTrans by
+    # _create_workbench_settings_tab (TAB 5), via the canonical
+    # _create_mt_quick_lookup_settings_tab() factory.
 
     def _create_mt_quick_lookup_settings_tab(self):
         """Create MT Quick Lookup settings tab content"""
@@ -20682,14 +20698,16 @@ class SupervertalerQt(QMainWindow):
         """
         if not hasattr(self, 'voice_command_manager'):
             return
-        sidekick = getattr(self, '_floating_assistant', None)
-        if sidekick is not None:
-            af = getattr(sidekick, '_voice_widget', None)
-            if af is not None:
-                try:
-                    af._populate_table()
-                except Exception:
-                    pass
+        # Refresh the in-Workbench Voice top tab's command table if
+        # it's been built (it's lazy-constructed on first activation).
+        # Pre-v1.10.4 this also refreshed Sidekick's voice tab; with
+        # Sidekick retired only the top tab needs poking.
+        voice_widget = getattr(self, '_voice_top_widget', None)
+        if voice_widget is not None and hasattr(voice_widget, '_populate_table'):
+            try:
+                voice_widget._populate_table()
+            except Exception:
+                pass
 
     def _reset_voice_commands(self):
         """Reset voice commands to defaults"""
@@ -20920,19 +20938,19 @@ class SupervertalerQt(QMainWindow):
                     }
                 """)
 
-        # Update Sidekick's Voice tab if it has been created.
-        sidekick = getattr(self, '_floating_assistant', None)
-        if sidekick is not None:
-            af = getattr(sidekick, '_voice_widget', None)
-            if af is not None:
-                try:
-                    af.set_alwayson_status(status)
-                except Exception:
-                    pass
+        # Update the in-Workbench Voice top tab's status indicator if
+        # it has been built (lazy on first activation). Pre-v1.10.4
+        # this also poked Sidekick's voice widget; Sidekick is gone.
+        voice_widget = getattr(self, '_voice_top_widget', None)
+        if voice_widget is not None and hasattr(voice_widget, 'set_alwayson_status'):
+            try:
+                voice_widget.set_alwayson_status(status)
+            except Exception:
+                pass
 
         # System tray icon – visible only while Always-On is active.
         # Gives the user a persistent "the mic is hot" signal even when
-        # both Workbench and Sidekick are hidden.
+        # Workbench is hidden.
         self._update_alwayson_tray_icon(status)
 
     @staticmethod
@@ -21025,8 +21043,8 @@ class SupervertalerQt(QMainWindow):
         toggle_action = menu.addAction("▶ Start Always-On")
         toggle_action.triggered.connect(self._toggle_alwayson_listening)
         menu.addSeparator()
-        open_action = menu.addAction("🎤 Open Voice in Sidekick")
-        open_action.triggered.connect(self._open_voice_in_sidekick)
+        open_action = menu.addAction("🎤 Open Voice")
+        open_action.triggered.connect(self._open_voice_in_workbench)
         tray.setContextMenu(menu)
         self._alwayson_tray_toggle_action = toggle_action
 
@@ -21440,12 +21458,12 @@ class SupervertalerQt(QMainWindow):
         )
         layout.addWidget(info)
 
-        open_btn = QPushButton("🎤  Open Voice in Sidekick")
+        open_btn = QPushButton("🎤  Open Voice")
         open_btn.setStyleSheet(
             "background-color: #4CAF50; color: white; font-weight: bold;"
             " padding: 12px; font-size: 11pt; border: none;"
         )
-        open_btn.clicked.connect(self._open_voice_in_sidekick)
+        open_btn.clicked.connect(self._open_voice_in_workbench)
         layout.addWidget(open_btn)
 
         quick_ref_group = QGroupBox("📖 Quick Reference")
@@ -21472,50 +21490,36 @@ class SupervertalerQt(QMainWindow):
         layout.addStretch()
         return tab
 
-    def _open_voice_in_sidekick(self):
-        """Open Sidekick directly to its Voice tab from a Settings link."""
-        fa = getattr(self, '_floating_assistant', None)
-        if fa is None:
-            QMessageBox.information(
-                self, "Sidekick unavailable",
-                "Supervertaler Sidekick isn't initialised yet. "
-                "Try again in a moment, or press Ctrl+Q to summon it manually."
-            )
-            return
-        opener = getattr(fa, '_open_to_voice', None)
-        if not callable(opener):
-            QMessageBox.warning(
-                self, "Could not open Voice",
-                "Sidekick is loaded but the Voice entry point is missing. "
-                "Press Ctrl+Q and click the Voice tab manually."
-            )
-            return
+    def _open_voice_in_workbench(self):
+        """Open Workbench's Voice top tab from a Settings link / tray menu.
+
+        Method was renamed from _open_voice_in_sidekick in v1.10.10
+        when Sidekick was retired. The two existing call sites
+        (Voice settings link and Always-On tray menu) were updated
+        to match.
+        """
         try:
-            opener()
+            if hasattr(self, '_ensure_voice_top_tab'):
+                self._ensure_voice_top_tab()
+            self._bring_workbench_forward()
+            if hasattr(self, 'voice_tab_index') and hasattr(self, 'main_tabs'):
+                self.main_tabs.setCurrentIndex(self.voice_tab_index)
         except Exception as e:
             QMessageBox.warning(self, "Could not open Voice", str(e))
 
     def _bring_workbench_forward(self):
-        """Hide Sidekick (if open) and bring Workbench to the foreground.
+        """Bring Workbench to the foreground.
 
-        Sidekick uses WindowStaysOnTopHint, so just raising Workbench
-        leaves it painted behind Sidekick where the user can't see it.
-        Hiding Sidekick preserves its state – they can re-summon with
-        Ctrl+Q / the tray icon / Ctrl+Alt+K.
-
-        On Windows we add the SetForegroundWindow + AttachThreadInput
-        dance to win the foreground race against whatever app last had
-        focus (otherwise Windows blocks raise()'s focus grab as
-        "stealing").
+        On Windows the bare show/raise/activateWindow trio isn't
+        enough to win the foreground race against another app the
+        user has been working in (Trados is a known-aggressive
+        host). We escalate through the full documented
+        foreground-grab chain: synthetic Alt-key press to satisfy
+        SetForegroundWindow's "Alt pressed" exception, then
+        AttachThreadInput dance, then BringWindowToTop +
+        SetForegroundWindow + SwitchToThisWindow. See v1.10.9
+        changelog for the full history of this fix.
         """
-        # Dismiss Sidekick first so it doesn't obscure Workbench.
-        fa = getattr(self, '_floating_assistant', None)
-        if fa is not None and hasattr(fa, '_dismiss_to_tray'):
-            try:
-                fa._dismiss_to_tray()
-            except Exception:
-                pass
-
         if self.isMinimized():
             self.showNormal()
         self.show()
@@ -47871,21 +47875,25 @@ class SupervertalerQt(QMainWindow):
     
     def _go_to_superlookup(self, query=None, source_lang=None, target_lang=None,
                            switch_to_vertical=True):
-        """Open Superlookup in the Sidekick (Floating Assistant).
+        """Open SuperLookup with an optional pre-filled query.
 
-        Superlookup no longer lives as a sub-tab in the Tools tab – Sidekick
-        hosts it. This method brings Sidekick to the foreground, switches to
-        the SuperLookup pane, and (optionally) runs a search with the given
-        query and language pair.
+        Pre-v1.10.4 this routed through Sidekick (the floating
+        assistant). Sidekick was retired in v1.10.4 and SuperLookup
+        now lives as a Workbench top tab; v1.10.10 finished the
+        rewire so this method targets the in-Workbench widget
+        directly.
         """
-        assistant = getattr(self, '_floating_assistant', None)
-        if assistant is None:
-            self.log("⚠ Sidekick not available – Superlookup cannot be opened")
+        if hasattr(self, 'open_workbench_to_superlookup'):
+            # Bring the SuperLookup tab forward without seeding text
+            # via the usual hotkey path (which auto-fires the search);
+            # we want to seed using search_with_query so we can pass
+            # the language pair too.
+            self.open_workbench_to_superlookup("")
+        else:
+            self.log("⚠ SuperLookup tab not available")
             return
 
-        assistant.show_superlookup()
-
-        widget = getattr(assistant, '_superlookup_widget', None)
+        widget = getattr(self, '_superlookup_top_widget', None)
         if widget is not None and query and hasattr(widget, 'search_with_query'):
             widget.search_with_query(
                 query,
@@ -53534,15 +53542,15 @@ class SuperlookupTab(QWidget):
     Works anywhere on your computer: in CAT tools, browsers, Word, any text box
     """
     
-    def __init__(self, parent=None, user_data_path=None, is_sidekick=False):
+    def __init__(self, parent=None, user_data_path=None):
         super().__init__(parent)
         self.main_window = parent  # Store reference to main window for database access
         self.user_data_path = user_data_path  # Store user data path for web cache
-        # When this SuperlookupTab is hosted inside the Sidekick (FloatingAssistant),
-        # is_sidekick=True. Used to decide whether to mount the QuickTrans
-        # settings widget here (only one place in the app should mount it,
-        # since it owns shared state on the main window via _mtql_checkboxes).
-        self.is_sidekick = is_sidekick
+        # The `is_sidekick` flag was removed in v1.10.10 along with the
+        # Sidekick window itself. It used to gate mounting of the
+        # QuickTrans settings widget as a sub-sub-tab inside Sidekick's
+        # SuperLookup pane; QuickTrans settings now live directly in
+        # Workbench Settings → ⚡ QuickTrans.
 
         print("[Superlookup] SuperlookupTab.__init__ called")
         
@@ -55518,32 +55526,14 @@ class SuperlookupTab(QWidget):
         web_settings_tab = self.create_web_settings_subtab()
         self.settings_subtabs.addTab(web_settings_tab, "🌐 Web Resources")
 
-        # QuickTrans Settings sub-tab — only mounted in the Sidekick context
-        # (Workbench Settings → QuickTrans is now a stub that opens this).
-        # Single mount point keeps _mtql_checkboxes / _mtql_llm_combos on the
-        # main window unambiguous.
-        #
-        # The widget is sized for full-window space (Workbench Settings wraps
-        # it in _wrap_in_scroll), so we MUST wrap it in a scroll area here
-        # too — Sidekick is a compact floating window and the un-scrolled
-        # widget gets visually crushed on smaller screens.
-        if self.is_sidekick and self.main_window is not None and \
-           hasattr(self.main_window, '_create_mt_quick_lookup_settings_tab'):
-            try:
-                qt_settings_tab = self.main_window._create_mt_quick_lookup_settings_tab()
-                if hasattr(self.main_window, '_wrap_in_scroll'):
-                    qt_settings_tab = self.main_window._wrap_in_scroll(qt_settings_tab)
-                else:
-                    # Fallback: wrap in a basic QScrollArea so the content is
-                    # at least scrollable in the compact Sidekick window.
-                    scroll = QScrollArea()
-                    scroll.setWidgetResizable(True)
-                    scroll.setFrameShape(QFrame.Shape.NoFrame)
-                    scroll.setWidget(qt_settings_tab)
-                    qt_settings_tab = scroll
-                self.settings_subtabs.addTab(qt_settings_tab, "⚡ QuickTrans")
-            except Exception as e:
-                print(f"[Superlookup] Could not mount QuickTrans settings sub-tab: {e}")
+        # QuickTrans Settings used to be mounted here as a sub-sub-tab
+        # when this SuperlookupTab lived inside Sidekick (is_sidekick=
+        # True). With Sidekick retired in v1.10.4 / v1.10.10, the
+        # QuickTrans settings widget moved to Workbench Settings →
+        # ⚡ QuickTrans where it's the sole, canonical mount point.
+        # Keeping it out of the SuperLookup tab also keeps
+        # _mtql_checkboxes / _mtql_llm_combos on the main window
+        # unambiguous (single source of truth).
 
         layout.addWidget(self.settings_subtabs, stretch=1)
 
@@ -55855,20 +55845,13 @@ class SuperlookupTab(QWidget):
                     except Exception as e:
                         print(f"[SuperLookup] Deferred web search (external) error: {e}")
 
-        if index == quicktrans_index and quicktrans_index >= 0:
-            pending = getattr(self, '_quicktrans_pending_text', None)
-            if pending:
-                self._quicktrans_pending_text = None
-                mw = self.main_window
-                fa = getattr(mw, '_floating_assistant', None) if mw else None
-                if fa and hasattr(fa, '_run_quicktrans'):
-                    try:
-                        # switch_to_quicktrans_tab=False because we're
-                        # already on the QuickTrans sub-tab (that's why
-                        # this handler is firing).
-                        fa._run_quicktrans(pending, switch_to_quicktrans_tab=False)
-                    except Exception as e:
-                        print(f"[SuperLookup] Deferred QuickTrans dispatch failed: {e}")
+        # NOTE (v1.10.10): the QuickTrans-sub-tab deferred dispatch
+        # path was removed when Sidekick was retired. It only fired
+        # for SuperLookup widgets hosted inside Sidekick (is_sidekick
+        # =True), which mounted QuickTrans as a sub-sub-tab. The
+        # in-Workbench SuperLookup tab doesn't host QuickTrans
+        # internally – QuickTrans now lives directly in Workbench
+        # Settings → ⚡ QuickTrans – so there's nothing to defer.
     
     def on_tm_search_toggled(self, state):
         """Handle TM search checkbox toggle"""
@@ -57814,22 +57797,12 @@ class SuperlookupTab(QWidget):
                 return (not sm.is_enabled(sid)) or (not sm.is_global(sid))
             if _skip('tools_universal_lookup'):       sl_shortcut = ''
             if _skip('mt_quick_lookup'):              qt_shortcut = ''
-            if _skip('sidekick_open'):                sk_shortcut = ''
             if _skip('sidekick_open_clipboard'):      cb_shortcut = ''
             if _skip('voice_dictate'):                pt_shortcut = ''
             if _skip('voice_alwayson_toggle'):  ao_shortcut = ''
-            # v1.10.4 (issue #199 phase 4): Sidekick retired – the
-            # Ctrl+Alt+K binding has no target any more (Sidekick window
-            # isn't constructed). Force the global registration off so
-            # we don't grab the chord system-wide for no reason. The
-            # in-app QShortcut bound by create_shortcut('sidekick_open',
-            # …) still fires, but its handler (open_quicklauncher) now
-            # logs and returns when _floating_assistant is None.
-            sk_shortcut = ''
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+q'
-            sk_shortcut = 'alt+k'
             cb_shortcut = 'ctrl+shift+c'
             pt_shortcut = 'ctrl+shift+space'
             ao_shortcut = 'ctrl+alt+a'
@@ -57872,7 +57845,6 @@ class SuperlookupTab(QWidget):
                 _bindings = [
                     (sl_shortcut, self._on_pynput_superlookup),
                     (qt_shortcut, self._on_pynput_quicktrans),
-                    (sk_shortcut, self._on_pynput_sidekick),
                     (cb_shortcut, self._on_pynput_clipboard),
                     (pt_shortcut, self._on_pynput_pushtotalk),
                     (ao_shortcut, self._on_pynput_alwayson_toggle),
@@ -57946,20 +57918,6 @@ class SuperlookupTab(QWidget):
             )
         except Exception as e:
             print(f"[QuickTrans] Error signaling main thread: {e}")
-
-    def _on_pynput_sidekick(self):
-        """Called from pynput background thread when the Sidekick global
-        hotkey (default Alt+K) is pressed.
-
-        IMPORTANT: Do NO work here -- see _on_pynput_superlookup docstring.
-        """
-        try:
-            print("[Sidekick] Global hotkey fired!")
-            from PyQt6.QtCore import QMetaObject, Qt as QtConst, QTimer
-            # Use QTimer.singleShot for more reliable cross-thread dispatch
-            QTimer.singleShot(0, self._handle_sidekick_hotkey)
-        except Exception as e:
-            print(f"[Sidekick] Error signaling main thread: {e}")
 
     def _on_pynput_clipboard(self):
         """Called from pynput background thread when Ctrl+Shift+C is pressed.
@@ -58049,16 +58007,8 @@ class SuperlookupTab(QWidget):
                 except Exception as e:
                     print(f"[Clipboard] Workbench top-tab route failed: {e}")
 
-            # Fallback: Sidekick (unreachable from v1.10.4 onward
-            # since Sidekick isn't constructed – kept defensively
-            # in case a future build re-enables it).
-            fa = getattr(mw, '_floating_assistant', None) if mw else None
-            if fa:
-                if mw and mw is not self:
-                    mw._quicklauncher_source_window = source_win
-                fa._open_to_clipboard(source_window=source_win)
             else:
-                print("[Clipboard] Neither Workbench top tab nor Sidekick available")
+                print("[Clipboard] open_workbench_to_clipboard unavailable")
         except Exception as e:
             print(f"[Clipboard] Error in _open_clipboard_after_copy: {e}")
 
@@ -58381,15 +58331,9 @@ class SuperlookupTab(QWidget):
                 return
             except Exception as e:
                 print(f"[Superlookup] Workbench top-tab route failed: {e}")
-
-        # Fallback: Sidekick (back-compat for environments where the
-        # Workbench top tab couldn't be built).
-        assistant = getattr(mw, '_floating_assistant', None) if mw else None
-        if assistant and hasattr(assistant, 'show_superlookup'):
-            assistant.show_superlookup(text)
-        elif text:
-            # Last-ditch fallback: main-window AHK-capture handler.
-            self.on_ahk_capture(text)
+                # Last-ditch fallback: main-window AHK-capture handler.
+                if text:
+                    self.on_ahk_capture(text)
 
     @pyqtSlot()
     def _handle_quicktrans_hotkey(self):
@@ -58408,87 +58352,18 @@ class SuperlookupTab(QWidget):
             print(f"[QuickTrans] Error in hotkey handler: {e}")
 
     def _read_clipboard_for_quicktrans(self):
-        """Read clipboard and open QuickTrans tab in the floating assistant."""
-        text = pyperclip.paste() or ""
-        mw = self.main_window or self.window()
-        assistant = getattr(mw, '_floating_assistant', None) if mw else None
-        if assistant:
-            source_win = getattr(self, '_quicktrans_source_window', None)
-            assistant.show_at_cursor(
-                captured_text=None, focus_actions=False,
-                source_window=source_win,
-            )
-            assistant._run_quicktrans(text)
-        elif text:
-            # Fallback to old standalone popup
-            self.on_ahk_mt_lookup_capture(text)
+        """Read clipboard and show the QuickTrans popup.
 
-    @pyqtSlot()
-    def _handle_sidekick_hotkey(self):
-        """Runs on Qt main thread after the Sidekick global hotkey fires.
-
-        Captures the foreground window, sends Ctrl+C to copy any selected
-        text from the source app, then dispatches that text to Sidekick
-        (the floating assistant). The downstream method is still called
-        ``show_quicklauncher_external`` because it's also used by the
-        editor's right-click QuickLauncher menu – they share the same
-        "open Sidekick with this text" plumbing.
+        Pre-v1.10.4 this opened Sidekick's QuickTrans sub-tab. With
+        Sidekick retired, QuickTrans uses the standalone always-on-
+        top popup (the same one the editor's right-click → QuickTrans
+        triggers). `_quicktrans_source_window` is still captured by
+        the hotkey handler so the popup's paste-back flow has the
+        original app to return to.
         """
-        try:
-            from modules.platform_helpers import CrossPlatformKeySender, get_foreground_window
-            self._quicklauncher_source_window = get_foreground_window()
-            # Also store on main window so the Prompt Manager can access it
-            # (self here is SuperlookupTab, but _return_from_assistant reads from SupervertalerQt)
-            mw = self.main_window or self.window()
-            if mw and mw is not self:
-                mw._quicklauncher_source_window = self._quicklauncher_source_window
-            print(f"[Sidekick] Captured source window: {self._quicklauncher_source_window}")
-
-            sender = CrossPlatformKeySender()
-            sender.send_copy()
-            QTimer.singleShot(350, self._read_clipboard_for_sidekick)
-        except Exception as e:
-            print(f"[Sidekick] Error in hotkey handler: {e}")
-
-    def _read_clipboard_for_sidekick(self):
-        """Read clipboard and dispatch to Sidekick (main thread)."""
         text = pyperclip.paste() or ""
-        self.show_quicklauncher_external(text)
-
-    def _launch_superlookup_external(self, text):
-        """Launch Superlookup with given text, bringing the window to foreground first."""
-        try:
-            import sys
-            main_window = self.window()
-            if main_window:
-                if main_window.isMinimized():
-                    main_window.showNormal()
-                elif main_window.isHidden():
-                    main_window.show()
-                main_window.raise_()
-                main_window.activateWindow()
-
-                # Platform-specific foreground activation using the Qt window handle
-                # (avoids activate_window_by_title which can match the terminal)
-                if sys.platform == 'win32':
-                    import ctypes
-                    user32 = ctypes.windll.user32
-                    kernel32 = ctypes.windll.kernel32
-                    hwnd = int(main_window.winId())
-                    fg = user32.GetForegroundWindow()
-                    fg_thread = user32.GetWindowThreadProcessId(fg, None)
-                    our_thread = kernel32.GetCurrentThreadId()
-                    attached = False
-                    if fg_thread != our_thread:
-                        attached = user32.AttachThreadInput(fg_thread, our_thread, True)
-                    user32.SetForegroundWindow(hwnd)
-                    if attached:
-                        user32.AttachThreadInput(fg_thread, our_thread, False)
-                # macOS/Linux: raise_() + activateWindow() above is sufficient
-
-            self.show_superlookup(text)
-        except Exception as e:
-            print(f"[Superlookup] Error launching: {e}")
+        if text:
+            self.on_ahk_mt_lookup_capture(text)
 
     def on_ahk_capture(self, text):
         """Handle text captured by AHK"""
@@ -58669,202 +58544,14 @@ class SuperlookupTab(QWidget):
         except Exception as e:
             print(f"[QuickTrans] Error pasting translation: {e}")
 
-    def show_quicklauncher_external(self, text):
-        """Show Floating Assistant with text captured from an external app (global hotkey).
-
-        Opens the floating assistant window with focus on the action panel
-        so the user can navigate with arrow keys immediately.
-        """
-        try:
-            # _floating_assistant lives on the main window, not on SuperlookupTab
-            mw = self.main_window or self.window()
-            assistant = getattr(mw, '_floating_assistant', None) if mw else None
-            if not assistant:
-                # Also check self in case called from main window directly
-                assistant = getattr(self, '_floating_assistant', None)
-
-            if assistant:
-                # Pass the source window so direct actions can return focus
-                source_win = getattr(self, '_quicklauncher_source_window', None)
-                assistant.show_at_cursor(
-                    captured_text=text, focus_actions=True,
-                    source_window=source_win,
-                )
-            else:
-                print("[QuickLauncher] Floating Assistant not available")
-        except Exception as e:
-            print(f"[QuickLauncher] Error: {e}")
-
-    def _show_quicklauncher_external_legacy(self, text):
-        """Legacy QMenu-based external QuickLauncher (kept as fallback)."""
-        try:
-            from PyQt6.QtWidgets import QMenu
-            from PyQt6.QtGui import QAction, QCursor
-
-            print(f"[QuickLauncher] legacy external called with text: {text[:50]}...")
-
-            main_window = self.main_window or self.window()
-            if not main_window:
-                return
-
-            menu = QMenu()
-            menu.setWindowTitle("\u26A1 QuickLauncher")
-
-            from PyQt6.QtWidgets import QWidgetAction, QLabel
-            _heading_lbl = QLabel("  Supervertaler QuickLauncher")
-            _heading_lbl.setStyleSheet("font-weight: bold; padding: 4px 8px; color: #1565C0;")
-            _heading_act = QWidgetAction(menu)
-            _heading_act.setDefaultWidget(_heading_lbl)
-            menu.addAction(_heading_act)
-            menu.addSeparator()
-
-            # QuickTrans at the top
-            qt_action = QAction(f"⚡ QuickTrans", menu)
-            qt_action.triggered.connect(lambda: self.show_mt_quick_lookup_from_ahk(text))
-            menu.addAction(qt_action)
-
-            # Supervertaler Sidekick – defer with QTimer so menu fully closes first
-            assistant_action = QAction("💬 Supervertaler Sidekick", menu)
-            assistant_action.triggered.connect(
-                lambda: QTimer.singleShot(0, lambda: self.show_supervertaler_assistant(
-                    initial_text=text, external_mode=True
-                ))
-            )
-            menu.addAction(assistant_action)
-
-            # Superlookup – defer with QTimer so menu fully closes first
-            superlookup_action = QAction("🔍 SuperLookup", menu)
-            superlookup_action.triggered.connect(
-                lambda: QTimer.singleShot(0, lambda: self._launch_superlookup_external(text))
-            )
-            menu.addAction(superlookup_action)
-
-            # Prompt-based items
-            quicklauncher_items = []
-            if hasattr(main_window, 'prompt_manager_qt') and main_window.prompt_manager_qt:
-                lib = getattr(main_window.prompt_manager_qt, 'library', None)
-                if lib and hasattr(lib, 'get_quicklauncher_grid_prompts'):
-                    quicklauncher_items = lib.get_quicklauncher_grid_prompts() or []
-
-            if quicklauncher_items:
-                menu.addSeparator()
-                for rel_path, label in sorted(quicklauncher_items, key=lambda x: (x[1] or x[0]).lower()):
-                    prompt_submenu = menu.addMenu(label or rel_path)
-
-                    run_show = QAction("▶ Run (show response)…", prompt_submenu)
-                    run_show.triggered.connect(
-                        lambda checked=False, p=rel_path: self._run_external_quicklauncher_prompt(p, text, behavior="show")
-                    )
-                    prompt_submenu.addAction(run_show)
-
-                    run_paste = QAction("↺ Run and paste into app", prompt_submenu)
-                    run_paste.triggered.connect(
-                        lambda checked=False, p=rel_path: self._run_external_quicklauncher_prompt(p, text, behavior="paste")
-                    )
-                    prompt_submenu.addAction(run_paste)
-
-            # Show at mouse cursor position
-            menu.exec(QCursor.pos())
-
-        except Exception as e:
-            print(f"[QuickLauncher] Error showing external menu: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _run_external_quicklauncher_prompt(self, prompt_relative_path: str, source_text: str, behavior: str = "show"):
-        """Run a QuickLauncher prompt on text captured from an external app.
-
-        Similar to run_grid_quicklauncher_prompt() but works without a grid widget.
-        """
-        from PyQt6.QtWidgets import QMessageBox, QApplication
-        from modules.llm_clients import LLMClient
-
-        main_window = self.main_window or self.window()
-        if not main_window:
-            return
-
-        # Determine project languages
-        source_lang = "English"
-        target_lang = "Dutch"
-        if hasattr(main_window, 'current_project') and main_window.current_project:
-            source_lang = getattr(main_window.current_project, 'source_lang', source_lang) or source_lang
-            target_lang = getattr(main_window.current_project, 'target_lang', target_lang) or target_lang
-
-        # Get current segment's target text for {{TARGET_TEXT}} placeholder
-        current_target_text = ""
-        if hasattr(main_window, 'table') and main_window.table and hasattr(main_window, 'current_project') and main_window.current_project:
-            current_row = main_window.table.currentRow()
-            if 0 <= current_row < len(main_window.current_project.segments):
-                current_target_text = main_window.current_project.segments[current_row].target or ""
-
-        # Determine provider/model
-        settings = main_window.load_llm_settings()
-        provider = settings.get('provider', 'openai')
-        model_key = f'{provider}_model'
-        model = settings.get(model_key)
-
-        # Load API keys
-        api_keys = main_window.load_api_keys()
-        if provider == 'ollama':
-            api_key = api_keys.get('ollama', '') or 'not-needed'
-        elif provider == 'custom_openai':
-            profile = main_window._get_active_custom_profile(settings)
-            profile_key = (profile.get('api_key') or '').strip() if profile else ''
-            api_key = profile_key or api_keys.get('custom_openai', '') or 'not-needed'
-        else:
-            if not api_keys:
-                QMessageBox.warning(main_window, "QuickLauncher", "No API keys found. Configure them in Settings first.")
-                return
-            api_key = api_keys.get(provider) or (api_keys.get('google') if provider == 'gemini' else None)
-            if not api_key:
-                QMessageBox.warning(main_window, "QuickLauncher", f"No API key found for provider '{provider}'.")
-                return
-
-        try:
-            main_window.status_bar.showMessage(f"⚡ QuickLauncher: running '{prompt_relative_path}'…")
-            QApplication.processEvents()
-
-            custom_prompt = main_window._quicklauncher_build_custom_prompt(
-                prompt_relative_path=prompt_relative_path,
-                source_text=source_text,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                target_text=current_target_text
-            )
-
-            base_url = None
-            if provider == 'custom_openai':
-                profile = main_window._get_active_custom_profile(settings)
-                base_url = profile.get('endpoint') or None if profile else None
-            http_proxy = main_window._get_proxy_url() if provider != 'gemini' else None
-            client = LLMClient(api_key=api_key, provider=provider, model=model, base_url=base_url, http_proxy=http_proxy)
-
-            output_text = client.translate(
-                text="",
-                source_lang="en",
-                target_lang="en",
-                custom_prompt=custom_prompt
-            )
-
-            if not output_text:
-                QMessageBox.warning(main_window, "QuickLauncher", "No response received from the LLM.")
-                return
-
-        except Exception as e:
-            QMessageBox.critical(main_window, "QuickLauncher", f"QuickLauncher failed:\n\n{e}")
-            return
-        finally:
-            try:
-                main_window.status_bar.clearMessage()
-            except Exception:
-                pass
-
-        if behavior == "paste":
-            # Copy result to clipboard and paste into external app
-            self._paste_translation_to_external_app(output_text)
-        else:
-            # Show result dialog (with Copy button)
-            main_window._quicklauncher_show_result_dialog("Supervertaler QuickLauncher", output_text)
+    # show_quicklauncher_external, _show_quicklauncher_external_legacy,
+    # and _run_external_quicklauncher_prompt were removed in v1.10.10.
+    # They were the Sidekick-era hotkey landing methods plus a QMenu
+    # fallback popup. With Sidekick retired, the Ctrl+Alt+K external
+    # QuickLauncher hotkey is unregistered and these handlers are
+    # unreachable. The right-click QuickLauncher menu inside the
+    # editor (which surfaces the same prompts) remains, served by
+    # run_grid_quicklauncher_prompt on the main window.
 
     def set_compact_mode(self, compact=True):
         """Hide header and description to save vertical space (used in floating assistant)."""

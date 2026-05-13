@@ -579,16 +579,24 @@ class ShortcutManager:
             "action": "open_quicklauncher",
             "context": "grid_editor"
         },
+        # Despite the legacy IDs (sidekick_open*, kept so existing
+        # user customisations survive), these shortcuts now target
+        # Workbench top tabs – Sidekick was retired in v1.10.4 and
+        # the floating-assistant window no longer exists. The
+        # `sidekick_open` entry is no longer a *global* hotkey
+        # (Ctrl+Alt+K was unbound at the OS level in v1.10.4 to
+        # free the chord for other apps); it survives only as an
+        # in-app QShortcut (Alt+K) that opens the SuperLookup top
+        # tab with the user's current selection seeded.
         "sidekick_open": {
-            "category": "Sidekick",
-            "description": "Open Sidekick (with selection / lookup)",
-            "default": "Ctrl+Alt+K",
-            "action": "open_sidekick",
-            "global": True,
+            "category": "Hotkeys",
+            "description": "Open SuperLookup (with current selection)",
+            "default": "Alt+K",
+            "action": "open_quicklauncher",
         },
         "sidekick_open_clipboard": {
-            "category": "Sidekick",
-            "description": "Open Sidekick – Clipboard tab",
+            "category": "Hotkeys",
+            "description": "Open Clipboard manager",
             "default": "Ctrl+Alt+C",
             "action": "open_clipboard_tab",
             "global": True,
@@ -767,17 +775,11 @@ class ShortcutManager:
         if merge_changed:
             self.save_shortcuts()
 
-        # Default-value upgrade for sidekick_open: Alt+K → Ctrl+Alt+K.
-        # Old default was the bare Option/Alt+K, which on Mac (after the
-        # Qt-aware NSEvent backend landed) maps to ⌥K – Option+K is a
-        # dead key on Mac that types "˚", so it's a poor global hotkey.
-        # Drop a custom value matching the old default so the new
-        # Ctrl+Alt+K default takes effect; explicit overrides to anything
-        # else are preserved.
-        sk_open = self.custom_shortcuts.get('sidekick_open')
-        if sk_open and sk_open.lower() == 'alt+k':
-            del self.custom_shortcuts['sidekick_open']
-            self.save_shortcuts()
+        # v1.10.10: the previous `sidekick_open` default-value upgrade
+        # (Alt+K → Ctrl+Alt+K to dodge the Mac ⌥K dead-key issue) has
+        # been removed. With Sidekick retired the global Ctrl+Alt+K
+        # binding is gone; sidekick_open is now an in-app-only
+        # shortcut and Alt+K is fine again.
 
         # Default-value upgrade for sidekick_open_clipboard: Ctrl+Shift+C
         # → Ctrl+Alt+C. The old default fired unreliably on Windows

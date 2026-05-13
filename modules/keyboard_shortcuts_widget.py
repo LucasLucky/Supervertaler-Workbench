@@ -651,7 +651,7 @@ class KeyboardShortcutsWidget(QWidget):
 
         Called after any shortcut change so it takes effect immediately.
         Reloads two things:
-          • OS-level global hotkeys (Superlookup, QuickTrans, Sidekick,
+          • OS-level global hotkeys (Superlookup, QuickTrans,
             Clipboard, push-to-talk, Always-On) via ``reload_global_hotkeys``.
           • Local QShortcut key sequences via ``refresh_shortcut_enabled_states``.
             Without the second call, in-app QShortcut objects keep firing on

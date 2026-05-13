@@ -1,10 +1,13 @@
 """
-Clipboard Manager Widget for Supervertaler Sidekick.
+Clipboard Manager Widget for Supervertaler Workbench.
 
 Monitors the system clipboard and maintains a persistent history of TEXT and
 RASTER IMAGE clips that survives application restarts.  Items change colour
 after being pasted, making it easy to track which clips have already been
 used in a session.
+
+Originally lived inside Supervertaler Sidekick (retired in v1.10.4); now
+mounted as the "📋 Clipboard" top tab on Workbench itself.
 
 Cross-platform: relies on QApplication.clipboard().dataChanged (Qt handles
 the OS-level plumbing on Windows, macOS, and Linux/X11).
@@ -41,22 +44,23 @@ _ROLE_PASTED   = Qt.ItemDataRole.UserRole + 4      # bool
 
 class ClipboardManagerWidget(QWidget):
     """
-    Persistent clipboard history panel, intended as a tab inside FloatingAssistant.
+    Persistent clipboard history panel, mounted as Workbench's
+    "📋 Clipboard" top tab.
 
-    Two callbacks are wired by the parent (FloatingAssistant):
+    Two callbacks are wired by the parent (Workbench):
 
       paste_text_callback(text: str)
-          Called when the user clicks a TEXT item.  The callback is expected
-          to put the text on the clipboard, hide the Sidekick, and send Ctrl+V
-          to the source window.
+          Called when the user clicks a TEXT item. The callback is expected
+          to put the text on the clipboard and (when invoked via the
+          Ctrl+Alt+C hotkey) send Ctrl+V back to the source window.
 
       paste_image_callback(pixmap: QPixmap)
-          Called when the user clicks an IMAGE item.  Same contract but for
+          Called when the user clicks an IMAGE item. Same contract but for
           a raster image.
 
     Pasted state is persisted to the shared SQLite database so it survives
-    restarts.  The db is accessed lazily via ``ensure_db_loaded()``, which
-    FloatingAssistant calls once the database is ready.
+    restarts. The db is accessed lazily via ``ensure_db_loaded()``, which
+    Workbench calls once the database is ready.
     """
 
     # Independent caps per kind so a flood of images can't push your text
@@ -401,11 +405,9 @@ class ClipboardManagerWidget(QWidget):
                     self._focus_action_tree(right_neighbour)
                 else:
                     self._focus_list(right_neighbour)
-            else:
-                # No right neighbour – legacy Sidekick path (jump to
-                # Sidekick's right-pane action tree). Harmless no-op
-                # when we're embedded as a Workbench top tab.
-                self._focus_sidekick_action_tree()
+            # No right neighbour means we're already on the action
+            # tree (rightmost column in the Workbench top-tab layout)
+            # – nothing to do.
             return True
 
         if key == Qt.Key.Key_Left:
@@ -442,15 +444,6 @@ class ClipboardManagerWidget(QWidget):
         list_widget.setFocus(Qt.FocusReason.OtherFocusReason)
         if list_widget.count() > 0 and list_widget.currentRow() < 0:
             list_widget.setCurrentRow(0)
-
-    def _focus_sidekick_action_tree(self):
-        """If embedded in Sidekick, jump focus to the right-pane action tree."""
-        try:
-            fa = getattr(self._parent_app, '_floating_assistant', None)
-            if fa is not None and hasattr(fa, '_focus_action_tree'):
-                fa._focus_action_tree()
-        except Exception:
-            pass
 
     def _refresh_focus_styles(self, focused=None):
         """Highlight the column header whose list currently has focus

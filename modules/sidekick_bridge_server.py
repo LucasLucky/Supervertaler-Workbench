@@ -1,15 +1,25 @@
 """
-Sidekick Bridge Server
-======================
+Workbench Bridge Server (historical name: "Sidekick Bridge")
+============================================================
 
 Localhost HTTP listener that lets the Supervertaler for Trados plugin
-*push* a QuickLauncher prompt into Workbench's Sidekick Chat. The
-inverse of ``trados_bridge_client``: there the Workbench reads context
-from Trados; here Trados sends a prompt for the Sidekick to run.
+*push* a QuickLauncher prompt into Workbench's Chat panel. The inverse
+of ``trados_bridge_client``: there Workbench reads context from Trados;
+here Trados sends a prompt for Workbench to run.
+
+The file/class names retain the "Sidekick" prefix because the Trados
+side (Core/SidekickBridge.cs and the on-disk handshake file
+``sidekick-bridge.json``) is a wire-protocol surface that older plugin
+versions look up by exactly those names. Renaming server-side would
+break compatibility with deployed Trados plugins. Internally the
+consumer is now Workbench's Chat tab (the floating Sidekick window was
+retired in v1.10.4); the prompt is handed off to
+``SupervertalerQt.show_supervertaler_assistant`` instead of the
+defunct ``FloatingAssistant``.
 
 Lifecycle:
 
-  * Started by ``Supervertaler.py`` once the FloatingAssistant is ready.
+  * Started by ``Supervertaler.py`` once the main window is ready.
   * Binds to ``http://127.0.0.1:<random-port>/`` – never accepts
     non-loopback connections.
   * Generates a per-session bearer token; clients must present it as
@@ -17,24 +27,20 @@ Lifecycle:
   * Writes a handshake file at
     ``<root>/workbench/runtime/sidekick-bridge.json``
     with port + token + PID + timestamp so the Trados plugin can
-    discover it.
+    discover it. The filename is fixed for wire-protocol reasons.
   * Deletes the handshake on stop.
 
 Endpoints (URL path versioned for forward compatibility):
 
   POST /v1/run-prompt
        body: {"prompt": "...", "displayPrompt": "...", "promptName": "..."}
-       Hands the prompt off to the FloatingAssistant via a Qt signal so
-       the Sidekick chat actually runs it on the GUI thread.
-
-The handler is intentionally minimal – the heavy lifting (LLM call,
-chat rendering) happens in the FloatingAssistant on the GUI thread.
+       Hands the prompt off to the GUI thread via a Qt signal so the
+       Chat tab actually runs it on the GUI thread.
 
 Threading: the listener runs on a dedicated daemon thread; per-request
 handlers run on whatever thread the stdlib HTTPServer hands them. We
-marshal back to the GUI thread by emitting a Qt signal that the
-FloatingAssistant connects with a Qt::QueuedConnection (the default for
-cross-thread emissions).
+marshal back to the GUI thread by emitting a Qt signal connected with
+Qt::QueuedConnection (the default for cross-thread emissions).
 """
 
 from __future__ import annotations

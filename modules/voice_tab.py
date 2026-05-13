@@ -1,8 +1,7 @@
 """Voice tab – voice commands and dictation control panel.
 
-Designed to live inside Supervertaler Sidekick (modules/floating_assistant.py)
-as a 4th tab, but works standalone with any parent that exposes the same
-contract on the parent_app object:
+Mounted as Workbench's "🎤 Voice" top tab. The widget is parent-agnostic
+– it just needs the following contract on the parent_app object:
 
     - voice_command_manager: VoiceCommandManager instance
     - voice_listener: ContinuousVoiceListener or None
@@ -13,11 +12,11 @@ contract on the parent_app object:
     - _check_ahk_installed() -> str
     - _open_voice_scripts_folder() -> None
 
-Always-On status is pushed by the main app's _update_alwayson_ui, which
-locates this widget via parent_app._floating_assistant._voice_widget.
-Voice-command CRUD broadcasts back to the parent app's
-_populate_voice_commands_table so any future surface tied into that
-refresh entry point also updates.
+Pre-v1.10.4 this widget also lived inside Supervertaler Sidekick (the
+retired floating-assistant window); the Always-On status used to be
+pushed via parent_app._floating_assistant._voice_widget. After v1.10.4
+the in-Workbench widget is located via parent_app._voice_top_widget
+(see _update_alwayson_ui in Supervertaler.py).
 
 Historically named "AutoFingers"; the internal name was simplified to
 "Voice" in v1.9.491. The persisted layout key reads legacy
