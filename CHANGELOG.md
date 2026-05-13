@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.6 (May 13, 2026)
+**Current Version:** v1.10.7 (May 13, 2026)
+
+
+## v1.10.7 – May 13, 2026
+
+### Fixed (First Ctrl+Alt+C after launch still didn't bring Workbench forward)
+
+- v1.10.6 fixed the Ctrl+Alt+L foreground race by deferring `search_btn.click()` past the SetForegroundWindow call. But Ctrl+Alt+C had a different, more fundamental version of the same problem that surfaced only on the *very first* invocation after a Workbench restart: the user pressed Ctrl+Alt+C from Trados, the Clipboard tab activated correctly, but Workbench itself stayed behind Trados. Pressing Ctrl+Alt+C a second time worked fine.
+- Root cause was in `open_workbench_to_superlookup` / `open_workbench_to_clipboard`: the original ordering called the lazy-tab ensure (`_ensure_clipboard_top_tab` / `_ensure_superlookup_top_tab`) *before* `_bring_workbench_forward()`. On a cold restart the very first ensure call constructs the widget – `ClipboardManagerWidget` loads the snippet library, builds the 3-column tree, scans the prompt library; `SuperlookupTab` brings up TM / termbase / MT / web-resource state – which can easily eat 1–2 seconds of Qt main-thread time. By the time we then reached `_bring_workbench_forward()` and its SetForegroundWindow call, we'd burned through the Windows ~2-second "you may steal foreground because you just received input" grace period and the OS silently refused our foreground request. SetForegroundWindow returned 0, no exception, no log – just a refused activation. On subsequent invocations the widget was already built so the ensure was a no-op, the foreground-grab fell inside the grace window, and everything worked.
+- Fix reorders both methods so `_bring_workbench_forward()` runs *before* the ensure. The user sees Workbench pop forward instantly on whatever tab it was on; the heavy widget construction then runs against an already-foreground process (no grace-period dependency); the tab switch to Clipboard / SuperLookup happens last. The 2500ms launch-time warm-up (`_warm_up_top_tabs`) still tries to build everything proactively, but the reorder makes correctness no longer dependent on warm-up beating the user's hotkey press.
 
 
 ## v1.10.6 – May 13, 2026

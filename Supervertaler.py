@@ -21549,9 +21549,27 @@ class SupervertalerQt(QMainWindow):
         who summon Sidekick via Ctrl+Alt+K.
         """
         try:
+            # v1.10.7: bring Workbench forward *before* the lazy-tab
+            # ensure. The ensure is heavy on the very first invocation
+            # after launch (it constructs the SuperlookupTab widget,
+            # which spins up TM / termbase / MT / web-resource state),
+            # and on a cold restart it can easily eat 1–2 seconds of
+            # Qt main-thread time. By the time we then called
+            # _bring_workbench_forward(), we'd burned through the
+            # Windows ~2-second "you may steal foreground because you
+            # just received input" grace period and SetForegroundWindow
+            # silently refused. The user saw the search run but
+            # Workbench stayed behind their source app.
+            #
+            # Reordering: grab the foreground *first* (cheap – just a
+            # show/raise + SetForegroundWindow call), then do the
+            # heavy widget build, then switch the tab. The user sees
+            # Workbench pop forward instantly on whatever tab it was
+            # on, and a beat later the SuperLookup tab activates with
+            # the search firing 150ms after that.
+            self._bring_workbench_forward()
             if hasattr(self, '_ensure_superlookup_top_tab'):
                 self._ensure_superlookup_top_tab()
-            self._bring_workbench_forward()
             if hasattr(self, 'superlookup_tab_index') and hasattr(self, 'main_tabs'):
                 self.main_tabs.setCurrentIndex(self.superlookup_tab_index)
             widget = getattr(self, '_superlookup_top_widget', None)
@@ -21602,9 +21620,18 @@ class SupervertalerQt(QMainWindow):
         no source; activations then just set the clipboard.
         """
         try:
+            # v1.10.7: bring Workbench forward *before* the lazy-tab
+            # ensure – see open_workbench_to_superlookup for the full
+            # rationale. The short version: on a cold restart the
+            # ClipboardManagerWidget construction (snippet library
+            # load, 3-column tree build, prompt library scan) blew
+            # past the Windows foreground-steal grace window, so
+            # SetForegroundWindow silently refused and Workbench
+            # stayed behind the user's source app even though the
+            # Clipboard tab was correctly activated.
+            self._bring_workbench_forward()
             if hasattr(self, '_ensure_clipboard_top_tab'):
                 self._ensure_clipboard_top_tab()
-            self._bring_workbench_forward()
             if hasattr(self, 'clipboard_tab_index') and hasattr(self, 'main_tabs'):
                 self.main_tabs.setCurrentIndex(self.clipboard_tab_index)
             widget = getattr(self, '_clipboard_top_widget', None)
