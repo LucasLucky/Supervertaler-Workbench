@@ -34107,24 +34107,48 @@ class SupervertalerQt(QMainWindow):
             return
 
         try:
-            # Collect translations from grid - map by segment ID
-            # Extract segment IDs from notes field where we stored them
+            # Collect translations from the project's segment list, not
+            # from grid cell widgets.
+            #
+            # v1.10.32 bug fix: prior code did
+            #
+            #     target_widget = self.table.cellWidget(row, 3)
+            #     notes_widget  = self.table.cellWidget(row, 4)   # ← stale
+            #     ...
+            #     notes_text    = notes_widget.toPlainText()
+            #
+            # which crashed with
+            #
+            #     'QWidget' object has no attribute 'toPlainText'
+            #
+            # because the current grid layout has only five columns
+            # (#, Type, Source, Target, Status) – column 4 is the
+            # Status indicator (a plain ``QWidget`` badge, not a
+            # ``SegmentTextEdit``). The old layout had a Notes column
+            # at index 4; when that was retired, the Phrase export
+            # path wasn't updated.
+            #
+            # The data we need is already on the segment objects: at
+            # import time ``import_phrase_bilingual`` writes
+            # ``notes=f"Phrase ID: {segment_id} | Status: {status}"``
+            # to each segment, and the Target text lives on
+            # ``segment.target``. Read straight from there –
+            # bypasses the grid entirely and works even when the
+            # editor isn't currently visible / built.
             translations = {}
-            for row in range(self.table.rowCount()):
-                target_widget = self.table.cellWidget(row, 3)  # Target column
-                notes_widget = self.table.cellWidget(row, 4)  # Notes column
-
-                if target_widget and notes_widget:
-                    target_text = target_widget.toPlainText().strip()
-                    notes_text = notes_widget.toPlainText().strip()
-
-                    # Extract Phrase segment ID from notes (format: "Phrase ID: xxx:nnn | Status: XX")
-                    if "Phrase ID:" in notes_text:
-                        import re
-                        match = re.search(r'Phrase ID: ([^\s|]+)', notes_text)
-                        if match and target_text:
-                            segment_id = match.group(1)
-                            translations[segment_id] = target_text
+            import re
+            phrase_id_re = re.compile(r"Phrase ID:\s*([^\s|]+)")
+            for segment in self.current_project.segments:
+                notes_text = (segment.notes or "").strip()
+                if "Phrase ID:" not in notes_text:
+                    continue
+                match = phrase_id_re.search(notes_text)
+                if not match:
+                    continue
+                target_text = (segment.target or "").strip()
+                if not target_text:
+                    continue
+                translations[match.group(1)] = target_text
 
             # Update the handler with translations
             updated = self.phrase_handler.update_target_segments(translations)

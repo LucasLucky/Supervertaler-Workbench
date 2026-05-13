@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.31 (May 14, 2026)
+**Current Version:** v1.10.32 (May 14, 2026)
+
+
+## v1.10.32 – May 14, 2026
+
+### Fixed (Phrase bilingual DOCX export crashed with `'QWidget' object has no attribute 'toPlainText'`)
+
+- A user reported that **import** of Phrase bilingual DOCX worked correctly (the chain of fixes in v1.9.487 / v1.9.488 / v1.9.490 did their job) but **export** back to Phrase bilingual DOCX crashed with `Failed to export Phrase bilingual DOCX: 'QWidget' object has no attribute 'toPlainText'`. Net effect: the user could load a Phrase file, translate it inside Workbench, but had no way to get the translations back out.
+- Root cause: `export_phrase_bilingual()` was written for a grid layout that had a Notes column at index 4. That layout was simplified down to five columns (`#, Type, Source, Target, Status`) some time ago, and column 4 is now the Status indicator – a plain `QWidget` badge, not a text-edit widget. The export's stale call `self.table.cellWidget(row, 4).toPlainText()` blew up the moment it hit that Status widget on the first row. (The import path had no equivalent bug because it builds the project from `phrase_handler.extract_source_segments()`, not from grid widgets.)
+- Fix: bypass the grid entirely. The Phrase segment ID is already on each segment's ``notes`` field (written at import time as `Phrase ID: xxx:nnn | Status: XX`) and the translated text is on `segment.target` (updated by the grid's `textChanged` handler whenever the user edits a cell). The export now iterates `self.current_project.segments` directly, reads `segment.notes` and `segment.target`, and collects translations into the dict that `phrase_handler.update_target_segments()` expects. Works regardless of grid state – even if the user filtered the grid down to a few rows, or the editor isn't currently visible.
 
 
 ## v1.10.31 – May 14, 2026
