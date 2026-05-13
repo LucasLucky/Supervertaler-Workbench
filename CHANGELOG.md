@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.10 (May 13, 2026)
+**Current Version:** v1.10.11 (May 13, 2026)
+
+
+## v1.10.11 – May 13, 2026
+
+### Fixed (QuickTrans popup's gear icon didn't reliably bring Workbench to the foreground)
+
+- Pressing the ⚙ settings cog inside the QuickTrans always-on-top popup correctly navigated Workbench to Settings → ⚡ QuickTrans, but Workbench itself didn't consistently come to the foreground – it stayed behind whichever app the user had been working in (typically Trados, since that's where QuickTrans is most often summoned from). The user could see the popup close but then had to Alt+Tab to find Workbench manually.
+- Two changes:
+  1. `open_mt_quick_lookup_settings` now calls `_bring_workbench_forward()` before navigating tabs. The pre-v1.10.11 implementation assumed Workbench was already foreground (which the always-on-top popup made it look like at a glance) – but the OS-level foreground was actually the originating app, so the navigation succeeded silently behind it. Routing through `_bring_workbench_forward()` applies the same full hammer chain (Alt-key trick + AttachThreadInput + BringWindowToTop + SetForegroundWindow + SwitchToThisWindow) that made Ctrl+Alt+C / Ctrl+Alt+L reliable in v1.10.9.
+  2. `MTQuickPopup._open_settings` now defers the parent-app call via `QTimer.singleShot(0, …)`. Without the defer, the popup's `close()` events are still queued in Qt's event loop when the hammer chain runs, which can leave Workbench painted behind the OS-level foreground process even with the full chain applied. The 0-ms defer gives Qt one event-loop turn to fully unwind the popup destruction before the foreground transition starts.
 
 
 ## v1.10.10 – May 13, 2026

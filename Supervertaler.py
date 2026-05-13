@@ -19125,7 +19125,25 @@ class SupervertalerQt(QMainWindow):
         )
 
     def open_mt_quick_lookup_settings(self):
-        """Open Settings and navigate to MT Quick Lookup tab"""
+        """Open Settings → ⚡ QuickTrans and bring Workbench forward.
+
+        Called by the gear icon in the QuickTrans always-on-top popup.
+        Pre-v1.10.11 this only navigated tabs, on the assumption that
+        Workbench was already foreground – but the QuickTrans popup
+        often fires from another app (Trados) which retains OS-level
+        foreground while the always-on-top popup floats over it.
+        Closing the popup and switching tabs in that state leaves
+        Workbench updated but invisible behind the source app. v1.10.11
+        routes through _bring_workbench_forward() so the same hammer
+        chain that makes Ctrl+Alt+C / Ctrl+Alt+L reliable applies here
+        too (synthetic Alt-key + AttachThreadInput + BringWindowToTop
+        + SetForegroundWindow + SwitchToThisWindow).
+        """
+        try:
+            self._bring_workbench_forward()
+        except Exception:
+            pass
+
         # Switch to Settings tab
         if hasattr(self, 'main_tabs'):
             # Find Settings tab index

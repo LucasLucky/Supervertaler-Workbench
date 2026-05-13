@@ -617,10 +617,31 @@ class MTQuickPopup(QDialog):
             return f"[Error: {str(e)}]"
 
     def _open_settings(self):
-        """Open MT Quick Lookup settings tab"""
+        """Open Workbench Settings → ⚡ QuickTrans.
+
+        v1.10.11: defer the parent-app call via QTimer.singleShot(0)
+        so the popup's close() has a Qt event-loop turn to fully
+        unwind before _bring_workbench_forward() fires. Without the
+        defer, the foreground-grab hammer chain races against the
+        popup-destruction events still queued in our own process,
+        which can leave Workbench painted behind whichever app
+        actually owns the OS-level foreground (typically Trados,
+        since QuickTrans is most often summoned from there).
+        """
         if self.parent_app and hasattr(self.parent_app, 'open_mt_quick_lookup_settings'):
-            self.close()  # Close popup first
-            self.parent_app.open_mt_quick_lookup_settings()
+            self.close()  # Close popup first (sync, but events queue)
+            try:
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(
+                    0, self.parent_app.open_mt_quick_lookup_settings
+                )
+            except Exception:
+                # If QTimer import fails (extremely unlikely), fall
+                # back to the synchronous path – the v1.10.11 hammer
+                # chain inside open_mt_quick_lookup_settings is
+                # robust enough to win the foreground race most of
+                # the time even without the defer.
+                self.parent_app.open_mt_quick_lookup_settings()
 
     def _on_result_ready(self, provider_name: str, provider_code: str, translation: str, is_error: bool):
         """Handle a single MT result"""
