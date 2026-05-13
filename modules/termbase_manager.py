@@ -430,6 +430,69 @@ class TermbaseManager:
             self.log(f"✗ Error setting termbase ai_inject: {e}")
             return False
 
+    # ---------- Voice-dictation biasing (v1.10.28) ----------------
+    # Per-termbase opt-in flag for voice-dictation vocabulary biasing.
+    # When on, the termbase's target-language terms get appended to
+    # Whisper's initial_prompt by the Voice tab's "Also bias from
+    # your termbases" toggle. Shared between Workbench and Trados
+    # plugin via the common database, no project context required.
+
+    def get_termbase_voice_enabled(self, termbase_id: int) -> bool:
+        """Return whether this termbase contributes to voice-dictation
+        biasing. Default True for termbases predating the column."""
+        try:
+            cursor = self.db_manager.cursor
+            cursor.execute(
+                "SELECT voice_dictation_enabled FROM termbases WHERE id = ?",
+                (termbase_id,),
+            )
+            result = cursor.fetchone()
+            # NULL (column never set on legacy rows) ⇒ True (enabled).
+            return bool(result[0]) if result and result[0] is not None else True
+        except Exception as e:
+            self.log(f"✗ Error getting termbase voice_dictation_enabled: {e}")
+            return True
+
+    def set_termbase_voice_enabled(self, termbase_id: int, enabled: bool) -> bool:
+        """Set the voice-dictation-biasing flag for a termbase."""
+        try:
+            cursor = self.db_manager.cursor
+            cursor.execute(
+                "UPDATE termbases SET voice_dictation_enabled = ? WHERE id = ?",
+                (1 if enabled else 0, termbase_id),
+            )
+            self.db_manager.connection.commit()
+            status = "enabled" if enabled else "disabled"
+            self.log(f"✓ Voice-dictation bias {status} for termbase {termbase_id}")
+            return True
+        except Exception as e:
+            self.log(f"✗ Error setting termbase voice_dictation_enabled: {e}")
+            return False
+
+    def get_voice_enabled_termbase_ids(self) -> list:
+        """Return the IDs of every termbase whose voice-dictation
+        bias flag is on. No project context required – this is a
+        Workbench-wide setting, not per-project.
+
+        Used by Supervertaler.py's
+        ``_collect_voice_dictation_termbase_terms`` to know which
+        termbases to pull target terms from for Whisper's
+        initial_prompt.
+        """
+        try:
+            cursor = self.db_manager.cursor
+            cursor.execute(
+                # IS NULL is treated as "enabled" (default True) to
+                # match the per-row getter.
+                "SELECT id FROM termbases "
+                "WHERE voice_dictation_enabled IS NULL "
+                "   OR voice_dictation_enabled = 1"
+            )
+            return [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            self.log(f"✗ Error listing voice-enabled termbases: {e}")
+            return []
+
     def get_ai_inject_termbases(self, project_id: Optional[int] = None) -> List[Dict]:
         """
         Get all termbases with ai_inject enabled that are active for the given project.

@@ -14558,8 +14558,13 @@ class SupervertalerQt(QMainWindow):
         # Termbase list with table
         termbase_table = QTableWidget()
         self.termbase_table = termbase_table  # Store for external access (Superlookup navigation)
-        termbase_table.setColumnCount(8)
-        termbase_table.setHorizontalHeaderLabels(["Type", "Name", "Languages", "Terms", "Read", "Write", "Project", "AI"])
+        # v1.10.28: added 🎤 Voice column (per-termbase opt-in for
+        # voice-dictation vocabulary biasing). New column count = 9.
+        termbase_table.setColumnCount(9)
+        termbase_table.setHorizontalHeaderLabels([
+            "Type", "Name", "Languages", "Terms",
+            "Read", "Write", "Project", "AI", "🎤 Voice",
+        ])
         termbase_table.horizontalHeader().setStretchLastSection(False)
         termbase_table.setColumnWidth(0, 80)   # Type (Project/Background)
         termbase_table.setColumnWidth(1, 180)  # Name
@@ -14569,6 +14574,7 @@ class SupervertalerQt(QMainWindow):
         termbase_table.setColumnWidth(5, 50)   # Write checkbox
         termbase_table.setColumnWidth(6, 60)   # Priority
         termbase_table.setColumnWidth(7, 40)   # AI checkbox
+        termbase_table.setColumnWidth(8, 70)   # 🎤 Voice checkbox
         termbase_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         termbase_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         termbase_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Disable inline editing
@@ -15280,6 +15286,32 @@ class SupervertalerQt(QMainWindow):
 
                 ai_checkbox.toggled.connect(on_ai_toggle)
                 termbase_table.setCellWidget(row, 7, ai_checkbox)
+
+                # 🎤 Voice checkbox (purple) – whether this termbase
+                # contributes target-language terms to Whisper's
+                # initial_prompt for voice dictation (v1.10.28).
+                # Independent of project context, no Read/Write
+                # interaction – purely a voice-dictation opt-in flag.
+                voice_enabled = termbase_mgr.get_termbase_voice_enabled(tb['id'])
+                voice_checkbox = PurpleCheckmarkCheckBox()
+                voice_checkbox.setChecked(voice_enabled)
+                voice_checkbox.setToolTip(
+                    "Voice: include this termbase's target-language terms "
+                    "in the dictation vocabulary that biases Whisper. "
+                    "Enable the global toggle in 🎤 Voice tab → Dictation "
+                    "vocabulary → \"Also bias from your termbases\" to "
+                    "actually use this list."
+                )
+
+                def on_voice_toggle(checked, tb_id=tb['id'], tb_name=tb['name']):
+                    termbase_mgr.set_termbase_voice_enabled(tb_id, checked)
+                    self.log(
+                        f"{'✅ Enabled' if checked else '❌ Disabled'} "
+                        f"voice-dictation bias for termbase: {tb_name}"
+                    )
+
+                voice_checkbox.toggled.connect(on_voice_toggle)
+                termbase_table.setCellWidget(row, 8, voice_checkbox)
 
             # Update header checkbox states based on current selection
             tb_read_header_checkbox.blockSignals(True)
@@ -38189,7 +38221,7 @@ class SupervertalerQt(QMainWindow):
         termbase_terms = []
         if settings.get('use_termbase', True):
             try:
-                termbase_terms = self._collect_active_termbase_source_terms()
+                termbase_terms = self._collect_voice_dictation_termbase_terms()
             except Exception as e:
                 print(f"[VoiceVocab] termbase pull failed: {e!r}")
         try:
@@ -38202,43 +38234,52 @@ class SupervertalerQt(QMainWindow):
             print(f"[VoiceVocab] prompt build failed: {e!r}")
             return ""
 
-    def _collect_active_termbase_source_terms(self) -> list:
-        """Return the source-language ``source_term`` values of every
-        term in every termbase that's currently active on the open
-        project. Empty list if nothing's open or no termbase is
-        active – the caller treats that as "no termbase bias".
+    def _collect_voice_dictation_termbase_terms(self) -> list:
+        """Return the **target-language** ``target_term`` values of
+        every term in every termbase whose **voice-dictation flag**
+        is on. The list is used by ``build_voice_initial_prompt()``
+        as additional vocabulary biasing for Whisper.
+
+        Why target, not source: translators dictate the *target* side
+        (the language they're producing). An EN→NL translator
+        dictating Dutch needs Whisper to know Dutch terminology, not
+        the English originals.
+
+        Why no project filter: this used to require an open Workbench
+        project (it called ``get_active_termbase_ids(project_id)``),
+        which meant the feature silently did nothing when the user
+        had Workbench open as a companion utility alongside their
+        translation in Trados – the typical case. v1.10.28 swapped
+        the per-project read/write activation for a separate
+        per-termbase voice-dictation flag (column ``🎤 Voice`` in
+        Termbase Manager) which is independent of project context.
 
         Best-effort: any database / API error is caught and turned
-        into an empty list so it can never break the dictation flow.
+        into an empty list so it can never break dictation.
         """
         if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
             return []
-        project_id = getattr(self, 'current_project_id', None)
-        if project_id is None:
-            cp = getattr(self, 'current_project', None)
-            project_id = getattr(cp, 'id', None) if cp else None
-        if project_id is None:
-            return []
         try:
-            active_ids = self.termbase_mgr.get_active_termbase_ids(project_id) or []
+            voice_ids = self.termbase_mgr.get_voice_enabled_termbase_ids() or []
         except Exception:
             return []
         out = []
         seen = set()
-        for tb_id in active_ids:
+        for tb_id in voice_ids:
             try:
                 terms = self.termbase_mgr.get_terms(tb_id) or []
             except Exception:
                 continue
             for entry in terms:
-                src = (entry.get('source_term') or '').strip()
-                if not src:
+                # Target-language column (what the translator dictates).
+                tgt = (entry.get('target_term') or '').strip()
+                if not tgt:
                     continue
-                key = src.lower()
+                key = tgt.lower()
                 if key in seen:
                     continue
                 seen.add(key)
-                out.append(src)
+                out.append(tgt)
                 # Cap to keep the prompt from ballooning past Whisper's
                 # token budget. build_initial_prompt() trims further
                 # if needed, but it's cheaper to cap here.
@@ -59300,6 +59341,91 @@ class OrangeCheckmarkCheckBox(QCheckBox):
             QCheckBox::indicator:checked:hover {
                 background-color: #F57C00;
                 border-color: #F57C00;
+            }
+        """)
+
+    def paintEvent(self, event):
+        """Override paint event to draw white checkmark when checked"""
+        super().paintEvent(event)
+
+        if self.isChecked():
+            from PyQt6.QtWidgets import QStyleOptionButton
+            from PyQt6.QtGui import QPainter, QPen, QColor
+            from PyQt6.QtCore import QPointF
+
+            opt = QStyleOptionButton()
+            self.initStyleOption(opt)
+            indicator_rect = self.style().subElementRect(
+                self.style().SubElement.SE_CheckBoxIndicator,
+                opt,
+                self
+            )
+
+            if indicator_rect.isValid():
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                pen_width = max(2.0, min(indicator_rect.width(), indicator_rect.height()) * 0.12)
+                painter.setPen(QPen(QColor(255, 255, 255), pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                painter.setBrush(QColor(255, 255, 255))
+
+                x = indicator_rect.x()
+                y = indicator_rect.y()
+                w = indicator_rect.width()
+                h = indicator_rect.height()
+
+                padding = min(w, h) * 0.15
+                x += padding
+                y += padding
+                w -= padding * 2
+                h -= padding * 2
+
+                check_x1 = x + w * 0.10
+                check_y1 = y + h * 0.50
+                check_x2 = x + w * 0.35
+                check_y2 = y + h * 0.70
+                check_x3 = x + w * 0.90
+                check_y3 = y + h * 0.25
+
+                painter.drawLine(QPointF(check_x2, check_y2), QPointF(check_x3, check_y3))
+                painter.drawLine(QPointF(check_x1, check_y1), QPointF(check_x2, check_y2))
+
+                painter.end()
+
+
+class PurpleCheckmarkCheckBox(QCheckBox):
+    """Custom checkbox with purple background and white checkmark when
+    checked, for the Termbase Manager's voice-dictation column
+    (v1.10.28). Visually distinct from the other styled checkboxes in
+    the table (green Read, blue Write, pink Project, orange AI) so the
+    column is identifiable at a glance.
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setCheckable(True)
+        self.setEnabled(True)
+        self.setStyleSheet("""
+            QCheckBox {
+                font-size: 9pt;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #999;
+                border-radius: 3px;
+                background-color: white;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #9C27B0;
+                border-color: #9C27B0;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #666;
+            }
+            QCheckBox::indicator:checked:hover {
+                background-color: #7B1FA2;
+                border-color: #7B1FA2;
             }
         """)
 

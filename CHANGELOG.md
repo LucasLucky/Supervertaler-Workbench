@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.27 (May 13, 2026)
+**Current Version:** v1.10.28 (May 14, 2026)
+
+
+## v1.10.28 – May 14, 2026
+
+### Fixed (Voice dictation: termbase biasing is now project-free, target-language, and per-termbase opt-in)
+
+- The v1.10.26 "Also bias from the active project's termbase (source-language entries)" toggle had three real problems flagged by a user: (1) it silently did nothing if no Workbench project was open – which is the typical workflow for translators using Trados as the primary editor with Workbench as a companion dictation surface; (2) "active" meant the project's per-termbase Read/Write toggles, which doesn't translate to a project-free setup; (3) it pulled the *source-language* column, but translators dictate the *target* side. None of those were "polish" issues – the feature did nothing useful in the common case.
+- v1.10.28 reworks all three:
+  - **New per-termbase 🎤 Voice flag** in the database. Each termbase has its own `voice_dictation_enabled` boolean column (DB migration applied at startup, defaults to 1 for existing termbases so the feature works out of the box). This flag is independent of project context and survives between Trados and Workbench because it lives in the shared termbase database.
+  - **New 🎤 Voice column in Termbase Manager**, using a new purple-themed `PurpleCheckmarkCheckBox` to fit the existing styled-checkbox palette (green Read, blue Write, pink Project, orange AI, purple Voice). Tick / untick per termbase to scope the dictation vocabulary.
+  - **`_collect_active_termbase_source_terms` → `_collect_voice_dictation_termbase_terms`**: uses `get_voice_enabled_termbase_ids()` (no project required) and pulls the `target_term` column (what the translator dictates). The 200-term cap and `build_initial_prompt`'s 800-char ceiling still apply.
+  - **Voice settings checkbox relabelled**: "Also bias from the active project's termbase (source-language entries)" → "Also bias from your termbases (target-language terms)". Tooltip explains the per-termbase 🎤 Voice flag controls scope.
+- New `TermbaseManager` API: `get_termbase_voice_enabled(id)`, `set_termbase_voice_enabled(id, bool)`, `get_voice_enabled_termbase_ids()`. The flag defaults to True on rows predating the column, so users who never touch the Termbase Manager still get the bias out of the box.
+- Net effect for the typical "Workbench open as dictation companion alongside Trados" workflow: dictating "Supervertaler" now bias-corrects to "Supervertaler" via the built-in default vocab, and dictating any term that lives in the user's termbases (in the target language) gets biased too – without needing a Workbench project, without needing to fiddle with Read/Write toggles, and without confusion about source vs. target.
 
 
 ## v1.10.27 – May 13, 2026

@@ -412,15 +412,27 @@ class VoiceTab(QWidget):
         self._vocab_dict_edit.setFixedHeight(70)
         vocab_layout.addWidget(self._vocab_dict_edit)
 
-        # "Bias from active termbase" checkbox. Uses the project's
-        # CheckmarkCheckBox so it visually matches the styled-checkbox
-        # column in the voice-commands table on the right, instead of
-        # the bare QCheckBox that ships with Qt.
+        # "Bias from your termbases" checkbox. v1.10.28 reworked this:
+        # the original wording said "active project's termbase
+        # (source-language entries)" which had three things wrong
+        # with it – it silently did nothing without a project open,
+        # the "active" was ambiguous (project Read/Write toggles), and
+        # it pulled source-side terms when translators dictate the
+        # target side. Now uses each termbase's own 🎤 Voice flag
+        # (Termbase Manager → 🎤 Voice column, defaults to on for
+        # existing termbases) and pulls target-language terms.
         self._vocab_use_termbase_cb = CheckmarkCheckBox(
-            "Also bias from the active project's termbase "
-            "(source-language entries)"
+            "Also bias from your termbases (target-language terms)"
         )
         self._vocab_use_termbase_cb.setStyleSheet("font-size: 9pt;")
+        self._vocab_use_termbase_cb.setToolTip(
+            "Append target-language terms from every termbase marked "
+            "🎤 Voice in the Termbase Manager to Whisper's dictation "
+            "vocabulary. Works whether or not you have a project "
+            "open – the per-termbase 🎤 Voice flag is independent of "
+            "project context. Capped at 200 terms per dictation to "
+            "stay within Whisper's prompt budget."
+        )
         vocab_layout.addWidget(self._vocab_use_termbase_cb)
 
         # Replacements table.

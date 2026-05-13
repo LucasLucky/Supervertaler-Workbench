@@ -388,6 +388,27 @@ class DatabaseManager:
             # Column already exists, ignore
             pass
 
+        # Migration (v1.10.28): Add voice_dictation_enabled column.
+        # Per-termbase opt-in flag for voice-dictation vocabulary
+        # biasing – when on, the termbase's target-language terms are
+        # appended to Whisper's initial_prompt by the Voice tab's
+        # "Also bias from your termbases" toggle. Default 1 (enabled)
+        # so existing users with termbases get the benefit immediately
+        # without having to discover and tick the per-termbase
+        # checkbox. Users who want to scope dictation bias to a
+        # subset of their termbases uncheck the column in Termbase
+        # Manager. Shared between Workbench and Supervertaler for
+        # Trados via the common database file, so flipping the flag
+        # in either product takes effect in the other.
+        try:
+            self.cursor.execute(
+                "ALTER TABLE termbases ADD COLUMN voice_dictation_enabled BOOLEAN DEFAULT 1"
+            )
+            self.connection.commit()
+        except Exception:
+            # Column already exists, ignore
+            pass
+
         # Data Migration: Set is_project_termbase=1 for termbases with non-NULL project_id
         # This ensures existing project termbases are correctly flagged
         try:
