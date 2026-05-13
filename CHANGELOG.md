@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.19 (May 13, 2026)
+**Current Version:** v1.10.20 (May 13, 2026)
+
+
+## v1.10.20 – May 13, 2026
+
+### Changed (Help system Topics enum tracks the Sidekick → Companion Tabs rename)
+
+- The help repo was rewritten today to match the v1.10.4–v1.10.19 changes (Sidekick retired, companion tabs promoted into Workbench, Esc-to-tray, QuickTrans hand-off, etc.). The on-disk file paths in the help repo are unchanged (still `workbench/sidekick/*.md`) for backlink stability, but the SUMMARY.md section header was renamed from `## 🖥️ Sidekick` to `## 🖥️ Companion Tabs`, which changes GitBook's URL slugs from `/sidekick/*` to `/companion-tabs/*`.
+- `modules/help_system.py` Topics enum updated to match. F1 / Help-menu links from inside Workbench now route to the new URLs:
+  - `Topics.SIDEKICK` → `companion-tabs/overview`
+  - `Topics.VOICE` → `companion-tabs/voice`
+  - `Topics.CLIPBOARD` → `companion-tabs/clipboard`
+  - New: `Topics.TRADOS_AWARE_CHAT` → `companion-tabs/trados-aware-chat`
+- Legacy external links to `/help/sidekick/*` will 404 after GitBook re-syncs. Visitors arriving from old URLs need GitBook's redirect settings (configured separately, outside the repo).
 
 
 ## v1.10.19 – May 13, 2026

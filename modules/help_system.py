@@ -122,10 +122,20 @@ class Topics:
     QA_TAGS             = "quality-assurance/tag-validation"
     QA_NT               = "quality-assurance/non-translatables"
 
-    # Sidekick
-    SIDEKICK            = "sidekick/overview"
-    VOICE               = "sidekick/voice"
-    CLIPBOARD           = "sidekick/clipboard"
+    # Companion Tabs (was "Sidekick" through v1.10.x – renamed in
+    # the help repo when Sidekick was retired in Workbench v1.10.4
+    # and its four tabs were promoted into Workbench itself).
+    # GitBook builds section slugs from SUMMARY.md headers and page
+    # slugs from file basenames, so renaming the section header
+    # changes the URL from /sidekick/* to /companion-tabs/* while
+    # the page leaf stays the file basename (overview, voice,
+    # clipboard, trados-aware-chat). The on-disk file paths in the
+    # help repo stay at workbench/sidekick/* for backlink stability;
+    # only the section slug exposed to users changes.
+    SIDEKICK            = "companion-tabs/overview"
+    TRADOS_AWARE_CHAT   = "companion-tabs/trados-aware-chat"
+    VOICE               = "companion-tabs/voice"
+    CLIPBOARD           = "companion-tabs/clipboard"
 
     # Tools (TOOL_VOICE removed – voice/dictation is the Voice tab in Sidekick)
     TOOL_PDF_RESCUE     = "tools/pdf-rescue"
