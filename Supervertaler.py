@@ -21559,11 +21559,30 @@ class SupervertalerQt(QMainWindow):
                 # Seed the search field. SuperlookupTab exposes a
                 # QComboBox-style ``source_text`` widget (setEditText)
                 # plus a ``search_btn`` users press to fire the lookup.
+                #
+                # v1.10.6: seed the text synchronously but defer
+                # search_btn.click() via QTimer(150). Without the
+                # deferral the search starts immediately after
+                # _bring_workbench_forward() returns; the search
+                # itself (TM lookups, termbase scans, MT API calls,
+                # web-resource queries) keeps Qt's event loop busy
+                # long enough that Windows can't repaint our window
+                # as the new foreground – Workbench technically *is*
+                # foreground per SetForegroundWindow() but the
+                # repaint event sits in the queue behind the search
+                # results updating, so the user sees their old
+                # source app on top while their search runs in
+                # Workbench they can't see. Pushing the click to
+                # the next event-loop tick (after a 150ms breathing
+                # room) lets Windows finish the foreground transition
+                # cleanly before the search starts pegging the GUI
+                # thread.
                 try:
                     if hasattr(widget, 'source_text'):
                         widget.source_text.setEditText(text)
                     if hasattr(widget, 'search_btn'):
-                        widget.search_btn.click()
+                        from PyQt6.QtCore import QTimer
+                        QTimer.singleShot(150, widget.search_btn.click)
                 except Exception as inner:
                     self.log(f"⚠ Could not seed SuperLookup search: {inner}")
         except Exception as e:
@@ -57884,13 +57903,25 @@ class SuperlookupTab(QWidget):
         well-loved flow). Without this capture the activations would
         just leave the result on the clipboard, forcing the user to
         Alt+Tab back manually.
+
+        v1.10.6: auto-send Ctrl+C to the source app *before* opening
+        the Clipboard tab. The old flow forced users to do two
+        keystrokes (Ctrl+C to copy, then Ctrl+Alt+C to open the
+        Clipboard manager). Now Ctrl+Alt+C alone does both: it
+        synthesises Ctrl+C in the foreground app, waits 250ms for
+        the clipboard to update, then opens the tab with the
+        just-copied text at the top of the history. Users who had
+        already copied something can still press Ctrl+Alt+C – the
+        synthetic Ctrl+C is a no-op if nothing is selected, and a
+        harmless re-copy if something is. Mirrors how Ctrl+Alt+L
+        already worked for SuperLookup.
         """
         try:
             mw = self.main_window or self.window()
 
-            # Capture the source window now, *before* we raise
-            # Workbench – once Workbench is foreground the source has
-            # been lost.
+            # Step 1: capture source window before anything else –
+            # send_copy() below doesn't change foreground (AHK just
+            # synthesises input events), but we want a clean snapshot.
             source_win = None
             try:
                 from modules.platform_helpers import get_foreground_window
@@ -57898,7 +57929,35 @@ class SuperlookupTab(QWidget):
             except Exception:
                 pass
 
-            # New path: route to Workbench's Clipboard top tab.
+            # Step 2: synthesise Ctrl+C so the user's current
+            # selection (if any) lands on the clipboard. The clipboard
+            # widget's QClipboard.dataChanged signal will pick it up
+            # and prepend it to the history just before we navigate.
+            try:
+                from modules.platform_helpers import CrossPlatformKeySender
+                CrossPlatformKeySender().send_copy()
+            except Exception as copy_err:
+                print(f"[Clipboard] send_copy failed (non-fatal): {copy_err}")
+
+            # Step 3: after a 250ms breathing room (same delay
+            # SuperLookup uses) the OS has dispatched the synthetic
+            # Ctrl+C, the source app has populated the clipboard,
+            # and QClipboard.dataChanged has fired in our process.
+            # *Now* open the Clipboard tab.
+            QTimer.singleShot(
+                250,
+                lambda sw=source_win: self._open_clipboard_after_copy(sw),
+            )
+        except Exception as e:
+            print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
+
+    def _open_clipboard_after_copy(self, source_win):
+        """Continuation of _handle_clipboard_hotkey, called 250ms
+        after send_copy() so the synthetic Ctrl+C has had time to
+        populate the clipboard. Kept as a separate method (rather
+        than a closure) so tracebacks are readable."""
+        try:
+            mw = self.main_window or self.window()
             if mw and hasattr(mw, 'open_workbench_to_clipboard'):
                 try:
                     mw.open_workbench_to_clipboard(source_window=source_win)
@@ -57906,7 +57965,9 @@ class SuperlookupTab(QWidget):
                 except Exception as e:
                     print(f"[Clipboard] Workbench top-tab route failed: {e}")
 
-            # Fallback: Sidekick.
+            # Fallback: Sidekick (unreachable from v1.10.4 onward
+            # since Sidekick isn't constructed – kept defensively
+            # in case a future build re-enables it).
             fa = getattr(mw, '_floating_assistant', None) if mw else None
             if fa:
                 if mw and mw is not self:
@@ -57915,7 +57976,7 @@ class SuperlookupTab(QWidget):
             else:
                 print("[Clipboard] Neither Workbench top tab nor Sidekick available")
         except Exception as e:
-            print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
+            print(f"[Clipboard] Error in _open_clipboard_after_copy: {e}")
 
     def _on_pynput_pushtotalk(self):
         """Voice global push-to-talk hotkey – fires on the pynput

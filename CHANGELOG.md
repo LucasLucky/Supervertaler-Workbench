@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.5 (May 13, 2026)
+**Current Version:** v1.10.6 (May 13, 2026)
+
+
+## v1.10.6 – May 13, 2026
+
+### Fixed (Ctrl+Alt+L: search runs but Workbench window stays hidden)
+
+- After v1.10.4 retired Sidekick, pressing Ctrl+Alt+L from another app sent the selected text to SuperLookup and the search ran correctly – but Workbench's window itself stayed behind whatever app the user came from. The user saw their old foreground app, and could only see the search result by Alt+Tab-ing to Workbench.
+- Root cause: `open_workbench_to_superlookup` called `_bring_workbench_forward()` (which does the SetForegroundWindow + AttachThreadInput dance correctly) and *then immediately* called `widget.search_btn.click()` to fire the lookup. The search itself is expensive – TM hits, termbase scans, MT API calls, web-resource queries – and it pegged Qt's GUI thread for several hundred milliseconds. Windows technically marked Workbench as the new foreground (SetForegroundWindow returned success), but the OS could only queue the foreground-change repaint; the actual paint event sat behind the busy search results updating, so the user kept seeing their old foreground app. While Sidekick existed, `_bring_workbench_forward()` also dismissed Sidekick first, and that forced a Windows foreground recompute that masked the timing issue. With Sidekick gone, the bare race is visible.
+- Fix defers `search_btn.click()` via `QTimer.singleShot(150, …)` instead of calling it synchronously. The text seeding (`source_text.setEditText(text)`) still happens immediately so the user sees their query in the field, but the search itself fires on the next event-loop tick after a 150ms breathing room. By that point Windows has finished the foreground transition and Workbench is visibly on top before the search starts hogging the GUI thread.
+
+### Changed (Ctrl+Alt+C now auto-copies the user's current selection)
+
+- Previously Ctrl+Alt+C required users to do two keystrokes: Ctrl+C to copy their selection, then Ctrl+Alt+C to open the Clipboard manager. The Ctrl+Alt+L hotkey already did this with a single keystroke (it synthesises Ctrl+C internally before opening SuperLookup), so the Clipboard hotkey inconsistency was a usability papercut.
+- `_handle_clipboard_hotkey` now mirrors SuperLookup's pattern:
+  1. Capture the source window (for paste-and-return).
+  2. Synthesise Ctrl+C via `CrossPlatformKeySender.send_copy()` so any current selection lands on the clipboard.
+  3. Wait 250ms for the OS to dispatch the keystroke and `QClipboard.dataChanged` to fire (prepending the new item to the Clipboard widget's history).
+  4. Open Workbench's Clipboard tab with the just-copied text at the top of the history.
+- Users who had already copied something manually before pressing Ctrl+Alt+C lose nothing: the synthetic Ctrl+C is a no-op if nothing is selected, and a harmless re-copy of the same text if something is. Users who *forgot* to copy first get the one-keystroke flow they expected.
 
 
 ## v1.10.5 – May 13, 2026
