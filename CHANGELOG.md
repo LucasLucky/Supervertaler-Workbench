@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.22 (May 13, 2026)
+**Current Version:** v1.10.23 (May 13, 2026)
+
+
+## v1.10.23 – May 13, 2026
+
+### Removed (Supermemory help docs – feature is no longer a Workbench concept)
+
+- Supermemory (semantic TM search) was functionally removed from Workbench back in v1.9.105 – `search_supermemory()` returns 0 and the feature does nothing. The help docs hadn't caught up: there was still a dedicated `workbench/translation-memory/supermemory.md` page plus 7 stale mentions across other Workbench help pages.
+- v1.10.23 deletes the dedicated page, removes the SUMMARY.md entry, and strips the stale references from: `workbench/README.md`, `workbench/cat-tools/overview.md`, `workbench/get-started/installation.md`, `workbench/translation-memory/basics.md`, `workbench/superlookup/overview.md`, `workbench/troubleshooting/{common-issues,performance,linux}.md`.
+- `modules/help_system.py` Topics enum: `TM_SUPERMEMORY` constant removed (was pointing at the now-deleted slug).
+- Supermemory continues to live in **Supervertaler for Trados** as a paid Assistant feature – the existing docs at `trados/ai-assistant/super-memory.md` and its sub-pages stay untouched.
+- Out-of-scope follow-up: `modules/tm_manager_qt.py` still has dead Supermemory tab widgets (lines 364-418) that should be removed too. Filing under "code-cleanup TODO" rather than rolling into this version bump – this release is help-docs only.
 
 
 ## v1.10.22 – May 13, 2026

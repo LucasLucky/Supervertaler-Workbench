@@ -91,7 +91,13 @@ class Topics:
     TM_IMPORTING        = "translation-memory/importing-tmx"
     TM_TRADOS_SDLTM     = "translation-memory/trados-sdltm"
     TM_FUZZY            = "translation-memory/fuzzy-matching"
-    TM_SUPERMEMORY      = "translation-memory/supermemory"
+    # TM_SUPERMEMORY removed in v1.10.23: Supermemory is no longer a
+    # Workbench feature. The functional code was stubbed out back in
+    # v1.9.105 (search_supermemory returns 0); v1.10.23 deletes the
+    # corresponding help page and all stale references in the help
+    # repo. (Supermemory continues to live in Supervertaler for Trados
+    # as a paid Assistant feature — see the trados/ai-assistant/
+    # super-memory.md docs there.)
 
     # Glossaries
     GLOSSARY_BASICS     = "glossaries/basics"
