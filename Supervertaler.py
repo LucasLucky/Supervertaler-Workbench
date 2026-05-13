@@ -21550,59 +21550,54 @@ class SupervertalerQt(QMainWindow):
         """
         try:
             # v1.10.7: bring Workbench forward *before* the lazy-tab
-            # ensure. The ensure is heavy on the very first invocation
-            # after launch (it constructs the SuperlookupTab widget,
-            # which spins up TM / termbase / MT / web-resource state),
-            # and on a cold restart it can easily eat 1–2 seconds of
-            # Qt main-thread time. By the time we then called
-            # _bring_workbench_forward(), we'd burned through the
-            # Windows ~2-second "you may steal foreground because you
-            # just received input" grace period and SetForegroundWindow
-            # silently refused. The user saw the search run but
-            # Workbench stayed behind their source app.
+            # ensure.
+            # v1.10.8: that wasn't enough on a cold first run. Even
+            # with bring-forward called first, the SetForegroundWindow
+            # call only *queues* WM_ACTIVATE / WM_PAINT for our
+            # window – Workbench doesn't visibly become active until
+            # Qt's event loop processes those messages. If we then
+            # synchronously call _ensure_superlookup_top_tab() and
+            # block the GUI thread for 1–2s building the widget, the
+            # queued activation events sit waiting; meanwhile Windows
+            # may decide to re-evaluate foreground or simply never
+            # repaint Workbench as the active window because Qt hasn't
+            # acknowledged the WM_ACTIVATE. The user keeps seeing
+            # their source app the whole time.
             #
-            # Reordering: grab the foreground *first* (cheap – just a
-            # show/raise + SetForegroundWindow call), then do the
-            # heavy widget build, then switch the tab. The user sees
-            # Workbench pop forward instantly on whatever tab it was
-            # on, and a beat later the SuperLookup tab activates with
-            # the search firing 150ms after that.
+            # Fix: split the work across two event-loop turns.
+            #   Turn 1 (now):   _bring_workbench_forward()
+            #   Turn 2 (next):  ensure + setCurrentIndex + seed/click
+            # QTimer.singleShot(0, …) schedules the continuation for
+            # the next iteration of Qt's main loop, between which the
+            # activation/paint events get processed and Workbench
+            # actually appears on top before we start blocking the
+            # GUI thread on widget construction.
             self._bring_workbench_forward()
-            if hasattr(self, '_ensure_superlookup_top_tab'):
-                self._ensure_superlookup_top_tab()
-            if hasattr(self, 'superlookup_tab_index') and hasattr(self, 'main_tabs'):
-                self.main_tabs.setCurrentIndex(self.superlookup_tab_index)
-            widget = getattr(self, '_superlookup_top_widget', None)
-            if widget is not None and text:
-                # Seed the search field. SuperlookupTab exposes a
-                # QComboBox-style ``source_text`` widget (setEditText)
-                # plus a ``search_btn`` users press to fire the lookup.
-                #
-                # v1.10.6: seed the text synchronously but defer
-                # search_btn.click() via QTimer(150). Without the
-                # deferral the search starts immediately after
-                # _bring_workbench_forward() returns; the search
-                # itself (TM lookups, termbase scans, MT API calls,
-                # web-resource queries) keeps Qt's event loop busy
-                # long enough that Windows can't repaint our window
-                # as the new foreground – Workbench technically *is*
-                # foreground per SetForegroundWindow() but the
-                # repaint event sits in the queue behind the search
-                # results updating, so the user sees their old
-                # source app on top while their search runs in
-                # Workbench they can't see. Pushing the click to
-                # the next event-loop tick (after a 150ms breathing
-                # room) lets Windows finish the foreground transition
-                # cleanly before the search starts pegging the GUI
-                # thread.
+            from PyQt6.QtCore import QTimer
+
+            def _continue_superlookup():
                 try:
-                    if hasattr(widget, 'source_text'):
-                        widget.source_text.setEditText(text)
-                    if hasattr(widget, 'search_btn'):
-                        from PyQt6.QtCore import QTimer
-                        QTimer.singleShot(150, widget.search_btn.click)
+                    if hasattr(self, '_ensure_superlookup_top_tab'):
+                        self._ensure_superlookup_top_tab()
+                    if hasattr(self, 'superlookup_tab_index') and hasattr(self, 'main_tabs'):
+                        self.main_tabs.setCurrentIndex(self.superlookup_tab_index)
+                    widget = getattr(self, '_superlookup_top_widget', None)
+                    if widget is not None and text:
+                        try:
+                            if hasattr(widget, 'source_text'):
+                                widget.source_text.setEditText(text)
+                            if hasattr(widget, 'search_btn'):
+                                # Still defer the click by another
+                                # 150ms past the ensure so the search
+                                # doesn't peg the GUI thread before
+                                # the tab finishes painting.
+                                QTimer.singleShot(150, widget.search_btn.click)
+                        except Exception as inner:
+                            self.log(f"⚠ Could not seed SuperLookup search: {inner}")
                 except Exception as inner:
-                    self.log(f"⚠ Could not seed SuperLookup search: {inner}")
+                    self.log(f"⚠ Could not finish SuperLookup open: {inner}")
+
+            QTimer.singleShot(0, _continue_superlookup)
         except Exception as e:
             self.log(f"⚠ Could not open SuperLookup top tab: {e}")
             import traceback
@@ -21620,23 +21615,28 @@ class SupervertalerQt(QMainWindow):
         no source; activations then just set the clipboard.
         """
         try:
-            # v1.10.7: bring Workbench forward *before* the lazy-tab
-            # ensure – see open_workbench_to_superlookup for the full
-            # rationale. The short version: on a cold restart the
-            # ClipboardManagerWidget construction (snippet library
-            # load, 3-column tree build, prompt library scan) blew
-            # past the Windows foreground-steal grace window, so
-            # SetForegroundWindow silently refused and Workbench
-            # stayed behind the user's source app even though the
-            # Clipboard tab was correctly activated.
+            # v1.10.7 reordered to bring-then-ensure.
+            # v1.10.8 additionally splits the work across two Qt event-
+            # loop turns so the WM_ACTIVATE / WM_PAINT events queued by
+            # _bring_workbench_forward() actually get processed before
+            # the heavy lazy-tab ensure blocks the GUI thread. See
+            # open_workbench_to_superlookup for the full diagnosis.
             self._bring_workbench_forward()
-            if hasattr(self, '_ensure_clipboard_top_tab'):
-                self._ensure_clipboard_top_tab()
-            if hasattr(self, 'clipboard_tab_index') and hasattr(self, 'main_tabs'):
-                self.main_tabs.setCurrentIndex(self.clipboard_tab_index)
-            widget = getattr(self, '_clipboard_top_widget', None)
-            if widget is not None and hasattr(widget, 'set_source_window'):
-                widget.set_source_window(source_window)
+            from PyQt6.QtCore import QTimer
+
+            def _continue_clipboard():
+                try:
+                    if hasattr(self, '_ensure_clipboard_top_tab'):
+                        self._ensure_clipboard_top_tab()
+                    if hasattr(self, 'clipboard_tab_index') and hasattr(self, 'main_tabs'):
+                        self.main_tabs.setCurrentIndex(self.clipboard_tab_index)
+                    widget = getattr(self, '_clipboard_top_widget', None)
+                    if widget is not None and hasattr(widget, 'set_source_window'):
+                        widget.set_source_window(source_window)
+                except Exception as inner:
+                    self.log(f"⚠ Could not finish Clipboard open: {inner}")
+
+            QTimer.singleShot(0, _continue_clipboard)
         except Exception as e:
             self.log(f"⚠ Could not open Clipboard top tab: {e}")
             import traceback

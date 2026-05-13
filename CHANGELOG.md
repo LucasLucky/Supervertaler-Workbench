@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.7 (May 13, 2026)
+**Current Version:** v1.10.8 (May 13, 2026)
+
+
+## v1.10.8 – May 13, 2026
+
+### Fixed (First Ctrl+Alt+C / Ctrl+Alt+L still unreliable after v1.10.7's reorder)
+
+- v1.10.7 reordered the open-tab methods to call `_bring_workbench_forward()` *before* the heavy lazy-tab ensure, on the theory that the Windows ~2-second "you may steal foreground" grace window was the bottleneck. That helped but wasn't enough: a user reported the first Ctrl+Alt+C after a fresh launch still left Workbench behind Trados about half the time.
+- Deeper diagnosis: `SetForegroundWindow` is *synchronous* (returns immediately with success/failure) but its effect is *deferred*. The OS queues `WM_ACTIVATE` and `WM_PAINT` messages for our window; Workbench doesn't visibly become active until Qt's event loop processes those messages. The v1.10.7 code called `_bring_workbench_forward()` and then *immediately* called `_ensure_clipboard_top_tab()` / `_ensure_superlookup_top_tab()` on the same call frame – which blocks the Qt main thread for 1–2 seconds the first time it runs (the ensures construct heavy widgets: snippet/prompt library load, 3-column tree build, TM/termbase/MT/web-resource setup). While the GUI thread is blocked, the queued activation messages sit in the OS message queue. By the time Qt finally drains them, Windows has often moved on or the user has glanced away.
+- Fix splits the work across two Qt event-loop turns:
+  - **Turn 1 (synchronous, returns immediately):** `_bring_workbench_forward()`.
+  - **Turn 2 (next event-loop tick, via `QTimer.singleShot(0, …)`):** `_ensure_*_top_tab()` + `setCurrentIndex` + (for SuperLookup) seed text + deferred click.
+- Between the two turns, Qt's event loop runs and processes the `WM_ACTIVATE` / `WM_PAINT` messages the OS posted in response to our `SetForegroundWindow` call. Workbench actually appears on top *before* we start blocking the GUI thread on widget construction. By the time the user sees the heavy-construction freeze (briefly visible as a Workbench window that's "thinking"), the foreground transition has already completed cleanly.
+- This is the third iteration on the same general bug (v1.10.6 deferred the search button click; v1.10.7 reordered ensure vs. bring; v1.10.8 splits across event-loop turns). Together they fully address the activation race – there's nothing left in the path that can be deferred or reordered. If first-run hotkeys are still unreliable after v1.10.8, the bug is elsewhere.
 
 
 ## v1.10.7 – May 13, 2026
