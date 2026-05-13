@@ -304,17 +304,34 @@ class MTQuickPopup(QDialog):
             }
         """
 
-        # "Search this in SuperLookup" hand-off button (v1.10.12).
-        # When a user runs QuickTrans on a phrase and then thinks
-        # "I'd actually like to look this up in my TMs / termbases /
-        # web resources too", this button takes them there in one
-        # click: closes the popup and opens Workbench's SuperLookup
-        # top tab with the same query pre-filled and the search
-        # auto-fired. Same plumbing as Ctrl+Alt+L.
-        superlookup_btn = QPushButton("🔍")
-        superlookup_btn.setFixedSize(24, 24)
-        superlookup_btn.setToolTip("Search this query in SuperLookup")
-        superlookup_btn.setStyleSheet(_icon_btn_style)
+        # "Run in SuperLookup" hand-off button (v1.10.12, label
+        # extended in v1.10.13). When a user runs QuickTrans on a
+        # phrase and then thinks "I'd actually like to look this up
+        # in my TMs / termbases / web resources too", this button
+        # takes them there in one click: closes the popup and opens
+        # Workbench's SuperLookup top tab with the same query
+        # pre-filled and the search auto-fired. Same plumbing as
+        # Ctrl+Alt+L. Icon-plus-label rather than icon-only because
+        # the bare 🔍 next to ⚙ wasn't self-explanatory enough –
+        # users couldn't tell at a glance what it did.
+        superlookup_btn = QPushButton("🔍 Run in SuperLookup")
+        superlookup_btn.setFixedHeight(24)
+        superlookup_btn.setToolTip("Run this query in SuperLookup")
+        superlookup_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background: transparent;
+                font-size: 11px;
+                padding: 0 8px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+                border-radius: 4px;
+            }
+            QPushButton:focus {
+                outline: none;
+            }
+        """)
         superlookup_btn.clicked.connect(self._send_to_superlookup)
         header_layout.addWidget(superlookup_btn)
 

@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.12 (May 13, 2026)
+**Current Version:** v1.10.13 (May 13, 2026)
+
+
+## v1.10.13 – May 13, 2026
+
+### Changed (QuickTrans SuperLookup hand-off button shows icon + label)
+
+- The 🔍 hand-off button added in v1.10.12 now reads "🔍 Run in SuperLookup" instead of being icon-only. The bare 🔍 next to ⚙ wasn't self-explanatory enough at a glance – users couldn't tell what it did without hovering for the tooltip. Adding the label keeps the QuickTrans popup header compact (one short line of text) while making the action obvious. Settings cog remains icon-only since ⚙ is universally understood.
 
 
 ## v1.10.12 – May 13, 2026
