@@ -95,6 +95,18 @@ class ClipboardManagerWidget(QWidget):
         self._init_ui()
         self._start_monitoring()
 
+        # v1.10.16: light up the column header whose widget currently
+        # holds keyboard focus, so users navigating between the three
+        # columns with ← / → arrow keys can tell at a glance which
+        # column they're in. Connected via Qt::UniqueConnection-style
+        # singleton (we only ever construct one of these widgets, so
+        # the connection lives for the widget's lifetime; Qt
+        # disconnects it automatically when self is destroyed).
+        try:
+            QApplication.instance().focusChanged.connect(self._refresh_focus_styles)
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] focusChanged hook failed: {e}")
+
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
@@ -171,8 +183,12 @@ class ClipboardManagerWidget(QWidget):
         self._text_list.customContextMenuRequested.connect(
             lambda pos: self._on_context_menu(pos, self._text_list))
         self._text_empty = self._make_empty_label(
-            "No text snippets yet –\ncopy any text to start.")
-        self._text_header = QLabel("📝 Text snippets")
+            "No text yet –\ncopy any text to start.")
+        # v1.10.16: header was "📝 Text snippets" – renamed to plain
+        # "📝 Text" because "snippets" overlapped with the "Personal
+        # Snippets" entry in the 3rd-column action menu, which
+        # confused users about which one held the clipboard history.
+        self._text_header = QLabel("📝 Text")
         text_col = self._make_column(
             self._text_header, self._text_list, self._text_empty)
         self._splitter.addWidget(text_col)
@@ -199,10 +215,13 @@ class ClipboardManagerWidget(QWidget):
         action_col_layout.setContentsMargins(0, 0, 0, 0)
         action_col_layout.setSpacing(4)
         self._action_header = QLabel("📑 Menu")
-        self._action_header.setStyleSheet(
-            "color: #555; padding: 2px 6px; border: none; "
-            f"font-size: {scaled_pt(8.5):.1f}pt; font-weight: bold;"
-        )
+        # v1.10.16: use the shared _COL_HEADER_INACTIVE/_ACTIVE
+        # styles so all three column headers light up consistently
+        # when the user navigates between columns with the arrow
+        # keys. Previously this header had its own one-off style and
+        # never picked up the focus highlight, so users couldn't tell
+        # at a glance when they were in the Menu column.
+        self._action_header.setStyleSheet(self._COL_HEADER_INACTIVE)
         action_col_layout.addWidget(self._action_header)
         self._action_tree = self._build_action_tree()
         action_col_layout.addWidget(self._action_tree, 1)
@@ -445,18 +464,56 @@ class ClipboardManagerWidget(QWidget):
         if list_widget.count() > 0 and list_widget.currentRow() < 0:
             list_widget.setCurrentRow(0)
 
-    def _refresh_focus_styles(self, focused=None):
-        """Highlight the column header whose list currently has focus
-        (or contains the focused widget). Called by Sidekick's
-        focus-change handler so users see at a glance which clipboard
-        column they're in."""
-        text_active = (focused is self._text_list)
-        image_active = (focused is self._image_list)
+    def _refresh_focus_styles(self, old=None, new=None):
+        """Highlight the column header whose widget currently has
+        focus. Connected to QApplication.focusChanged in __init__ so
+        it fires automatically as the user arrow-keys between
+        columns; ``old`` and ``new`` are the QApplication-supplied
+        previous and new focus widgets (we only care about ``new``).
+
+        Pre-v1.10.16 this only handled the two list columns and
+        relied on Sidekick to call it manually. Sidekick's been gone
+        since v1.10.4 and the action-tree (3rd column) was never
+        wired up. v1.10.16 fixes both: connects to focusChanged so
+        no external trigger is needed, and adds the _action_header
+        to the rotation so all three columns light up consistently.
+        """
+        # Resolve the focused widget. The signal passes (old, new);
+        # manual callers pass new as the first arg.
+        if new is None and old is not None and not isinstance(old, QApplication):
+            # Single-arg invocation: treat `old` as the new focus.
+            focused = old
+        else:
+            focused = new
+
+        # A focus event on a child of one of our lists / the tree
+        # (e.g. an internal editor) should still light up the
+        # parent column. Walk up the parent chain.
+        active_text = active_image = active_action = False
+        w = focused
+        while w is not None:
+            if w is self._text_list:
+                active_text = True
+                break
+            if w is self._image_list:
+                active_image = True
+                break
+            if w is self._action_tree:
+                active_action = True
+                break
+            try:
+                w = w.parent()
+            except Exception:
+                break
+
         self._text_header.setStyleSheet(
-            self._COL_HEADER_ACTIVE if text_active else self._COL_HEADER_INACTIVE
+            self._COL_HEADER_ACTIVE if active_text else self._COL_HEADER_INACTIVE
         )
         self._image_header.setStyleSheet(
-            self._COL_HEADER_ACTIVE if image_active else self._COL_HEADER_INACTIVE
+            self._COL_HEADER_ACTIVE if active_image else self._COL_HEADER_INACTIVE
+        )
+        self._action_header.setStyleSheet(
+            self._COL_HEADER_ACTIVE if active_action else self._COL_HEADER_INACTIVE
         )
 
     # ------------------------------------------------------------------
@@ -731,7 +788,7 @@ class ClipboardManagerWidget(QWidget):
         if image_n is None:
             image_n = self._image_list.count()
         self._text_header.setText(
-            f"📝 Text snippets ({text_n})" if text_n else "📝 Text snippets")
+            f"📝 Text ({text_n})" if text_n else "📝 Text")
         self._image_header.setText(
             f"🖼 Images ({image_n})" if image_n else "🖼 Images")
 

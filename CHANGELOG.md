@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.15 (May 13, 2026)
+**Current Version:** v1.10.16 (May 13, 2026)
+
+
+## v1.10.16 – May 13, 2026
+
+### Changed (Clipboard tab: rename "Text snippets" → "Text" and highlight the active column)
+
+- The first column header was "📝 Text snippets", which overlapped with the "Personal Snippets" entry in the 3rd-column action menu and confused users about which one held the clipboard history. Renamed to plain "📝 Text" – the column header just labels the kind of clipboard item, no "snippet" ambiguity.
+
+### Fixed (Clipboard tab: no visual feedback which of the three columns has keyboard focus)
+
+- Arrow-key navigation between the three columns (Text / Images / Menu) worked but gave no visual cue which column the user had landed in – they'd press ← / → expecting the cursor to be in one column and find arrow-down was actually navigating a different one. Two reasons:
+  1. The column-header styling helper (`_refresh_focus_styles`) was orphaned. It used to be called by Sidekick's focus-change handler; with Sidekick gone since v1.10.4, nothing fires it.
+  2. The 3rd column ("📑 Menu") was never wired into the highlight rotation – its header had a one-off inline stylesheet that never picked up the active state.
+- v1.10.16 fixes both:
+  - `_refresh_focus_styles` is connected to `QApplication.focusChanged` in `__init__`, so it fires automatically as the user navigates between columns – no external trigger needed.
+  - The method now also flips `_action_header` between `_COL_HEADER_INACTIVE` and `_COL_HEADER_ACTIVE`, matching the other two columns.
+  - The active column gets a 2-pixel blue underline + blue text on its header label; the inactive columns stay grey. All three columns light up consistently now.
+  - The walk-up logic was tightened so that focusing a child widget (e.g. an internal QLineEdit inside the action tree's inline editor, if one ever appears) still lights up the *parent* column header rather than dropping the highlight.
 
 
 ## v1.10.15 – May 13, 2026
