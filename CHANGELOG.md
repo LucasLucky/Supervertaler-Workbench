@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.2 (May 13, 2026)
+**Current Version:** v1.10.3 (May 13, 2026)
+
+
+## v1.10.3 – May 13, 2026
+
+### Fixed (First clipboard-conversion paste-back still failed – AHK pre-warm wasn't the real culprit)
+
+- v1.10.2's AHK pre-warm was a red herring. Conversions still failed on the first attempt after launch, with a more specific symptom: Workbench hid, the converted text was on the clipboard, but the keyboard cursor was *nowhere* – no window had focus, and the Ctrl+V went into the void. Manually clicking back into Trados and trying again worked. Root cause was the ordering in `ClipboardManagerWidget._paste_to_source`:
+  1. `hide()` Workbench
+  2. `QTimer.singleShot(100, …)` → `activate_foreground_window(trados)` → `send_paste()`
+- That worked for Sidekick because `Qt.WindowType.Tool` windows ride on the parent's foreground slot and never own foreground in their own right – the moment Sidekick hid, the source window was already foreground, and `SetForegroundWindow` had nothing to do. Workbench is a regular top-level window, so it *does* own foreground while visible. Once it hides, the OS picks the next z-order window for foreground (sometimes that's the source, sometimes – racily – it's the desktop or nothing). 100 ms later when `activate_foreground_window(source)` calls `SetForegroundWindow(trados)`, Windows checks the foreground-process rule: only the *current* foreground process may grant another window foreground (or one of the AttachThreadInput exceptions). By that point Workbench is no longer foreground, so the OS silently refuses the switch. The dance failed quietly, no exception, just no focus change → user types and nothing happens.
+- Fix reorders the same operations so that the focus switch happens *while Workbench still owns foreground*:
+  1. `activate_foreground_window(source)` – Windows grants the switch because the caller (Workbench's main thread) currently owns foreground.
+  2. `hide()` Workbench – source is already foreground, hide() can't disturb it.
+  3. `QTimer.singleShot(150, send_paste)` – give the OS a beat to settle, then send Ctrl+V to the now-foreground source window.
+- Bumped the post-activate delay from 100→150ms because first-activation-after-launch window-manager bookkeeping is measurably slower than steady-state. On subsequent activations the larger margin is invisible.
+- Removed the AHK pre-warm from v1.10.2: it didn't hurt, but it also didn't fix anything – the cold-spawn theory turned out to be wrong (the keystroke wasn't slow, it was hitting the wrong target). Pre-warm code is kept (it doesn't cost much) but is no longer the load-bearing fix.
 
 
 ## v1.10.2 – May 13, 2026

@@ -1090,12 +1090,54 @@ class ClipboardManagerWidget(QWidget):
         # stays in Workbench, which is the right default.
         self._source_window = None
 
-        # Hide Workbench so the focus-grab doesn't fight the source
-        # window for the foreground, AND so it disappears from the
-        # taskbar like Sidekick used to. The user can resummon
-        # Workbench with any of the global tab-jumping hotkeys
-        # (Ctrl+Alt+L / Ctrl+Alt+C), which call show() + raise() to
-        # restore it with state intact.
+        # Order matters here. Original v1.10.1 code did
+        #   1) hide Workbench  →  2) wait 100ms  →  3) activate source
+        # which looked symmetric to Sidekick but is in fact broken for
+        # a *non-Tool* top-level window:
+        #
+        #   Windows' SetForegroundWindow() only honours calls from the
+        #   process that *currently* owns the foreground (or has been
+        #   attached via AttachThreadInput to the foreground thread).
+        #   Once we hide() Workbench, Workbench is no longer the
+        #   foreground process, so the deferred activate_foreground_
+        #   window() 100ms later silently no-ops – the OS refuses the
+        #   switch. Result: Trados never regains focus, the cursor is
+        #   "nowhere", and the Ctrl+V keystroke we eventually send
+        #   either evaporates or hits the desktop.
+        #
+        # New ordering (v1.10.3):
+        #   1) Activate source *while Workbench still owns foreground*
+        #      – the OS happily grants the switch in that state.
+        #   2) Hide Workbench. Workbench isn't foreground any more, so
+        #      hide() can't disturb the foreground state.
+        #   3) After a short delay, send Ctrl+V to the now-foreground
+        #      source window.
+        #
+        # Sidekick (`Qt.WindowType.Tool`) got away with the old order
+        # because Tool windows ride on the parent's foreground slot and
+        # never own foreground in their own right – the post-hide
+        # foreground state was always the source window, so the timing
+        # window didn't bite. Workbench is a regular top-level so we
+        # have to be explicit.
+        from PyQt6.QtCore import QTimer
+        from modules.platform_helpers import (
+            activate_foreground_window, CrossPlatformKeySender,
+        )
+
+        try:
+            ok = activate_foreground_window(source)
+            if not ok:
+                print(
+                    f"[ClipboardManagerWidget] activate_foreground_window"
+                    f"({source!r}) returned False – source window may have"
+                    f" closed; paste will land wherever focus is."
+                )
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] activate error: {e}")
+
+        # Hide Workbench AFTER the activate call. The source is already
+        # foreground by this point, so hide() is purely cosmetic – it
+        # just removes our taskbar entry.
         try:
             parent_window = self._parent_app
             if parent_window is not None and hasattr(parent_window, 'hide'):
@@ -1103,24 +1145,17 @@ class ClipboardManagerWidget(QWidget):
         except Exception as e:
             print(f"[ClipboardManagerWidget] Could not hide Workbench: {e}")
 
-        # Refocus source and send Ctrl+V. Tiny delay so the OS has a
-        # tick to action the minimise + focus before the keystroke
-        # fires – without it the paste lands on the wrong window.
-        from PyQt6.QtCore import QTimer
-
         def _do_paste():
             try:
-                from modules.platform_helpers import (
-                    activate_foreground_window, CrossPlatformKeySender,
-                )
-                activate_foreground_window(source)
-                import time
-                time.sleep(0.15)
                 CrossPlatformKeySender().send_paste()
             except Exception as e:
-                print(f"[ClipboardManagerWidget] Paste-and-return error: {e}")
+                print(f"[ClipboardManagerWidget] Paste error: {e}")
 
-        QTimer.singleShot(100, _do_paste)
+        # 150ms gives the OS plenty of time to settle the foreground
+        # switch (especially on first activation after Workbench
+        # launch, where window-manager bookkeeping is slower than on
+        # subsequent activations) before the synthetic Ctrl+V fires.
+        QTimer.singleShot(150, _do_paste)
 
     def _transform_clipboard(self, fn):
         """Read clipboard text, apply ``fn``, paste back to source.
