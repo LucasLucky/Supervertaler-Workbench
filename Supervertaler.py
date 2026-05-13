@@ -9720,6 +9720,46 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+Alt+Q / Alt+K hotkeys – so do that here as a side-effect.
         self._setup_superlookup_hotkeys()
 
+        # ============================================================
+        # NEW TOP-LEVEL TABS (Phase 1 of the Sidekick → Workbench
+        # migration, issue #199). SuperLookup, Clipboard and Voice
+        # are added here as Workbench top tabs so the user has a
+        # single-window app instead of toggling between Workbench and
+        # the always-on-top Sidekick.
+        #
+        # Lazy construction: each tab starts as an empty placeholder
+        # QWidget. The first time the user activates the tab,
+        # _on_main_tab_changed calls _ensure_*_top_tab which builds
+        # the real widget into the placeholder. This keeps cold start
+        # fast – SuperLookup in particular brings up TM / termbase /
+        # MT / web-resource state and is too heavy to construct
+        # eagerly on every launch.
+        #
+        # During Phases 1-3 Sidekick continues to exist with its own
+        # copies of these widgets. Both surfaces work in parallel.
+        # Phase 4 retires Sidekick and removes the duplication. The
+        # hotkey-side-effect SuperLookup instance from
+        # _setup_superlookup_hotkeys above stays during this phase –
+        # it's what registers the global hotkeys; the visible top tab
+        # is a separate instance.
+        # ============================================================
+        self._superlookup_top_widget = None
+        self._clipboard_top_widget = None
+        self._voice_top_widget = None
+
+        from PyQt6.QtWidgets import QWidget as _QW
+        superlookup_placeholder = _QW()
+        self.main_tabs.addTab(superlookup_placeholder, "🔍 SuperLookup")
+        self.superlookup_tab_index = self.main_tabs.count() - 1
+
+        clipboard_placeholder = _QW()
+        self.main_tabs.addTab(clipboard_placeholder, "📋 Clipboard")
+        self.clipboard_tab_index = self.main_tabs.count() - 1
+
+        voice_placeholder = _QW()
+        self.main_tabs.addTab(voice_placeholder, "🎤 Voice")
+        self.voice_tab_index = self.main_tabs.count() - 1
+
         # 4. SETTINGS
         settings_tab = self.create_settings_tab()
         self.main_tabs.addTab(settings_tab, "⚙️ Settings")
@@ -10725,6 +10765,19 @@ class SupervertalerQt(QMainWindow):
     def _on_main_tab_changed(self, index: int):
         """Handle main tab changes (Grid/Project resources/Tools/Settings)"""
         try:
+            # Lazy-construct the v1.10.0 SuperLookup / Clipboard / Voice
+            # top tabs on first activation. Each helper is idempotent –
+            # safe to call again on subsequent activations (it short-
+            # circuits if already built). Keeps cold start fast by
+            # deferring the heavy SuperLookup / Voice widget construction
+            # until the user actually visits the tab.
+            if hasattr(self, 'superlookup_tab_index') and index == self.superlookup_tab_index:
+                self._ensure_superlookup_top_tab()
+            elif hasattr(self, 'clipboard_tab_index') and index == self.clipboard_tab_index:
+                self._ensure_clipboard_top_tab()
+            elif hasattr(self, 'voice_tab_index') and index == self.voice_tab_index:
+                self._ensure_voice_top_tab()
+
             if index == 0:  # Grid
                 # Grid refreshes automatically when segments change
                 pass
@@ -10740,6 +10793,105 @@ class SupervertalerQt(QMainWindow):
                     self.prompt_manager_qt._init_llm_client()
         except Exception as e:
             self.log(f"⚠️ Error switching main tabs: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # ------------------------------------------------------------------
+    # Phase 1 (issue #199): lazy constructors for the new Workbench
+    # top tabs. Sidekick continues to embed its own copies of these
+    # widgets during Phases 1-3; duplicate construction is accepted
+    # until Phase 4 retires Sidekick.
+    # ------------------------------------------------------------------
+
+    def _ensure_superlookup_top_tab(self):
+        """Build the SuperLookup top tab the first time the user opens it.
+
+        Heavy: SuperlookupTab.__init__ brings up TM / termbase / MT and
+        web-resource state. Deferring until first activation keeps cold
+        start fast. The hotkey-side-effect SuperLookup instance from
+        _setup_superlookup_hotkeys handled the Ctrl+Alt+L registration
+        at launch time; this is a separate instance that powers the
+        visible top tab. (RegisterHotKey calls from the second instance
+        fail silently because the first one owns the registrations –
+        expected and harmless.)
+        """
+        if self._superlookup_top_widget is not None:
+            return
+        try:
+            widget = SuperlookupTab(
+                self,
+                user_data_path=getattr(self, 'user_data_path', None),
+                is_sidekick=False,
+            )
+            self._superlookup_top_widget = widget
+            placeholder = self.main_tabs.widget(self.superlookup_tab_index)
+            layout = QVBoxLayout(placeholder)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(widget)
+        except Exception as e:
+            self.log(f"⚠ Could not build SuperLookup top tab: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _ensure_clipboard_top_tab(self):
+        """Build the Clipboard top tab on first activation.
+
+        Click-to-paste copies the chosen item to the system clipboard,
+        so the user can paste with Ctrl+V wherever they're focused
+        (typically the grid editor, or another app entirely). Phase 3
+        of issue #199 turns this single column into a 3-column
+        layout with snippets / characters / conversions on the right.
+        """
+        if self._clipboard_top_widget is not None:
+            return
+        try:
+            from modules.clipboard_manager_widget import ClipboardManagerWidget
+            from PyQt6.QtWidgets import QApplication
+
+            def _paste_text(text: str):
+                QApplication.clipboard().setText(text)
+
+            def _paste_image(pixmap):
+                QApplication.clipboard().setPixmap(pixmap)
+
+            widget = ClipboardManagerWidget(
+                self,
+                paste_text_callback=_paste_text,
+                paste_image_callback=_paste_image,
+            )
+            try:
+                widget.ensure_db_loaded()
+            except Exception:
+                pass
+            self._clipboard_top_widget = widget
+            placeholder = self.main_tabs.widget(self.clipboard_tab_index)
+            layout = QVBoxLayout(placeholder)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(widget)
+        except Exception as e:
+            self.log(f"⚠ Could not build Clipboard top tab: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _ensure_voice_top_tab(self):
+        """Build the Voice top tab on first activation.
+
+        Same widget Sidekick uses (modules.voice_tab.VoiceTab); it reads
+        parent_app properties (shortcut_manager, voice_listener,
+        load_dictation_settings) so the existing wiring just works.
+        """
+        if self._voice_top_widget is not None:
+            return
+        try:
+            from modules.voice_tab import VoiceTab
+            widget = VoiceTab(self)
+            self._voice_top_widget = widget
+            placeholder = self.main_tabs.widget(self.voice_tab_index)
+            layout = QVBoxLayout(placeholder)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(widget)
+        except Exception as e:
+            self.log(f"⚠ Could not build Voice top tab: {e}")
             import traceback
             traceback.print_exc()
     
