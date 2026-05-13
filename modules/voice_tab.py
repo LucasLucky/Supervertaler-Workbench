@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QSpinBox, QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QScrollArea, QFrame, QMessageBox, QSplitter, QMenu,
-    QPlainTextEdit, QCheckBox,
+    QPlainTextEdit,
 )
 
 from modules.styled_widgets import CheckmarkCheckBox, HelpButton
@@ -412,8 +412,11 @@ class VoiceTab(QWidget):
         self._vocab_dict_edit.setFixedHeight(70)
         vocab_layout.addWidget(self._vocab_dict_edit)
 
-        # "Bias from active termbase" checkbox.
-        self._vocab_use_termbase_cb = QCheckBox(
+        # "Bias from active termbase" checkbox. Uses the project's
+        # CheckmarkCheckBox so it visually matches the styled-checkbox
+        # column in the voice-commands table on the right, instead of
+        # the bare QCheckBox that ships with Qt.
+        self._vocab_use_termbase_cb = CheckmarkCheckBox(
             "Also bias from the active project's termbase "
             "(source-language entries)"
         )

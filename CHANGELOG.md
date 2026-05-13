@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.26 (May 13, 2026)
+**Current Version:** v1.10.27 (May 13, 2026)
+
+
+## v1.10.27 – May 13, 2026
+
+### Changed (Voice tab: termbase-bias checkbox now uses the project's styled checkmark)
+
+- v1.10.26 added a "Also bias from the active project's termbase" checkbox to the new Dictation vocabulary group, but rendered it as a bare `QCheckBox` (the OS-native rounded-square widget). The voice-commands table directly next to it uses the project's `CheckmarkCheckBox` styled widget (the green-tick column), so the mismatch was visually jarring.
+- v1.10.27 swaps the bare `QCheckBox` for `CheckmarkCheckBox` so the termbase-bias toggle matches the styled-checkmark convention used elsewhere in Workbench (voice commands table, glossary toggles, etc.). Pure cosmetic change – same behaviour, same persistence path.
 
 
 ## v1.10.26 – May 13, 2026
