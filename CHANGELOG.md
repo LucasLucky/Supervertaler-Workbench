@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.20 (May 13, 2026)
+**Current Version:** v1.10.21 (May 13, 2026)
+
+
+## v1.10.21 – May 13, 2026
+
+### Changed (Help system Topics: AI_QUICKLAUNCHER slug + alias)
+
+- The help-repo file `workbench/ai-translation/quicklauncher.md` was renamed to `workbench/ai-translation/quicktrans-popup.md` so the GitBook URL slug matches the page title (which became "QuickTrans Popup" when v1.10.10 rewrote the page; the filename had still pointed at the retired Sidekick QuickLauncher).
+- `modules/help_system.py` Topics gets a new canonical constant `Topics.AI_QUICKTRANS_POPUP = "ai-translation/quicktrans-popup"`. The old constant `Topics.AI_QUICKLAUNCHER` is kept as a legacy alias pointing at the same slug, so any existing call-sites (none in-tree, but defensive) keep working.
 
 
 ## v1.10.20 – May 13, 2026
