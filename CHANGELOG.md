@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.16 (May 13, 2026)
+**Current Version:** v1.10.17 (May 13, 2026)
+
+
+## v1.10.17 – May 13, 2026
+
+### Added (Esc-to-tray on the quick-lookup tabs)
+
+- Pressing Esc while on the SuperLookup / Clipboard / Voice top tabs now hides Workbench to the system tray. These three tabs are typically summoned via global hotkeys (Ctrl+Alt+L / Ctrl+Alt+C / push-to-talk) and used as popup utilities rather than full-screen work surfaces, so Esc-as-dismiss is the natural keyboard counterpart to the global hotkey-as-summon. Mirrors the dismissal flow that retired Sidekick used to have (Esc dismissed Sidekick), now scoped to the Workbench tabs that inherited Sidekick's role.
+- On the Editor / TMs / Termbases / AI / Settings tabs, Esc is a no-op so it keeps its natural editor / dialog / combo-box semantics (cancel-edit, close-popup, etc.). The check is done at fire time against the current tab index, so the binding adapts automatically if tab indices shift in future builds.
+- Falls back to do-nothing if the system tray isn't available (e.g. a Linux environment without a system-tray daemon). Hiding the window without a tray would leave the user with no way to bring Workbench back, so the binding deliberately fails closed in that case.
 
 
 ## v1.10.16 – May 13, 2026

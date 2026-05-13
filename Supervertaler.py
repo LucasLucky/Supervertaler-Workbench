@@ -9863,8 +9863,33 @@ class SupervertalerQt(QMainWindow):
         
         # Set startup tab to Grid (index 0)
         self.main_tabs.setCurrentIndex(0)
-        
+
         main_layout.addWidget(self.main_tabs)
+
+        # v1.10.17: Esc-to-tray on the "quick lookup" top tabs.
+        # When the user is on SuperLookup / Clipboard / Voice –
+        # which they typically reach via global hotkeys and treat as
+        # popup utilities rather than full-screen work surfaces –
+        # pressing Esc hides Workbench to the system tray, matching
+        # the dismissal flow that retired Sidekick used to have.
+        # On Editor / TMs / Termbases / AI / Settings the binding
+        # is a no-op so Esc retains its natural editor / dialog /
+        # combo-box behaviour. Implementation is a single
+        # window-level QShortcut with a current-tab check at fire
+        # time, rather than per-tab WidgetShortcut bindings, so the
+        # binding survives lazy tab construction (the tabs are
+        # placeholder widgets at this point – the real widgets are
+        # built on first activation by _ensure_*_top_tab).
+        try:
+            from PyQt6.QtGui import QShortcut, QKeySequence
+            self._esc_to_tray_shortcut = QShortcut(
+                QKeySequence(Qt.Key.Key_Escape), self
+            )
+            self._esc_to_tray_shortcut.activated.connect(
+                self._on_esc_quick_lookup_dismiss
+            )
+        except Exception as e:
+            print(f"[Workbench] Esc-to-tray binding failed: {e}")
 
         # Connect tab changes to handle view refreshes
         self.main_tabs.currentChanged.connect(self._on_main_tab_changed)
@@ -25351,6 +25376,40 @@ class SupervertalerQt(QMainWindow):
         self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
         self.raise_()
         self.activateWindow()
+
+    def _on_esc_quick_lookup_dismiss(self):
+        """Hide Workbench to the system tray when Esc is pressed while
+        the user is on a "quick lookup" top tab (SuperLookup,
+        Clipboard, Voice).
+
+        On Editor / TMs / Termbases / AI / Settings the press is a
+        no-op so Esc keeps its natural editor / dialog / combo-box
+        behaviour (cancel-edit, close-popup, etc.).
+
+        Wired in v1.10.17 to match the dismissal flow that retired
+        Sidekick used to have: those three tabs are typically
+        summoned via global hotkeys (Ctrl+Alt+L / Ctrl+Alt+C) and
+        used as popup utilities, so Esc-as-dismiss is the natural
+        keyboard counterpart to the global hotkey-as-summon. Falls
+        back to do-nothing if the system tray isn't available (e.g.
+        a minimal Linux environment without a system tray daemon),
+        because hiding without a tray would leave the user with no
+        way to bring Workbench back.
+        """
+        if not hasattr(self, 'main_tabs'):
+            return
+        if getattr(self, '_tray_icon', None) is None:
+            # No tray means no way to restore – better to do nothing
+            # than to strand the user in a hidden window.
+            return
+        quick_lookup_indices = {
+            getattr(self, 'superlookup_tab_index', None),
+            getattr(self, 'clipboard_tab_index', None),
+            getattr(self, 'voice_tab_index', None),
+        }
+        quick_lookup_indices.discard(None)
+        if self.main_tabs.currentIndex() in quick_lookup_indices:
+            self.hide()
 
     def _on_toggle_close_to_tray(self, checked: bool):
         prefs = self._load_settings_section("ui")
