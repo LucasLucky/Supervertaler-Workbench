@@ -76,16 +76,6 @@ class Topics:
     AI_BATCH            = "ai-translation/batch-translation"
     AI_PROMPTS          = "ai-translation/prompts"
     AI_PROMPT_MANAGER   = "ai-translation/prompt-library"
-    # Renamed in v1.10.21: the file in the help repo was
-    # workbench/ai-translation/quicklauncher.md (legacy name from when
-    # the page documented the Sidekick QuickLauncher window); it now
-    # documents the QuickTrans always-on-top popup, so it was renamed
-    # to quicktrans-popup.md to match. The constant name keeps the
-    # AI_QUICKLAUNCHER prefix only for backward compatibility with any
-    # other code that might import it; aliased to AI_QUICKTRANS_POPUP
-    # for the new canonical name. Both point at the same slug.
-    AI_QUICKTRANS_POPUP = "ai-translation/quicktrans-popup"
-    AI_QUICKLAUNCHER    = AI_QUICKTRANS_POPUP  # legacy alias
     AI_OLLAMA           = "ai-translation/ollama"
 
     # CAT Tool Integration
@@ -145,6 +135,19 @@ class Topics:
     TRADOS_AWARE_CHAT   = "companion-tabs/trados-aware-chat"
     VOICE               = "companion-tabs/voice"
     CLIPBOARD           = "companion-tabs/clipboard"
+    # QuickTrans Popup. Has moved twice in the help repo:
+    #   v1.10.21: renamed file quicklauncher.md → quicktrans-popup.md
+    #             URL: /ai-translation/quicklauncher → /ai-translation/quicktrans-popup
+    #   v1.10.22: moved file workbench/ai-translation/ → workbench/sidekick/
+    #             and SUMMARY.md entry AI Translation section → Companion
+    #             Tabs section. Conceptually a companion-tab popup, not an
+    #             AI-translation feature.
+    #             URL: /ai-translation/quicktrans-popup → /companion-tabs/quicktrans-popup
+    # AI_QUICKLAUNCHER alias kept for any external code that imports the
+    # old name (no in-tree call-sites; defensive only).
+    QUICKTRANS_POPUP    = "companion-tabs/quicktrans-popup"
+    AI_QUICKTRANS_POPUP = QUICKTRANS_POPUP   # v1.10.21 alias
+    AI_QUICKLAUNCHER    = QUICKTRANS_POPUP   # pre-v1.10.21 alias
 
     # Tools (TOOL_VOICE removed – voice/dictation is the Voice tab in Sidekick)
     TOOL_PDF_RESCUE     = "tools/pdf-rescue"

@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.21 (May 13, 2026)
+**Current Version:** v1.10.22 (May 13, 2026)
+
+
+## v1.10.22 – May 13, 2026
+
+### Changed (QuickTrans Popup help page moved from AI Translation → Companion Tabs)
+
+- The QuickTrans Popup is conceptually a companion-tab utility (a popup summoned by hotkey, dismissed by Esc), not an AI-translation feature like Batch Translation / Prompt Manager / Ollama. The help page was misfiled under the "AI Translation" SUMMARY section.
+- Moved the file in the help repo from `workbench/ai-translation/quicktrans-popup.md` to `workbench/sidekick/quicktrans-popup.md`, and the SUMMARY.md entry from the AI Translation section to the Companion Tabs section. New GitBook URL: `/companion-tabs/quicktrans-popup`.
+- `modules/help_system.py` Topics enum updated: new canonical `Topics.QUICKTRANS_POPUP = "companion-tabs/quicktrans-popup"`. The two legacy aliases (`AI_QUICKTRANS_POPUP`, `AI_QUICKLAUNCHER`) are kept pointing at the same value so external code that imports the old names still resolves correctly.
 
 
 ## v1.10.21 – May 13, 2026
