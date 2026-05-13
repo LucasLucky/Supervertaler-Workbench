@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.23 (May 13, 2026)
+**Current Version:** v1.10.24 (May 13, 2026)
+
+
+## v1.10.24 – May 13, 2026
+
+### Changed (Trados QuickLauncher bridge: land on AI tab → Chat, not right-panel Chat)
+
+- There are two Chat surfaces in Workbench since v1.10.4 retired Sidekick: one in the right panel next to the editor (compact, intended for segment-level translation workflow), and one as a full-width sub-tab inside the AI top tab (intended for general AI conversation). v1.10.10's `_on_bridge_prompt_request` (the handler for QuickLauncher prompts forwarded by Trados Studio) was routing to the right-panel Chat. User feedback: QuickLauncher prompts from Trados are explicitly the *general* kind – they deserve the full-width sub-tab where the response has more room to render.
+- `_on_bridge_prompt_request` now switches `main_tabs` to the ✨ AI top tab and `ai_subtabs` to the 💬 Chat sub-tab. Looked up by text (`"AI"` + `"✨"` for the top tab; `"Chat"` for the sub-tab) rather than stored indices, so it stays correct if future builds shift tab order.
+- Both Chat surfaces share the same `ChatBackend`, so `backend.add_message()` and `backend.send_ai_request()` calls render in *both* views automatically – this change is purely about which Chat surface gets brought to the foreground when a prompt arrives. The user message + LLM response appear in the right-panel Chat too, ready to scroll back to if you switch over.
+- Pairs with **Supervertaler for Trados v4.19.99**, which renames the user-facing labels accordingly (AI Settings → "QuickLauncher prompts go to: Workbench Chat", right-click → "&Send to Supervertaler Workbench Chat", and the Trados edit-history actionName "Supervertaler Workbench"). The internal wire-protocol identifiers (`sidekick_bridge_server.py` module, `SidekickBridge` C# class, `WorkbenchSidekickClient` C# class, `sidekick-bridge.json` handshake filename, `QuickLauncherTarget == "WorkbenchSidekick"` setting value) are intentionally unchanged – they're historical names that pre-date v1.10.4, kept stable so deployed Trados plugin versions and Workbench installs continue to interoperate without a migration step.
 
 
 ## v1.10.23 – May 13, 2026

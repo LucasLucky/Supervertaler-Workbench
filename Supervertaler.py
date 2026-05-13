@@ -8262,7 +8262,14 @@ class SupervertalerQt(QMainWindow):
           1. Bring Workbench forward (full hammer chain – Trados is
              the source of these requests and aggressive about
              foreground retention).
-          2. Switch the right panel to the Chat tab.
+          2. Switch to the ✨ AI top tab and select its 💬 Chat sub-
+             tab. There are two Chat surfaces in Workbench – one in
+             the right panel next to the editor (translation
+             workflow), and one as a full-width sub-tab inside the
+             AI tab (general AI conversation). QuickLauncher prompts
+             from Trados are explicitly the *general* kind, so they
+             land on the latter where the user has more screen real
+             estate to read the response.
           3. Echo the *display* version of the prompt as a "user"
              message (the Trados plugin builds a redacted display
              version – e.g. "[source document – N segments]" instead
@@ -8277,8 +8284,16 @@ class SupervertalerQt(QMainWindow):
              idea of the active context, which would be wrong for a
              Trados-originated prompt.
 
-        Pre-v1.10.4 this lived on FloatingAssistant; moved to the
-        main window in v1.10.10 along with the Sidekick retirement.
+        Pre-v1.10.4 this lived on FloatingAssistant. v1.10.10 moved
+        it to the main window targeting the right-panel Chat;
+        v1.10.24 retargeted at the AI tab's Chat sub-tab per user
+        request – the right panel is for translating, the AI tab's
+        Chat is for general conversation.
+
+        Both Chat surfaces share the same ChatBackend, so the user
+        message + LLM response appear in *both* places automatically
+        – we just need to make the AI tab's Chat the *visible* one
+        when the prompt arrives.
         """
         try:
             self._bring_workbench_forward()
@@ -8286,10 +8301,27 @@ class SupervertalerQt(QMainWindow):
             pass
 
         try:
+            # Switch the main top tabs to ✨ AI. The index isn't
+            # stored on self, so look it up by tab text – cheap, and
+            # robust if future builds shift indices.
             if hasattr(self, 'main_tabs'):
-                self.main_tabs.setCurrentIndex(0)  # Grid tab → right panel visible
-            if hasattr(self, 'right_tabs') and hasattr(self, '_assistant_tab_index'):
-                self.right_tabs.setCurrentIndex(self._assistant_tab_index)
+                ai_tab_index = -1
+                for i in range(self.main_tabs.count()):
+                    if "AI" in self.main_tabs.tabText(i) and "✨" in self.main_tabs.tabText(i):
+                        ai_tab_index = i
+                        break
+                if ai_tab_index >= 0:
+                    self.main_tabs.setCurrentIndex(ai_tab_index)
+
+            # Switch the AI tab's inner sub-tabs to 💬 Chat. The
+            # ai_subtabs property is set up in create_main_layout
+            # and points at prompt_manager_qt.sub_tabs.
+            ai_subtabs = getattr(self, 'ai_subtabs', None)
+            if ai_subtabs is not None:
+                for i in range(ai_subtabs.count()):
+                    if "Chat" in ai_subtabs.tabText(i):
+                        ai_subtabs.setCurrentIndex(i)
+                        break
         except Exception:
             pass
 
