@@ -426,12 +426,13 @@ class VoiceTab(QWidget):
         )
         self._vocab_use_termbase_cb.setStyleSheet("font-size: 9pt;")
         self._vocab_use_termbase_cb.setToolTip(
-            "Append target-language terms from every termbase marked "
-            "🎤 Voice in the Termbase Manager to Whisper's dictation "
-            "vocabulary. Works whether or not you have a project "
-            "open – the per-termbase 🎤 Voice flag is independent of "
-            "project context. Capped at 200 terms per dictation to "
-            "stay within Whisper's prompt budget."
+            "Append target-language terms from every termbase you have "
+            "ticked 🎤 Voice in the Termbase Manager. Opt-in: no termbase "
+            "biases dictation by default – pick a few in the Termbase "
+            "Manager that match what you're translating. Works whether "
+            "or not you have a project open (the per-termbase flag is "
+            "independent of project context). Capped at 200 terms per "
+            "dictation to stay within Whisper's prompt budget."
         )
         vocab_layout.addWidget(self._vocab_use_termbase_cb)
 

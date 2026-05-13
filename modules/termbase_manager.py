@@ -439,7 +439,12 @@ class TermbaseManager:
 
     def get_termbase_voice_enabled(self, termbase_id: int) -> bool:
         """Return whether this termbase contributes to voice-dictation
-        biasing. Default True for termbases predating the column."""
+        biasing. Defaults to **False** (opt-in) – users with many
+        termbases shouldn't get them all biasing dictation unless
+        they've explicitly ticked the 🎤 Voice column in Termbase
+        Manager. (v1.10.28 originally defaulted True; v1.10.29
+        flipped to opt-in based on user feedback.)
+        """
         try:
             cursor = self.db_manager.cursor
             cursor.execute(
@@ -447,11 +452,10 @@ class TermbaseManager:
                 (termbase_id,),
             )
             result = cursor.fetchone()
-            # NULL (column never set on legacy rows) ⇒ True (enabled).
-            return bool(result[0]) if result and result[0] is not None else True
+            return bool(result[0]) if result and result[0] is not None else False
         except Exception as e:
             self.log(f"✗ Error getting termbase voice_dictation_enabled: {e}")
-            return True
+            return False
 
     def set_termbase_voice_enabled(self, termbase_id: int, enabled: bool) -> bool:
         """Set the voice-dictation-biasing flag for a termbase."""
@@ -471,22 +475,21 @@ class TermbaseManager:
 
     def get_voice_enabled_termbase_ids(self) -> list:
         """Return the IDs of every termbase whose voice-dictation
-        bias flag is on. No project context required – this is a
-        Workbench-wide setting, not per-project.
+        bias flag is **explicitly on**. No project context required
+        – this is a Workbench-wide setting, not per-project.
 
-        Used by Supervertaler.py's
-        ``_collect_voice_dictation_termbase_terms`` to know which
-        termbases to pull target terms from for Whisper's
-        initial_prompt.
+        Strict ``= 1`` match: NULL and 0 both mean "don't bias",
+        consistent with the v1.10.29 opt-in default. Returns an
+        empty list if the user hasn't ticked any termbases yet,
+        which is the correct behaviour – the Voice tab's "Also bias
+        from your termbases" toggle is still meaningful, it just
+        contributes no terms beyond the built-in defaults until the
+        user picks termbases in Termbase Manager.
         """
         try:
             cursor = self.db_manager.cursor
             cursor.execute(
-                # IS NULL is treated as "enabled" (default True) to
-                # match the per-row getter.
-                "SELECT id FROM termbases "
-                "WHERE voice_dictation_enabled IS NULL "
-                "   OR voice_dictation_enabled = 1"
+                "SELECT id FROM termbases WHERE voice_dictation_enabled = 1"
             )
             return [row[0] for row in cursor.fetchall()]
         except Exception as e:

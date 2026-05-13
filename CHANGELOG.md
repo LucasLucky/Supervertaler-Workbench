@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.28 (May 14, 2026)
+**Current Version:** v1.10.29 (May 14, 2026)
+
+
+## v1.10.29 – May 14, 2026
+
+### Changed (Termbase voice-bias is now opt-in instead of opt-out)
+
+- v1.10.28 added the per-termbase 🎤 Voice flag with `DEFAULT 1` — meaning every existing termbase (and every new one) automatically contributed to dictation vocabulary biasing. A user with "literally dozens" of termbases flagged this as wrong: many of those termbases cover different language pairs / different clients / different projects, and pulling target terms from all of them dilutes the prompt rather than focusing it on what you're actually translating right now.
+- v1.10.29 flips the model to opt-in:
+  - **`database_manager.py`** schema migration now defaults the column to `0` for fresh databases.
+  - **One-shot reset migration** in `Supervertaler.py.__init__` runs `UPDATE termbases SET voice_dictation_enabled = 0` once per database, gated by a `voice_dictation_opt_in_reset_applied` sentinel in the unified settings JSON. This catches users who already upgraded through v1.10.28 (a few minutes' window) so their existing rows don't stay flagged-on. Manual selections made after v1.10.29 are not re-touched — the sentinel ensures the reset only runs once.
+  - **`termbase_manager.py`** API tightened: `get_termbase_voice_enabled()` now defaults to `False` for NULL / missing values (was `True`); `get_voice_enabled_termbase_ids()` matches `voice_dictation_enabled = 1` strictly (no NULL fallback).
+  - **Tooltips updated** in both the Voice tab's "Also bias from your termbases" checkbox and the Termbase Manager's 🎤 Voice column header — explicitly states "opt-in: pick only the few termbases relevant to your current work".
+- Net effect: users upgrade to v1.10.29, all their termbase 🎤 Voice cells flip back to unchecked, the dictation vocabulary contains only the built-in defaults + the user's custom dictionary terms. Users who want termbase biasing tick the 2 or 3 termbases relevant to their current work in Termbase Manager → 🎤 Voice column. Whisper's prompt stays focused; the feature finally does the right thing in the typical "many-termbases" workflow.
 
 
 ## v1.10.28 – May 14, 2026

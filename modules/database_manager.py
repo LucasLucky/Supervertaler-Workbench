@@ -388,21 +388,23 @@ class DatabaseManager:
             # Column already exists, ignore
             pass
 
-        # Migration (v1.10.28): Add voice_dictation_enabled column.
-        # Per-termbase opt-in flag for voice-dictation vocabulary
-        # biasing – when on, the termbase's target-language terms are
-        # appended to Whisper's initial_prompt by the Voice tab's
-        # "Also bias from your termbases" toggle. Default 1 (enabled)
-        # so existing users with termbases get the benefit immediately
-        # without having to discover and tick the per-termbase
-        # checkbox. Users who want to scope dictation bias to a
-        # subset of their termbases uncheck the column in Termbase
-        # Manager. Shared between Workbench and Supervertaler for
-        # Trados via the common database file, so flipping the flag
-        # in either product takes effect in the other.
+        # Migration (v1.10.28, default flipped in v1.10.29): Add
+        # voice_dictation_enabled column. Per-termbase opt-in flag
+        # for voice-dictation vocabulary biasing – when on, the
+        # termbase's target-language terms are appended to Whisper's
+        # initial_prompt by the Voice tab's "Also bias from your
+        # termbases" toggle. **Default 0 (off)** so users with many
+        # termbases don't get a noisy prompt by default – they pick
+        # a small handful in Termbase Manager's 🎤 Voice column.
+        # (v1.10.28 shipped with DEFAULT 1; v1.10.29 flipped to
+        # DEFAULT 0 + added a one-shot Supervertaler.py-side reset
+        # to clear v1.10.28 rows that came in with 1s.) Shared
+        # between Workbench and Supervertaler for Trados via the
+        # common database file, so flipping the flag in either
+        # product takes effect in the other.
         try:
             self.cursor.execute(
-                "ALTER TABLE termbases ADD COLUMN voice_dictation_enabled BOOLEAN DEFAULT 1"
+                "ALTER TABLE termbases ADD COLUMN voice_dictation_enabled BOOLEAN DEFAULT 0"
             )
             self.connection.commit()
         except Exception:

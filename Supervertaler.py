@@ -7157,7 +7157,20 @@ class SupervertalerQt(QMainWindow):
         # Termbase Manager - needed for glossary AI injection
         from modules.termbase_manager import TermbaseManager
         self.termbase_mgr = TermbaseManager(self.db_manager, self.log)
-        
+
+        # v1.10.29 one-shot reset: v1.10.28 introduced the
+        # ``voice_dictation_enabled`` column with DEFAULT 1, so users
+        # upgrading from v1.10.28 (or fresh installs that picked up
+        # the v1.10.28 migration before today) ended up with every
+        # termbase contributing to dictation bias by default. A user
+        # with dozens of termbases flagged that as wrong – defaults
+        # should be opt-in. v1.10.29 flips the DB DEFAULT to 0 for
+        # new rows (database_manager.py) and one-shot resets all
+        # existing rows here. Sentinel in settings JSON prevents the
+        # reset from running twice or stomping on a user's own
+        # post-v1.10.29 selections.
+        self._migrate_voice_dictation_default_off()
+
         # Spellcheck Manager for target language spell checking
         self.spellcheck_manager = get_spellcheck_manager(str(self.user_data_path))
         # Note: spellcheck_enabled will be loaded from preferences later in _load_spellcheck_settings()
@@ -15296,11 +15309,13 @@ class SupervertalerQt(QMainWindow):
                 voice_checkbox = PurpleCheckmarkCheckBox()
                 voice_checkbox.setChecked(voice_enabled)
                 voice_checkbox.setToolTip(
-                    "Voice: include this termbase's target-language terms "
-                    "in the dictation vocabulary that biases Whisper. "
-                    "Enable the global toggle in 🎤 Voice tab → Dictation "
-                    "vocabulary → \"Also bias from your termbases\" to "
-                    "actually use this list."
+                    "🎤 Voice: include this termbase's target-language terms "
+                    "in the dictation vocabulary that biases Whisper. Opt-in: "
+                    "tick only the few termbases relevant to your current "
+                    "work – pulling target terms from every termbase is too "
+                    "noisy for users with dozens of glossaries. Requires "
+                    "the global toggle in 🎤 Voice tab → Dictation vocabulary "
+                    "→ \"Also bias from your termbases\" to be on."
                 )
 
                 def on_voice_toggle(checked, tb_id=tb['id'], tb_name=tb['name']):
@@ -38233,6 +38248,41 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             print(f"[VoiceVocab] prompt build failed: {e!r}")
             return ""
+
+    def _migrate_voice_dictation_default_off(self):
+        """One-shot reset: clear every termbase's
+        ``voice_dictation_enabled`` flag so the v1.10.29 opt-in
+        default takes effect for users who upgraded from v1.10.28
+        (where the flag was added with DEFAULT 1, populating every
+        existing termbase as voice-enabled).
+
+        Runs at most once per database, gated by a sentinel in the
+        unified settings JSON. The user's manual selections after
+        v1.10.29 are not touched – the sentinel is set the first
+        time this method runs, and on every subsequent launch the
+        method returns immediately.
+
+        Skipped silently on any error; the worst that happens is
+        the user sees their old v1.10.28 defaults persist and has
+        to untick the 🎤 Voice column manually, which is the same
+        UX they'd get without this migration.
+        """
+        try:
+            prefs = self._load_settings_section("ui")
+            if prefs.get("voice_dictation_opt_in_reset_applied"):
+                return  # already migrated
+            cursor = self.db_manager.cursor
+            cursor.execute(
+                "UPDATE termbases SET voice_dictation_enabled = 0"
+            )
+            self.db_manager.connection.commit()
+            prefs["voice_dictation_opt_in_reset_applied"] = True
+            self._save_settings_section("ui", prefs)
+            self.log(
+                "✓ Voice-dictation termbase flags reset to opt-in (v1.10.29 migration)"
+            )
+        except Exception as e:
+            print(f"[VoiceVocab] opt-in reset migration error: {e!r}")
 
     def _collect_voice_dictation_termbase_terms(self) -> list:
         """Return the **target-language** ``target_term`` values of
