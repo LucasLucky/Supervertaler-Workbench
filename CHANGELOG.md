@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.4 (May 13, 2026)
+**Current Version:** v1.10.5 (May 13, 2026)
+
+
+## v1.10.5 – May 13, 2026
+
+### Changed (Rename "AI Assistant" / "Supervertaler Sidekick" labels to "Chat")
+
+- With Sidekick retired, the surviving in-Workbench chat surface no longer needs the qualifier. Three user-facing labels renamed for consistency:
+  - Right panel tab `"💬 AI Assistant"` → `"💬 Chat"` (`Supervertaler.py`).
+  - Editor right-click QuickLauncher menu entry `"💬 Supervertaler Sidekick"` → `"💬 Chat"` (two sites in `Supervertaler.py`).
+  - Prompt Manager sub-tab `"💬 Assistant"` → `"💬 Chat"` (`modules/unified_prompt_manager_qt.py`).
+- Internal identifiers (`assistant_tab`, `_assistant_tab_index`, `show_supervertaler_assistant`, `ai_assistant/` data directory, log prefixes like `[AI Assistant]`) are left alone in this release – they're not user-visible and renaming them would touch many call-sites for no functional gain. They can be cleaned up later if the inconsistency becomes annoying.
 
 
 ## v1.10.4 – May 13, 2026

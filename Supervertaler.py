@@ -3324,8 +3324,11 @@ class ReadOnlyGridTextEditor(QTextEdit):
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
-            # Supervertaler Sidekick – defer with QTimer so menu fully closes first
-            assistant_action = QAction("💬 Supervertaler Sidekick", self)
+            # Chat – defer with QTimer so menu fully closes first.
+            # Despite the legacy method name (`show_supervertaler_assistant`)
+            # this navigates to the in-Workbench Chat tab; the standalone
+            # Sidekick window was retired in v1.10.4.
+            assistant_action = QAction("💬 Chat", self)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: main_window.show_supervertaler_assistant(
                     initial_text=_sel_text
@@ -4136,8 +4139,11 @@ class EditableGridTextEditor(QTextEdit):
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
-            # Supervertaler Sidekick – defer with QTimer so menu fully closes first
-            assistant_action = QAction("💬 Supervertaler Sidekick", self)
+            # Chat – defer with QTimer so menu fully closes first.
+            # Despite the legacy method name (`show_supervertaler_assistant`)
+            # this navigates to the in-Workbench Chat tab; the standalone
+            # Sidekick window was retired in v1.10.4.
+            assistant_action = QAction("💬 Chat", self)
             assistant_action.triggered.connect(
                 lambda: QTimer.singleShot(0, lambda: main_window.show_supervertaler_assistant(
                     initial_text=_sel_text
@@ -9690,7 +9696,7 @@ class SupervertalerQt(QMainWindow):
 
         # Add AI Assistant to the right panel at position 1 (right after Match Panel)
         if hasattr(self, 'right_tabs') and hasattr(self.prompt_manager_qt, 'assistant_tab'):
-            self.right_tabs.insertTab(1, self.prompt_manager_qt.assistant_tab, "💬 AI Assistant")
+            self.right_tabs.insertTab(1, self.prompt_manager_qt.assistant_tab, "💬 Chat")
             self._assistant_tab_index = 1
             # Bump stored indices that were shifted by the insert
             if hasattr(self, '_preview_tab_index'):
@@ -9698,7 +9704,7 @@ class SupervertalerQt(QMainWindow):
 
         # Sidekick (Floating Assistant) retired in v1.10.4 (issue #199
         # phase 4). All four of its tabs now live in Workbench itself:
-        #   Chat        → right_tabs "💬 AI Assistant"
+        #   Chat        → right_tabs "💬 Chat" (label renamed in v1.10.5)
         #   Clipboard   → main_tabs "📋 Clipboard"
         #   Voice       → main_tabs "🎤 Voice"
         #   SuperLookup → main_tabs "🔍 SuperLookup"

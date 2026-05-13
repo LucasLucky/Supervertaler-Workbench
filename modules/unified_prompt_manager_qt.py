@@ -944,7 +944,7 @@ class UnifiedPromptManagerQt:
         self._ai_tab_chat_view = ChatViewWidget(self.chat_backend)
         self._ai_tab_chat_view._do_send = self._context_aware_send
         self._ai_tab_chat_view.escape_pressed.connect(self._return_from_assistant)
-        self.sub_tabs.addTab(self._ai_tab_chat_view, "💬 Assistant")
+        self.sub_tabs.addTab(self._ai_tab_chat_view, "💬 Chat")
 
         main_layout.addWidget(self.sub_tabs, 1)  # 1 = stretch
 
