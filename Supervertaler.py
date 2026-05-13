@@ -21618,6 +21618,36 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 print(f"[Workbench] foreground escalation failed: {e}")
 
+        # v1.10.14: the synthetic Alt-tap above gets the foreground
+        # grant we need, but it's also what Windows interprets as
+        # "user pressed Alt to activate the menu bar". Even though
+        # we sent the Alt to the *originating* foreground (Trados),
+        # AttachThreadInput shares input queues for the duration, so
+        # the Alt event leaks into Workbench's input stream just as
+        # we become foreground. Qt's QMenuBar then activates File-
+        # menu navigation mode and the user's arrow keys steer the
+        # menu instead of the Clipboard list / SuperLookup results.
+        # Dismiss the leaked menu state explicitly so we land in the
+        # expected "neutral" focus state.
+        self._dismiss_menu_activation()
+
+    def _dismiss_menu_activation(self):
+        """Clear any leaked menu-bar activation after a foreground
+        grab. Called from _bring_workbench_forward(); safe to call
+        when no menu is active (no-op in that case). The continuation
+        callbacks (`_continue_clipboard`, `_continue_superlookup`)
+        also explicitly setFocus() on their target widget, which
+        belt-and-braces clears the menu-activation indirectly – but
+        calling setActiveAction(None) here makes the cleanup
+        deterministic instead of relying on focus-change side
+        effects."""
+        try:
+            mb = self.menuBar() if hasattr(self, 'menuBar') else None
+            if mb is not None:
+                mb.setActiveAction(None)
+        except Exception:
+            pass
+
     def open_workbench_to_superlookup(self, text: str = ""):
         """Bring Workbench forward, switch to the SuperLookup top tab,
         and optionally seed the search field with ``text``.
@@ -21661,6 +21691,19 @@ class SupervertalerQt(QMainWindow):
                     if hasattr(self, 'superlookup_tab_index') and hasattr(self, 'main_tabs'):
                         self.main_tabs.setCurrentIndex(self.superlookup_tab_index)
                     widget = getattr(self, '_superlookup_top_widget', None)
+                    if widget is not None:
+                        # v1.10.14: explicit focus on the search field
+                        # (or the tab root if the search field isn't
+                        # available) so keyboard navigation lands here
+                        # instead of leaking into the menu bar after
+                        # the foreground-grab Alt-tap.
+                        try:
+                            if hasattr(widget, 'source_text') and widget.source_text is not None:
+                                widget.source_text.setFocus()
+                            else:
+                                widget.setFocus()
+                        except Exception:
+                            pass
                     if widget is not None and text:
                         try:
                             if hasattr(widget, 'source_text'):
@@ -21712,6 +21755,23 @@ class SupervertalerQt(QMainWindow):
                     widget = getattr(self, '_clipboard_top_widget', None)
                     if widget is not None and hasattr(widget, 'set_source_window'):
                         widget.set_source_window(source_window)
+                    # v1.10.14: explicit focus on the clipboard text
+                    # list so arrow keys navigate the history straight
+                    # away. Without this, the foreground-grab Alt-tap
+                    # leaks into Qt's QMenuBar and arrow keys steer
+                    # the File menu instead of the list. Prefer the
+                    # text list (most-used column); the widget's own
+                    # _focus_list helper falls back to selecting row 0
+                    # if nothing is currently selected.
+                    if widget is not None:
+                        try:
+                            text_list = getattr(widget, '_text_list', None)
+                            if text_list is not None and hasattr(widget, '_focus_list'):
+                                widget._focus_list(text_list)
+                            else:
+                                widget.setFocus()
+                        except Exception:
+                            pass
                 except Exception as inner:
                     self.log(f"⚠ Could not finish Clipboard open: {inner}")
 

@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.13 (May 13, 2026)
+**Current Version:** v1.10.14 (May 13, 2026)
+
+
+## v1.10.14 – May 13, 2026
+
+### Fixed (Ctrl+Alt+C / Ctrl+Alt+L land in the File menu instead of the target widget)
+
+- Side effect of the v1.10.9 foreground-grab fix. The synthetic Alt-down/Alt-up that satisfies `SetForegroundWindow`'s "Alt key pressed" exception is *also* what Windows interprets as "user tapped Alt to activate the menu bar". Even though our Alt was meant for Trados (the originating foreground app), `AttachThreadInput` shares input queues for the duration of the dance, so the Alt event leaks into Workbench's input stream just as we become foreground. Qt's `QMenuBar` then activates File-menu navigation mode and arrow keys steer the menu instead of the Clipboard list / SuperLookup results. The user saw Workbench come forward correctly – they just couldn't navigate the tab they landed on.
+- Fix is three-pronged:
+  1. **New `_dismiss_menu_activation()` helper** called at the end of `_bring_workbench_forward()`: explicitly calls `menuBar().setActiveAction(None)` to clear any leaked menu activation. Safe no-op when no menu is active.
+  2. **Explicit focus in `_continue_clipboard`**: after the tab switch, `_text_list.setFocus()` via the widget's `_focus_list` helper (which also auto-selects row 0 when the list has no current selection). Arrow keys now navigate the clipboard history straight away.
+  3. **Explicit focus in `_continue_superlookup`**: after the tab switch, focus lands on `source_text` (the search field). When the hotkey carried a query, the user can type a refinement immediately; when it didn't, the cursor is in the right place to start typing a fresh search.
+- The setActiveAction call is the load-bearing part – it works even if the focus calls fail for some reason. The explicit focus calls are additionally good UX (the user lands in the "right" widget straight away regardless of the menu-leak issue) so they're kept as belt-and-braces.
 
 
 ## v1.10.13 – May 13, 2026
