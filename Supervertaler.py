@@ -9769,9 +9769,25 @@ class SupervertalerQt(QMainWindow):
         self.main_tabs.setCurrentIndex(0)
         
         main_layout.addWidget(self.main_tabs)
-        
+
         # Connect tab changes to handle view refreshes
         self.main_tabs.currentChanged.connect(self._on_main_tab_changed)
+
+        # Warm up the new top tabs ~2.5 s after launch (Phase 1 + 2 of
+        # issue #199). They're lazily constructed on first activation,
+        # but the first-press race – global hotkey fires → lazy build
+        # takes ~1 s → Workbench foreground-grab arrives too late to
+        # win against the source app – means the *very* first
+        # Ctrl+Alt+L / Ctrl+Alt+C after startup can silently fall on
+        # the floor. Pre-warming a few seconds after the main window
+        # paints sidesteps this without paying the cost at startup.
+        # 2 500 ms gives the window time to paint, the Okapi sidecar
+        # to hand over, and the database to settle – same value
+        # Sidekick uses for its own lazy-tab warm-up.
+        try:
+            QTimer.singleShot(2500, self._warm_up_top_tabs)
+        except Exception:
+            pass
 
     
     def _create_placeholder_tab(self, title: str, description: str) -> QWidget:
@@ -10802,6 +10818,26 @@ class SupervertalerQt(QMainWindow):
     # widgets during Phases 1-3; duplicate construction is accepted
     # until Phase 4 retires Sidekick.
     # ------------------------------------------------------------------
+
+    def _warm_up_top_tabs(self):
+        """Build the new SuperLookup / Clipboard / Voice top tabs in the
+        background a few seconds after launch.
+
+        Each ``_ensure_*_top_tab`` is idempotent – calling it here just
+        forces eager construction before the user's first hotkey press
+        instead of paying the cost on that press. Wrapped in
+        per-helper try/except so a failure in one doesn't skip the
+        others.
+        """
+        for helper in ('_ensure_superlookup_top_tab',
+                       '_ensure_clipboard_top_tab',
+                       '_ensure_voice_top_tab'):
+            try:
+                fn = getattr(self, helper, None)
+                if callable(fn):
+                    fn()
+            except Exception as e:
+                self.log(f"⚠ Warm-up of {helper} failed (lazy path still works): {e}")
 
     def _ensure_superlookup_top_tab(self):
         """Build the SuperLookup top tab the first time the user opens it.
@@ -21399,27 +21435,106 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Could not open Voice", str(e))
 
+    def _bring_workbench_forward(self):
+        """Hide Sidekick (if open) and bring Workbench to the foreground.
+
+        Sidekick uses WindowStaysOnTopHint, so just raising Workbench
+        leaves it painted behind Sidekick where the user can't see it.
+        Hiding Sidekick preserves its state – they can re-summon with
+        Ctrl+Q / the tray icon / Ctrl+Alt+K.
+
+        On Windows we add the SetForegroundWindow + AttachThreadInput
+        dance to win the foreground race against whatever app last had
+        focus (otherwise Windows blocks raise()'s focus grab as
+        "stealing").
+        """
+        # Dismiss Sidekick first so it doesn't obscure Workbench.
+        fa = getattr(self, '_floating_assistant', None)
+        if fa is not None and hasattr(fa, '_dismiss_to_tray'):
+            try:
+                fa._dismiss_to_tray()
+            except Exception:
+                pass
+
+        if self.isMinimized():
+            self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+        import sys
+        if sys.platform == 'win32':
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                fg = ctypes.windll.user32.GetForegroundWindow()
+                fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg, None)
+                our_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+                if fg_thread != our_thread:
+                    ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, True)
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+                    ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, False)
+                else:
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+
+    def open_workbench_to_superlookup(self, text: str = ""):
+        """Bring Workbench forward, switch to the SuperLookup top tab,
+        and optionally seed the search field with ``text``.
+
+        Wired to Ctrl+Alt+L in v1.10.1 (Phase 2 of issue #199). Replaces
+        the legacy ``Sidekick.show_superlookup(text)`` route for the
+        global hotkey path; Sidekick's own copy still works for users
+        who summon Sidekick via Ctrl+Alt+K.
+        """
+        try:
+            if hasattr(self, '_ensure_superlookup_top_tab'):
+                self._ensure_superlookup_top_tab()
+            self._bring_workbench_forward()
+            if hasattr(self, 'superlookup_tab_index') and hasattr(self, 'main_tabs'):
+                self.main_tabs.setCurrentIndex(self.superlookup_tab_index)
+            widget = getattr(self, '_superlookup_top_widget', None)
+            if widget is not None and text:
+                # Seed the search field. SuperlookupTab exposes a
+                # QComboBox-style ``source_text`` widget (setEditText)
+                # plus a ``search_btn`` users press to fire the lookup.
+                try:
+                    if hasattr(widget, 'source_text'):
+                        widget.source_text.setEditText(text)
+                    if hasattr(widget, 'search_btn'):
+                        widget.search_btn.click()
+                except Exception as inner:
+                    self.log(f"⚠ Could not seed SuperLookup search: {inner}")
+        except Exception as e:
+            self.log(f"⚠ Could not open SuperLookup top tab: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def open_workbench_to_clipboard(self):
+        """Bring Workbench forward and switch to the Clipboard top tab.
+
+        Wired to Ctrl+Alt+C in v1.10.1 (Phase 2 of issue #199).
+        """
+        try:
+            if hasattr(self, '_ensure_clipboard_top_tab'):
+                self._ensure_clipboard_top_tab()
+            self._bring_workbench_forward()
+            if hasattr(self, 'clipboard_tab_index') and hasattr(self, 'main_tabs'):
+                self.main_tabs.setCurrentIndex(self.clipboard_tab_index)
+        except Exception as e:
+            self.log(f"⚠ Could not open Clipboard top tab: {e}")
+            import traceback
+            traceback.print_exc()
+
     def open_settings_to_keyboard_shortcuts(self):
         """Jump to Settings → Keyboard Shortcuts.
 
         Called from the Voice tab's "Change in Settings → Keyboard
         Shortcuts" link. Switches the main window to the Settings page
         and selects the Keyboard Shortcuts sub-tab.
-
-        Sidekick is a WindowStaysOnTopHint window – if we don't hide it
-        here, it will stay painted over Workbench and the user can't
-        see the page we just navigated them to. Dismissing Sidekick
-        only hides it (state preserved); they can re-summon with Ctrl+Q.
         """
         try:
-            # Hide Sidekick first so it doesn't cover Workbench.
-            fa = getattr(self, '_floating_assistant', None)
-            if fa is not None and hasattr(fa, '_dismiss_to_tray'):
-                try:
-                    fa._dismiss_to_tray()
-                except Exception:
-                    pass
-
             main_tabs = getattr(self, 'main_tabs', None)
             settings_tabs = getattr(self, 'settings_tabs', None)
             settings_idx = getattr(self, 'settings_tab_index', None)
@@ -21428,32 +21543,7 @@ class SupervertalerQt(QMainWindow):
                 main_tabs.setCurrentIndex(settings_idx)
             if settings_tabs is not None and kb_idx is not None:
                 settings_tabs.setCurrentIndex(kb_idx)
-
-            # Bring Workbench forward. show()/raise_()/activateWindow()
-            # is usually enough; on Windows we also use the
-            # SetForegroundWindow + AttachThreadInput dance so we win the
-            # foreground race against whatever app last had focus.
-            if self.isMinimized():
-                self.showNormal()
-            self.show()
-            self.raise_()
-            self.activateWindow()
-            import sys
-            if sys.platform == 'win32':
-                try:
-                    import ctypes
-                    hwnd = int(self.winId())
-                    fg = ctypes.windll.user32.GetForegroundWindow()
-                    fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg, None)
-                    our_thread = ctypes.windll.kernel32.GetCurrentThreadId()
-                    if fg_thread != our_thread:
-                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, True)
-                        ctypes.windll.user32.SetForegroundWindow(hwnd)
-                        ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, False)
-                    else:
-                        ctypes.windll.user32.SetForegroundWindow(hwnd)
-                except Exception:
-                    pass
+            self._bring_workbench_forward()
         except Exception as e:
             QMessageBox.information(
                 self, "Open Keyboard Shortcuts",
@@ -57663,18 +57753,33 @@ class SuperlookupTab(QWidget):
 
     @pyqtSlot()
     def _handle_clipboard_hotkey(self):
-        """Runs on Qt main thread – opens Sidekick to the Clipboard tab."""
+        """Runs on Qt main thread.
+
+        v1.10.1 (Phase 2 of issue #199): the hotkey now brings Workbench
+        forward and switches to its Clipboard top tab, instead of
+        opening Sidekick. Sidekick still works for users who summon it
+        manually via Ctrl+Alt+K.
+        """
         try:
-            from modules.platform_helpers import get_foreground_window
-            source_win = get_foreground_window()
             mw = self.main_window or self.window()
-            fa = getattr(mw, '_floating_assistant', None)
+            # New path: route to Workbench's Clipboard top tab.
+            if mw and hasattr(mw, 'open_workbench_to_clipboard'):
+                try:
+                    mw.open_workbench_to_clipboard()
+                    return
+                except Exception as e:
+                    print(f"[Clipboard] Workbench top-tab route failed: {e}")
+
+            # Fallback: Sidekick.
+            fa = getattr(mw, '_floating_assistant', None) if mw else None
             if fa:
+                from modules.platform_helpers import get_foreground_window
+                source_win = get_foreground_window()
                 if mw and mw is not self:
                     mw._quicklauncher_source_window = source_win
                 fa._open_to_clipboard(source_window=source_win)
             else:
-                print("[Clipboard] Floating Assistant not available")
+                print("[Clipboard] Neither Workbench top tab nor Sidekick available")
         except Exception as e:
             print(f"[Clipboard] Error in clipboard hotkey handler: {e}")
 
@@ -57977,21 +58082,34 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Error in hotkey handler: {e}")
 
     def _read_clipboard_for_superlookup(self):
-        """Read clipboard and dispatch to Superlookup in the floating assistant.
+        """Read clipboard and dispatch to SuperLookup.
 
-        We open the Sidekick window even when the clipboard is empty so the
-        user always gets visible feedback for Ctrl+Alt+L. Without text we just
-        skip the auto-search; the user can type into the search field manually.
+        v1.10.1 (Phase 2 of issue #199): the hotkey now bring Workbench
+        forward and switches to its SuperLookup top tab, instead of
+        opening Sidekick. Sidekick still works for users who summon it
+        manually via Ctrl+Alt+K. Empty clipboard still triggers the
+        navigation – without text we skip the auto-search and let the
+        user type into the search field manually, which is the same
+        visible-feedback contract Sidekick had.
         """
         text = pyperclip.paste() or ""
 
-        # Route to the floating assistant's Superlookup tab if available
         mw = self.main_window
+        # New path: route to Workbench's SuperLookup top tab.
+        if mw and hasattr(mw, 'open_workbench_to_superlookup'):
+            try:
+                mw.open_workbench_to_superlookup(text)
+                return
+            except Exception as e:
+                print(f"[Superlookup] Workbench top-tab route failed: {e}")
+
+        # Fallback: Sidekick (back-compat for environments where the
+        # Workbench top tab couldn't be built).
         assistant = getattr(mw, '_floating_assistant', None) if mw else None
         if assistant and hasattr(assistant, 'show_superlookup'):
             assistant.show_superlookup(text)
         elif text:
-            # Fallback to main window Superlookup (only useful with text)
+            # Last-ditch fallback: main-window AHK-capture handler.
             self.on_ahk_capture(text)
 
     @pyqtSlot()
