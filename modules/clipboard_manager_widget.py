@@ -678,15 +678,41 @@ class ClipboardManagerWidget(QWidget):
     # ------------------------------------------------------------------
 
     def _on_item_activated(self, item: QListWidgetItem):
+        """Enter / click on a clipboard-history item. Sets the
+        clipboard to the item's contents and – if a source window was
+        captured via Ctrl+Alt+C – hides Workbench and pastes back
+        into the source app.
+
+        v1.10.25 fix: prior versions called only ``_paste_text_callback``
+        / ``_paste_image_callback`` here, and the Workbench-supplied
+        callbacks since the Sidekick→Workbench migration in v1.10.0
+        only put the text/pixmap on the clipboard and did nothing
+        else. So pressing Enter on a clipboard item silently lost
+        the paste-back step. Snippets / Special Characters / Text
+        Conversions in the action-menu column still worked because
+        they always called ``_paste_to_source`` directly, bypassing
+        the callbacks. We now route the top-level item activation
+        through the same path. The callback parameters remain in
+        the constructor for backward compatibility but are no
+        longer load-bearing.
+        """
         kind = item.data(_ROLE_KIND)
         if kind == 'text':
             text = item.data(_ROLE_TEXT)
             if not text:
                 return
             self._mark_pasted(item)
-            self._suppress_next = True
+            self._paste_to_source(text)
+            # Notify external observers (no-op for the current
+            # Workbench-supplied stub, but kept as a hook so any
+            # future host can subscribe to "user picked a clipboard
+            # item" events without us reintroducing a parallel
+            # paste-back code path).
             if self._paste_text_callback:
-                self._paste_text_callback(text)
+                try:
+                    self._paste_text_callback(text)
+                except Exception:
+                    pass
 
         elif kind == 'image':
             png = item.data(_ROLE_IMG)
@@ -702,9 +728,12 @@ class ClipboardManagerWidget(QWidget):
             if not pixmap.loadFromData(png, "PNG"):
                 return
             self._mark_pasted(item)
-            self._suppress_next = True
+            self._paste_pixmap_to_source(pixmap)
             if self._paste_image_callback:
-                self._paste_image_callback(pixmap)
+                try:
+                    self._paste_image_callback(pixmap)
+                except Exception:
+                    pass
 
     def _mark_pasted(self, item: QListWidgetItem):
         item.setData(_ROLE_PASTED, True)
@@ -1123,14 +1152,76 @@ class ClipboardManagerWidget(QWidget):
 
         Mirrors Sidekick's ``_paste_and_return`` semantics so users
         who Ctrl+Alt+C from Trados, pick a snippet / conversion, and
-        expect the result back in Trados get exactly that. Mirrors
-        Sidekick's implementation closely so the UX is identical.
+        expect the result back in Trados get exactly that.
         """
         if text is None:
             return
         self._suppress_next = True
         QApplication.clipboard().setText(text)
+        self._activate_source_then_paste()
 
+    def _paste_pixmap_to_source(self, pixmap):
+        """Image-clip parallel of :meth:`_paste_to_source`. Set the
+        clipboard to ``pixmap``, then – if a source window was
+        captured – hide Workbench, refocus the source window, and send
+        Ctrl+V. Without a source, just set the clipboard and stay put.
+
+        Added in v1.10.25 to fix the image-clip Enter-to-paste path.
+        Prior to v1.10.25 the image case (and the text case) ran
+        through ``self._paste_image_callback`` / ``_paste_text_callback``,
+        which the Workbench-supplied implementation had stubbed to
+        only-set-the-clipboard – so the paste-back never fired for the
+        primary clipboard-list activation path. Snippets / Special
+        Characters / Text Conversions had always called
+        ``_paste_to_source`` directly, so those still worked.
+        """
+        if pixmap is None or pixmap.isNull():
+            return
+        self._suppress_next = True
+        QApplication.clipboard().setPixmap(pixmap)
+        self._activate_source_then_paste()
+
+    def _activate_source_then_paste(self):
+        """Shared post-clipboard paste-back: refocus the source window,
+        hide Workbench, send Ctrl+V on a short delay. Both
+        ``_paste_to_source`` (text) and ``_paste_pixmap_to_source``
+        (images) end here.
+
+        The text vs pixmap difference is purely the clipboard-write
+        upstream; everything from "now make the source app
+        foreground" onwards is identical, so v1.10.25 factored it
+        out to share between the two.
+
+        Order matters here. Original v1.10.1 code did
+          1) hide Workbench  →  2) wait 100ms  →  3) activate source
+        which looked symmetric to Sidekick but is in fact broken for
+        a *non-Tool* top-level window:
+
+          Windows' SetForegroundWindow() only honours calls from the
+          process that *currently* owns the foreground (or has been
+          attached via AttachThreadInput to the foreground thread).
+          Once we hide() Workbench, Workbench is no longer the
+          foreground process, so the deferred activate_foreground_
+          window() 100ms later silently no-ops – the OS refuses the
+          switch. Result: Trados never regains focus, the cursor is
+          "nowhere", and the Ctrl+V keystroke we eventually send
+          either evaporates or hits the desktop.
+
+        New ordering (v1.10.3):
+          1) Activate source *while Workbench still owns foreground*
+             – the OS happily grants the switch in that state.
+          2) Hide Workbench. Workbench isn't foreground any more, so
+             hide() can't disturb the foreground state.
+          3) After a short delay, send Ctrl+V to the now-foreground
+             source window.
+
+        Sidekick (``Qt.WindowType.Tool``) got away with the old order
+        because Tool windows ride on the parent's foreground slot and
+        never own foreground in their own right – the post-hide
+        foreground state was always the source window, so the timing
+        window didn't bite. Workbench is a regular top-level so we
+        have to be explicit.
+        """
         source = self._source_window
         if source is None:
             return  # No source – user is in Workbench by choice; stay.
@@ -1140,35 +1231,6 @@ class ClipboardManagerWidget(QWidget):
         # stays in Workbench, which is the right default.
         self._source_window = None
 
-        # Order matters here. Original v1.10.1 code did
-        #   1) hide Workbench  →  2) wait 100ms  →  3) activate source
-        # which looked symmetric to Sidekick but is in fact broken for
-        # a *non-Tool* top-level window:
-        #
-        #   Windows' SetForegroundWindow() only honours calls from the
-        #   process that *currently* owns the foreground (or has been
-        #   attached via AttachThreadInput to the foreground thread).
-        #   Once we hide() Workbench, Workbench is no longer the
-        #   foreground process, so the deferred activate_foreground_
-        #   window() 100ms later silently no-ops – the OS refuses the
-        #   switch. Result: Trados never regains focus, the cursor is
-        #   "nowhere", and the Ctrl+V keystroke we eventually send
-        #   either evaporates or hits the desktop.
-        #
-        # New ordering (v1.10.3):
-        #   1) Activate source *while Workbench still owns foreground*
-        #      – the OS happily grants the switch in that state.
-        #   2) Hide Workbench. Workbench isn't foreground any more, so
-        #      hide() can't disturb the foreground state.
-        #   3) After a short delay, send Ctrl+V to the now-foreground
-        #      source window.
-        #
-        # Sidekick (`Qt.WindowType.Tool`) got away with the old order
-        # because Tool windows ride on the parent's foreground slot and
-        # never own foreground in their own right – the post-hide
-        # foreground state was always the source window, so the timing
-        # window didn't bite. Workbench is a regular top-level so we
-        # have to be explicit.
         from PyQt6.QtCore import QTimer
         from modules.platform_helpers import (
             activate_foreground_window, CrossPlatformKeySender,

@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.24 (May 13, 2026)
+**Current Version:** v1.10.25 (May 13, 2026)
+
+
+## v1.10.25 – May 13, 2026
+
+### Fixed (Clipboard tab: pressing Enter on a list item didn't paste back into the source app)
+
+- Picking a text or image clip from the Clipboard tab (arrow-key to it, press Enter; or click) was supposed to: (1) set the clipboard to that item, (2) refocus the app the user came from via Ctrl+Alt+C, (3) hide Workbench, (4) send Ctrl+V. Steps 2–4 were silently skipped – the clip landed on the clipboard, but the user had to Alt+Tab back to the source app and paste manually.
+- Root cause: when the Clipboard tab was migrated out of Sidekick and into Workbench in v1.10.0/v1.10.1, the `_on_item_activated` handler in the widget kept calling its `paste_text_callback` / `paste_image_callback` constructor parameters – but the new Workbench-supplied callbacks (`_ensure_clipboard_top_tab`'s `_paste_text` / `_paste_image` lambdas) only put the item on the clipboard and did *nothing else*. The widget already had a fully-working `_paste_to_source` method (used by Snippets, Special Characters, and Text Conversions in the action-menu column, which is why those paths *did* paste back correctly), but the primary text/image list activation path never called it.
+- Fix is a small widget-internal refactor:
+  - **New `_paste_pixmap_to_source(pixmap)`** method mirrors `_paste_to_source(text)` but for image clips. Both now delegate the post-clipboard "activate source → hide Workbench → send Ctrl+V" sequence to a shared `_activate_source_then_paste()` helper.
+  - **`_on_item_activated`** now calls `_paste_to_source` / `_paste_pixmap_to_source` directly, bypassing the stale callback path.
+  - The `paste_text_callback` / `paste_image_callback` constructor parameters are kept for backward compatibility but are now a notification-only hook (fires after the paste-back, errors swallowed). The Workbench-supplied stub `_paste_text` / `_paste_image` lambdas continue to exist but are no longer load-bearing.
+- Net effect: the Clipboard tab's primary use case finally does what its tooltip and help docs always claimed: pick a clip → it pastes into whichever app you summoned the tab from. Snippets / Special Characters / Text Conversions in the third column already worked and are unaffected.
 
 
 ## v1.10.24 – May 13, 2026
