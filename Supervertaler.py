@@ -25380,36 +25380,91 @@ class SupervertalerQt(QMainWindow):
     def _on_esc_quick_lookup_dismiss(self):
         """Hide Workbench to the system tray when Esc is pressed while
         the user is on a "quick lookup" top tab (SuperLookup,
-        Clipboard, Voice).
+        Clipboard, Voice) AND the focused widget is not a text
+        input.
 
-        On Editor / TMs / Termbases / AI / Settings the press is a
-        no-op so Esc keeps its natural editor / dialog / combo-box
-        behaviour (cancel-edit, close-popup, etc.).
+        Three gates have to all pass before we hide:
 
-        Wired in v1.10.17 to match the dismissal flow that retired
-        Sidekick used to have: those three tabs are typically
-        summoned via global hotkeys (Ctrl+Alt+L / Ctrl+Alt+C) and
-        used as popup utilities, so Esc-as-dismiss is the natural
-        keyboard counterpart to the global hotkey-as-summon. Falls
-        back to do-nothing if the system tray isn't available (e.g.
-        a minimal Linux environment without a system tray daemon),
-        because hiding without a tray would leave the user with no
-        way to bring Workbench back.
+        1. Current tab is one of SuperLookup / Clipboard / Voice.
+           On Editor / TMs / Termbases / AI / Settings, Esc keeps
+           its natural editor / dialog / combo-box semantics
+           (cancel-edit, close-popup, etc.).
+
+        2. A system-tray icon exists. Without a tray, hiding would
+           strand the user in an invisible window with no way to
+           summon it back. Fail closed on platforms without tray
+           support.
+
+        3. The focused widget is not a text-input widget
+           (QLineEdit / QTextEdit / QComboBox in edit mode, plus
+           subclasses). Most apps use Esc to clear / dismiss in a
+           text field, and users mid-typing in the SuperLookup
+           search box pressing Esc by accident shouldn't lose the
+           whole window. So if focus is in any kind of text input,
+           Esc keeps its default Qt behaviour. Once the user has
+           moved focus off the input (to the list, tree, or
+           anywhere else), Esc dismisses to tray.
+
+        Wired in v1.10.17, refined to be focus-aware in v1.10.18.
+        Matches the dismissal flow that retired Sidekick used to
+        have, now scoped to the Workbench tabs that inherited
+        Sidekick's role.
         """
         if not hasattr(self, 'main_tabs'):
             return
         if getattr(self, '_tray_icon', None) is None:
-            # No tray means no way to restore – better to do nothing
-            # than to strand the user in a hidden window.
             return
+
         quick_lookup_indices = {
             getattr(self, 'superlookup_tab_index', None),
             getattr(self, 'clipboard_tab_index', None),
             getattr(self, 'voice_tab_index', None),
         }
         quick_lookup_indices.discard(None)
-        if self.main_tabs.currentIndex() in quick_lookup_indices:
-            self.hide()
+        if self.main_tabs.currentIndex() not in quick_lookup_indices:
+            return
+
+        # Gate 3: bail out if the focused widget is a text input.
+        # Importing here keeps the module-load surface clean (these
+        # widget classes are already in PyQt6 so the import is cheap).
+        try:
+            from PyQt6.QtWidgets import (
+                QLineEdit, QTextEdit, QPlainTextEdit, QComboBox,
+                QAbstractSpinBox,
+            )
+            focused = QApplication.focusWidget()
+            if focused is not None:
+                # QComboBox: only treat as text-input when the user
+                # is editing (i.e. the line-edit child has focus).
+                # If the dropdown is focused but not in edit mode,
+                # Esc-dismiss is fine.
+                text_input_types = (
+                    QLineEdit, QTextEdit, QPlainTextEdit,
+                    QAbstractSpinBox,
+                )
+                if isinstance(focused, text_input_types):
+                    return
+                # QComboBox with an editable line-edit child: the
+                # line-edit IS the focused widget (caught above), so
+                # this is just for safety.
+                if isinstance(focused, QComboBox) and focused.isEditable():
+                    return
+                # Walk up: a QLineEdit nested inside a custom
+                # composite widget should also count as a text input.
+                w = focused.parent()
+                hops = 0
+                while w is not None and hops < 5:
+                    if isinstance(w, text_input_types):
+                        return
+                    w = w.parent()
+                    hops += 1
+        except Exception:
+            # If the introspection fails for any reason, fall
+            # through to the hide – preserves v1.10.17 behaviour as
+            # a safe default rather than silently doing nothing.
+            pass
+
+        self.hide()
 
     def _on_toggle_close_to_tray(self, checked: bool):
         prefs = self._load_settings_section("ui")

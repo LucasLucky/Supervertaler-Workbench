@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.17 (May 13, 2026)
+**Current Version:** v1.10.18 (May 13, 2026)
+
+
+## v1.10.18 – May 13, 2026
+
+### Changed (Esc-to-tray is now focus-aware: skipped when typing in a text input)
+
+- v1.10.17 added Esc-to-tray on the SuperLookup / Clipboard / Voice top tabs. On reflection it had two avoidable failure modes:
+  - **Mid-typing accident**: user in the SuperLookup search box typing a query, hits Esc by accident (key is right above Shift), entire window vanishes. Heavy penalty for a one-keystroke mistake.
+  - **Convention mismatch**: most apps use Esc-in-a-text-input to clear the field or close a dropdown, not to hide the whole app. Users pressing Esc expecting to clear their query instead lost the window.
+- v1.10.18 adds a third gate to the existing two (current tab is quick-lookup; tray icon exists): Esc only dismisses when the focused widget is *not* a text-input widget. Recognised text-input types are `QLineEdit`, `QTextEdit`, `QPlainTextEdit`, `QAbstractSpinBox`, and an editable `QComboBox`. A 5-hop parent walk catches text inputs nested inside custom composite widgets too.
+- Net behaviour:
+  - Focus on the SuperLookup search field, Clipboard filter text box, an editable combo, etc. → Esc keeps its default Qt behaviour (clear field, close popup, dismiss completion list, etc.).
+  - Focus on the Clipboard list, action tree, Voice tab buttons, empty space, etc. → Esc hides Workbench to the tray.
+- The introspection is wrapped in a try/except so any unexpected widget configuration falls through to v1.10.17 behaviour (hide). Preserves the previous-release semantics as a safe default.
 
 
 ## v1.10.17 – May 13, 2026
