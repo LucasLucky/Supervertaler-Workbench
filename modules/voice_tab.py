@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QSpinBox, QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QScrollArea, QFrame, QMessageBox, QSplitter, QMenu,
+    QPlainTextEdit, QCheckBox,
 )
 
 from modules.styled_widgets import CheckmarkCheckBox, HelpButton
@@ -370,6 +371,93 @@ class VoiceTab(QWidget):
 
         ptt_group.setLayout(ptt_layout)
         left_layout.addWidget(ptt_group)
+
+        # =================================================
+        # Dictation vocabulary (v1.10.26) — Whisper biasing
+        # =================================================
+        # Whisper's decoder accepts an ``initial_prompt`` string that
+        # biases transcription toward the vocabulary it contains. We
+        # always seed it with the Supervertaler ecosystem terms (see
+        # modules.voice_vocabulary.DEFAULT_VOCABULARY) so brand names
+        # don't mistranscribe out of the box. This UI lets the user
+        # extend that with their own custom terms, add post-process
+        # replacements for stubborn cases, and opt into pulling
+        # vocabulary from the active project's termbase.
+        vocab_group = QGroupBox("📚 Dictation vocabulary")
+        vocab_layout = QVBoxLayout()
+
+        vocab_info = QLabel(
+            "Help Whisper transcribe brand names and technical terms "
+            "correctly. Built-in defaults already cover Supervertaler, "
+            "Trados, memoQ, OpenAI, etc. – add your own below."
+        )
+        vocab_info.setWordWrap(True)
+        vocab_info.setStyleSheet("font-size: 8pt; color: #666;")
+        vocab_layout.addWidget(vocab_info)
+
+        # Custom dictionary textarea: comma- or newline-separated.
+        vocab_layout.addWidget(QLabel("<b>Custom dictionary</b>"))
+        vocab_dict_hint = QLabel(
+            "Brand / technical terms Whisper should recognise. Comma- or "
+            "newline-separated. Examples: client names, product names, "
+            "industry jargon."
+        )
+        vocab_dict_hint.setWordWrap(True)
+        vocab_dict_hint.setStyleSheet("font-size: 8pt; color: #888;")
+        vocab_layout.addWidget(vocab_dict_hint)
+        self._vocab_dict_edit = QPlainTextEdit()
+        self._vocab_dict_edit.setPlaceholderText(
+            "e.g. Acme Corp, Beijerterm, polyurethane, embodiment"
+        )
+        self._vocab_dict_edit.setFixedHeight(70)
+        vocab_layout.addWidget(self._vocab_dict_edit)
+
+        # "Bias from active termbase" checkbox.
+        self._vocab_use_termbase_cb = QCheckBox(
+            "Also bias from the active project's termbase "
+            "(source-language entries)"
+        )
+        self._vocab_use_termbase_cb.setStyleSheet("font-size: 9pt;")
+        vocab_layout.addWidget(self._vocab_use_termbase_cb)
+
+        # Replacements table.
+        vocab_layout.addSpacing(6)
+        vocab_layout.addWidget(QLabel("<b>Replacements</b>"))
+        repl_hint = QLabel(
+            "Fix specific mistranscriptions: enter what Whisper hears, "
+            "then what you actually meant. Common defaults are applied "
+            "automatically (e.g. \"supervertile\" → Supervertaler)."
+        )
+        repl_hint.setWordWrap(True)
+        repl_hint.setStyleSheet("font-size: 8pt; color: #888;")
+        vocab_layout.addWidget(repl_hint)
+
+        self._vocab_repl_table = QTableWidget(0, 2)
+        self._vocab_repl_table.setHorizontalHeaderLabels(["Heard", "Meant"])
+        self._vocab_repl_table.horizontalHeader().setStretchLastSection(True)
+        self._vocab_repl_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch)
+        self._vocab_repl_table.verticalHeader().setVisible(False)
+        self._vocab_repl_table.setFixedHeight(110)
+        self._vocab_repl_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        vocab_layout.addWidget(self._vocab_repl_table)
+
+        repl_btn_row = QHBoxLayout()
+        repl_add_btn = QPushButton("➕ Add row")
+        repl_add_btn.clicked.connect(self._vocab_add_repl_row)
+        repl_btn_row.addWidget(repl_add_btn)
+        repl_del_btn = QPushButton("➖ Remove selected")
+        repl_del_btn.clicked.connect(self._vocab_remove_repl_row)
+        repl_btn_row.addWidget(repl_del_btn)
+        repl_btn_row.addStretch()
+        vocab_layout.addLayout(repl_btn_row)
+
+        vocab_group.setLayout(vocab_layout)
+        left_layout.addWidget(vocab_group)
+
+        # Populate from saved settings.
+        self._vocab_load_into_ui()
 
         # AutoHotkey Integration
         ahk_group = QGroupBox("⌨️ AutoHotkey Integration")
@@ -929,13 +1017,123 @@ class VoiceTab(QWidget):
             max_duration=self._duration_spin.value(),
             language=self._lang_combo.currentText(),
         )
-        if ok:
+        # v1.10.26: also persist the dictation-vocabulary settings.
+        # Saved alongside the standard dictation settings so the user
+        # gets a single "Save" button for the whole Voice tab.
+        vocab_ok = self._vocab_save_from_ui()
+        if ok and vocab_ok:
             QMessageBox.information(
                 self, "Voice Settings", "Settings saved.")
         else:
             QMessageBox.warning(
                 self, "Voice Settings",
                 "Couldn't save settings – check the log for details.")
+
+    # -----------------------------------------------------------------
+    # Dictation-vocabulary helpers (v1.10.26).
+    #
+    # Storage shape: parent_app.load_voice_vocabulary_settings() /
+    # parent_app.save_voice_vocabulary_settings() handle the JSON
+    # round-trip. These methods just translate between that shape and
+    # the UI widgets (textarea + table + checkbox).
+    # -----------------------------------------------------------------
+
+    def _vocab_load_into_ui(self):
+        """Populate the vocabulary UI widgets from saved settings.
+        Called once after _build_ui; also re-runnable if the user
+        ever wants a Refresh / Reset hook in the future.
+        """
+        try:
+            loader = getattr(self._parent_app, 'load_voice_vocabulary_settings', None)
+            if not callable(loader):
+                return
+            settings = loader() or {}
+            terms = settings.get('custom_terms') or []
+            replacements = settings.get('replacements') or []
+            use_tb = bool(settings.get('use_termbase', True))
+
+            # Custom-dictionary textarea: one term per line.
+            self._vocab_dict_edit.setPlainText("\n".join(terms))
+            # Termbase-bias checkbox.
+            self._vocab_use_termbase_cb.setChecked(use_tb)
+            # Replacements table.
+            self._vocab_repl_table.setRowCount(0)
+            for entry in replacements:
+                if not isinstance(entry, dict):
+                    continue
+                heard = str(entry.get('heard', '')).strip()
+                meant = str(entry.get('meant', '')).strip()
+                if not heard or not meant:
+                    continue
+                row = self._vocab_repl_table.rowCount()
+                self._vocab_repl_table.insertRow(row)
+                self._vocab_repl_table.setItem(row, 0, QTableWidgetItem(heard))
+                self._vocab_repl_table.setItem(row, 1, QTableWidgetItem(meant))
+        except Exception as e:
+            print(f"[VoiceTab vocab] load into UI failed: {e!r}")
+
+    def _vocab_save_from_ui(self) -> bool:
+        """Persist the vocabulary UI widget state back to settings.
+        Returns True on success, False if anything went wrong (the
+        caller can decide whether that's a hard error or a soft
+        warning).
+        """
+        try:
+            saver = getattr(self._parent_app, 'save_voice_vocabulary_settings', None)
+            if not callable(saver):
+                return True  # Older parent app – treat as no-op success.
+
+            # Custom terms: split on commas + newlines, drop blanks.
+            raw = self._vocab_dict_edit.toPlainText()
+            terms = []
+            seen = set()
+            for chunk in raw.replace(',', '\n').splitlines():
+                t = chunk.strip()
+                if not t:
+                    continue
+                key = t.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                terms.append(t)
+
+            # Replacements table → list of dicts.
+            replacements = []
+            for row in range(self._vocab_repl_table.rowCount()):
+                heard_item = self._vocab_repl_table.item(row, 0)
+                meant_item = self._vocab_repl_table.item(row, 1)
+                heard = (heard_item.text() if heard_item else '').strip()
+                meant = (meant_item.text() if meant_item else '').strip()
+                if heard and meant:
+                    replacements.append({'heard': heard, 'meant': meant})
+
+            use_tb = self._vocab_use_termbase_cb.isChecked()
+
+            saver(terms, replacements, use_tb)
+            return True
+        except Exception as e:
+            print(f"[VoiceTab vocab] save from UI failed: {e!r}")
+            return False
+
+    def _vocab_add_repl_row(self):
+        """Append an empty row to the replacements table and put the
+        cursor in the first cell so the user can start typing
+        immediately."""
+        row = self._vocab_repl_table.rowCount()
+        self._vocab_repl_table.insertRow(row)
+        self._vocab_repl_table.setItem(row, 0, QTableWidgetItem(""))
+        self._vocab_repl_table.setItem(row, 1, QTableWidgetItem(""))
+        self._vocab_repl_table.editItem(self._vocab_repl_table.item(row, 0))
+
+    def _vocab_remove_repl_row(self):
+        """Remove all selected rows from the replacements table.
+        Iterates back-to-front so row indices stay valid as we delete."""
+        rows = sorted(
+            {idx.row() for idx in self._vocab_repl_table.selectedIndexes()},
+            reverse=True,
+        )
+        for row in rows:
+            self._vocab_repl_table.removeRow(row)
 
     def _open_ahk_folder(self):
         fn = getattr(self._parent_app, '_open_voice_scripts_folder', None)

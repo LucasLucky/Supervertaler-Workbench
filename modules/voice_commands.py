@@ -695,11 +695,21 @@ class ContinuousVoiceListener(QObject):
                  api_key: str = None,
                  user_data_path=None,
                  vosk_model_key: str = None,
-                 mic_device: str = None):
+                 mic_device: str = None,
+                 initial_prompt: str = None,
+                 replacements: list = None):
         super().__init__()
         self.command_manager = command_manager
         self.model_name = model_name
         self.language = None if language == "auto" else language
+        # Vocabulary biasing (v1.10.26). Passed straight through to
+        # whichever Whisper backend the dictation path picks (cloud
+        # API or local faster-whisper). Both surfaces accept it; Vosk
+        # ignores it because Vosk runs in grammar mode and only ever
+        # transcribes phrases from its pre-built command list. See
+        # modules.voice_vocabulary for the builder + post-processor.
+        self.initial_prompt = initial_prompt
+        self.replacements = replacements
         # Backward-compat: legacy callers may still pass ``use_api=True``;
         # we map that to the API engine if ``engine`` was left at default.
         # New callers should pass the engine string directly.
@@ -1191,15 +1201,21 @@ class _VADListenerThread(QObject):
             with open(audio_path, "rb") as audio_file:
                 # Use whisper-1 model (OpenAI's hosted Whisper)
                 kwargs = {"model": "whisper-1", "file": audio_file}
-                
+
                 # Add language hint if specified
                 if self.listener.language:
                     kwargs["language"] = self.listener.language
-                
+
+                # v1.10.26: vocabulary biasing. Passed as the
+                # ``prompt`` field; biases the decoder toward known
+                # brand / technical terms.
+                if getattr(self.listener, 'initial_prompt', None):
+                    kwargs["prompt"] = self.listener.initial_prompt
+
                 response = client.audio.transcriptions.create(**kwargs)
-            
-            return response.text.strip()
-            
+
+            return self._post_process_transcript(response.text.strip())
+
         except Exception as e:
             self.error_occurred.emit(f"OpenAI API error: {e}")
             return ""
@@ -1216,18 +1232,45 @@ class _VADListenerThread(QObject):
         try:
             with hide_subprocess_console_windows():
                 lang = self.listener.language or None
-                segments, _info = self._model.transcribe(
-                    audio_path,
+                transcribe_kwargs = dict(
                     language=lang,
                     beam_size=5,
                     vad_filter=False,  # we run our own amplitude VAD upstream
                 )
+                # v1.10.26: vocabulary biasing. Same effect as the
+                # cloud API – tokenises the prompt into the decoder's
+                # preceding-context so words appearing in the prompt
+                # get a small probability boost.
+                if getattr(self.listener, 'initial_prompt', None):
+                    transcribe_kwargs["initial_prompt"] = self.listener.initial_prompt
+                segments, _info = self._model.transcribe(
+                    audio_path, **transcribe_kwargs
+                )
                 # segments is a generator – iterate to materialise the output.
                 text = "".join(seg.text for seg in segments)
-            return text.strip()
+            return self._post_process_transcript(text.strip())
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
             return ""
+
+    def _post_process_transcript(self, text: str) -> str:
+        """Apply the default + user-supplied replacement table
+        (modules.voice_vocabulary) to a freshly-transcribed string.
+
+        Wrapped in try/except so a buggy user replacement entry
+        can't bring down the listener – worst case we return the
+        raw text. v1.10.26.
+        """
+        if not text:
+            return text
+        try:
+            from modules.voice_vocabulary import post_process_transcript
+            return post_process_transcript(
+                text, getattr(self.listener, 'replacements', None)
+            )
+        except Exception as e:
+            print(f"[VoiceListener] replacement post-process error: {e}")
+            return text
 
     def _maybe_rebuild_vosk_grammar(self):
         """Replace the active KaldiRecognizer with one built from the

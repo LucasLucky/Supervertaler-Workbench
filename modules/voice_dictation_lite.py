@@ -53,7 +53,7 @@ class QuickDictationThread(QThread):
     model_loading_started = pyqtSignal(str)  # Model name being loaded/downloaded
     model_loading_finished = pyqtSignal()  # Model loaded successfully
 
-    def __init__(self, model_name="base", language="auto", duration=10, use_api: bool = False, api_key: str | None = None, mic_device: str | None = None):
+    def __init__(self, model_name="base", language="auto", duration=10, use_api: bool = False, api_key: str | None = None, mic_device: str | None = None, initial_prompt: str | None = None, replacements: list | None = None):
         super().__init__()
         self.model_name = model_name
         self.language = None if language == "auto" else language
@@ -65,6 +65,18 @@ class QuickDictationThread(QThread):
         # modules.mic_devices, so we always honour the *current* device
         # mapping rather than a stale index from __init__ time.
         self.mic_device = mic_device
+        # Vocabulary biasing (v1.10.26). ``initial_prompt`` is passed
+        # through to faster-whisper's transcribe() / OpenAI API's
+        # transcriptions.create() to bias the decoder toward known
+        # brand and technical terms (e.g. "Supervertaler" stops
+        # mistranscribing as "Supervertile"). ``replacements`` is a
+        # list of {"heard": str, "meant": str} dicts applied as a
+        # post-process regex pass for stubborn cases the biasing
+        # doesn't catch. Both are built by
+        # modules.voice_vocabulary.build_initial_prompt() /
+        # post_process_transcript(); pass None to skip both.
+        self.initial_prompt = initial_prompt
+        self.replacements = replacements
         self.sample_rate = 16000
         self.is_recording = False
         self.stop_requested = False
@@ -203,7 +215,13 @@ class QuickDictationThread(QThread):
             self.error_occurred.emit(f"Error: {str(e)}\n\nTraceback:\n{error_details}")
 
     def _transcribe_with_api(self, audio_path: str) -> str:
-        """Transcribe using OpenAI Whisper API (no local Whisper required)."""
+        """Transcribe using OpenAI Whisper API (no local Whisper required).
+
+        v1.10.26: passes ``self.initial_prompt`` as the ``prompt``
+        field to bias the decoder toward known brand / technical
+        vocabulary. Applies ``self.replacements`` (default + user)
+        as a post-process pass on the returned text.
+        """
         try:
             from openai import OpenAI
 
@@ -212,9 +230,12 @@ class QuickDictationThread(QThread):
                 kwargs = {"model": "whisper-1", "file": audio_file}
                 if self.language:
                     kwargs["language"] = self.language
+                if self.initial_prompt:
+                    kwargs["prompt"] = self.initial_prompt
                 response = client.audio.transcriptions.create(**kwargs)
 
-            return (response.text or "").strip()
+            text = (response.text or "").strip()
+            return self._apply_replacements(text)
         except Exception as e:
             self.error_occurred.emit(f"OpenAI API error: {e}")
             return ""
@@ -252,18 +273,42 @@ class QuickDictationThread(QThread):
             self.status_update.emit("⏳ Transcribing audio...")
             with hide_subprocess_console_windows():
                 lang = self.language or None
-                segments, _info = model.transcribe(
-                    audio_path,
+                transcribe_kwargs = dict(
                     language=lang,
                     beam_size=5,
                     vad_filter=False,
                 )
+                # v1.10.26: vocabulary biasing. ``initial_prompt`` is
+                # passed straight through to faster-whisper, which
+                # tokenises it into the decoder's preceding-context
+                # so words appearing in the prompt get a small
+                # probability boost throughout transcription. Fixes
+                # the "Supervertile" mistranscription class.
+                if self.initial_prompt:
+                    transcribe_kwargs["initial_prompt"] = self.initial_prompt
+                segments, _info = model.transcribe(audio_path, **transcribe_kwargs)
                 text = "".join(seg.text for seg in segments)
 
-            return text.strip()
+            return self._apply_replacements(text.strip())
         except Exception as e:
             self.error_occurred.emit(f"Local transcription error: {e}")
             return ""
+
+    def _apply_replacements(self, text: str) -> str:
+        """Apply the default + user-supplied replacement table to
+        the transcript. Wraps :func:`modules.voice_vocabulary.
+        post_process_transcript` with a try/except so a buggy user
+        replacement entry can't bring down the whole dictation
+        path – worst case we return the raw text.
+        """
+        if not text:
+            return text
+        try:
+            from modules.voice_vocabulary import post_process_transcript
+            return post_process_transcript(text, self.replacements)
+        except Exception as e:
+            print(f"[VoiceDictation] replacement post-process error: {e}")
+            return text
 
     def stop(self):
         """Stop recording"""

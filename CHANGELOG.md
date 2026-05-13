@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.25 (May 13, 2026)
+**Current Version:** v1.10.26 (May 13, 2026)
+
+
+## v1.10.26 – May 13, 2026
+
+### Added (Voice dictation: vocabulary biasing + custom replacements + termbase awareness)
+
+- Whisper has a well-known weakness with brand names and technical jargon – a user reported the always-on + push-to-talk paths repeatedly mistranscribing **"Supervertaler"** as **"Supervertile"**. v1.10.26 attacks this with three complementary techniques, all in the new `modules/voice_vocabulary.py` module.
+- **1. Built-in `initial_prompt` biasing (no setup required).** Whisper's decoder accepts a short `initial_prompt` string that biases transcription toward the vocabulary it contains. We pass a hard-coded list of Supervertaler-ecosystem terms ("Supervertaler, Workbench, Trados Studio, memoQ, CafeTran, Phrase, TermLens, SuperLookup, QuickTrans, OpenAI, ChatGPT, Claude, Anthropic, Gemini, Mistral, …") to both the cloud OpenAI Whisper API path and the local faster-whisper path. Words appearing in the prompt get a small probability boost throughout transcription, so brand names mistranscribe substantially less often. Vosk's grammar mode ignores the prompt (it only ever emits phrases from its fixed command list).
+- **2. Built-in post-processing replacements.** A second pass after Whisper returns catches stubborn cases the biasing didn't fix. Pre-seeded with common mishears: `supervertile`/`supervertaller`/`super vertaler` → `Supervertaler`, `work bench` → `Workbench`, `memo q`/`memo cue` → `memoQ`, `cafe tran` → `CafeTran`, `chat gpt` → `ChatGPT`, `gpt 4` → `GPT-4`, etc. Whole-word, case-insensitive; multi-word matches handle slow-speaker word breaks.
+- **3. User-extensible.** A new "📚 Dictation vocabulary" group in the Voice tab adds:
+  - A **Custom dictionary** textarea: brand / technical terms appended to the `initial_prompt`. Comma- or newline-separated. ("Acme Corp, Beijerterm, polyurethane, embodiment, …")
+  - A **Replacements** table (Heard → Meant): user-editable `heard → meant` pairs, applied on top of the built-in defaults. User entries can override defaults by repeating the `heard` key with a different `meant`.
+  - A **"Also bias from the active project's termbase"** checkbox: when on, the source-language `source_term` of every entry in every active termbase on the current project is appended to the `initial_prompt`. Free vocabulary boost for translators — terms from your actual project glossary auto-bias the dictation without you maintaining a separate list. Capped at 200 termbase entries per dictation invocation; `build_initial_prompt` further trims to ~800 chars to stay inside Whisper's ~224-token prompt budget.
+- Plumbing: `ContinuousVoiceListener` and `QuickDictationThread` both gained `initial_prompt` and `replacements` constructor parameters; `Supervertaler.py` builds a fresh prompt + reads the replacement list every time a new dictation surface is constructed, so changes to vocabulary settings take effect on the next utterance without restarting Workbench. Settings persist under the new `voice_vocabulary` key in the unified settings JSON.
+- Effect: pressing push-to-talk and saying "Supervertaler" now reliably transcribes as **Supervertaler** instead of "Supervertile". Same for the other Supervertaler-ecosystem terms. Translators using domain-specific termbases will see their own technical vocabulary land correctly without any per-project setup.
 
 
 ## v1.10.25 – May 13, 2026

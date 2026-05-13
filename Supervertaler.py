@@ -20867,6 +20867,15 @@ class SupervertalerQt(QMainWindow):
                 
                 # Create listener. user_data_path is needed by the Vosk
                 # engine to locate / download the Vosk model on demand.
+                # initial_prompt + replacements bias the Whisper
+                # decoder toward known brand / technical vocabulary so
+                # "Supervertaler" stops being heard as "Supervertile"
+                # etc. Built fresh from current settings + (optionally)
+                # the active project's termbase – see
+                # build_voice_initial_prompt() and
+                # load_voice_vocabulary_settings(). Vosk ignores both
+                # (it runs in grammar mode with a fixed phrase list).
+                vocab_settings = self.load_voice_vocabulary_settings()
                 self.voice_listener = ContinuousVoiceListener(
                     command_manager=self.voice_command_manager,
                     model_name=model_name,
@@ -20875,6 +20884,8 @@ class SupervertalerQt(QMainWindow):
                     api_key=api_key,
                     user_data_path=str(self.user_data_path) if hasattr(self, 'user_data_path') else None,
                     mic_device=dictation_settings.get('mic_device'),
+                    initial_prompt=self.build_voice_initial_prompt(),
+                    replacements=vocab_settings.get('replacements', []),
                 )
                 
                 # Set sensitivity from persisted settings (the Voice tab
@@ -38090,6 +38101,151 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             print(f"[LangSettings] Load failed, keeping defaults: {e!r}")
 
+    # =========================================================
+    # Voice dictation vocabulary biasing (v1.10.26 issue: Whisper
+    # misheard "Supervertaler" as "Supervertile" / etc. – see
+    # modules/voice_vocabulary.py for the full design).
+    # =========================================================
+
+    def load_voice_vocabulary_settings(self) -> Dict[str, Any]:
+        """Load the user's voice-dictation vocabulary settings.
+
+        Settings shape (stored under the ``voice_vocabulary`` key in
+        the unified settings JSON):
+
+            {
+                "custom_terms": ["MyClient", "TechWord", ...],
+                "replacements": [
+                    {"heard": "supervertile", "meant": "Supervertaler"},
+                    ...
+                ],
+                "use_termbase": true
+            }
+
+        The built-in defaults (modules.voice_vocabulary.DEFAULT_VOCABULARY
+        and DEFAULT_REPLACEMENTS) are *always* applied on top of the
+        user's settings, so brand names like "Supervertaler" are biased
+        even on a fresh install with no customisation.
+        """
+        defaults = {
+            'custom_terms': [],
+            'replacements': [],
+            'use_termbase': True,
+        }
+        try:
+            section = self._load_settings_section("voice_vocabulary")
+            result = defaults.copy()
+            result.update(section or {})
+            # Sanity-check shapes – tolerate strings that got saved as
+            # JSON lists, etc. Bad entries are silently dropped.
+            if not isinstance(result.get('custom_terms'), list):
+                result['custom_terms'] = []
+            if not isinstance(result.get('replacements'), list):
+                result['replacements'] = []
+            result['use_termbase'] = bool(result.get('use_termbase', True))
+            return result
+        except Exception as e:
+            print(f"[VoiceVocab] load failed, using defaults: {e!r}")
+            return defaults
+
+    def save_voice_vocabulary_settings(self, custom_terms, replacements, use_termbase):
+        """Persist the voice-dictation vocabulary settings. Replaces
+        the entire ``voice_vocabulary`` section; partial updates aren't
+        supported by design (the UI always writes all three fields).
+        """
+        try:
+            self._save_settings_section("voice_vocabulary", {
+                'custom_terms': [
+                    str(t).strip() for t in (custom_terms or [])
+                    if str(t).strip()
+                ],
+                'replacements': [
+                    {
+                        'heard': str(r.get('heard', '')).strip(),
+                        'meant': str(r.get('meant', '')).strip(),
+                    }
+                    for r in (replacements or [])
+                    if isinstance(r, dict)
+                    and str(r.get('heard', '')).strip()
+                    and str(r.get('meant', '')).strip()
+                ],
+                'use_termbase': bool(use_termbase),
+            })
+        except Exception as e:
+            print(f"[VoiceVocab] save failed: {e!r}")
+
+    def build_voice_initial_prompt(self) -> str:
+        """Construct the Whisper ``initial_prompt`` from defaults +
+        the user's custom terms + (optionally) the active project's
+        termbase source-language entries.
+
+        Called every time a new dictation surface is constructed
+        (always-on listener, push-to-talk thread), so changes to
+        the user's settings take effect on the next utterance
+        without restarting Workbench.
+        """
+        settings = self.load_voice_vocabulary_settings()
+        custom = settings.get('custom_terms', [])
+        termbase_terms = []
+        if settings.get('use_termbase', True):
+            try:
+                termbase_terms = self._collect_active_termbase_source_terms()
+            except Exception as e:
+                print(f"[VoiceVocab] termbase pull failed: {e!r}")
+        try:
+            from modules.voice_vocabulary import build_initial_prompt
+            return build_initial_prompt(
+                custom_terms=custom,
+                termbase_terms=termbase_terms,
+            )
+        except Exception as e:
+            print(f"[VoiceVocab] prompt build failed: {e!r}")
+            return ""
+
+    def _collect_active_termbase_source_terms(self) -> list:
+        """Return the source-language ``source_term`` values of every
+        term in every termbase that's currently active on the open
+        project. Empty list if nothing's open or no termbase is
+        active – the caller treats that as "no termbase bias".
+
+        Best-effort: any database / API error is caught and turned
+        into an empty list so it can never break the dictation flow.
+        """
+        if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
+            return []
+        project_id = getattr(self, 'current_project_id', None)
+        if project_id is None:
+            cp = getattr(self, 'current_project', None)
+            project_id = getattr(cp, 'id', None) if cp else None
+        if project_id is None:
+            return []
+        try:
+            active_ids = self.termbase_mgr.get_active_termbase_ids(project_id) or []
+        except Exception:
+            return []
+        out = []
+        seen = set()
+        for tb_id in active_ids:
+            try:
+                terms = self.termbase_mgr.get_terms(tb_id) or []
+            except Exception:
+                continue
+            for entry in terms:
+                src = (entry.get('source_term') or '').strip()
+                if not src:
+                    continue
+                key = src.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(src)
+                # Cap to keep the prompt from ballooning past Whisper's
+                # token budget. build_initial_prompt() trims further
+                # if needed, but it's cheaper to cap here.
+                if len(out) >= 200:
+                    return out
+        return out
+
     def load_language_settings(self):
         """Initialize spellcheck based on the already-loaded target language.
 
@@ -46081,7 +46237,12 @@ class SupervertalerQt(QMainWindow):
             # the saved device *name* from the Voice tab's Microphone
             # dropdown; the thread resolves it to a sounddevice index at
             # record time via modules.mic_devices (None ⇒ OS default).
+            # initial_prompt + replacements bias the Whisper decoder
+            # toward known vocabulary (defaults + custom + optional
+            # active termbase) – see build_voice_initial_prompt() and
+            # modules/voice_vocabulary.py.
             mic_device = dictation_settings.get('mic_device')
+            vocab_settings = self.load_voice_vocabulary_settings()
             self.dictation_thread = QuickDictationThread(
                 model_name=model_name,
                 language=lang_code,
@@ -46089,6 +46250,8 @@ class SupervertalerQt(QMainWindow):
                 use_api=use_api,
                 api_key=api_key,
                 mic_device=mic_device,
+                initial_prompt=self.build_voice_initial_prompt(),
+                replacements=vocab_settings.get('replacements', []),
             )
 
             # Connect signals
