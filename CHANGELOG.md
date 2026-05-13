@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.14 (May 13, 2026)
+**Current Version:** v1.10.15 (May 13, 2026)
+
+
+## v1.10.15 – May 13, 2026
+
+### Fixed (v1.10.14 didn't actually fix the menu-activation issue; menu still activates after Ctrl+Alt+C/L)
+
+- v1.10.14's `menuBar().setActiveAction(None)` + `setFocus()` calls ran *before* Qt processed the queued synthetic Alt event from the input queue, so they cleared menu state that hadn't been set yet. By the time the Alt event was finally processed, the fix had already executed and Qt activated the menu bar with nothing further to dismiss it.
+- v1.10.15 prevents the menu activation in the first place by changing the foreground-grab key sequence from a bare Alt tap (Alt down → Alt up) to an Alt+F24 chord (Alt down → F24 down → F24 up → Alt up). Qt's `QMenuBar` only activates on a *naked* Alt tap; `Alt+anything` is treated as a chord and skipped. VK_F24 (0x87) is a real Windows virtual-key code that exists in the VK enum for legacy extended function-key keyboards – no shipping app binds it, so the synthetic F24 has no observable effect anywhere. The Alt is still pressed at the moment `SetForegroundWindow` is called, so the "Alt key pressed" exception still applies and the foreground grab still succeeds reliably.
+- The post-hoc `_dismiss_menu_activation` helper and the explicit `setFocus()` calls in `_continue_clipboard` / `_continue_superlookup` from v1.10.14 are kept as belt-and-braces. They no longer have any menu-activation to clear (the chord prevents it upstream), but the focus calls are good UX in their own right: the cursor lands in the search field / on the clipboard list so arrow keys work straight away without any extra Tab/click.
 
 
 ## v1.10.14 – May 13, 2026

@@ -21584,12 +21584,47 @@ class SupervertalerQt(QMainWindow):
                 kernel32 = ctypes.windll.kernel32
                 hwnd = int(self.winId())
 
-                # Step 1: Synthetic Alt down/up to satisfy
-                # SetForegroundWindow's "Alt key pressed" exception.
+                # Step 1: Synthetic Alt + F24 chord to satisfy
+                # SetForegroundWindow's "Alt key pressed" exception
+                # without triggering Qt's QMenuBar menu-activation.
+                #
+                # v1.10.9 used a bare Alt down/up here. That works
+                # for the foreground grab, but Windows + Qt also
+                # interpret a *naked* Alt tap (Alt down → Alt up
+                # with nothing in between) as "user wants to
+                # activate the menu bar". Even though the synthetic
+                # tap was meant for the originating foreground app,
+                # the AttachThreadInput dance below shares input
+                # queues, so the Alt event leaks into Workbench's
+                # input stream just as we become foreground. Qt's
+                # QMenuBar then activates File-menu navigation and
+                # the user's arrow keys steer the menu instead of
+                # the Clipboard list / SuperLookup results
+                # (v1.10.14 tried to fix this post-hoc by calling
+                # menuBar().setActiveAction(None) and setFocus()
+                # on the target widget, but that ran *before* Qt
+                # processed the queued Alt event, so it cleared
+                # state that hadn't been set yet).
+                #
+                # v1.10.15 inserts a synthetic F24 between the Alt
+                # down and Alt up. VK_F24 (0x87) is a defined VK
+                # code that no app binds to – it exists in the
+                # Windows VK enum mostly for keyboards with extended
+                # function-key rows that nobody ships any more. Qt's
+                # QMenuBar treats Alt+anything as a chord, not a
+                # naked Alt tap, and skips menu activation. The
+                # synthetic F24 itself reaches no listener (nothing
+                # binds it). The Alt key still satisfies
+                # SetForegroundWindow's exception because it's
+                # pressed at the moment SetForegroundWindow is
+                # called.
                 VK_MENU = 0x12
+                VK_F24 = 0x87
                 KEYEVENTF_KEYUP = 0x0002
-                user32.keybd_event(VK_MENU, 0, 0, 0)
-                user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+                user32.keybd_event(VK_MENU, 0, 0, 0)               # Alt down
+                user32.keybd_event(VK_F24, 0, 0, 0)                # F24 down (chord)
+                user32.keybd_event(VK_F24, 0, KEYEVENTF_KEYUP, 0)  # F24 up
+                user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0) # Alt up
 
                 # Step 2: AttachThreadInput dance.
                 fg = user32.GetForegroundWindow()
