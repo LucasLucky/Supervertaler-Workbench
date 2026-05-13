@@ -25378,12 +25378,10 @@ class SupervertalerQt(QMainWindow):
         self.activateWindow()
 
     def _on_esc_quick_lookup_dismiss(self):
-        """Hide Workbench to the system tray when Esc is pressed while
-        the user is on a "quick lookup" top tab (SuperLookup,
-        Clipboard, Voice) AND the focused widget is not a text
-        input.
+        """Hide Workbench to the system tray when Esc is pressed
+        while the user is on a "quick lookup" top tab.
 
-        Three gates have to all pass before we hide:
+        Two gates always apply:
 
         1. Current tab is one of SuperLookup / Clipboard / Voice.
            On Editor / TMs / Termbases / AI / Settings, Esc keeps
@@ -25391,42 +25389,50 @@ class SupervertalerQt(QMainWindow):
            (cancel-edit, close-popup, etc.).
 
         2. A system-tray icon exists. Without a tray, hiding would
-           strand the user in an invisible window with no way to
-           summon it back. Fail closed on platforms without tray
-           support.
+           strand the user in an invisible window. Fail closed on
+           platforms without tray support.
 
-        3. The focused widget is not a text-input widget
-           (QLineEdit / QTextEdit / QComboBox in edit mode, plus
-           subclasses). Most apps use Esc to clear / dismiss in a
-           text field, and users mid-typing in the SuperLookup
-           search box pressing Esc by accident shouldn't lose the
-           whole window. So if focus is in any kind of text input,
-           Esc keeps its default Qt behaviour. Once the user has
-           moved focus off the input (to the list, tree, or
-           anywhere else), Esc dismisses to tray.
+        Per-tab text-input gate (v1.10.19 refinement):
 
-        Wired in v1.10.17, refined to be focus-aware in v1.10.18.
-        Matches the dismissal flow that retired Sidekick used to
-        have, now scoped to the Workbench tabs that inherited
-        Sidekick's role.
+        - **SuperLookup**: always hide regardless of focus. The user
+          observed (correctly) that SuperLookup is a single-purpose
+          query surface – there's no state to preserve, the search
+          field re-seeds on the next summon, and the only thing Esc
+          could reasonably mean here is "get me out of here". So we
+          skip the focus check and dismiss unconditionally.
+        - **Clipboard / Voice**: skip the dismiss if a text-input
+          widget has focus (QLineEdit / QTextEdit / QPlainTextEdit /
+          QAbstractSpinBox / editable QComboBox), to preserve
+          standard Qt-app conventions (Esc clears the field, closes
+          a popup, etc.) when the user might plausibly be typing
+          something they don't want to lose. Once focus is on the
+          list / tree / button / empty area, Esc dismisses to tray.
+
+        Wired in v1.10.17, made focus-aware in v1.10.18, made
+        always-hide-on-SuperLookup in v1.10.19.
         """
         if not hasattr(self, 'main_tabs'):
             return
         if getattr(self, '_tray_icon', None) is None:
             return
 
-        quick_lookup_indices = {
-            getattr(self, 'superlookup_tab_index', None),
-            getattr(self, 'clipboard_tab_index', None),
-            getattr(self, 'voice_tab_index', None),
-        }
-        quick_lookup_indices.discard(None)
-        if self.main_tabs.currentIndex() not in quick_lookup_indices:
+        superlookup_idx = getattr(self, 'superlookup_tab_index', None)
+        clipboard_idx = getattr(self, 'clipboard_tab_index', None)
+        voice_idx = getattr(self, 'voice_tab_index', None)
+        current = self.main_tabs.currentIndex()
+
+        # SuperLookup: unconditional hide.
+        if superlookup_idx is not None and current == superlookup_idx:
+            self.hide()
             return
 
-        # Gate 3: bail out if the focused widget is a text input.
-        # Importing here keeps the module-load surface clean (these
-        # widget classes are already in PyQt6 so the import is cheap).
+        # Clipboard / Voice: focus-aware hide.
+        focus_aware_indices = {clipboard_idx, voice_idx}
+        focus_aware_indices.discard(None)
+        if current not in focus_aware_indices:
+            # Some other tab – not a quick-lookup surface, do nothing.
+            return
+
         try:
             from PyQt6.QtWidgets import (
                 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox,
@@ -25434,19 +25440,12 @@ class SupervertalerQt(QMainWindow):
             )
             focused = QApplication.focusWidget()
             if focused is not None:
-                # QComboBox: only treat as text-input when the user
-                # is editing (i.e. the line-edit child has focus).
-                # If the dropdown is focused but not in edit mode,
-                # Esc-dismiss is fine.
                 text_input_types = (
                     QLineEdit, QTextEdit, QPlainTextEdit,
                     QAbstractSpinBox,
                 )
                 if isinstance(focused, text_input_types):
                     return
-                # QComboBox with an editable line-edit child: the
-                # line-edit IS the focused widget (caught above), so
-                # this is just for safety.
                 if isinstance(focused, QComboBox) and focused.isEditable():
                     return
                 # Walk up: a QLineEdit nested inside a custom
@@ -25460,8 +25459,7 @@ class SupervertalerQt(QMainWindow):
                     hops += 1
         except Exception:
             # If the introspection fails for any reason, fall
-            # through to the hide – preserves v1.10.17 behaviour as
-            # a safe default rather than silently doing nothing.
+            # through to hide – safer than silently doing nothing.
             pass
 
         self.hide()

@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.18 (May 13, 2026)
+**Current Version:** v1.10.19 (May 13, 2026)
+
+
+## v1.10.19 – May 13, 2026
+
+### Changed (Esc on SuperLookup always hides; Clipboard / Voice stay focus-aware)
+
+- SuperLookup is a single-purpose query surface – there's no state to preserve, the search field re-seeds on the next summon from the originating app's selection, and the only thing Esc could reasonably mean is "get me out of here". v1.10.18's focus-aware gate (which kept Esc deferred when typing in the search box) was over-cautious for this surface.
+- v1.10.19 drops the focus check on SuperLookup: Esc unconditionally hides Workbench to the tray regardless of which child widget has focus. Mirrors the dismissal pattern of popup-launchers (Spotlight, Alfred, Windows Search) where the search input is the dominant focus target and Esc-from-there is the standard dismiss key.
+- Clipboard and Voice keep v1.10.18's focus-aware behaviour. They have richer input surfaces (clipboard filter text box, voice-command edit fields, dictation form), and clearing-the-field-with-Esc is a more useful default there.
+- Implementation: per-tab branch inside `_on_esc_quick_lookup_dismiss`. SuperLookup hits an unconditional `self.hide()`; Clipboard / Voice still run the QLineEdit / QTextEdit / QPlainTextEdit / QAbstractSpinBox / editable-QComboBox introspection from v1.10.18.
 
 
 ## v1.10.18 – May 13, 2026
