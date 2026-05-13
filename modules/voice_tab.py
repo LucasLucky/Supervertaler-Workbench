@@ -441,6 +441,15 @@ class VoiceTab(QWidget):
             "independent of project context). Capped at 200 terms per "
             "dictation to stay within Whisper's prompt budget."
         )
+        # v1.10.31: on tick, navigate to the 🏷️ Termbases top tab so
+        # the user can immediately pick which termbases to opt in
+        # (the per-termbase 🎤 Voice flag is the thing that actually
+        # contributes terms – this top-level toggle is the master
+        # enable). Only fires on the rising edge: unticking doesn't
+        # navigate anywhere.
+        self._vocab_use_termbase_cb.toggled.connect(
+            self._on_vocab_use_termbase_toggled
+        )
         vocab_layout.addWidget(self._vocab_use_termbase_cb)
 
         # Replacements table.
@@ -1077,8 +1086,14 @@ class VoiceTab(QWidget):
 
             # Custom-dictionary textarea: one term per line.
             self._vocab_dict_edit.setPlainText("\n".join(terms))
-            # Termbase-bias checkbox.
+            # Termbase-bias checkbox. blockSignals around setChecked so
+            # the navigate-on-tick handler installed in _build_ui
+            # doesn't spuriously fire and yank the user to the
+            # Termbases tab at app start-up (or every time the Voice
+            # tab is re-built).
+            self._vocab_use_termbase_cb.blockSignals(True)
             self._vocab_use_termbase_cb.setChecked(use_tb)
+            self._vocab_use_termbase_cb.blockSignals(False)
             # Replacements table.
             self._vocab_repl_table.setRowCount(0)
             for entry in replacements:
@@ -1137,6 +1152,45 @@ class VoiceTab(QWidget):
         except Exception as e:
             print(f"[VoiceTab vocab] save from UI failed: {e!r}")
             return False
+
+    def _on_vocab_use_termbase_toggled(self, checked: bool):
+        """Rising-edge handler: when the user ticks "Also bias from
+        your termbases", jump to the 🏷️ Termbases top tab so they
+        can immediately pick which termbases to opt in via the
+        per-termbase 🎤 Voice column. Unticking is a no-op (no
+        navigation) because there's nowhere obvious for the user
+        to land in that case.
+
+        We also persist the new state immediately rather than waiting
+        for the user to click Save Voice Settings, because navigating
+        away from the Voice tab without saving would otherwise lose
+        the very change that triggered the navigation. The save
+        round-trips through the parent app's
+        ``save_voice_vocabulary_settings`` which writes the full
+        ``voice_vocabulary`` section – we just call our existing
+        ``_vocab_save_from_ui()`` to do that without duplicating the
+        widget-to-dict translation.
+        """
+        if not checked:
+            return  # Untick: stay put.
+
+        # Persist the new state right now so the user doesn't have
+        # to remember to click Save after navigating away.
+        try:
+            self._vocab_save_from_ui()
+        except Exception as e:
+            print(f"[VoiceTab vocab] save-on-tick error: {e!r}")
+
+        # Navigate. The handler returns False if the Termbases tab
+        # isn't present – tolerate that silently rather than show an
+        # error, since the user already got the value they wanted
+        # (the checkbox stays ticked, settings saved).
+        try:
+            opener = getattr(self._parent_app, 'open_termbases_tab', None)
+            if callable(opener):
+                opener()
+        except Exception as e:
+            print(f"[VoiceTab vocab] navigate-to-Termbases error: {e!r}")
 
     def _vocab_add_repl_row(self):
         """Append an empty row to the replacements table and put the

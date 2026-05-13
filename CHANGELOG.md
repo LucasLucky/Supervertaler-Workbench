@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.30 (May 14, 2026)
+**Current Version:** v1.10.31 (May 14, 2026)
+
+
+## v1.10.31 – May 14, 2026
+
+### Added (Ticking "Also bias from your termbases" navigates to Termbases tab)
+
+- Since v1.10.29 the per-termbase 🎤 Voice flag is opt-in: ticking the master "Also bias from your termbases" toggle in the Voice tab does nothing visible until the user also goes to Termbases tab and ticks the 🎤 Voice column for at least one termbase. That's a fine model in principle, but it relies on the user discovering the second step on their own.
+- v1.10.31 closes that gap: ticking the Voice-tab toggle now automatically navigates Workbench to the 🏷️ Termbases top tab. The user lands exactly where they need to be to make the toggle do anything, with the 🎤 Voice column visible. Untick is a no-op (no navigation) – there's nowhere obvious to land in that case, and unticking is usually a deliberate end-of-task gesture, not the start of a setup flow.
+- Side touch-ups:
+  - The toggle's new state is persisted on the rising edge (calls `_vocab_save_from_ui()` before navigating away), so the user can't lose the change by navigating off the Voice tab without clicking the explicit Save button.
+  - `_vocab_load_into_ui()` wraps `setChecked(use_tb)` in `blockSignals(True/False)` so the navigate-on-tick handler doesn't spuriously fire at app startup or any time the Voice tab is re-built.
+  - New `SupervertalerQt.open_termbases_tab()` method – jumps `main_tabs` to the Termbases top tab by text-lookup (survives any future re-ordering). Returns True if it navigated, False if the tab wasn't present. Available for any other call-site that wants the same hand-off.
 
 
 ## v1.10.30 – May 14, 2026

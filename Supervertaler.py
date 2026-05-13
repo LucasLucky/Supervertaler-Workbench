@@ -38249,6 +38249,29 @@ class SupervertalerQt(QMainWindow):
             print(f"[VoiceVocab] prompt build failed: {e!r}")
             return ""
 
+    def open_termbases_tab(self):
+        """Navigate the main tab bar to the 🏷️ Termbases top tab.
+
+        Looked up by tab text rather than a stored index so it
+        survives any future re-ordering of top tabs. No-op if the
+        Termbases tab isn't present (e.g. some future build that
+        moves termbase management elsewhere). Returns True if we
+        navigated, False if the tab wasn't found.
+
+        Added in v1.10.31 for the voice-bias checkbox in the Voice
+        tab – ticking "Also bias from your termbases" navigates here
+        automatically so the user can pick which termbases to
+        actually enable (the per-termbase 🎤 Voice column is opt-in
+        as of v1.10.29).
+        """
+        if not hasattr(self, 'main_tabs'):
+            return False
+        for i in range(self.main_tabs.count()):
+            if "Termbases" in self.main_tabs.tabText(i):
+                self.main_tabs.setCurrentIndex(i)
+                return True
+        return False
+
     def _migrate_voice_dictation_default_off(self):
         """One-shot reset: clear every termbase's
         ``voice_dictation_enabled`` flag so the v1.10.29 opt-in
