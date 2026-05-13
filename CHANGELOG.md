@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.9.490 (May 12, 2026)
+**Current Version:** v1.10.2 (May 13, 2026)
+
+
+## v1.10.2 – May 13, 2026
+
+### Fixed (First clipboard-conversion paste-back failed; tray icon was the low-DPI .ico)
+
+- Sidekick-retirement phase 3 (issue #199) shipped the 3-column Clipboard tab with paste-and-return text conversions. Two follow-up issues surfaced on first real-world use:
+  - **First paste-back after launch failed silently.** Triggering a Text Conversion (e.g. "Change case → UPPERCASE") wrote the converted text to the clipboard correctly but did not perform the Ctrl+V back in the source app — only on the *first* attempt after starting Workbench. Subsequent attempts within the same session worked. Root cause: the paste step spawns AutoHotkey via `CrossPlatformKeySender.send_paste()`, and the AHK binary's first cold-start spawn from disk takes ~1.5–2 s — long enough that the QTimer-scheduled paste raced ahead and the source window had already lost focus by the time AHK actually started. Subsequent spawns reuse the OS disk cache and complete in tens of milliseconds, hence the "only the first time" symptom. Fix adds a `_prewarm_ahk()` method called from the 2.5 s `_warm_up_top_tabs` warm-up: a background thread spawns AHK once with a no-op `ExitApp` script, populating the disk cache before the user ever triggers a real conversion. No-op on non-Windows. The conversion code path itself is unchanged — just the cold-start latency is paid up front during idle warm-up instead of inside the user's first action.
+  - **Tray icon was rendering blurry on the Windows tray.** `_setup_tray_icon` was falling back to `assets/icon.ico`, which contains only a 16-px frame that Windows then awkwardly upscales on hi-DPI tray rows. Prefer the dedicated PNG family (`icon_24.png` → `icon_16x16.png` → `icon_128.png`) before falling back to `.ico`. Qt's `QIcon` picks the best available frame at paint time, so the tray gets a crisp 24- or 32-px rendering on every DPI scale. Window icon, taskbar icon, and Sidekick paths are unchanged.
 
 
 ## v1.9.490 – May 12, 2026

@@ -7227,7 +7227,9 @@ class SupervertalerQt(QMainWindow):
         # of neighbouring tray icons; doing it at startup folds that into
         # normal app launch instead.
         self._ensure_alwayson_tray_icon()
-        
+        # Note: the Workbench tray icon itself is set up later by
+        # _setup_tray_icon(), called from main() after construction.
+
         # Load general settings (including auto-propagation)
         self.load_general_settings()
         
@@ -10828,6 +10830,12 @@ class SupervertalerQt(QMainWindow):
         instead of paying the cost on that press. Wrapped in
         per-helper try/except so a failure in one doesn't skip the
         others.
+
+        Also kicks off an AHK pre-warm so the very first paste-and-
+        return from the Clipboard tab doesn't lose its keystroke to
+        AHK's cold-spawn latency (Windows + AV scan can stretch the
+        first ``AutoHotkey64.exe`` launch to 1–2 s; subsequent
+        launches hit a hot disk cache and run in ~150 ms).
         """
         for helper in ('_ensure_superlookup_top_tab',
                        '_ensure_clipboard_top_tab',
@@ -10838,6 +10846,55 @@ class SupervertalerQt(QMainWindow):
                     fn()
             except Exception as e:
                 self.log(f"⚠ Warm-up of {helper} failed (lazy path still works): {e}")
+        try:
+            self._prewarm_ahk()
+        except Exception as e:
+            self.log(f"⚠ AHK pre-warm failed (first paste may be slow): {e}")
+
+    def _prewarm_ahk(self):
+        """Spawn AHK once with a no-op script so the binary is in disk
+        cache and the first real Ctrl+V / Ctrl+C from
+        :class:`CrossPlatformKeySender` doesn't take an extra second
+        on cold disk. No-op when AHK isn't installed or we're not on
+        Windows. Runs in a background thread so it doesn't block the
+        warm-up timer.
+        """
+        import sys as _sys
+        if _sys.platform != 'win32':
+            return
+        import threading
+
+        def _do_prewarm():
+            try:
+                from modules.platform_helpers import CrossPlatformKeySender
+                ahk = CrossPlatformKeySender()._find_ahk()
+                if not ahk:
+                    return
+                import subprocess as _sp
+                import tempfile as _tf
+                # Empty script body; just exits. AHK's spin-up cost
+                # is paid here so the first user-triggered paste is fast.
+                with _tf.NamedTemporaryFile(
+                        mode='w', suffix='.ahk', delete=False,
+                        encoding='utf-8') as f:
+                    f.write('ExitApp\n')
+                    tmp = f.name
+                try:
+                    _sp.run([ahk, '/ErrorStdOut', tmp],
+                            timeout=10,
+                            creationflags=getattr(_sp, 'CREATE_NO_WINDOW', 0))
+                finally:
+                    import os as _os
+                    try:
+                        _os.unlink(tmp)
+                    except OSError:
+                        pass
+            except Exception as e:
+                print(f"[AHK pre-warm] {e}")
+
+        t = threading.Thread(target=_do_prewarm, daemon=True,
+                             name="AHK-prewarm")
+        t.start()
 
     def _ensure_superlookup_top_tab(self):
         """Build the SuperLookup top tab the first time the user opens it.
@@ -21511,10 +21568,16 @@ class SupervertalerQt(QMainWindow):
             import traceback
             traceback.print_exc()
 
-    def open_workbench_to_clipboard(self):
+    def open_workbench_to_clipboard(self, source_window=None):
         """Bring Workbench forward and switch to the Clipboard top tab.
 
-        Wired to Ctrl+Alt+C in v1.10.1 (Phase 2 of issue #199).
+        Wired to Ctrl+Alt+C in v1.10.1 (Phase 2 of issue #199). If
+        ``source_window`` is supplied (captured by the hotkey handler
+        BEFORE bringing Workbench forward), it's passed to the
+        Clipboard widget so snippet / conversion activations
+        paste-and-return to that window rather than just sitting on
+        the clipboard. Manual navigation to the Clipboard tab passes
+        no source; activations then just set the clipboard.
         """
         try:
             if hasattr(self, '_ensure_clipboard_top_tab'):
@@ -21522,6 +21585,9 @@ class SupervertalerQt(QMainWindow):
             self._bring_workbench_forward()
             if hasattr(self, 'clipboard_tab_index') and hasattr(self, 'main_tabs'):
                 self.main_tabs.setCurrentIndex(self.clipboard_tab_index)
+            widget = getattr(self, '_clipboard_top_widget', None)
+            if widget is not None and hasattr(widget, 'set_source_window'):
+                widget.set_source_window(source_window)
         except Exception as e:
             self.log(f"⚠ Could not open Clipboard top tab: {e}")
             import traceback
@@ -24942,12 +25008,18 @@ class SupervertalerQt(QMainWindow):
             print("[Tray] System tray unavailable on this platform – skipping")
             return
 
-        # Reuse the window icon if set, fall back to assets/icon.ico.
-        icon = self.windowIcon()
-        if icon.isNull():
-            icon_path = get_resource_path("assets/icon.ico")
+        # Prefer the high-DPI PNG family from assets/ – those scale much
+        # better in the Windows tray than icon.ico (which collapses to a
+        # blurry 16-px frame). Fall back to icon.ico, then the window
+        # icon, so older installs without the PNGs still get *something*.
+        icon = None
+        for candidate in ("icon_24.png", "icon_16x16.png", "icon_128.png", "icon.ico"):
+            icon_path = get_resource_path(f"assets/{candidate}")
             if icon_path.exists():
                 icon = QIcon(str(icon_path))
+                break
+        if icon is None or icon.isNull():
+            icon = self.windowIcon()
 
         self._tray_icon = QSystemTrayIcon(icon, self)
         self._tray_icon.setToolTip("Supervertaler Workbench")
@@ -24958,6 +25030,41 @@ class SupervertalerQt(QMainWindow):
         show_action = QAction("Show Workbench", self)
         show_action.triggered.connect(self._tray_show_window)
         menu.addAction(show_action)
+
+        # Quick tab-jump entries (v1.10.2 of issue #199). Mirror the
+        # global hotkeys: Ctrl+Alt+L = SuperLookup, Ctrl+Alt+C =
+        # Clipboard, etc. Each entry shows Workbench (if hidden) and
+        # switches main_tabs to the target tab. Indices are looked up
+        # lazily via getattr so the menu still builds even if a tab
+        # hasn't been added (e.g. an older build with fewer top tabs).
+        def _make_jumper(attr_name):
+            def _jump():
+                idx = getattr(self, attr_name, None)
+                if idx is None:
+                    return
+                self._tray_show_window()
+                if hasattr(self, 'main_tabs'):
+                    try:
+                        self.main_tabs.setCurrentIndex(idx)
+                    except Exception:
+                        pass
+            return _jump
+
+        jump_lookup = QAction("Open SuperLookup", self)
+        jump_lookup.triggered.connect(_make_jumper('superlookup_tab_index'))
+        menu.addAction(jump_lookup)
+
+        jump_clipboard = QAction("Open Clipboard", self)
+        jump_clipboard.triggered.connect(_make_jumper('clipboard_tab_index'))
+        menu.addAction(jump_clipboard)
+
+        jump_voice = QAction("Open Voice", self)
+        jump_voice.triggered.connect(_make_jumper('voice_tab_index'))
+        menu.addAction(jump_voice)
+
+        jump_settings = QAction("Open Settings", self)
+        jump_settings.triggered.connect(_make_jumper('settings_tab_index'))
+        menu.addAction(jump_settings)
 
         menu.addSeparator()
 
@@ -57759,13 +57866,31 @@ class SuperlookupTab(QWidget):
         forward and switches to its Clipboard top tab, instead of
         opening Sidekick. Sidekick still works for users who summon it
         manually via Ctrl+Alt+K.
+
+        v1.10.2: the foreground-window handle is captured BEFORE we
+        bring Workbench forward so snippet / conversion activations
+        in the Clipboard tab can paste-and-return to it (Sidekick's
+        well-loved flow). Without this capture the activations would
+        just leave the result on the clipboard, forcing the user to
+        Alt+Tab back manually.
         """
         try:
             mw = self.main_window or self.window()
+
+            # Capture the source window now, *before* we raise
+            # Workbench – once Workbench is foreground the source has
+            # been lost.
+            source_win = None
+            try:
+                from modules.platform_helpers import get_foreground_window
+                source_win = get_foreground_window()
+            except Exception:
+                pass
+
             # New path: route to Workbench's Clipboard top tab.
             if mw and hasattr(mw, 'open_workbench_to_clipboard'):
                 try:
-                    mw.open_workbench_to_clipboard()
+                    mw.open_workbench_to_clipboard(source_window=source_win)
                     return
                 except Exception as e:
                     print(f"[Clipboard] Workbench top-tab route failed: {e}")
@@ -57773,8 +57898,6 @@ class SuperlookupTab(QWidget):
             # Fallback: Sidekick.
             fa = getattr(mw, '_floating_assistant', None) if mw else None
             if fa:
-                from modules.platform_helpers import get_foreground_window
-                source_win = get_foreground_window()
                 if mw and mw is not self:
                     mw._quicklauncher_source_window = source_win
                 fa._open_to_clipboard(source_window=source_win)

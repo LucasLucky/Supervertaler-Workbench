@@ -13,12 +13,14 @@ the OS-level plumbing on Windows, macOS, and Linux/X11).
 import re
 import hashlib
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt, QEvent, QSize, QBuffer, QIODevice
-from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon
+from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon, QBrush, QFont
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QListView, QAbstractItemView, QApplication,
-    QSplitter, QStackedLayout, QMenu,
+    QSplitter, QStackedLayout, QMenu, QTreeWidget, QTreeWidgetItem,
 )
 
 from modules.styled_widgets import HelpButton
@@ -78,6 +80,13 @@ class ClipboardManagerWidget(QWidget):
         self._suppress_next        = False   # True while we set the clipboard ourselves
         self._db_loaded            = False
         self._last_image_hash      = None    # for dedup of identical re-copies
+        # Source-window handle captured when the user arrived via a
+        # global hotkey (Ctrl+Alt+C). Snippet / conversion activations
+        # use this to paste-and-return: clipboard set → Workbench
+        # hidden → source window refocused → Ctrl+V sent. ``None``
+        # means "no source" – the user navigated to this tab manually,
+        # so we just set the clipboard and stay in Workbench.
+        self._source_window = None
 
         self._init_ui()
         self._start_monitoring()
@@ -140,8 +149,14 @@ class ClipboardManagerWidget(QWidget):
                                     tooltip="Open Clipboard help"))
         layout.addLayout(header)
 
-        # Two-column split: text on the left, images on the right.
-        # 60/40 default favouring text (more numerous, shorter rows);
+        # Three-column split (v1.10.2, Phase 3 of issue #199):
+        #   1. Text clipboard history (left)
+        #   2. Image clipboard history (middle)
+        #   3. Menu – Snippets / Special Characters / Text Conversions /
+        #      QuickLauncher Prompts (right) – previously Sidekick's
+        #      right-pane action tree, now folded in as a third column
+        #      so the Workbench Clipboard tab matches the keyboard-
+        #      navigable feel users had in Sidekick.
         # QSplitter so users can rebalance to taste.
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
         self._splitter.setHandleWidth(4)
@@ -170,9 +185,29 @@ class ClipboardManagerWidget(QWidget):
             self._image_header, self._image_list, self._image_empty)
         self._splitter.addWidget(image_col)
 
-        self._splitter.setStretchFactor(0, 6)
-        self._splitter.setStretchFactor(1, 4)
-        self._splitter.setSizes([600, 400])
+        # Third column: action menu (snippets, characters, conversions,
+        # prompts). Built lazily by _build_action_tree(); always added
+        # to the splitter so the layout reserves space even if the
+        # tree's content takes a moment to populate.
+        self._action_items = []  # Callbacks, indexed by QTreeWidgetItem UserRole
+        action_col_container = QWidget()
+        action_col_layout = QVBoxLayout(action_col_container)
+        action_col_layout.setContentsMargins(0, 0, 0, 0)
+        action_col_layout.setSpacing(4)
+        self._action_header = QLabel("📑 Menu")
+        self._action_header.setStyleSheet(
+            "color: #555; padding: 2px 6px; border: none; "
+            f"font-size: {scaled_pt(8.5):.1f}pt; font-weight: bold;"
+        )
+        action_col_layout.addWidget(self._action_header)
+        self._action_tree = self._build_action_tree()
+        action_col_layout.addWidget(self._action_tree, 1)
+        self._splitter.addWidget(action_col_container)
+
+        self._splitter.setStretchFactor(0, 5)
+        self._splitter.setStretchFactor(1, 3)
+        self._splitter.setStretchFactor(2, 4)
+        self._splitter.setSizes([500, 300, 400])
 
         layout.addWidget(self._splitter, 1)
 
@@ -182,7 +217,8 @@ class ClipboardManagerWidget(QWidget):
         # Footer hint
         hint = QLabel(
             "Click to paste  •  Right-click or Delete key to remove  •  "
-            "Pasted items shown in grey  •  ← / → switches columns")
+            "Pasted items shown in grey  •  ← / → switches columns  •  "
+            "Up / Down navigates within a column")
         hint.setStyleSheet(
             f"color: #999; font-size: {scaled_pt(7):.1f}pt; padding: 2px 4px; border: none;"
         )
@@ -302,9 +338,34 @@ class ClipboardManagerWidget(QWidget):
                                           right_neighbour=self._image_list,
                                           left_neighbour=None)
         if obj is self._image_list:
+            # Right past the image list now lands on the local action
+            # tree (the 3rd column), not Sidekick's right pane.
             return self._handle_list_key(self._image_list, event,
-                                          right_neighbour=None,
+                                          right_neighbour=self._action_tree,
                                           left_neighbour=self._text_list)
+        if obj is self._action_tree:
+            # Tree-column key handling: defer to Qt's defaults for
+            # expand-on-Right / collapse-on-Left when the current item
+            # supports it. Only intercept the boundary cases:
+            #   • Right on a leaf or already-expanded category → swallow
+            #     (nothing to the right of the action tree)
+            #   • Left on a leaf or already-collapsed category →
+            #     move focus to the image list (one column left)
+            # That way navigation still works *and* category nodes
+            # expand/collapse with the arrow keys as in any QTreeWidget.
+            if event.type() == QEvent.Type.KeyPress:
+                current = self._action_tree.currentItem()
+                if event.key() == Qt.Key.Key_Right:
+                    if current is not None and current.childCount() > 0 \
+                            and not current.isExpanded():
+                        return False  # let Qt expand
+                    return True  # swallow
+                if event.key() == Qt.Key.Key_Left:
+                    if current is not None and current.childCount() > 0 \
+                            and current.isExpanded():
+                        return False  # let Qt collapse
+                    self._focus_list(self._image_list)
+                    return True
         return super().eventFilter(obj, event)
 
     def _handle_list_key(self, list_widget, event, *,
@@ -332,10 +393,18 @@ class ClipboardManagerWidget(QWidget):
 
         if key == Qt.Key.Key_Right:
             if right_neighbour is not None:
-                self._focus_list(right_neighbour)
+                # right_neighbour can be either a QListWidget (text /
+                # image column) or the QTreeWidget (action menu). Both
+                # accept setFocus(); _focus_list also auto-selects row
+                # 0 for empty lists, which doesn't apply to the tree.
+                if isinstance(right_neighbour, QTreeWidget):
+                    self._focus_action_tree(right_neighbour)
+                else:
+                    self._focus_list(right_neighbour)
             else:
-                # Past the rightmost column → jump to Sidekick's right-pane
-                # action tree, matching the Tab-pane-jump convention.
+                # No right neighbour – legacy Sidekick path (jump to
+                # Sidekick's right-pane action tree). Harmless no-op
+                # when we're embedded as a Workbench top tab.
                 self._focus_sidekick_action_tree()
             return True
 
@@ -347,6 +416,27 @@ class ClipboardManagerWidget(QWidget):
             return False
 
         return False
+
+    def _focus_action_tree(self, tree: QTreeWidget):
+        """Give focus to the action tree, selecting the first leaf if
+        nothing is currently selected."""
+        tree.setFocus(Qt.FocusReason.OtherFocusReason)
+        # Auto-select something so Up/Down can navigate from a defined
+        # starting point. Prefer an existing selection; otherwise pick
+        # the first activatable leaf.
+        if tree.currentItem() is None:
+            it = QTreeWidgetItem(tree)  # type-hint helper, replaced below
+            it = None
+            root = tree.invisibleRootItem()
+            for i in range(root.childCount()):
+                cat = root.child(i)
+                if cat.childCount() > 0:
+                    cat.setExpanded(True)
+                    tree.setCurrentItem(cat.child(0))
+                    return
+                # No children – just highlight the category itself
+                tree.setCurrentItem(cat)
+                return
 
     def _focus_list(self, list_widget: QListWidget):
         list_widget.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -699,3 +789,448 @@ class ClipboardManagerWidget(QWidget):
 
     def _get_db(self):
         return getattr(self._parent_app, 'db_manager', None)
+
+    # ------------------------------------------------------------------
+    # Action tree (3rd column) – Snippets / Special Characters / Text
+    # Conversions / QuickLauncher Prompts. v1.10.2 (Phase 3 of issue
+    # #199). Mirrors the structure Sidekick built in its right pane,
+    # but lives inside the Clipboard tab so the whole experience –
+    # text snippets, images, snippets, conversions, prompts – sits
+    # under one navigable surface in Workbench.
+    # ------------------------------------------------------------------
+
+    _CATEGORY_SENTINEL = "__category__"  # marks tree items that are categories
+    _LEAF_ICON = "•"
+
+    def _build_action_tree(self) -> QTreeWidget:
+        """Create the QTreeWidget that hosts the 3rd column's content.
+
+        Populated by ``_populate_action_tree`` shortly after construction
+        so the snippets / prompts that depend on the parent app's
+        ``user_data_path`` and ``prompt_manager_qt`` have time to wire up.
+        """
+        tree = QTreeWidget()
+        tree.setHeaderHidden(True)
+        tree.setRootIsDecorated(True)
+        tree.setAnimated(True)
+        tree.setIndentation(16)
+        tree.setStyleSheet(f"""
+            QTreeWidget {{
+                border: 1px solid #DDD;
+                background: #FAFAFA;
+                font-size: {scaled_pt(9):.1f}pt; outline: none;
+            }}
+            QTreeWidget::item {{
+                padding: 4px 6px; border-radius: 4px;
+            }}
+            QTreeWidget::item:selected {{
+                background-color: #D6E4F0; color: #1E1E1E;
+            }}
+            QTreeWidget::item:hover {{
+                background-color: #FFFFFF;
+            }}
+        """)
+        tree.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tree.itemActivated.connect(self._on_action_tree_activated)
+        tree.itemClicked.connect(self._on_action_tree_clicked)
+        tree.itemExpanded.connect(self._update_expand_indicators)
+        tree.itemCollapsed.connect(self._update_expand_indicators)
+        tree.installEventFilter(self)
+        # Assign self._action_tree *before* _populate_action_tree runs –
+        # the populate helpers (_make_action_category etc.) reference
+        # self._action_tree to addTopLevelItem onto it. Without this
+        # the first populate call raises AttributeError because
+        # _build_action_tree hasn't returned yet.
+        self._action_tree = tree
+        # Defer populate to a separate method so we can rebuild on
+        # demand (e.g. after the user edits the snippet library).
+        self._populate_action_tree()
+        return tree
+
+    def _populate_action_tree(self):
+        """Fill the action tree with categories + entries."""
+        tree = self._action_tree
+        tree.clear()
+        self._action_items.clear()
+
+        # 1. Snippets (file-backed; includes "Special Characters" and
+        #    "Personal Snippets" by default, plus any user-created
+        #    folders under <user_data>/snippet_library/).
+        self._populate_snippet_library()
+
+        # 2. Text Conversions (clipboard-text transformations).
+        self._populate_text_conversions()
+
+        # 3. QuickLauncher Prompts (from the unified prompt library;
+        #    in v1.10.2 these just copy the prompt body to the
+        #    clipboard. Phase-4 follow-up: act on the user's selection
+        #    when activated, per issue #199's longer-term vision).
+        self._populate_prompt_library()
+
+        self._update_expand_indicators()
+
+    def _make_action_category(self, label: str, expanded: bool = False) -> QTreeWidgetItem:
+        """Create a bold category node in the action tree."""
+        bold_font = QFont("Segoe UI", round(scaled_pt(9)), QFont.Weight.Bold)
+        cat_color = QBrush(QColor("#3D5A80"))
+        cat = QTreeWidgetItem([label])
+        cat.setFont(0, bold_font)
+        cat.setForeground(0, cat_color)
+        cat.setData(0, Qt.ItemDataRole.UserRole, self._CATEGORY_SENTINEL)
+        self._action_tree.addTopLevelItem(cat)
+        cat.setExpanded(expanded)
+        return cat
+
+    def _add_action_leaf(self, parent: QTreeWidgetItem, text: str, callback):
+        """Add a leaf item with a callback that runs on activation."""
+        item = QTreeWidgetItem([text])
+        idx = len(self._action_items)
+        item.setData(0, Qt.ItemDataRole.UserRole, idx)
+        parent.addChild(item)
+        self._action_items.append(callback)
+        return item
+
+    def _update_expand_indicators(self, *_args):
+        """Refresh ▶ / ▼ indicators on each top-level category."""
+        root = self._action_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.childCount() > 0:
+                text = item.text(0)
+                for prefix in ("▶ ", "▼ "):
+                    if text.startswith(prefix):
+                        text = text[2:]
+                        break
+                indicator = "▼ " if item.isExpanded() else "▶ "
+                item.setText(0, indicator + text)
+
+    def _on_action_tree_activated(self, item: QTreeWidgetItem, _col: int = 0):
+        """Enter / double-click on a tree item.
+
+        Categories: toggle expand/collapse. Leaves: fire the callback
+        stored in ``self._action_items`` at the item's UserRole index.
+        """
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data == self._CATEGORY_SENTINEL:
+            item.setExpanded(not item.isExpanded())
+            return
+        if isinstance(data, int) and 0 <= data < len(self._action_items):
+            try:
+                self._action_items[data]()
+            except Exception as e:
+                print(f"[ClipboardManagerWidget] Action handler error: {e}")
+
+    def _on_action_tree_clicked(self, item: QTreeWidgetItem, _col: int = 0):
+        """Single-click on a tree item.
+
+        Single-click activates leaves immediately (matches the existing
+        clipboard text/image columns, which paste on single click). For
+        categories, single-click toggles expansion, matching the
+        intuition that the entire row is the click target – not just
+        the disclosure triangle.
+        """
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data == self._CATEGORY_SENTINEL:
+            item.setExpanded(not item.isExpanded())
+            return
+        if isinstance(data, int) and 0 <= data < len(self._action_items):
+            try:
+                self._action_items[data]()
+            except Exception as e:
+                print(f"[ClipboardManagerWidget] Action handler error: {e}")
+
+    # ---- Snippets -----------------------------------------------------
+
+    def _populate_snippet_library(self):
+        """Add file-backed snippets, grouped by their top-level folder.
+
+        Reads .md files from ``<user_data>/snippet_library/`` via
+        :class:`SnippetLibrary`. Top-level folders become tree
+        categories ("Special Characters", "Personal Snippets" by
+        default; any user-created folder gets a generic icon).
+        """
+        try:
+            from modules.snippet_library import SnippetLibrary, DEFAULT_SNIPPETS
+
+            user_data_path = getattr(self._parent_app, 'user_data_path', None)
+            if not user_data_path:
+                return
+
+            library_dir = Path(user_data_path) / "snippet_library"
+            lib = SnippetLibrary(library_dir=str(library_dir))
+            lib.ensure_defaults(DEFAULT_SNIPPETS)
+            lib.load_all()
+
+            if not lib.snippets:
+                return
+
+            from collections import defaultdict
+            by_category = defaultdict(list)
+            for snip in lib.snippets:
+                cat = snip['category'] or "Snippets"
+                by_category[cat].append(snip)
+
+            category_icons = {
+                "Special Characters": "✨",        # ✨
+                "Personal Snippets": "\U0001F4C7",     # 📇
+            }
+            default_icon = "\U0001F4C1"                # 📁
+
+            for cat_name in sorted(by_category.keys(), key=str.lower):
+                icon = category_icons.get(cat_name, default_icon)
+                cat_item = self._make_action_category(f"{icon} {cat_name}")
+                for snip in sorted(by_category[cat_name], key=lambda s: s['label'].lower()):
+                    body = snip['body']
+                    self._add_action_leaf(
+                        cat_item, snip['label'],
+                        lambda t=body: self._copy_to_clipboard(t),
+                    )
+
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] Snippet population error: {e}")
+
+    # ---- Text Conversions ---------------------------------------------
+
+    def _populate_text_conversions(self):
+        """Conversions that act on whatever's currently on the clipboard.
+
+        Result lands back on the system clipboard; the user pastes with
+        Ctrl+V wherever they're focused. Sidekick used a paste-and-
+        return flow because it floated over another app; in the
+        Workbench top tab the user is already where they want to be,
+        so "modify clipboard, you paste" is the simpler contract.
+        """
+        cat = self._make_action_category("\U0001F524 Text Conversions")
+        self._add_action_leaf(
+            cat, "Uppercase",
+            lambda: self._transform_clipboard(str.upper))
+        self._add_action_leaf(
+            cat, "Lowercase",
+            lambda: self._transform_clipboard(str.lower))
+        self._add_action_leaf(
+            cat, "Title Case",
+            lambda: self._transform_clipboard(str.title))
+        self._add_action_leaf(
+            cat, "Sentence case",
+            lambda: self._transform_clipboard(self._to_sentence_case))
+        self._add_action_leaf(
+            cat, "Single curly quotes: ‘Example’",
+            lambda: self._wrap_clipboard("‘", "’"))
+        self._add_action_leaf(
+            cat, "Double curly quotes: “Example”",
+            lambda: self._wrap_clipboard("“", "”"))
+        self._add_action_leaf(
+            cat, "Round brackets: (Example)",
+            lambda: self._wrap_clipboard("(", ")"))
+        self._add_action_leaf(
+            cat, "Square brackets: [Example]",
+            lambda: self._wrap_clipboard("[", "]"))
+        self._add_action_leaf(
+            cat, "Remove soft hyphens (U+00AD)",
+            lambda: self._transform_clipboard(lambda s: s.replace("­", "")))
+        self._add_action_leaf(
+            cat, "Double quotes → single quotes",
+            lambda: self._transform_clipboard(lambda s: s.replace('"', "'")))
+        self._add_action_leaf(
+            cat, "Make <b>bold</b>",
+            lambda: self._wrap_clipboard("<b>", "</b>"))
+
+    @staticmethod
+    def _to_sentence_case(text: str) -> str:
+        """Lowercase the whole string, then capitalise the first letter
+        of each sentence. Cheap heuristic – matches Sidekick's old
+        helper behaviour."""
+        if not text:
+            return text
+        lowered = text.lower()
+        # Split on ". " / "! " / "? " and re-capitalise
+        out = []
+        capitalise_next = True
+        for ch in lowered:
+            if capitalise_next and ch.isalpha():
+                out.append(ch.upper())
+                capitalise_next = False
+            else:
+                out.append(ch)
+                if ch in '.!?':
+                    capitalise_next = True
+        return ''.join(out)
+
+    def set_source_window(self, hwnd):
+        """Tell the widget which window the user arrived from (via a
+        global hotkey). Snippet / conversion activations will then do
+        the paste-and-return dance instead of just setting the
+        clipboard. ``None`` clears the source – use that when the user
+        navigates to the Clipboard tab manually rather than via
+        Ctrl+Alt+C, since there's no "elsewhere" to return to."""
+        self._source_window = hwnd
+
+    def _paste_to_source(self, text: str):
+        """Set clipboard to ``text``, then – if a source window was
+        captured – hide Workbench, refocus the source window, and send
+        Ctrl+V. Without a source, just set the clipboard and stay put.
+
+        Mirrors Sidekick's ``_paste_and_return`` semantics so users
+        who Ctrl+Alt+C from Trados, pick a snippet / conversion, and
+        expect the result back in Trados get exactly that. Mirrors
+        Sidekick's implementation closely so the UX is identical.
+        """
+        if text is None:
+            return
+        self._suppress_next = True
+        QApplication.clipboard().setText(text)
+
+        source = self._source_window
+        if source is None:
+            return  # No source – user is in Workbench by choice; stay.
+
+        # One-shot: clear after we've used it. The next activation
+        # without a fresh hotkey trip just sets the clipboard and
+        # stays in Workbench, which is the right default.
+        self._source_window = None
+
+        # Hide Workbench so the focus-grab doesn't fight the source
+        # window for the foreground, AND so it disappears from the
+        # taskbar like Sidekick used to. The user can resummon
+        # Workbench with any of the global tab-jumping hotkeys
+        # (Ctrl+Alt+L / Ctrl+Alt+C), which call show() + raise() to
+        # restore it with state intact.
+        try:
+            parent_window = self._parent_app
+            if parent_window is not None and hasattr(parent_window, 'hide'):
+                parent_window.hide()
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] Could not hide Workbench: {e}")
+
+        # Refocus source and send Ctrl+V. Tiny delay so the OS has a
+        # tick to action the minimise + focus before the keystroke
+        # fires – without it the paste lands on the wrong window.
+        from PyQt6.QtCore import QTimer
+
+        def _do_paste():
+            try:
+                from modules.platform_helpers import (
+                    activate_foreground_window, CrossPlatformKeySender,
+                )
+                activate_foreground_window(source)
+                import time
+                time.sleep(0.15)
+                CrossPlatformKeySender().send_paste()
+            except Exception as e:
+                print(f"[ClipboardManagerWidget] Paste-and-return error: {e}")
+
+        QTimer.singleShot(100, _do_paste)
+
+    def _transform_clipboard(self, fn):
+        """Read clipboard text, apply ``fn``, paste back to source.
+
+        If we have a source window (user arrived via Ctrl+Alt+C), do
+        the paste-and-return flow. Otherwise just set the clipboard
+        and stay in Workbench.
+        """
+        text = (QApplication.clipboard().text() or "").strip()
+        if not text:
+            return
+        try:
+            result = fn(text)
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] Transform error: {e}")
+            return
+        self._paste_to_source(result)
+
+    def _wrap_clipboard(self, prefix: str, suffix: str):
+        """Read clipboard text, wrap, paste back to source."""
+        text = (QApplication.clipboard().text() or "").strip()
+        if not text:
+            return
+        self._paste_to_source(prefix + text + suffix)
+
+    def _copy_to_clipboard(self, text: str):
+        """Copy a snippet's body to the clipboard and paste back to
+        source if one was captured."""
+        if not text:
+            return
+        self._paste_to_source(text)
+
+    # ---- Prompts ------------------------------------------------------
+
+    def _populate_prompt_library(self):
+        """Add QuickLauncher prompts from the unified prompt library,
+        grouped by their folder structure.
+
+        v1.10.2 behaviour: activating a prompt copies its body to the
+        clipboard. A later iteration (per issue #199) will make this
+        operate on the user's current selection – "select text, call
+        up Clipboard, navigate to prompt, Enter, prompt runs on the
+        selection".
+        """
+        try:
+            pm = getattr(self._parent_app, 'prompt_manager_qt', None)
+            if not pm:
+                return
+            lib = getattr(pm, 'library', None)
+            if not lib or not hasattr(lib, 'get_quicklauncher_grid_prompts'):
+                return
+
+            items = lib.get_quicklauncher_grid_prompts() or []
+            if not items:
+                return
+
+            from collections import defaultdict
+            folders = defaultdict(list)
+            for rel_path, label in items:
+                parts = rel_path.replace('\\', '/').split('/')
+                folder = parts[0] if len(parts) > 1 else "Prompts"
+                display = label or parts[-1].replace('.md', '')
+                folders[folder].append((rel_path, display))
+
+            prompts_cat = self._make_action_category("\U0001F4DD Prompts", expanded=False)
+
+            for folder, folder_items in sorted(folders.items()):
+                if len(folders) == 1 and folder == "Prompts":
+                    parent = prompts_cat
+                else:
+                    sub_cat = QTreeWidgetItem([f"\U0001F4C1 {folder}"])
+                    sub_cat.setData(0, Qt.ItemDataRole.UserRole, self._CATEGORY_SENTINEL)
+                    prompts_cat.addChild(sub_cat)
+                    parent = sub_cat
+
+                for rel_path, display in sorted(folder_items, key=lambda x: x[1].lower()):
+                    self._add_action_leaf(
+                        parent,
+                        f"{self._LEAF_ICON} {display}",
+                        lambda p=rel_path: self._activate_prompt(p),
+                    )
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] Prompt population error: {e}")
+
+    def _activate_prompt(self, rel_path: str):
+        """Look up a prompt by its relative path and copy its body to
+        the system clipboard. v1.10.2 placeholder; v1.10.x will replace
+        this with "fire the prompt against the user's current
+        selection" once the cross-app capture plumbing is in place.
+
+        Uses the same ``lib.prompts.get(rel_path)`` lookup Sidekick's
+        ``_on_prompt_action`` uses – the prompt library indexes prompts
+        by their relative path and returns a dict with ``content`` /
+        ``name`` keys. Falls back gracefully if the prompt is missing.
+        """
+        try:
+            pm = getattr(self._parent_app, 'prompt_manager_qt', None)
+            if not pm:
+                return
+            lib = getattr(pm, 'library', None)
+            if not lib:
+                return
+            prompts = getattr(lib, 'prompts', None)
+            if prompts is None:
+                return
+            prompt_data = prompts.get(rel_path)
+            if not prompt_data:
+                return
+            body = (prompt_data.get('content') or "").strip()
+            if body:
+                self._copy_to_clipboard(body)
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] Prompt activation error: {e}")
