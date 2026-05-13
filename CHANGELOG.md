@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.32 (May 14, 2026)
+**Current Version:** v1.10.33 (May 14, 2026)
+
+
+## v1.10.33 – May 14, 2026
+
+### Added (Phrase bilingual DOCX: auto-detect source / target language pair on import)
+
+- A user pointed out that bilingual format files carry the language pair as metadata in the file – Phrase explicitly labels its column-header row as `Source (cs) | Target (de-de)`, and run-level `w:lang` attributes corroborate it – yet the Phrase import dialog still asked the user to pick the source and target language manually. Pure friction; no detection was ever wired.
+- v1.10.33 closes that gap with a three-tier auto-detection strategy on the Phrase handler:
+  - **Strategy A** (primary, ~always succeeds on Phrase output): parse the column-header table for the `Source (XX) | Target (YY)` pattern. Returns BCP-47 codes like `("cs", "de-de")`.
+  - **Strategy B** (fallback for non-standard files): count `w:lang` attribute occurrences in the raw `document.xml`; most common non-English code = source, second = target. Drops English unless it's the only signal, because Phrase emits `en-US` for unrelated UI string runs.
+  - **Strategy C** (last resort): parse the filename for a `_cs-de_` style pattern. Less reliable because user / Phrase-config variation, so it's behind A and B.
+- New `modules/language_codes.py` provides `iso_to_english_name(code)` which maps `cs` / `cs-CZ` / `cs-cz` / `CS-CZ` → `"Czech"`, `de-DE` → `"German"`, `zh-Hant` / `zh-TW` → `"Chinese (Traditional)"`, `zh-CN` → `"Chinese (Simplified)"`, etc. Covers the full Workbench picker set. Future bilingual-handler detection paths can share this module instead of inlining ad-hoc maps.
+- The Phrase import dialog now opens **pre-filled with the detected pair** and a callout line: *"Auto-detected from file: **Czech** → **German**. Confirm or change below."* The user can still override if the detection is wrong (combos remain editable, dialog still requires explicit OK). If detection is partial (only one side found), the callout is honest about that and only pre-fills the side it knows.
+- The same `detect_language_pair()` method lives on `PhraseDOCXHandler` for any future call-site that wants the info programmatically (e.g. round-trip export validation, summary stats).
+- Verified on a real user file: `Praxe_PC-cs-de_de-TR.docx` correctly detects `cs / de-DE` and resolves to `Czech / German` for the picker. Same file's `_translated.docx` export was also verified to be byte-for-byte structurally identical to the source apart from the 44 target cells – preserves the 4-table layout, the 7-visual-column / 8-grid-column gridSpan variant, headers, footers, and all run-level metadata.
 
 
 ## v1.10.32 – May 14, 2026

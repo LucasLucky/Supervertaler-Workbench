@@ -105,6 +105,103 @@ class PhraseDOCXHandler:
         self.segments: List[PhraseSegment] = []
         self.file_path = None
 
+    # Header rows in Phrase bilingual DOCX label the columns literally,
+    # e.g. ``ID | ICU | # | Source (cs) | Target (de-de) | Comment``.
+    # These regexes pluck the BCP-47 code out of those parenthesised
+    # suffixes. Case-insensitive, tolerant of extra whitespace, accepts
+    # both 2-letter primary codes (``cs``, ``de``) and full region
+    # codes (``cs-CZ``, ``de-DE``, ``zh-Hant``).
+    _SOURCE_HEADER_RE = re.compile(
+        r"\bSource\s*\(\s*([A-Za-z][A-Za-z0-9\-]*)\s*\)", re.IGNORECASE
+    )
+    _TARGET_HEADER_RE = re.compile(
+        r"\bTarget\s*\(\s*([A-Za-z][A-Za-z0-9\-]*)\s*\)", re.IGNORECASE
+    )
+
+    def detect_language_pair(self) -> tuple[str | None, str | None]:
+        """Best-effort auto-detection of the source / target language
+        codes embedded in this Phrase bilingual DOCX.
+
+        Phrase always writes a column-header table that explicitly
+        names the languages – ``Source (cs) | Target (de-de)`` – so
+        we look there first. If that table is somehow missing or in a
+        non-standard form, we fall back to two corroborating signals:
+        counts of ``w:lang`` run attributes in the raw XML (Phrase
+        usually tags source-language runs in the cs column), then the
+        filename's ``-cs-de_de-`` pattern.
+
+        Returns ``(source_iso, target_iso)`` where each element is a
+        BCP-47 code like ``"cs"`` or ``"de-DE"`` (caller is expected
+        to normalise via ``modules.language_codes.iso_to_english_name``),
+        or ``(None, None)`` if all three strategies fail. Either
+        element may be ``None`` independently – callers should treat
+        a partial detection as "use what we got, prompt for the rest".
+
+        Must be called after :meth:`load`; returns ``(None, None)``
+        before that. Pure read; doesn't modify ``self.doc``.
+        """
+        if self.doc is None:
+            return (None, None)
+
+        # Strategy A: parse the column-header table. Iterate every
+        # single-row table that looks like a header (contains the
+        # words "Source" and "Target") and pluck the parenthesised
+        # language codes. Most reliable – Phrase always writes this.
+        for table in self.doc.tables:
+            if len(table.rows) != 1:
+                continue
+            row_text = " | ".join(
+                cell.text.strip()
+                for cell in table.rows[0].cells
+                if cell.text.strip()
+            )
+            if "Source" not in row_text or "Target" not in row_text:
+                continue
+            src_match = self._SOURCE_HEADER_RE.search(row_text)
+            tgt_match = self._TARGET_HEADER_RE.search(row_text)
+            if src_match and tgt_match:
+                return (src_match.group(1), tgt_match.group(1))
+
+        # Strategy B: count ``w:lang`` attributes in the raw XML. The
+        # most-common code is almost always the source language (it
+        # tags both header runs and the source-cell content), with
+        # the target second. ``python-docx`` doesn't expose every
+        # ``w:lang`` cleanly through its element model, so we reach
+        # into the underlying XML string.
+        try:
+            from collections import Counter
+            xml_blob = self.doc.element.xml
+            lang_codes = re.findall(r'w:val="([a-z]{2}(?:-[A-Za-z0-9]+)?)"',
+                                    xml_blob, re.IGNORECASE)
+            # Drop generic English unless that's all we've got – Phrase
+            # sometimes emits ``en-US`` for UI string runs that aren't
+            # the project's source/target languages.
+            counts = Counter(c for c in lang_codes)
+            non_en = [(c, n) for c, n in counts.most_common() if not c.lower().startswith("en")]
+            if len(non_en) >= 2:
+                return (non_en[0][0], non_en[1][0])
+            elif len(non_en) == 1 and counts.most_common():
+                # One non-English + English → source = non-English,
+                # target = whatever's second most common (often en).
+                fallback = [c for c, _ in counts.most_common() if c != non_en[0][0]]
+                if fallback:
+                    return (non_en[0][0], fallback[0])
+        except Exception as e:
+            print(f"[PhraseDOCXHandler] w:lang fallback failed: {e}")
+
+        # Strategy C: filename regex. Phrase's CLI usually names
+        # bilingual exports like ``ProjectName_cs-de_de-TR.docx`` where
+        # ``cs-de`` is the language pair (source-target) and the
+        # trailing ``_de-TR`` is the job-name suffix. Less reliable
+        # because users / Phrase configurations vary, so this is last.
+        if self.file_path:
+            fname = self.file_path.replace("\\", "/").split("/")[-1].lower()
+            m = re.search(r"[_-]([a-z]{2,3})-([a-z]{2,3})(?:[._]|$)", fname)
+            if m:
+                return (m.group(1), m.group(2))
+
+        return (None, None)
+
     def load(self, file_path: str) -> bool:
         """
         Load a Phrase bilingual DOCX file.

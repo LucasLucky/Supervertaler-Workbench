@@ -33861,7 +33861,28 @@ class SupervertalerQt(QMainWindow):
             self.phrase_handler = handler
             self.phrase_source_file = file_path
 
-            # Show language selection dialog (Phrase files may not clearly specify languages)
+            # v1.10.33: auto-detect the language pair from the file
+            # before opening the dialog. Phrase always writes a column-
+            # header table like ``Source (cs) | Target (de-de)`` and
+            # also tags content runs with w:lang attributes, so the
+            # information is right there in the file – no reason to
+            # make the user pick manually. The handler returns ISO
+            # codes (or ``None`` per side if detection failed); we
+            # translate to the English names the picker uses.
+            from modules.language_codes import iso_to_english_name
+            try:
+                detected_src_iso, detected_tgt_iso = handler.detect_language_pair()
+            except Exception as e:
+                print(f"[Phrase import] language detection error: {e}")
+                detected_src_iso = detected_tgt_iso = None
+            detected_src_name = iso_to_english_name(detected_src_iso)
+            detected_tgt_name = iso_to_english_name(detected_tgt_iso)
+
+            # Show language selection dialog – pre-filled with the
+            # auto-detected pair when available, falling back to the
+            # main UI's current selection if a side couldn't be
+            # detected. The user always sees the dialog so they can
+            # override a misdetection or pick a sub-variant.
             from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QDialogButtonBox, QGroupBox
 
             lang_dialog = QDialog(self)
@@ -33869,10 +33890,33 @@ class SupervertalerQt(QMainWindow):
             lang_dialog.setMinimumWidth(350)
             lang_layout = QVBoxLayout(lang_dialog)
 
-            # Info text
-            info_label = QLabel(
-                "Please confirm or select the correct language pair for this project:"
-            )
+            # Info text – call out auto-detection success so the user
+            # knows the pre-fill came from the file rather than from
+            # their current Workbench setting.
+            if detected_src_name and detected_tgt_name:
+                info_text = (
+                    f"Auto-detected from file: "
+                    f"<b>{detected_src_name}</b> → <b>{detected_tgt_name}</b>.<br>"
+                    f"Confirm or change below."
+                )
+            elif detected_src_name or detected_tgt_name:
+                # Partial detection. Tell the user which side was found.
+                partial = []
+                if detected_src_name:
+                    partial.append(f"source = <b>{detected_src_name}</b>")
+                if detected_tgt_name:
+                    partial.append(f"target = <b>{detected_tgt_name}</b>")
+                info_text = (
+                    f"Auto-detected from file: {', '.join(partial)}.<br>"
+                    f"Please pick the remaining side and confirm."
+                )
+            else:
+                info_text = (
+                    "Couldn't auto-detect the language pair – please pick "
+                    "the source and target language for this project:"
+                )
+            info_label = QLabel(info_text)
+            info_label.setTextFormat(Qt.TextFormat.RichText)
             info_label.setWordWrap(True)
             info_label.setStyleSheet("color: #666; margin-bottom: 10px;")
             lang_layout.addWidget(info_label)
@@ -33898,8 +33942,13 @@ class SupervertalerQt(QMainWindow):
                 "Swedish", "Thai", "Turkish", "Ukrainian", "Urdu", "Vietnamese", "Welsh"
             ]
             source_combo.addItems(available_languages)
-            # Try to match current UI selection
-            current_source = self.source_lang_combo.currentText() if hasattr(self, 'source_lang_combo') else "English"
+            # Prefer the auto-detected source; fall back to the main UI
+            # current selection so the dialog still works on a file
+            # that doesn't expose its language metadata.
+            current_source = detected_src_name or (
+                self.source_lang_combo.currentText()
+                if hasattr(self, 'source_lang_combo') else "English"
+            )
             source_idx = source_combo.findText(current_source)
             if source_idx >= 0:
                 source_combo.setCurrentIndex(source_idx)
@@ -33911,8 +33960,10 @@ class SupervertalerQt(QMainWindow):
             target_row.addWidget(QLabel("Target Language:"))
             target_combo = QComboBox()
             target_combo.addItems(available_languages)
-            # Try to match current UI selection
-            current_target = self.target_lang_combo.currentText() if hasattr(self, 'target_lang_combo') else "Dutch"
+            current_target = detected_tgt_name or (
+                self.target_lang_combo.currentText()
+                if hasattr(self, 'target_lang_combo') else "Dutch"
+            )
             target_idx = target_combo.findText(current_target)
             if target_idx >= 0:
                 target_combo.setCurrentIndex(target_idx)
