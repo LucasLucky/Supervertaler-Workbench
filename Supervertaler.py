@@ -21524,20 +21524,77 @@ class SupervertalerQt(QMainWindow):
 
         import sys
         if sys.platform == 'win32':
+            # v1.10.9: belt + braces + suspenders. Three earlier
+            # versions (v1.10.6 deferred the button click, v1.10.7
+            # reordered ensure vs. bring, v1.10.8 split work across
+            # event-loop turns) still left the first Ctrl+Alt+C from
+            # a heavy host like Trados painting Workbench *behind*
+            # Trados despite the SetForegroundWindow call returning
+            # success. That's classic Windows foreground-stealing
+            # prevention: the OS accepts the call but quietly refuses
+            # to actually bring our window forward, leaving it
+            # flashing in the taskbar with no visible activation.
+            #
+            # The canonical fix is the "Alt key" trick. Windows
+            # documents an exception in the foreground-allowed rules
+            # (SetForegroundWindow MSDN page): if the Alt key is
+            # currently pressed at the moment SetForegroundWindow is
+            # called, the OS grants the request unconditionally.
+            # By synthesising a brief Alt down + Alt up *immediately
+            # before* the call, we satisfy that rule even when our
+            # process has no other claim to foreground rights. The
+            # Alt key is released within microseconds so the user
+            # never sees side effects (no menu activation etc.).
+            #
+            # Plus three additional hammers, applied in order:
+            #   - BringWindowToTop() forces Z-order to the top of
+            #     the same-thread-group stack.
+            #   - SetForegroundWindow() requests the actual
+            #     foreground change. With Alt held + thread input
+            #     attached, the OS now accepts it.
+            #   - SwitchToThisWindow() is a deprecated-but-functional
+            #     API that bypasses some foreground rules entirely;
+            #     used as a last-resort hammer for stubborn cases
+            #     (Trados being one).
             try:
                 import ctypes
+                user32 = ctypes.windll.user32
+                kernel32 = ctypes.windll.kernel32
                 hwnd = int(self.winId())
-                fg = ctypes.windll.user32.GetForegroundWindow()
-                fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg, None)
-                our_thread = ctypes.windll.kernel32.GetCurrentThreadId()
-                if fg_thread != our_thread:
-                    ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, True)
-                    ctypes.windll.user32.SetForegroundWindow(hwnd)
-                    ctypes.windll.user32.AttachThreadInput(fg_thread, our_thread, False)
-                else:
-                    ctypes.windll.user32.SetForegroundWindow(hwnd)
-            except Exception:
-                pass
+
+                # Step 1: Synthetic Alt down/up to satisfy
+                # SetForegroundWindow's "Alt key pressed" exception.
+                VK_MENU = 0x12
+                KEYEVENTF_KEYUP = 0x0002
+                user32.keybd_event(VK_MENU, 0, 0, 0)
+                user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+
+                # Step 2: AttachThreadInput dance.
+                fg = user32.GetForegroundWindow()
+                fg_thread = user32.GetWindowThreadProcessId(fg, None)
+                our_thread = kernel32.GetCurrentThreadId()
+                attached = False
+                if fg and fg_thread and fg_thread != our_thread:
+                    attached = bool(
+                        user32.AttachThreadInput(fg_thread, our_thread, True)
+                    )
+
+                # Step 3: Force Z-order to top, then request
+                # foreground, then the deprecated-but-effective
+                # SwitchToThisWindow hammer.
+                try:
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+                    # SwitchToThisWindow(hwnd, fAltTab=True) – second
+                    # arg makes the call behave like an Alt+Tab
+                    # switch which is more reliable than the bare
+                    # foreground-request path.
+                    user32.SwitchToThisWindow(hwnd, True)
+                finally:
+                    if attached:
+                        user32.AttachThreadInput(fg_thread, our_thread, False)
+            except Exception as e:
+                print(f"[Workbench] foreground escalation failed: {e}")
 
     def open_workbench_to_superlookup(self, text: str = ""):
         """Bring Workbench forward, switch to the SuperLookup top tab,

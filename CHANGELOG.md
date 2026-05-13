@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.8 (May 13, 2026)
+**Current Version:** v1.10.9 (May 13, 2026)
+
+
+## v1.10.9 – May 13, 2026
+
+### Fixed (Workbench paints behind Trados on first Ctrl+Alt+C – belt + braces + suspenders)
+
+- After three rounds of timing fixes (v1.10.6/.7/.8), Workbench was still painted *behind* Trados on the first Ctrl+Alt+C after launch. The activation calls succeeded (Clipboard tab switched correctly, source window was captured, send_copy ran), but Workbench's actual window stayed underneath Trados — classic Windows foreground-stealing prevention. The OS was accepting `SetForegroundWindow` (return value non-zero) and then quietly refusing to bring the window forward, leaving it flashing in the taskbar with no visible activation. This is a documented Windows behaviour: even with the `AttachThreadInput` dance, some host apps (Trados being one) interact with the OS in ways that defeat the standard workaround on the first transition.
+- Fix escalates `_bring_workbench_forward()` to apply every documented foreground-grab technique in sequence:
+  1. **Synthetic Alt down + Alt up** (`keybd_event(VK_MENU, …)` pair). The MSDN page for `SetForegroundWindow` documents an exception: if the Alt key is currently pressed when the call is made, the OS grants the request unconditionally. By synthesising a brief Alt down / Alt up immediately before the call, we satisfy that exception unconditionally. The Alt key is released within microseconds so the user never sees side effects (no menu activation, no Alt+Tab dialog).
+  2. **AttachThreadInput** dance (unchanged from previous versions).
+  3. **`BringWindowToTop(hwnd)`** to force our window to the top of the Z-order *within the same input thread group*.
+  4. **`SetForegroundWindow(hwnd)`** to request the actual foreground change. With Alt-held + thread-input-attached, the OS now accepts.
+  5. **`SwitchToThisWindow(hwnd, fAltTab=True)`** as a last-resort hammer. This is a deprecated-but-functional API that bypasses some foreground rules entirely; the second argument makes it behave like a synthetic Alt+Tab switch, which is more reliable than the bare foreground-request path on Win10/11.
+- Combined with v1.10.8's event-loop split (so the OS has time to process the activation between `_bring_workbench_forward` and the heavy ensure), this is everything documented Windows offers. If first-run Ctrl+Alt+C / Ctrl+Alt+L *still* fails after v1.10.9, the issue is either a Trados-specific compatibility shim we don't yet know about, or something outside Windows' documented foreground APIs entirely.
 
 
 ## v1.10.8 – May 13, 2026
