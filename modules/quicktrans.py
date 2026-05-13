@@ -286,11 +286,10 @@ class MTQuickPopup(QDialog):
 
         header_layout.addStretch()
 
-        # Settings button
-        settings_btn = QPushButton("⚙️")
-        settings_btn.setFixedSize(24, 24)
-        settings_btn.setToolTip("Configure QuickTrans providers")
-        settings_btn.setStyleSheet("""
+        # Shared style for icon-only header buttons. Reused for both
+        # the SuperLookup hand-off button and the settings cog so they
+        # visually line up.
+        _icon_btn_style = """
             QPushButton {
                 border: none;
                 background: transparent;
@@ -303,7 +302,27 @@ class MTQuickPopup(QDialog):
             QPushButton:focus {
                 outline: none;
             }
-        """)
+        """
+
+        # "Search this in SuperLookup" hand-off button (v1.10.12).
+        # When a user runs QuickTrans on a phrase and then thinks
+        # "I'd actually like to look this up in my TMs / termbases /
+        # web resources too", this button takes them there in one
+        # click: closes the popup and opens Workbench's SuperLookup
+        # top tab with the same query pre-filled and the search
+        # auto-fired. Same plumbing as Ctrl+Alt+L.
+        superlookup_btn = QPushButton("🔍")
+        superlookup_btn.setFixedSize(24, 24)
+        superlookup_btn.setToolTip("Search this query in SuperLookup")
+        superlookup_btn.setStyleSheet(_icon_btn_style)
+        superlookup_btn.clicked.connect(self._send_to_superlookup)
+        header_layout.addWidget(superlookup_btn)
+
+        # Settings button
+        settings_btn = QPushButton("⚙️")
+        settings_btn.setFixedSize(24, 24)
+        settings_btn.setToolTip("Configure QuickTrans providers")
+        settings_btn.setStyleSheet(_icon_btn_style)
         settings_btn.clicked.connect(self._open_settings)
         header_layout.addWidget(settings_btn)
 
@@ -615,6 +634,40 @@ class MTQuickPopup(QDialog):
 
         except Exception as e:
             return f"[Error: {str(e)}]"
+
+    def _send_to_superlookup(self):
+        """Close the popup and open Workbench's SuperLookup tab with
+        the current QuickTrans query pre-filled.
+
+        Wired to the 🔍 button in the popup header. Same plumbing as
+        the Ctrl+Alt+L global hotkey – `open_workbench_to_superlookup`
+        on the main window does the lazy-tab ensure, foreground
+        hammer chain, text seeding, and deferred search-button click.
+
+        Deferred via QTimer.singleShot(0) for the same reason as
+        `_open_settings`: the popup's close() events need a Qt
+        event-loop turn to fully unwind before the foreground
+        transition starts, otherwise the hammer chain can race
+        against still-queued popup destruction events and leave
+        Workbench painted behind the source app.
+        """
+        query = (self.source_text or "").strip()
+        if not query:
+            return
+        if not (self.parent_app and hasattr(self.parent_app, 'open_workbench_to_superlookup')):
+            return
+        self.close()
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(
+                0,
+                lambda: self.parent_app.open_workbench_to_superlookup(query),
+            )
+        except Exception:
+            # Synchronous fallback – the v1.10.9 hammer chain inside
+            # open_workbench_to_superlookup is robust enough to win
+            # the foreground race most of the time without the defer.
+            self.parent_app.open_workbench_to_superlookup(query)
 
     def _open_settings(self):
         """Open Workbench Settings → ⚡ QuickTrans.

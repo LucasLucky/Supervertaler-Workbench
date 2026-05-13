@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.11 (May 13, 2026)
+**Current Version:** v1.10.12 (May 13, 2026)
+
+
+## v1.10.12 – May 13, 2026
+
+### Added (🔍 hand-off button in QuickTrans popup: "Search this in SuperLookup")
+
+- A new icon button next to the ⚙ settings cog in the QuickTrans popup header. When clicked, it closes the popup and opens Workbench's SuperLookup top tab with the same query pre-filled and the search auto-fired – same plumbing as the Ctrl+Alt+L global hotkey, just triggered from inside the popup. Useful when the user runs QuickTrans on a phrase and then thinks "I'd actually like to look this up in my TMs / termbases / web resources too" – one click instead of dismissing the popup, switching to Workbench, and pasting the query.
+- Defers the parent-app call via `QTimer.singleShot(0, …)` for the same reason as v1.10.11's settings cog fix: the popup's `close()` events need a Qt event-loop turn to unwind before the foreground transition starts, otherwise the hammer chain inside `open_workbench_to_superlookup` races against still-queued popup destruction events.
 
 
 ## v1.10.11 – May 13, 2026
