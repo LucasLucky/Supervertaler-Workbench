@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.3 (May 13, 2026)
+**Current Version:** v1.10.4 (May 13, 2026)
+
+
+## v1.10.4 – May 13, 2026
+
+### Changed (Issue #199 phase 4: Sidekick retired – its four tabs now live in Workbench)
+
+- Sidekick (the always-on-top floating assistant window) is no longer constructed at launch. All four of its tabs were already (or are now) available inside Workbench itself:
+  - **Chat** → Workbench's right panel "💬 AI Assistant" tab (`prompt_manager_qt.assistant_tab`, present since well before this rejig)
+  - **Clipboard** → Workbench's top-level "📋 Clipboard" tab (migrated in v1.10.0)
+  - **Voice** → Workbench's top-level "🎤 Voice" tab (migrated in v1.10.0)
+  - **SuperLookup** → Workbench's top-level "🔍 SuperLookup" tab (migrated in v1.10.0)
+- The `Ctrl+Alt+K` global hotkey (formerly "open Sidekick with selected text") is no longer registered – the chord is now free for any other app's use. The Sidekick-as-floating-window concept is gone; the unified Workbench is the only surface. Use `Ctrl+Alt+L` (SuperLookup), `Ctrl+Alt+C` (Clipboard), or the system tray quick-jump entries to summon the relevant Workbench tab.
+- Defensive cleanup is minimal-impact: this release sets `self._floating_assistant = None` at construction time so the 23 surviving `getattr(self, '_floating_assistant', None)` call-sites silently no-op rather than crash. The dead module file (`modules/floating_assistant.py`) and the now-unreachable code paths in `modules/snippet_library.py`, `modules/chat_view_widget.py`, etc. (the `is_sidekick=True` branches) are scheduled for a follow-up sweep. Keeping them in the tree this release is intentional – they can't be invoked, so they cost nothing, and pulling them in the same commit as the user-visible change would have made the diff harder to bisect if something broke.
+- Trados bridge (`sidekick_bridge_server.py`) is preserved: its HTTP server is what carries QuickLauncher prompts from Trados Studio to Workbench, and the module name is historical. It now hands off to the Workbench Chat panel instead of the Sidekick window. The module will be renamed to `workbench_bridge_server.py` in the follow-up sweep.
 
 
 ## v1.10.3 – May 13, 2026

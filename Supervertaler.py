@@ -9696,21 +9696,18 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, '_preview_tab_index'):
                 self._preview_tab_index += 1
 
-        # Floating Assistant (Sidekick – replaces QMenu-based QuickLauncher).
-        # Constructed but NOT shown – Sidekick uses Qt.WindowType.Tool so
-        # it never has a taskbar / Alt+Tab / system-tray presence; it lives
-        # purely as a summon-on-demand window via Alt+K (global) or Ctrl+Q
-        # (in-app). See FloatingAssistant.__init__ for why Tool was chosen.
-        try:
-            from modules.floating_assistant import FloatingAssistant
-            self._floating_assistant = FloatingAssistant(
-                chat_backend=self.prompt_manager_qt.chat_backend,
-                parent_app=self,
-                superlookup_class=SuperlookupTab,
-            )
-        except Exception as e:
-            self.log(f"⚠ Failed to create Floating Assistant: {e}")
-            self._floating_assistant = None
+        # Sidekick (Floating Assistant) retired in v1.10.4 (issue #199
+        # phase 4). All four of its tabs now live in Workbench itself:
+        #   Chat        → right_tabs "💬 AI Assistant"
+        #   Clipboard   → main_tabs "📋 Clipboard"
+        #   Voice       → main_tabs "🎤 Voice"
+        #   SuperLookup → main_tabs "🔍 SuperLookup"
+        # The attribute is kept as None so the 23 surviving
+        # `getattr(self, '_floating_assistant', None)` defensive checks
+        # in this file (and across modules) silently no-op rather than
+        # crash. They'll be pruned in a follow-up sweep along with
+        # floating_assistant.py itself.
+        self._floating_assistant = None
 
         # Keep backward compatibility reference
         self.document_views_widget = self.main_tabs
@@ -57712,6 +57709,14 @@ class SuperlookupTab(QWidget):
             if _skip('sidekick_open_clipboard'):      cb_shortcut = ''
             if _skip('voice_dictate'):                pt_shortcut = ''
             if _skip('voice_alwayson_toggle'):  ao_shortcut = ''
+            # v1.10.4 (issue #199 phase 4): Sidekick retired – the
+            # Ctrl+Alt+K binding has no target any more (Sidekick window
+            # isn't constructed). Force the global registration off so
+            # we don't grab the chord system-wide for no reason. The
+            # in-app QShortcut bound by create_shortcut('sidekick_open',
+            # …) still fires, but its handler (open_quicklauncher) now
+            # logs and returns when _floating_assistant is None.
+            sk_shortcut = ''
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+q'
