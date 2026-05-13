@@ -109,6 +109,55 @@ class CheckmarkCheckBox(QCheckBox):
             painter.end()
 
 
+class PurpleCheckmarkCheckBox(CheckmarkCheckBox):
+    """Purple-themed variant of :class:`CheckmarkCheckBox` – same
+    geometry, same hand-painted white checkmark, just a deeper purple
+    fill (Material 500 / hover 700) instead of the green default.
+    Used by the voice-dictation-bias UI:
+
+      - Termbase Manager → 🎤 Voice column (one per termbase)
+      - Voice tab → "Also bias from your termbases" toggle
+
+    Both UI surfaces drive the same feature (per-termbase voice-
+    dictation vocabulary biasing); using the same colour keeps the
+    visual identity consistent so users can connect them at a glance.
+
+    The CheckmarkCheckBox parent class handles the paintEvent that
+    draws the white checkmark – we only need to override the stylesheet
+    to swap the green for purple. The unchecked-state border is
+    bumped from #999 to #888 so the box reads as a deliberate UI
+    element rather than the faded "barely-there" look of the bare
+    QCheckBox unchecked state on white backgrounds.
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QCheckBox {
+                font-size: 9pt;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #888;
+                border-radius: 3px;
+                background-color: white;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #9C27B0;
+                border-color: #9C27B0;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #555;
+            }
+            QCheckBox::indicator:checked:hover {
+                background-color: #7B1FA2;
+                border-color: #7B1FA2;
+            }
+        """)
+
+
 class HelpButton(QPushButton):
     """A small, unobtrusive "?" button that opens the relevant help page.
 

@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.29 (May 14, 2026)
+**Current Version:** v1.10.30 (May 14, 2026)
+
+
+## v1.10.30 – May 14, 2026
+
+### Changed (Voice tab "Also bias from your termbases" checkbox: green → purple to match)
+
+- The toggle was using the default green `CheckmarkCheckBox`, which on a white panel background looked washed out – the unchecked state is just a thin grey border and the checked state is the same green used for "Read" in Termbase Manager, so the colour didn't communicate any semantic link to the voice-dictation feature.
+- Swapped for `PurpleCheckmarkCheckBox` so the toggle now visually matches the 🎤 Voice column in Termbase Manager – same colour, same feature, makes the connection obvious. Unchecked-state border bumped from `#999` to `#888` so the box reads as a deliberate UI element rather than fading into the panel.
+- Refactoring side-effect: `PurpleCheckmarkCheckBox` (added in v1.10.28 as a local class in `Supervertaler.py`) is now in `modules/styled_widgets.py` next to its `CheckmarkCheckBox` parent class. Single source of truth, no copy-pasted style block, and the styling change (border colour fix) lands once and applies to both the Voice-tab toggle and the Termbase Manager column.
 
 
 ## v1.10.29 – May 14, 2026

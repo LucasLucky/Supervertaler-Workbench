@@ -32,7 +32,9 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
 )
 
-from modules.styled_widgets import CheckmarkCheckBox, HelpButton
+from modules.styled_widgets import (
+    CheckmarkCheckBox, PurpleCheckmarkCheckBox, HelpButton,
+)
 from modules.voice_command_dialog import VoiceCommandEditDialog
 from modules.help_system import Topics as HelpTopics, set_topic as set_help_topic
 
@@ -419,9 +421,14 @@ class VoiceTab(QWidget):
         # the "active" was ambiguous (project Read/Write toggles), and
         # it pulled source-side terms when translators dictate the
         # target side. Now uses each termbase's own 🎤 Voice flag
-        # (Termbase Manager → 🎤 Voice column, defaults to on for
-        # existing termbases) and pulls target-language terms.
-        self._vocab_use_termbase_cb = CheckmarkCheckBox(
+        # (Termbase Manager → 🎤 Voice column, opt-in as of v1.10.29)
+        # and pulls target-language terms.
+        # v1.10.30: switched from green CheckmarkCheckBox to purple
+        # PurpleCheckmarkCheckBox so this toggle visually matches the
+        # 🎤 Voice column in Termbase Manager (same feature, same
+        # colour) and reads as a more deliberate UI element than the
+        # bare-green default did.
+        self._vocab_use_termbase_cb = PurpleCheckmarkCheckBox(
             "Also bias from your termbases (target-language terms)"
         )
         self._vocab_use_termbase_cb.setStyleSheet("font-size: 9pt;")
