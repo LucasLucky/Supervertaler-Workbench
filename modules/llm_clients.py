@@ -1374,13 +1374,28 @@ class LLMClient:
         return translation
 
     def _call_gemini(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> str:
-        """Call Google Gemini API with vision support"""
+        """Call Google Gemini API with vision support."""
+        # v1.10.34: preserve the original exception text in the
+        # ImportError. The old "Google AI library not installed"
+        # blanket message was misleading – it fired even when the
+        # package was installed but failed at import time for an
+        # unrelated reason (e.g. a transitive dependency tripping
+        # on a missing stdlib module in a PyInstaller bundle that
+        # excluded ``unittest``). v1.10.33's Windows EXE hit
+        # exactly that case: pyparsing.testing imports unittest at
+        # module load and the spec file had unittest in excludes,
+        # so importing google.generativeai threw
+        # ModuleNotFoundError but users saw the misleading message.
         try:
             import google.generativeai as genai
             from PIL import Image
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
-                "Google AI library not installed. Install with: pip install google-generativeai pillow"
+                f"Could not load Google Gemini SDK: {type(e).__name__}: {e}. "
+                "If 'pip list' shows google-generativeai is installed, "
+                "this is likely a transitive-import failure (often a "
+                "stdlib module excluded from a frozen bundle). Otherwise "
+                "install with: pip install google-generativeai pillow"
             )
 
         genai.configure(api_key=self.api_key)
@@ -1403,7 +1418,38 @@ class LLMClient:
             content = prompt
 
         response = model.generate_content(content)
-        translation = response.text.strip()
+
+        # Defensive .text access: response.text raises ValueError
+        # ("response did not contain a valid Part") when the candidate
+        # was blocked or finish_reason isn't STOP. Surface the actual
+        # cause instead of letting a generic ValueError bubble up.
+        try:
+            translation = response.text.strip()
+        except (ValueError, AttributeError) as e:
+            details = []
+            try:
+                if response.prompt_feedback and response.prompt_feedback.block_reason:
+                    details.append(
+                        f"prompt blocked: {response.prompt_feedback.block_reason}"
+                    )
+            except Exception:
+                pass
+            try:
+                for i, cand in enumerate(response.candidates or []):
+                    fr = getattr(cand, 'finish_reason', None)
+                    if fr is not None:
+                        details.append(f"candidate {i} finish_reason={fr}")
+                    sr = getattr(cand, 'safety_ratings', None) or []
+                    blocked = [
+                        f"{getattr(r, 'category', '?')}={getattr(r, 'probability', '?')}"
+                        for r in sr if getattr(r, 'blocked', False)
+                    ]
+                    if blocked:
+                        details.append(f"candidate {i} safety: {', '.join(blocked)}")
+            except Exception:
+                pass
+            reason = "; ".join(details) if details else f"{type(e).__name__}: {e}"
+            raise RuntimeError(f"Gemini returned no usable text ({reason})") from e
 
         return translation
 

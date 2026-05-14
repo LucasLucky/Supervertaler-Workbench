@@ -72,7 +72,15 @@ a = Analysis(
         'IPython',
         # Testing frameworks
         'pytest',
-        'unittest',
+        # NOTE: do NOT exclude 'unittest' here, even though it's only
+        # used for running tests. pyparsing.testing imports unittest
+        # *at module load* (and pyparsing is a transitive dep of
+        # google-generativeai → google-api-core → pyparsing). Excluding
+        # unittest breaks the Gemini import path with a
+        # ModuleNotFoundError that gets swallowed upstream as a
+        # misleading "Google AI library not installed" message – cost
+        # us v1.10.33's first Gemini-using Windows tester a confused
+        # debugging session. unittest only adds ~200 KB to the bundle.
         # Dev tools
         'black',
         'isort',

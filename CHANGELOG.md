@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.33 (May 14, 2026)
+**Current Version:** v1.10.34 (May 14, 2026)
+
+
+## v1.10.34 – May 14, 2026
+
+### Fixed (Gemini translation broken on the v1.10.33 Windows EXE)
+
+- A user who downloaded the v1.10.33 Windows ZIP minutes after release reported that **Gemini translation failed silently** (`Translated: 0 | Failed: 1` with no diagnostic) while OpenAI worked fine. The on-screen error said `Google AI library not installed. Install with: pip install google-generativeai pillow` – misleading on a frozen EXE where pip isn't applicable and the package was correctly bundled in the first place.
+- Real cause buried in the session log: `ModuleNotFoundError: No module named 'unittest'` while loading `pyparsing.testing`. `pyparsing` is a transitive dependency of `google-generativeai` (via `google-api-core`), and `pyparsing.testing` imports `unittest` at module load. v1.10.33's `Supervertaler.spec` had `'unittest'` in its excludes list (grouped with `'pytest'` under "Testing frameworks"), so PyInstaller stripped it from the bundle. The moment the Gemini code path tried to `import google.generativeai`, the chain blew up – and the `try / except ImportError` block converted that into the misleading "not installed" message.
+- Two fixes:
+  - **`Supervertaler.spec`**: dropped `'unittest'` from excludes. ~200 KB bigger bundle, but Gemini works again (and presumably so does anything else that transitively pulls `pyparsing.testing`).
+  - **`modules/llm_clients.py` `_call_gemini`**: now preserves the original exception in the ImportError message so future users get *"Could not load Google Gemini SDK: ModuleNotFoundError: No module named 'unittest'. If 'pip list' shows google-generativeai is installed, this is likely a transitive-import failure (often a stdlib module excluded from a frozen bundle)."* instead of the misleading boilerplate. Also adds defensive handling around `response.text` (which raises ValueError when Gemini's safety filter blocks the response) – future failures of *that* class will report the actual `finish_reason` / `safety_ratings` instead of a generic "no text" error.
+- Live-tested with the user's actual Gemini API key + the `gemini-2.5-flash-lite` model. The translation that failed on v1.10.33's Windows EXE now returns correctly.
 
 
 ## v1.10.33 – May 14, 2026
