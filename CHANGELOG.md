@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.34 (May 14, 2026)
+**Current Version:** v1.10.35 (May 14, 2026)
+
+
+## v1.10.35 – May 14, 2026
+
+### Removed (Model Version Checker startup popup)
+
+- Removed the "Model Version Checker" feature: the background check that ran ~2 seconds after startup and could pop up a "new models available" dialog, plus its Settings panel (the "🔄 Model Version Checker" group with the auto-check toggle and "Check for New Models Now" button). The popup interrupted startup and the model lists it discovered are now curated by hand to stay in line with the Supervertaler for Trados lists.
+- Code removed from `Supervertaler.py`: the startup `QTimer.singleShot` trigger, the `_check_for_new_models()` and `_on_new_models_selected()` methods, the Settings UI section, the `auto_check_models` preference save, and the stale `model_version_cache.json` entry in the satellite-file migration list. Deleted `modules/model_version_checker.py` and `modules/model_update_dialog.py`.
+- The **Model Management** tab and its underlying settings (`user_added_models`, `enabled_models`) are untouched – you can still curate which models appear in the dropdowns there.
 
 
 ## v1.10.34 – May 14, 2026
