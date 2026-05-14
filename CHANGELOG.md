@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.39 (May 14, 2026)
+**Current Version:** v1.10.40 (May 14, 2026)
+
+
+## v1.10.40 – May 14, 2026
+
+### Fixed (SuperLookup: re-searching from the Web Resources tab didn't update the web views)
+
+- When the Web Resources sub-tab was already the active tab, editing the search query and clicking Search left every web resource (IATE, Linguee, ProZ, etc.) showing the *previous* query. The web search is deliberately deferred – `perform_lookup()` only marks it pending, and `on_results_tab_changed()` fires it when the user navigates to the Web Resources tab. But navigating doesn't happen on a re-search from that same tab, so the pending search was never triggered.
+- `perform_lookup()` now detects when the Web Resources sub-tab is already the active tab and fires the web search immediately (for both embedded and external browser modes), instead of only marking it pending. The deferred-on-navigation behaviour is unchanged for every other tab.
 
 
 ## v1.10.39 – May 14, 2026

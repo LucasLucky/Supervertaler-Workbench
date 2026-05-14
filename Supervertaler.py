@@ -56605,6 +56605,26 @@ class SuperlookupTab(QWidget):
 
         if hasattr(self, 'web_browser_mode') and any_web_checked:
             self._web_search_pending = True
+            # If the user is already viewing the Web Resources sub-tab, fire
+            # the web search now. on_results_tab_changed only fires the
+            # deferred search on a tab *change*, so a re-search from the Web
+            # Resources tab would otherwise leave the web views stuck on the
+            # previous query.
+            web_index = -1
+            if hasattr(self, 'results_tabs'):
+                for i in range(self.results_tabs.count()):
+                    if "Web Resources" in self.results_tabs.tabText(i):
+                        web_index = i
+                        break
+            if web_index >= 0 and self.results_tabs.currentIndex() == web_index:
+                self._web_search_pending = False
+                try:
+                    if self.web_browser_mode == 'embedded' and getattr(self, 'web_engine_available', False):
+                        self._perform_web_search(search_all=True, silent=True)
+                    elif self.web_browser_mode == 'external':
+                        self._perform_web_search(search_all=False, silent=True)
+                except Exception as e:
+                    print(f"[SuperLookup] Active-tab web search error: {e}")
         else:
             self._web_search_pending = False
 
