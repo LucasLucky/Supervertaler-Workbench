@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.36 (May 14, 2026)
+**Current Version:** v1.10.37 (May 14, 2026)
+
+
+## v1.10.37 – May 14, 2026
+
+### Removed (Settings → AI Models tab)
+
+- Removed the "🤖 AI Models" Settings tab (Model Management). It existed to manage the models discovered by the old Model Version Checker (removed in v1.10.35), so with the checker gone its main job was gone too – and on machines that had run the checker it had filled up with dozens of auto-discovered junk entries (`o3-mini-2025-01-31`, `gpt-4.1-nano`, `gpt-5-chat-latest`, …) marked "discovered model". The curated provider lists are now the single source of truth.
+- Removed `_create_model_management_tab()`, `_save_model_management_settings()`, and the `_ALL_KNOWN_MODELS` / `_DEFAULT_ENABLED_MODELS` class tables that fed the tab (~150 lines).
+- The QuickTrans provider dropdowns no longer filter against the saved `model_management` setting – they now build straight from the curated `llm_providers` list, so existing users whose settings carried discovered-model junk get clean dropdowns immediately. The now-inert `model_management` key left behind in older settings files is harmless and simply stops being read or written.
 
 
 ## v1.10.36 – May 14, 2026

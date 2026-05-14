@@ -17221,10 +17221,6 @@ class SupervertalerQt(QMainWindow):
         settings_tabs.addTab(ai_scroll, "🤖 AI Settings")
         self.ai_settings_scroll = ai_scroll  # Store reference for scrolling to API keys
 
-        # ===== TAB: AI Models =====
-        model_mgmt_tab = self._create_model_management_tab()
-        settings_tabs.addTab(scroll_area_wrapper(model_mgmt_tab), "🤖 AI Models")
-
         # ===== TAB: Voice (commands & dictation, lives in Sidekick) =====
         voice_tab = self._create_voice_settings_tab()
         settings_tabs.addTab(scroll_area_wrapper(voice_tab), "🎤 Voice")
@@ -18705,11 +18701,6 @@ class SupervertalerQt(QMainWindow):
         # LLM provider checkboxes with model selection
         self._mtql_llm_combos = {}
 
-        # Load model management enabled list for filtering
-        _mm = general_settings.get('model_management', {})
-        _enabled_by_provider = _mm.get('enabled_models', None)  # None = no filter (show all)
-        _user_added_by_provider = _mm.get('user_added_models', {})
-
         llm_providers = [
             ("claude", "Claude", "claude", [
                 ("claude-sonnet-4-6", "Claude Sonnet 4.6 (Recommended)"),
@@ -18760,19 +18751,10 @@ class SupervertalerQt(QMainWindow):
             self._mtql_checkboxes[f"mtql_{code}"] = checkbox
             llm_row.addWidget(checkbox)
 
-            # Model selection combo – filtered by model management enabled list
+            # Model selection combo
             model_combo = QComboBox()
             model_combo.setMinimumWidth(200)
-            provider_enabled_ids = _enabled_by_provider.get(code) if _enabled_by_provider else None
-            visible_models = [(mid, mname) for mid, mname in models
-                              if provider_enabled_ids is None or mid in provider_enabled_ids]
-            # Also append any user-added models not in the base list
-            base_ids = {m[0] for m in models}
-            for extra_id in _user_added_by_provider.get(code, []):
-                if extra_id not in base_ids:
-                    if provider_enabled_ids is None or extra_id in provider_enabled_ids:
-                        visible_models.append((extra_id, extra_id))
-            for model_id, model_name in visible_models:
+            for model_id, model_name in models:
                 model_combo.addItem(model_name, model_id)
 
             # Restore saved model selection
@@ -18870,154 +18852,6 @@ class SupervertalerQt(QMainWindow):
 
         self.log("✓ QuickTrans settings saved")
         QMessageBox.information(self, "Settings Saved", "QuickTrans settings have been saved.")
-
-    # ─────────────────────────────────────────────────────────────
-    # Model Management tab
-    # ─────────────────────────────────────────────────────────────
-
-    # Master list of all known models per provider.
-    # Tuple format: (model_id, display_name, description)
-    _ALL_KNOWN_MODELS = {
-        "openai": [
-            ("gpt-5.5",      "GPT-5.5",      "Recommended – flagship, advanced reasoning"),
-            ("gpt-5.4-mini", "GPT-5.4 Mini", "Fast & economical – great for routine translation"),
-        ],
-        "claude": [
-            ("claude-sonnet-4-6",         "Claude Sonnet 4.6", "Recommended – best balance"),
-            ("claude-haiku-4-5-20251001", "Claude Haiku 4.5",  "Fast & affordable"),
-            ("claude-opus-4-7",           "Claude Opus 4.7",   "Latest premium – most capable, 1M context"),
-        ],
-        "gemini": [
-            ("gemini-3.1-flash-lite",  "Gemini 3.1 Flash-Lite", "Recommended – fast & economical"),
-            ("gemini-2.5-pro",         "Gemini 2.5 Pro",        "Premium – complex reasoning"),
-            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro",        "Latest – most capable"),
-            ("gemma-4-26b-a4b-it",     "Gemma 4 26B MoE",       "Open model – lightweight"),
-        ],
-        "ollama": [
-            ("translategemma:12b", "TranslateGemma 12B", "Recommended for translation"),
-            ("translategemma:7b",  "TranslateGemma 7B",  "Faster, lighter"),
-            ("gemma3:12b",         "Gemma3 12B",         "General purpose"),
-            ("qwen2.5:7b",         "Qwen 2.5 7B",        "Multilingual"),
-            ("llama3.1:8b",        "Llama 3.1 8B",        "General purpose"),
-            ("aya-expanse:8b",     "Aya Expanse 8B",     "Multilingual"),
-        ],
-    }
-
-    # Default enabled model IDs when no user preference has been saved yet
-    _DEFAULT_ENABLED_MODELS = {
-        "openai": ["gpt-5.5", "gpt-5.4-mini"],
-        "claude": ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-7"],
-        "gemini": ["gemini-3.1-flash-lite", "gemini-2.5-pro",
-                   "gemini-3.1-pro-preview", "gemma-4-26b-a4b-it"],
-        "ollama": ["translategemma:12b"],
-    }
-
-    def _create_model_management_tab(self):
-        """Create the Model Management settings tab"""
-        from PyQt6.QtWidgets import QGroupBox
-
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
-
-        header = QLabel(
-            "🎛️ <b>Model Management</b> – Select which AI models appear in dropdowns throughout the app.<br>"
-            "Uncheck models you don't use to keep lists clean. "
-            "Changes take effect after reopening Settings."
-        )
-        header.setTextFormat(Qt.TextFormat.RichText)
-        header.setWordWrap(True)
-        header.setStyleSheet(
-            "font-size: 9pt; color: #444; padding: 10px; "
-            "background-color: #E8F5E9; border-radius: 4px;"
-        )
-        layout.addWidget(header)
-
-        # Load current settings
-        general_settings = self.load_general_settings()
-        mm = general_settings.get('model_management', {})
-        saved_enabled = mm.get('enabled_models', None)   # None = first run, use defaults
-        user_added = mm.get('user_added_models', {})
-
-        self._model_mgmt_checkboxes = {}   # provider_key -> {model_id -> QCheckBox}
-
-        provider_labels = {
-            "openai": "OpenAI",
-            "claude": "Claude (Anthropic)",
-            "gemini": "Gemini (Google AI)",
-            "ollama": "Ollama (Local LLM – no API key needed)",
-        }
-
-        for provider_key, built_in_models in self._ALL_KNOWN_MODELS.items():
-            group = QGroupBox(provider_labels.get(provider_key, provider_key))
-            group_layout = QVBoxLayout()
-            group_layout.setSpacing(4)
-
-            provider_enabled_ids = (
-                saved_enabled.get(provider_key)
-                if saved_enabled is not None
-                else self._DEFAULT_ENABLED_MODELS.get(provider_key, [])
-            )
-            self._model_mgmt_checkboxes[provider_key] = {}
-
-            # Built-in models
-            for model_id, model_name, model_desc in built_in_models:
-                # Escape & so Qt doesn't treat it as a keyboard accelerator
-                label_text = f"{model_name}  –  {model_desc}".replace("&", "&&")
-                cb = CheckmarkCheckBox(label_text)
-                cb.setChecked(model_id in provider_enabled_ids)
-                cb.setToolTip(model_id)
-                self._model_mgmt_checkboxes[provider_key][model_id] = cb
-                group_layout.addWidget(cb)
-
-            # User-added models (from model discovery dialog)
-            base_ids = {m[0] for m in built_in_models}
-            for extra_id in user_added.get(provider_key, []):
-                if extra_id not in base_ids:
-                    cb = CheckmarkCheckBox(f"{extra_id}  –  discovered model")
-                    cb.setChecked(extra_id in provider_enabled_ids)
-                    cb.setStyleSheet(cb.styleSheet() + " color: #1565C0;")
-                    self._model_mgmt_checkboxes[provider_key][extra_id] = cb
-                    group_layout.addWidget(cb)
-
-            group.setLayout(group_layout)
-            layout.addWidget(group)
-
-        note = QLabel("💡 Tip: After saving, reopen Settings for changes to appear in QuickTrans and AI Settings dropdowns.")
-        note.setWordWrap(True)
-        note.setStyleSheet("font-size: 8pt; color: #666; font-style: italic; margin-top: 4px;")
-        layout.addWidget(note)
-
-        save_btn = QPushButton("💾 Save Model Settings")
-        save_btn.setStyleSheet("font-weight: bold; padding: 8px;")
-        save_btn.clicked.connect(self._save_model_management_settings)
-        layout.addWidget(save_btn)
-
-        layout.addStretch()
-        return tab
-
-    def _save_model_management_settings(self):
-        """Save model management (enabled/disabled) settings"""
-        if not hasattr(self, '_model_mgmt_checkboxes'):
-            return
-
-        enabled = {
-            provider_key: [mid for mid, cb in checkboxes.items() if cb.isChecked()]
-            for provider_key, checkboxes in self._model_mgmt_checkboxes.items()
-        }
-
-        general_settings = self.load_general_settings()
-        mm = general_settings.get('model_management', {})
-        mm['enabled_models'] = enabled
-        general_settings['model_management'] = mm
-        self.save_general_settings(general_settings)
-
-        self.log("✓ Model management settings saved")
-        QMessageBox.information(
-            self, "Models Saved",
-            "Model settings saved.\n\nReopen Settings to apply changes to QuickTrans and AI Settings dropdowns."
-        )
 
     def open_mt_quick_lookup_settings(self):
         """Open Settings → ⚡ QuickTrans and bring Workbench forward.
