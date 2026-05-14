@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.37 (May 14, 2026)
+**Current Version:** v1.10.38 (May 14, 2026)
+
+
+## v1.10.38 – May 14, 2026
+
+### Changed (PDF Rescue model picker modernised)
+
+- The PDF Rescue tool (Tools → 📄 PDF Rescue) had its own AI model picker that the v1.10.36 model-list cleanup deliberately skipped – it was still offering GPT-4o / GPT-4 Turbo / GPT-4, Claude 3.5 / 3 Opus, and Gemini 1.5 / 2.0. Updated it to the current vision-capable models: GPT-5.5, GPT-5.4 Mini; Claude Sonnet 4.6, Claude Haiku 4.5, Claude Opus 4.7; Gemini 3.1 Flash-Lite, Gemini 2.5 Pro, Gemini 3.1 Pro Preview. Default is now GPT-5.5, and the "Model Capabilities" help text was rewritten to match.
+- Gemma 4 26B MoE is intentionally left out of the PDF Rescue picker (it appears in the main translation lists): the OCR provider-detection keys off the `gemini-` prefix, and Gemma's vision reliability for demanding OCR work is unproven. The picker stays scoped to proven vision models.
+- The provider-detection and token-parameter logic needed no changes – GPT-5.5 / GPT-5.4 Mini both resolve to OpenAI and correctly use `max_completion_tokens`.
+- `modules/pdf_rescue_tkinter.py` was left untouched: it is only used by the frozen legacy tkinter app under `legacy_versions/`, not the current PyQt6 Workbench.
 
 
 ## v1.10.37 – May 14, 2026

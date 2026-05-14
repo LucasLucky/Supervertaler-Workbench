@@ -199,14 +199,14 @@ class PDFRescueQt:
         self.model_combo = QComboBox()
         # Organize models by provider with separators
         self.model_combo.addItem("--- OpenAI ---")
-        self.model_combo.addItems(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-5"])
+        self.model_combo.addItems(["gpt-5.5", "gpt-5.4-mini"])
         self.model_combo.addItem("--- Claude (Anthropic) ---")
-        self.model_combo.addItems(["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"])
+        self.model_combo.addItems(["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-7"])
         self.model_combo.addItem("--- Gemini (Google) ---")
-        self.model_combo.addItems(["gemini-2.0-flash-exp", "gemini-1.5-pro-002", "gemini-1.5-flash-002"])
-        
+        self.model_combo.addItems(["gemini-3.1-flash-lite", "gemini-2.5-pro", "gemini-3.1-pro-preview"])
+
         # Set default and style separator items
-        self.model_combo.setCurrentText("gpt-4o")
+        self.model_combo.setCurrentText("gpt-5.5")
         
         # Make separator items non-selectable by disabling them
         combo_model = self.model_combo.model()
@@ -243,11 +243,12 @@ class PDFRescueQt:
         self.model_descriptions_text.setFont(QFont("Segoe UI", 9))
         self.model_descriptions_text.setReadOnly(True)
         # Size naturally to content - no fixed max height to eliminate wasted space below
-        model_descriptions = """• gpt-4o (Recommended): Fast and accurate; best balance of speed, quality, and cost; excellent for most documents including tables
-• gpt-4o-mini: Fast and economical; good for simple documents; may struggle with complex layouts or tables
-• gpt-4-turbo: Large context window (128k tokens); good for very long documents; slightly slower but handles extensive content well
-• gpt-4: Classic, reliable baseline; consistent quality; good for standard documents, though slower than gpt-4o
-• gpt-5 (Advanced Reasoning): Reasoning model; may improve table extraction and complex layouts; slower and more expensive; best for: complex tables, technical documents, structured data extraction"""
+        model_descriptions = """• gpt-5.5 (Recommended): OpenAI flagship; advanced reasoning, excellent for most documents including complex tables
+• gpt-5.4-mini: Fast and economical; good for simple documents; may struggle with complex layouts
+• claude-sonnet-4-6: Strong all-rounder; reliable on structured layouts and tables
+• claude-opus-4-7: Anthropic's most capable; best for dense, complex or technical documents
+• gemini-3.1-flash-lite: Fast and economical Google option; good for high-volume, straightforward pages
+• gemini-2.5-pro: Premium Google option; strong on complex layouts and dense documents"""
         self.model_descriptions_text.setPlainText(model_descriptions)
         options_layout.addWidget(self.model_descriptions_text)
         
