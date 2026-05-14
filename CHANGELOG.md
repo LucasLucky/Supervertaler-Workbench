@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.40 (May 14, 2026)
+**Current Version:** v1.10.41 (May 14, 2026)
+
+
+## v1.10.41 – May 14, 2026
+
+### Changed (SuperLookup: From/To language filters moved onto the search row)
+
+- The "From: … To: …" language filter dropdowns had their own row below the search box. Moved them onto the same row as the search box and the Search / Clear buttons, sitting to the right of Clear. The search box keeps its stretch so it still expands to fill the width and pushes the language controls to the right edge. One less row to win back vertical space on smaller laptop screens.
 
 
 ## v1.10.40 – May 14, 2026

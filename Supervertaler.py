@@ -53969,43 +53969,39 @@ class SuperlookupTab(QWidget):
         clear_btn.setStyleSheet("padding: 6px 8px;")
         clear_btn.clicked.connect(self.clear_all)
         search_row.addWidget(clear_btn)
-        
-        layout.addLayout(search_row)
-        
-        # Options row (language filters only) - compact single line
-        options_layout = QHBoxLayout()
-        options_layout.setSpacing(8)
-        
-        # Language filter dropdowns
+
+        # Language filters live on the same row as the search controls
+        # (to the right of Search / Clear) to save vertical space. The
+        # search box keeps stretch=1, so it absorbs the extra width and
+        # pushes the From/To controls to the right edge of the row.
         from_label = QLabel("From:")
         from_label.setStyleSheet("font-weight: bold; font-size: 9pt;")
-        options_layout.addWidget(from_label)
-        
+        search_row.addWidget(from_label)
+
         self.lang_from_combo = QComboBox()
         self.lang_from_combo.setMinimumWidth(90)
         self.lang_from_combo.setToolTip("Filter by source language (leave as 'Any' for all)")
         self.lang_from_combo.currentIndexChanged.connect(self._on_language_changed)
-        options_layout.addWidget(self.lang_from_combo)
-        
+        search_row.addWidget(self.lang_from_combo)
+
         # Swap button
         swap_btn = QPushButton("↔")
         swap_btn.setFixedWidth(28)
         swap_btn.setToolTip("Swap source and target languages")
         swap_btn.clicked.connect(self.swap_language_filters)
-        options_layout.addWidget(swap_btn)
-        
+        search_row.addWidget(swap_btn)
+
         to_label = QLabel("To:")
         to_label.setStyleSheet("font-weight: bold; font-size: 9pt;")
-        options_layout.addWidget(to_label)
-        
+        search_row.addWidget(to_label)
+
         self.lang_to_combo = QComboBox()
         self.lang_to_combo.setMinimumWidth(90)
         self.lang_to_combo.setToolTip("Filter by target language (leave as 'Any' for all)")
         self.lang_to_combo.currentIndexChanged.connect(self._on_language_changed)
-        options_layout.addWidget(self.lang_to_combo)
-        
-        options_layout.addStretch()
-        layout.addLayout(options_layout)
+        search_row.addWidget(self.lang_to_combo)
+
+        layout.addLayout(search_row)
         
         # Initialize language dropdowns with "Any" option
         self.lang_from_combo.addItem("Any", None)
