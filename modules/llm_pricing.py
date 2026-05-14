@@ -12,37 +12,22 @@ from typing import Optional
 # Pricing per 1M tokens: (input_price_usd, output_price_usd)
 PRICING = {
     "claude": {
-        "claude-opus-4-7": (15.0, 75.0),
+        "claude-opus-4-7": (5.0, 25.0),
         "claude-sonnet-4-6": (3.0, 15.0),
-        "claude-sonnet-4-5-20250514": (3.0, 15.0),
-        "claude-opus-4-6": (15.0, 75.0),
-        "claude-opus-4-1-20250410": (15.0, 75.0),
         "claude-haiku-4-5-20251001": (1.0, 5.0),
-        "claude-3-5-sonnet-20241022": (3.0, 15.0),
-        "claude-3-5-haiku-20241022": (0.80, 4.0),
     },
     "openai": {
-        "gpt-4o": (2.50, 10.0),
-        "gpt-4o-mini": (0.15, 0.60),
-        "gpt-4-turbo": (10.0, 30.0),
-        "gpt-5": (10.0, 30.0),
-        "gpt-5.4": (10.0, 30.0),
+        "gpt-5.5": (5.0, 30.0),
         "gpt-5.4-mini": (1.0, 4.0),
-        "o1": (15.0, 60.0),
-        "o1-mini": (3.0, 12.0),
-        "o3": (10.0, 40.0),
-        "o3-mini": (1.10, 4.40),
     },
     "gemini": {
-        "gemini-2.5-flash": (0.15, 0.60),
+        "gemini-3.1-flash-lite": (0.25, 1.50),
         "gemini-2.5-pro": (1.25, 10.0),
-        "gemini-3-flash-preview": (0.15, 0.60),
         "gemini-3.1-pro-preview": (1.25, 10.0),
     },
     "mistral": {
         "mistral-large-latest": (2.0, 6.0),
         "mistral-small-latest": (0.20, 0.60),
-        "open-mistral-nemo": (0.15, 0.15),
     },
     "openrouter": {
         # OpenRouter passes through provider pricing + small markup

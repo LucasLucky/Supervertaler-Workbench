@@ -6,16 +6,16 @@ Specialized independent module for interacting with various LLM providers.
 Can be used standalone or imported by other applications.
 
 Supported Providers:
-- OpenAI (GPT-4, GPT-4o, GPT-5, o1, o3)
-- Anthropic (Claude Sonnet 4.5, Haiku 4.5, Opus 4.1)
-- Google (Gemini 2.5 Flash, 2.5 Pro, 3 Pro Preview)
-- Mistral AI (Mistral Large, Mistral Small, Mistral Nemo)
+- OpenAI (GPT-5.5, GPT-5.4 Mini)
+- Anthropic (Claude Sonnet 4.6, Haiku 4.5, Opus 4.7)
+- Google (Gemini 3.1 Flash-Lite, 2.5 Pro, 3.1 Pro Preview, Gemma 4 26B MoE)
+- Mistral AI (Mistral Large, Mistral Small)
 - DeepSeek (V4 Pro, V4 Flash)
 
-Claude 4 Models (Released 2025):
-- Sonnet 4.5: Best balance - flagship model for general translation ($3/$15 per MTok)
-- Haiku 4.5: Fast & affordable - 2x speed, 1/3 cost of Sonnet ($1/$5 per MTok)
-- Opus 4.1: Premium quality - complex legal/technical translation ($15/$75 per MTok)
+Claude Models:
+- Sonnet 4.6: Best balance - flagship model for general translation ($3/$15 per MTok)
+- Haiku 4.5: Fast & affordable - 2x speed, 1/5 cost of Sonnet ($1/$5 per MTok)
+- Opus 4.7: Most capable - complex legal/technical translation, 1M context ($5/$25 per MTok)
 
 Temperature Handling:
 - Reasoning models (GPT-5, o1, o3): temperature parameter OMITTED (not supported)
@@ -152,9 +152,9 @@ class LLMClient:
 
     # Default models for each provider
     DEFAULT_MODELS = {
-        "openai": "gpt-4o",
-        "claude": "claude-sonnet-4-6",  # Claude Sonnet 4.6 (Feb 2026)
-        "gemini": "gemini-2.5-flash",  # Gemini 2.5 Flash (2025)
+        "openai": "gpt-5.5",  # GPT-5.5 (flagship)
+        "claude": "claude-sonnet-4-6",  # Claude Sonnet 4.6
+        "gemini": "gemini-3.1-flash-lite",  # Gemini 3.1 Flash-Lite
         "mistral": "mistral-large-latest",  # Mistral Large (flagship)
         "deepseek": "deepseek-v4-pro",  # DeepSeek V4 Pro (flagship)
         "ollama": "translategemma:12b",  # Local LLM via Ollama - purpose-built translation model
@@ -175,12 +175,6 @@ class LLMClient:
             "description": "Fast and cost-effective – great for high-volume translation",
             "strengths": ["Fast", "Cost-effective", "Multilingual"],
             "use_case": "Best for large projects where speed and cost matter"
-        },
-        "open-mistral-nemo": {
-            "name": "Mistral Nemo",
-            "description": "Open, multilingual model – strong across European languages",
-            "strengths": ["Open model", "Multilingual", "European languages"],
-            "use_case": "Good for multilingual translation projects"
         }
     }
     
@@ -342,35 +336,17 @@ class LLMClient:
     # Vision-capable models (support image inputs)
     VISION_MODELS = {
         "openai": [
-            "gpt-4-vision-preview",
-            "gpt-4-turbo",
-            "gpt-4-turbo-2024-04-09",
-            "gpt-4o",
-            "gpt-4o-mini",
-            "chatgpt-4o-latest"
+            "gpt-5.5",
+            "gpt-5.4-mini"
         ],
         "claude": [
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
-            "claude-3-5-sonnet-20240620",
-            "claude-3-5-sonnet-20241022",
-            "claude-sonnet-4-5-20250929",
-            "claude-haiku-4-5-20251001",
             "claude-sonnet-4-6",
-            "claude-opus-4-6",
-            "claude-opus-4-7",
-            "claude-opus-4-1-20250805"
+            "claude-haiku-4-5-20251001",
+            "claude-opus-4-7"
         ],
         "gemini": [
-            "gemini-pro-vision",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite",
             "gemini-2.5-pro",
-            "gemini-3-pro-preview",
             "gemini-3.1-pro-preview"
         ]
     }
@@ -393,22 +369,6 @@ class LLMClient:
             "pricing": {"input": 3, "output": 15},  # USD per million tokens
             "use_case": "Recommended for most translation tasks"
         },
-        "claude-opus-4-6": {
-            "name": "Claude Opus 4.6",
-            "description": "Previous flagship - still excellent for coding and reasoning",
-            "released": "2026-02-04",
-            "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy"],
-            "pricing": {"input": 5, "output": 25},  # USD per million tokens
-            "use_case": "Previous Opus generation – still strong for legal/technical translation"
-        },
-        "claude-sonnet-4-5-20250929": {
-            "name": "Claude Sonnet 4.5",
-            "description": "Best balance - Flagship model for general translation",
-            "released": "2025-09-29",
-            "strengths": ["General translation", "Multilingual", "Fast", "Cost-effective"],
-            "pricing": {"input": 3, "output": 15},
-            "use_case": "Recommended for most translation tasks"
-        },
         "claude-haiku-4-5-20251001": {
             "name": "Claude Haiku 4.5",
             "description": "Fast & affordable - 2x speed, 1/5 cost of Sonnet",
@@ -416,14 +376,6 @@ class LLMClient:
             "strengths": ["High-volume translation", "Speed", "Budget-friendly", "Batch processing"],
             "pricing": {"input": 1, "output": 5},
             "use_case": "Best for large translation projects where speed and cost matter"
-        },
-        "claude-opus-4-1-20250805": {
-            "name": "Claude Opus 4.1",
-            "description": "Legacy - Complex reasoning for nuanced translation",
-            "released": "2025-08-05",
-            "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy"],
-            "pricing": {"input": 15, "output": 75},
-            "use_case": "For specialised legal/technical translation requiring deep reasoning"
         }
     }
 
@@ -448,7 +400,7 @@ class LLMClient:
                 print(f"{info['name']}: {info['description']}")
 
             # Get specific model
-            info = LLMClient.get_claude_model_info("claude-sonnet-4-5-20250929")
+            info = LLMClient.get_claude_model_info("claude-sonnet-4-6")
             print(info['use_case'])
         """
         if model_id:

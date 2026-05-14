@@ -8500,7 +8500,7 @@ class SupervertalerQt(QMainWindow):
             settings = self.load_llm_settings()
             provider = settings.get('provider', 'openai')
             model_key = f'{provider}_model'
-            model = settings.get(model_key, 'gpt-4o')
+            model = settings.get(model_key, 'gpt-5.5')
             
             # Format nicely
             if provider == 'ollama':
@@ -17604,19 +17604,14 @@ class SupervertalerQt(QMainWindow):
         
         openai_combo = QComboBox()
         openai_combo.addItems([
-            "gpt-4o (Recommended)",
-            "gpt-4o-mini (Fast & Economical)",
-            "gpt-5 (Reasoning, Temperature 1.0)",
-            "o3-mini (Reasoning, Temperature 1.0)",
-            "o1 (Reasoning, Temperature 1.0)",
-            "gpt-4-turbo"
+            "gpt-5.5 (Recommended - Flagship)",
+            "gpt-5.4-mini (Fast & Economical)"
         ])
         openai_combo.setToolTip(
-            "GPT-4o (Recommended): Fast, reliable, excellent for general translation.\n"
-            "GPT-4o-mini: Faster and cheaper, good quality for simple text.\n"
-            "GPT-5/o1/o3-mini: Deep reasoning models for complex text."
+            "GPT-5.5: OpenAI's flagship – advanced reasoning, excellent for complex translation.\n"
+            "GPT-5.4 Mini: Faster and cheaper, great quality for routine, high-volume work."
         )
-        current_openai_model = settings.get('openai_model', 'gpt-4o')
+        current_openai_model = settings.get('openai_model', 'gpt-5.5')
         for i in range(openai_combo.count()):
             if current_openai_model in openai_combo.itemText(i).lower():
                 openai_combo.setCurrentIndex(i)
@@ -17633,19 +17628,13 @@ class SupervertalerQt(QMainWindow):
         claude_combo = QComboBox()
         claude_combo.addItems([
             "claude-sonnet-4-6 (Recommended - Best Balance)",
-            "claude-opus-4-7 (Latest Premium - Most Capable)",
-            "claude-opus-4-6 (Premium - Exceptional Reasoning)",
-            "claude-sonnet-4-5-20250929 (Sonnet 4.5 - Previous Flagship)",
             "claude-haiku-4-5-20251001 (Fast & Affordable)",
-            "claude-opus-4-1-20250805 (Legacy Premium)"
+            "claude-opus-4-7 (Latest Premium - Most Capable)"
         ])
         claude_combo.setToolTip(
             "Claude Sonnet 4.6: Best balance of speed, quality, and cost.\n"
-            "Claude Opus 4.7: Anthropic's most capable model (1M context, 128k max output).\n"
-            "Claude Opus 4.6: Previous flagship, still excellent for reasoning.\n"
-            "Claude Sonnet 4.5: Previous generation flagship.\n"
             "Claude Haiku 4.5: Fast and affordable for batch jobs.\n"
-            "Claude Opus 4.1: Legacy premium model."
+            "Claude Opus 4.7: Anthropic's most capable model (1M context, 128k max output)."
         )
         current_claude_model = settings.get('claude_model', 'claude-sonnet-4-6')
         for i in range(claude_combo.count()):
@@ -17663,21 +17652,18 @@ class SupervertalerQt(QMainWindow):
         
         gemini_combo = QComboBox()
         gemini_combo.addItems([
-            "gemini-2.5-flash (Recommended - Best Balance)",
-            "gemini-2.5-flash-lite (Fastest & Most Economical)",
+            "gemini-3.1-flash-lite (Recommended - Fast & Economical)",
             "gemini-2.5-pro (Premium - Complex Reasoning)",
             "gemini-3.1-pro-preview (Latest - Smartest Gemini)",
-            "gemini-3-pro-preview (Previous Generation)",
-            "gemini-2.0-flash-exp (Experimental)"
+            "gemma-4-26b-a4b-it (Open Model - Lightweight)"
         ])
         gemini_combo.setToolTip(
-            "Gemini 2.5 Flash: Best price-performance balance.\n"
-            "Gemini 2.5 Flash-Lite: Fastest and cheapest.\n"
+            "Gemini 3.1 Flash-Lite: Fast and economical – great for routine translation.\n"
             "Gemini 2.5 Pro: Premium for complex problems.\n"
             "Gemini 3.1 Pro Preview: Latest, smartest Gemini for complex tasks.\n"
-            "Gemini 3 Pro Preview: Previous generation with superior reasoning."
+            "Gemma 4 26B MoE: Google's open model, lightweight and capable."
         )
-        current_gemini_model = settings.get('gemini_model', 'gemini-2.5-flash')
+        current_gemini_model = settings.get('gemini_model', 'gemini-3.1-flash-lite')
         for i in range(gemini_combo.count()):
             if current_gemini_model in gemini_combo.itemText(i):
                 gemini_combo.setCurrentIndex(i)
@@ -17694,13 +17680,11 @@ class SupervertalerQt(QMainWindow):
         mistral_combo = QComboBox()
         mistral_combo.addItems([
             "mistral-large-latest (Recommended - Flagship)",
-            "mistral-small-latest (Fast & Cost-Effective)",
-            "open-mistral-nemo (Open - Multilingual)"
+            "mistral-small-latest (Fast & Cost-Effective)"
         ])
         mistral_combo.setToolTip(
             "Mistral Large: Flagship model, top-tier reasoning and multilingual quality.\n"
-            "Mistral Small: Fast and cost-effective, great for high-volume translation.\n"
-            "Mistral Nemo: Open model, strong across European languages."
+            "Mistral Small: Fast and cost-effective, great for high-volume translation."
         )
         current_mistral_model = settings.get('mistral_model', 'mistral-large-latest')
         for i in range(mistral_combo.count()):
@@ -17968,20 +17952,16 @@ class SupervertalerQt(QMainWindow):
 
         # Helper to extract friendly model name from combo text and update radio label
         def _friendly_model_name(combo_text: str) -> str:
-            """Extract model ID from combo text like 'gpt-4o (Recommended)' → 'GPT-4o'"""
+            """Extract model ID from combo text like 'gpt-5.5 (Recommended)' → 'GPT-5.5'"""
             model_id = combo_text.split()[0] if combo_text else ""
             friendly = {
-                "gpt-4o": "GPT-4o", "gpt-4o-mini": "GPT-4o Mini",
-                "gpt-5": "GPT-5", "o3-mini": "o3-mini", "o1": "o1", "gpt-4-turbo": "GPT-4 Turbo",
+                "gpt-5.5": "GPT-5.5", "gpt-5.4-mini": "GPT-5.4 Mini",
                 "claude-sonnet-4-6": "Claude Sonnet 4.6", "claude-opus-4-7": "Claude Opus 4.7",
-                "claude-opus-4-6": "Claude Opus 4.6",
-                "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5", "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
-                "claude-opus-4-1-20250805": "Claude Opus 4.1",
-                "gemini-2.5-flash": "Gemini 2.5 Flash", "gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
-                "gemini-2.5-pro": "Gemini 2.5 Pro", "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
-                "gemini-3-pro-preview": "Gemini 3 Pro", "gemini-2.0-flash-exp": "Gemini 2.0 Flash",
+                "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+                "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite", "gemini-2.5-pro": "Gemini 2.5 Pro",
+                "gemini-3.1-pro-preview": "Gemini 3.1 Pro", "gemma-4-26b-a4b-it": "Gemma 4 26B MoE",
                 "mistral-large-latest": "Mistral Large", "mistral-small-latest": "Mistral Small",
-                "open-mistral-nemo": "Mistral Nemo",
+                "deepseek-v4-pro": "DeepSeek V4 Pro", "deepseek-v4-flash": "DeepSeek V4 Flash",
             }
             return friendly.get(model_id, model_id)
 
@@ -18733,33 +18713,22 @@ class SupervertalerQt(QMainWindow):
         llm_providers = [
             ("claude", "Claude", "claude", [
                 ("claude-sonnet-4-6", "Claude Sonnet 4.6 (Recommended)"),
-                ("claude-opus-4-7", "Claude Opus 4.7 (Latest Premium)"),
-                ("claude-opus-4-6", "Claude Opus 4.6 (Premium)"),
-                ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5"),
                 ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 (Fast)"),
-                ("claude-opus-4-1-20250805", "Claude Opus 4.1"),
+                ("claude-opus-4-7", "Claude Opus 4.7 (Latest Premium)"),
             ]),
             ("openai", "OpenAI", "openai", [
-                ("gpt-4o", "GPT-4o (Recommended)"),
-                ("gpt-4o-mini", "GPT-4o Mini (Fast)"),
-                ("gpt-5", "GPT-5 (Reasoning)"),
-                ("o3", "o3 (Reasoning)"),
-                ("o3-mini", "o3-mini (Reasoning)"),
-                ("o1", "o1 (Reasoning)"),
-                ("gpt-4-turbo", "GPT-4 Turbo"),
+                ("gpt-5.5", "GPT-5.5 (Recommended)"),
+                ("gpt-5.4-mini", "GPT-5.4 Mini (Fast)"),
             ]),
             ("gemini", "Gemini (Google AI)", "gemini", [
-                ("gemini-2.5-flash", "Gemini 2.5 Flash (Recommended)"),
-                ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite (Fastest)"),
+                ("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite (Recommended)"),
                 ("gemini-2.5-pro", "Gemini 2.5 Pro (Premium)"),
                 ("gemini-3.1-pro-preview", "Gemini 3.1 Pro (Latest)"),
-                ("gemini-3-pro-preview", "Gemini 3 Pro"),
-                ("gemini-2.0-flash", "Gemini 2.0 Flash"),
+                ("gemma-4-26b-a4b-it", "Gemma 4 26B MoE (Open)"),
             ]),
             ("mistral", "Mistral AI", "mistral", [
                 ("mistral-large-latest", "Mistral Large (Recommended)"),
                 ("mistral-small-latest", "Mistral Small (Fast)"),
-                ("open-mistral-nemo", "Mistral Nemo (Open)"),
             ]),
             ("deepseek", "DeepSeek", "deepseek", [
                 ("deepseek-v4-pro", "DeepSeek V4 Pro (Recommended)"),
@@ -18910,30 +18879,19 @@ class SupervertalerQt(QMainWindow):
     # Tuple format: (model_id, display_name, description)
     _ALL_KNOWN_MODELS = {
         "openai": [
-            ("gpt-4o",       "GPT-4o",             "Recommended – fast, reliable, excellent for translation"),
-            ("gpt-4o-mini",  "GPT-4o Mini",         "Economical – good quality for simple text"),
-            ("gpt-5",        "GPT-5",               "Advanced reasoning"),
-            ("o3",           "o3",                  "Reasoning model"),
-            ("o3-mini",      "o3-mini",             "Reasoning, efficient"),
-            ("o1",           "o1",                  "Reasoning model"),
-            ("gpt-4-turbo",  "GPT-4 Turbo",         "Previous generation"),
+            ("gpt-5.5",      "GPT-5.5",      "Recommended – flagship, advanced reasoning"),
+            ("gpt-5.4-mini", "GPT-5.4 Mini", "Fast & economical – great for routine translation"),
         ],
         "claude": [
-            ("claude-sonnet-4-6",          "Claude Sonnet 4.6",  "Recommended – best balance"),
-            ("claude-opus-4-7",            "Claude Opus 4.7",    "Latest premium – most capable, 1M context"),
-            ("claude-opus-4-6",            "Claude Opus 4.6",    "Premium – exceptional reasoning"),
-            ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5",  "Previous flagship"),
-            ("claude-haiku-4-5-20251001",  "Claude Haiku 4.5",   "Fast & affordable"),
-            ("claude-opus-4-1-20250805",   "Claude Opus 4.1",    "Legacy premium"),
+            ("claude-sonnet-4-6",         "Claude Sonnet 4.6", "Recommended – best balance"),
+            ("claude-haiku-4-5-20251001", "Claude Haiku 4.5",  "Fast & affordable"),
+            ("claude-opus-4-7",           "Claude Opus 4.7",   "Latest premium – most capable, 1M context"),
         ],
         "gemini": [
-            ("gemini-2.5-flash",       "Gemini 2.5 Flash",      "Recommended – best balance"),
-            ("gemini-2.5-flash-lite",  "Gemini 2.5 Flash Lite", "Fastest & most economical"),
+            ("gemini-3.1-flash-lite",  "Gemini 3.1 Flash-Lite", "Recommended – fast & economical"),
             ("gemini-2.5-pro",         "Gemini 2.5 Pro",        "Premium – complex reasoning"),
             ("gemini-3.1-pro-preview", "Gemini 3.1 Pro",        "Latest – most capable"),
-            ("gemini-3-pro-preview",   "Gemini 3 Pro",          "Previous generation"),
-            ("gemini-2.0-flash",       "Gemini 2.0 Flash",      "Stable release"),
-            ("gemini-2.0-flash-exp",   "Gemini 2.0 Flash Exp",  "Experimental"),
+            ("gemma-4-26b-a4b-it",     "Gemma 4 26B MoE",       "Open model – lightweight"),
         ],
         "ollama": [
             ("translategemma:12b", "TranslateGemma 12B", "Recommended for translation"),
@@ -18947,11 +18905,10 @@ class SupervertalerQt(QMainWindow):
 
     # Default enabled model IDs when no user preference has been saved yet
     _DEFAULT_ENABLED_MODELS = {
-        "openai": ["gpt-4o", "gpt-4o-mini", "gpt-5", "o3", "o3-mini", "o1", "gpt-4-turbo"],
-        "claude": ["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6",
-                   "claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001", "claude-opus-4-1-20250805"],
-        "gemini": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro",
-                   "gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.0-flash"],
+        "openai": ["gpt-5.5", "gpt-5.4-mini"],
+        "claude": ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-7"],
+        "gemini": ["gemini-3.1-flash-lite", "gemini-2.5-pro",
+                   "gemini-3.1-pro-preview", "gemma-4-26b-a4b-it"],
         "ollama": ["translategemma:12b"],
     }
 
@@ -40125,7 +40082,7 @@ class SupervertalerQt(QMainWindow):
         settings = self.load_llm_settings()
         llm_provider = settings.get('provider', 'openai')
         model_key = f'{llm_provider}_model'
-        llm_model = settings.get(model_key, 'gpt-4o')
+        llm_model = settings.get(model_key, 'gpt-5.5')
         
         llm_info = QLabel(f"📊 Using: {llm_provider.title()} ({llm_model})")
         llm_info.setStyleSheet("color: #666; font-size: 9pt; padding: 5px 0;")
@@ -48348,9 +48305,9 @@ class SupervertalerQt(QMainWindow):
         """Load LLM settings from user preferences"""
         defaults = {
             'provider': 'openai',
-            'openai_model': 'gpt-4o',
+            'openai_model': 'gpt-5.5',
             'claude_model': 'claude-sonnet-4-6',
-            'gemini_model': 'gemini-2.5-flash',
+            'gemini_model': 'gemini-3.1-flash-lite',
             'ollama_model': 'translategemma:12b',
             'custom_openai_model': '',
             'custom_openai_endpoint': '',
@@ -49755,7 +49712,7 @@ class SupervertalerQt(QMainWindow):
         
         # Get model based on provider
         model_key = f'{provider}_model'
-        model = settings.get(model_key, 'gpt-4o')
+        model = settings.get(model_key, 'gpt-5.5')
         
         # Ollama and custom_openai don't strictly need API keys
         if provider == 'ollama':
@@ -50689,7 +50646,7 @@ class SupervertalerQt(QMainWindow):
             # Use stored settings from previous pass - skip dialog entirely
             translation_provider_type = getattr(self, '_batch_provider_type', 'LLM')
             translation_provider_name = getattr(self, '_batch_provider_name', 'openai')
-            model = getattr(self, '_batch_model', 'gpt-4o')
+            model = getattr(self, '_batch_model', 'gpt-5.5')
             tm_exact_only = getattr(self, '_batch_tm_exact_only', False)  # Retrieve TM exact-only setting
             api_keys = self.load_api_keys()
             settings = self.load_llm_settings()
@@ -50814,7 +50771,7 @@ class SupervertalerQt(QMainWindow):
             settings = self.load_llm_settings()
             llm_provider = settings.get('provider', 'openai')
             model_key = f'{llm_provider}_model'
-            llm_model = settings.get(model_key, 'gpt-4o')
+            llm_model = settings.get(model_key, 'gpt-5.5')
 
             if llm_provider == 'custom_openai':
                 profile = self._get_active_custom_profile(settings)
@@ -51942,7 +51899,7 @@ class SupervertalerQt(QMainWindow):
                         if is_refusal:
                             self.log(f"  🚫 LLM REFUSAL DETECTED: The AI provider refused to translate this content.")
                             self.log(f"  💡 TRY: Switch to Claude or Gemini in Settings - they may be less restrictive.")
-                            self.log(f"  💡 TRY: Use a different model (e.g., gpt-4-turbo instead of gpt-4o).")
+                            self.log(f"  💡 TRY: Use a different model - some are less restrictive than others.")
                         self.log(f"  Expected {len(batch_segments)} translations, got {len(segment_translations)}")
                         
                         response_preview = batch_response[:800].replace('\n', ' ')
@@ -52142,7 +52099,7 @@ class SupervertalerQt(QMainWindow):
 
         # Get model based on provider
         model_key = f'{provider}_model'
-        model = settings.get(model_key, 'gpt-4o')
+        model = settings.get(model_key, 'gpt-5.5')
 
         # Get languages
         source_lang = getattr(self.current_project, 'source_lang', 'en')
@@ -53496,7 +53453,7 @@ class SupervertalerQt(QMainWindow):
                         self.log("🧠 PROGRESSIVE LLM: Attempting OpenAI translation...")
                         from modules.llm_clients import LLMClient
                         
-                        openai_model = settings.get('openai_model', 'gpt-4o')
+                        openai_model = settings.get('openai_model', 'gpt-5.5')
                         client = LLMClient(
                             api_key=api_keys['openai'],
                             provider='openai',
@@ -53651,7 +53608,7 @@ class SupervertalerQt(QMainWindow):
                         from modules.llm_clients import LLMClient
                         self.log("🧠 DIRECT LLM SEARCH: LLMClient imported for OpenAI")
                         
-                        openai_model = settings.get('openai_model', 'gpt-4o')
+                        openai_model = settings.get('openai_model', 'gpt-5.5')
                         self.log(f"🧠 DIRECT LLM SEARCH: Using OpenAI model: {openai_model}")
                         client = LLMClient(
                             api_key=api_keys['openai'],
@@ -53732,7 +53689,7 @@ class SupervertalerQt(QMainWindow):
                         from modules.llm_clients import LLMClient
                         self.log("🧠 DIRECT LLM SEARCH: LLMClient imported for Gemini")
                         
-                        gemini_model = settings.get('gemini_model', 'gemini-2.5-flash')
+                        gemini_model = settings.get('gemini_model', 'gemini-3.1-flash-lite')
                         self.log(f"🧠 DIRECT LLM SEARCH: Using Gemini model: {gemini_model}")
                         client = LLMClient(
                             api_key=gemini_api_key,

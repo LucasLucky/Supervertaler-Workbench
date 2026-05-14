@@ -632,13 +632,14 @@ class ChatViewWidget(QWidget):
         providers = [
             ("claude", "Anthropic", LLMClient.CLAUDE_MODELS),
             ("openai", "OpenAI", {
-                "gpt-4o": {"name": "GPT-4o", "description": "Fast, multimodal"},
-                "gpt-4o-mini": {"name": "GPT-4o Mini", "description": "Fast & affordable"},
-                "gpt-5": {"name": "GPT-5", "description": "Advanced reasoning"},
+                "gpt-5.5": {"name": "GPT-5.5", "description": "Flagship, advanced reasoning"},
+                "gpt-5.4-mini": {"name": "GPT-5.4 Mini", "description": "Fast & economical"},
             }),
             ("gemini", "Google", {
-                "gemini-2.5-flash": {"name": "Gemini 2.5 Flash", "description": "Fast & affordable"},
+                "gemini-3.1-flash-lite": {"name": "Gemini 3.1 Flash-Lite", "description": "Fast & economical"},
                 "gemini-2.5-pro": {"name": "Gemini 2.5 Pro", "description": "High quality"},
+                "gemini-3.1-pro-preview": {"name": "Gemini 3.1 Pro", "description": "Latest, most capable"},
+                "gemma-4-26b-a4b-it": {"name": "Gemma 4 26B MoE", "description": "Open model, lightweight"},
             }),
             ("mistral", "Mistral", LLMClient.MISTRAL_MODELS),
             ("ollama", "Ollama (local)", LLMClient.OLLAMA_MODELS),

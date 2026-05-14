@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.35 (May 14, 2026)
+**Current Version:** v1.10.36 (May 14, 2026)
+
+
+## v1.10.36 – May 14, 2026
+
+### Changed (AI model lists modernised to match Supervertaler for Trados)
+
+- Cleaned up the AI model lists across the Workbench so the five providers it shares with Supervertaler for Trados (OpenAI, Claude, Gemini, Mistral, DeepSeek) now offer the same curated, current models. The lists had drifted badly stale – OpenAI still listed GPT-4o / o1 / o3, Claude carried Sonnet 4.5 / Opus 4.1 / Opus 4.6, Gemini was on 2.5 Flash / 2.0 Flash, and Mistral still had the retired Mistral Nemo.
+- New curated lists:
+  - **OpenAI**: GPT-5.5 (flagship), GPT-5.4 Mini (fast & economical). Default is now GPT-5.5.
+  - **Claude**: Claude Sonnet 4.6 (recommended), Claude Haiku 4.5 (fast), Claude Opus 4.7 (latest premium).
+  - **Gemini**: Gemini 3.1 Flash-Lite (recommended), Gemini 2.5 Pro (premium), Gemini 3.1 Pro Preview (latest), Gemma 4 26B MoE (open model). Default is now Gemini 3.1 Flash-Lite.
+  - **Mistral**: Mistral Large, Mistral Small (dropped the retired Mistral Nemo).
+  - **DeepSeek**: V4 Pro, V4 Flash (already current – unchanged).
+- Updated everywhere the lists appear: the AI Settings dropdowns, the Model Management tab (`_ALL_KNOWN_MODELS` / `_DEFAULT_ENABLED_MODELS`), the match-pane provider list, the chat panel's model picker, the LLM client defaults, the vision-capable model list, and the token-cost pricing table (`claude-opus-4-7` corrected to $5/$25, `gpt-5.5` at $5/$30, `gemini-3.1-flash-lite` at $0.25/$1.50). Also fixed a stale hard-coded `claude-opus-4-1` model ID in the prompt assistant.
+- **OpenRouter** and **Ollama** lists are left as-is – OpenRouter is a 200+-model gateway where you type any model ID, and Ollama is local. The PDF-rescue tool keeps its own separate model picker (a vision-OCR utility with no Trados counterpart).
 
 
 ## v1.10.35 – May 14, 2026
