@@ -53912,31 +53912,27 @@ class SuperlookupTab(QWidget):
         # window (hidden when inside the floating assistant, where the tab
         # label already identifies the feature and vertical space is precious).
         self._header_label = QLabel("🔍 SuperLookup")
-        self._header_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1976D2;")
+        self._header_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #1976D2;")
         layout.addWidget(self._header_label, 0)
 
         if os.name == 'nt':
             description_text = (
-                "Look up translations anywhere on your computer.\n"
-                f"Press {format_shortcut_for_display('Ctrl+Alt+L')} or paste text manually to search your TMs and Termbases.\n"
-                "Perfect for translating in other CAT tools while accessing Supervertaler resources!"
+                f"Press {format_shortcut_for_display('Ctrl+Alt+L')} or paste text to search your TMs and Termbases."
             )
         elif IS_MACOS:
             description_text = (
-                "Look up translations anywhere on your computer.\n"
-                f"Press {format_shortcut_for_display('Meta+Ctrl+L')} or paste text manually to search your TMs and Termbases.\n"
-                "Note: Requires Accessibility permission in System Settings → Privacy & Security."
+                f"Press {format_shortcut_for_display('Meta+Ctrl+L')} or paste text to search your TMs and Termbases.\n"
+                "Requires Accessibility permission in System Settings → Privacy & Security."
             )
         else:
             description_text = (
-                "Look up translations anywhere on your computer.\n"
-                f"Press {format_shortcut_for_display('Ctrl+Alt+L')} or paste text manually to search your TMs and Termbases.\n"
-                "Note: Requires pynput installed (pip install pynput)."
+                f"Press {format_shortcut_for_display('Ctrl+Alt+L')} or paste text to search your TMs and Termbases.\n"
+                "Requires pynput installed (pip install pynput)."
             )
 
         self._description_label = QLabel(description_text)
         self._description_label.setWordWrap(True)
-        self._description_label.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
+        self._description_label.setStyleSheet("color: #666; padding: 3px 5px; background-color: #E3F2FD; border-radius: 3px;")
         layout.addWidget(self._description_label, 0)
 
         # Search input area - compact single-line layout with search box and controls

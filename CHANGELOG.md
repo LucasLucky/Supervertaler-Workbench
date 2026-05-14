@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.38 (May 14, 2026)
+**Current Version:** v1.10.39 (May 14, 2026)
+
+
+## v1.10.39 – May 14, 2026
+
+### Changed (SuperLookup header takes less vertical space)
+
+- The SuperLookup tab's header was wasting vertical space on smaller laptop screens: a 16pt title plus a three-line description box. Shrunk the title to 11pt and cut the description to its one useful line – "Press Ctrl+Alt+L or paste text to search your TMs and Termbases" – with tighter padding. The macOS / Linux permission notes (Accessibility / pynput) are kept since they're genuine setup requirements. The header is still hidden entirely in the floating-assistant compact mode, as before.
 
 
 ## v1.10.38 – May 14, 2026
