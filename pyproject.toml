@@ -11,10 +11,10 @@ requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-    {name = "Michael Beijer", email = "info@michaelbeijer.co.uk"},
+    {name = "Michael Beijer", email = "support@supervertaler.com"},
 ]
 maintainers = [
-    {name = "Michael Beijer", email = "info@michaelbeijer.co.uk"},
+    {name = "Michael Beijer", email = "support@supervertaler.com"},
 ]
 keywords = [
     "translation",
@@ -147,7 +147,7 @@ Repository = "https://github.com/Supervertaler/Supervertaler-Workbench.git"
 "Bug Tracker" = "https://github.com/Supervertaler/Supervertaler-Workbench/issues"
 Changelog = "https://github.com/Supervertaler/Supervertaler-Workbench/blob/main/CHANGELOG.md"
 Documentation = "https://github.com/Supervertaler/Supervertaler-Workbench/blob/main/AGENTS.md"
-"Author Website" = "https://michaelbeijer.co.uk"
+"Author Website" = "https://beijer.uk"
 
 [project.gui-scripts]
 # Normal launcher — Windows GUI subsystem, no terminal window attached.

@@ -29,7 +29,7 @@ If the issue is file-specific (DOCX/SDLPPX/memoQ/etc.), try to attach a minimal 
 
 If you believe you found a security vulnerability, please **do not** open a public issue.
 
-Instead, email the maintainer at: **info@michaelbeijer.co.uk**
+Instead, email the maintainer at: **support@supervertaler.com**
 
 ## Feature requests
 

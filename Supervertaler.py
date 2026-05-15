@@ -49265,7 +49265,7 @@ class SupervertalerQt(QMainWindow):
         links_label = QLabel(
             '<p style="text-align: center;">'
             '<b>Project:</b> <a href="https://supervertaler.com/" style="color: #1976D2; text-decoration: none;">supervertaler.com</a><br>'
-            '<b>Author:</b> <a href="https://michaelbeijer.co.uk/" style="color: #1976D2; text-decoration: none;">michaelbeijer.co.uk</a>'
+            '<b>Author:</b> <a href="https://beijer.uk/" style="color: #1976D2; text-decoration: none;">beijer.uk</a>'
             '</p>'
         )
         links_label.setOpenExternalLinks(True)

@@ -42,7 +42,7 @@ Examples of representing our community include using an official e-mail address,
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer at:
 
-**info@michaelbeijer.co.uk**
+**support@supervertaler.com**
 
 All complaints will be reviewed and investigated promptly and fairly.
 

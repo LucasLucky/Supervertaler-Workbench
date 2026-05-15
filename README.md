@@ -80,7 +80,7 @@ python Supervertaler.py
 
 ## About
 
-**Supervertaler** is maintained by [Michael Beijer](https://michaelbeijer.co.uk), a professional translator with 30 years of experience in technical and patent translation.
+**Supervertaler** is maintained by [Michael Beijer](https://beijer.uk), a professional translator with 30 years of experience in technical and patent translation.
 
 - [Stargazers](https://github.com/Supervertaler/Supervertaler-Workbench/stargazers) - See who's starred the project
 - [Gitstalk](https://gitstalk.netlify.app/michaelbeijer) - See what I'm up to on GitHub
