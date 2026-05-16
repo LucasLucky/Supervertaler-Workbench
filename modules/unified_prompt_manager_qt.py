@@ -4313,6 +4313,78 @@ acknowledge this and provide file-specific guidance.
 === PROJECT CONTEXT (document content) ===
 {context}
 
+=== SOURCE-AWARE ANALYSIS REQUIRED (PERFORM BEFORE GENERATING) ===
+
+Before writing the generated prompt, scan the source content above and perform the
+following three analyses YOURSELF. Use the source language ({source_lang}) and the
+detected domain ({detected_domain}) to choose the right patterns to look for —
+these analyses must work for every domain (medical, legal, marketing, financial,
+technical, patent, etc.) and every source language, not just the one example
+below.
+
+1. **Terminology-collision detection.**
+   Identify any groups of source-language terms whose natural target-language
+   candidates would collide (i.e. multiple distinct source concepts mapping to
+   the same target word, or one source word with two distinct technical
+   meanings). Common patterns across domains and languages:
+   - **Container/enclosure cluster** (mechanical/patent): source language often
+     has 3–5 distinct words for casings, sleeves, sheaths, tubes, pipes that
+     all map to "sleeve" or "tube" in English by default. Resolve using the
+     domain convention so each source word gets a distinct, locked target.
+   - **Homographs**: a source word with two distinct technical meanings
+     disambiguated only by context (e.g. Dutch `as` = axle OR axis; German
+     `Strom` = electrical current OR river; French `temps` = time OR weather).
+   - **Anatomical/medical near-synonyms** that source distinguishes but English
+     conflates (e.g. arteria vs vena, ligament vs tendon variants).
+   - **Legal near-synonyms** carrying different scope (e.g. agreement vs
+     contract vs covenant; liability vs responsibility vs obligation).
+   - **Financial near-synonyms** (revenue vs turnover vs sales).
+   For every collision you detect IN THIS source, embed an explicit resolution in
+   the generated prompt's PROJECT-SPECIFIC TERMBASE section: list each member,
+   its locked target, and a one-line note explaining why the choice was made
+   (e.g. "domain convention", "preserves inventive-step distinction",
+   "regulatory mandate").
+
+2. **Defect-detection pass.**
+   Scan the source for surface defects the translator AI will encounter and need
+   to preserve faithfully (not silently correct). Patterns to look for vary by
+   source language:
+   - **Hanging mid-sentence breaks**: sentences ending in subordinating
+     conjunctions / prepositions without a complement (e.g. Dutch `doordat`,
+     `waarbij`; German `dass`, `weil`; French `parce que`, `lorsque`;
+     Spanish `porque`, `cuando`; Italian `perché`, `quando`).
+   - **Verb-ending typos** appropriate to the source language morphology
+     (e.g. Dutch -d/-t confusion; German missing umlauts; French accent slips;
+     Spanish/Italian conjugation typos).
+   - **Doubled spaces and broken compound words** (language-agnostic).
+   - **Reference-numeral mismatches** where a numeral introduced earlier refers
+     to a different antecedent than the surrounding paragraph.
+   - **Inconsistent capitalisation** of proper terms.
+   Quote AT LEAST TWO verbatim defect examples from THIS source in the generated
+   prompt's TRANSLATION MANDATE / "preserve defects faithfully" section so the
+   translator AI sees the actual surface forms it will encounter, not abstract
+   rules.
+
+3. **Preference-cascade extraction.**
+   Many domains (especially patent, technical specifications, regulatory text)
+   use cascades like "preferably X, more preferably Y, even more preferably Z"
+   that the translator AI is tempted to collapse into a single value.
+   Source-language equivalents:
+   - Dutch: `bij voorkeur`, `bij nog meer voorkeur`
+   - German: `vorzugsweise`, `besonders bevorzugt`, `ganz besonders bevorzugt`
+   - French: `de préférence`, `plus préférablement`, `encore plus préférablement`
+   - Spanish: `preferiblemente`, `más preferiblemente`, `aún más preferiblemente`
+   - Italian: `preferibilmente`, `più preferibilmente`, `ancora più preferibilmente`
+   - Portuguese: `preferencialmente`, `mais preferencialmente`
+   Quote AT LEAST ONE real cascade from THIS source in the generated prompt's
+   anti-truncation section so the rule is anchored in a concrete example
+   ("preserve THIS cascade, here is one from your own document").
+
+If a particular scan finds nothing in this source (e.g. no defects, no cascades,
+no collisions for this domain/language combination), omit the corresponding
+subsection from the generated prompt rather than padding it with hypothetical
+examples or generic prose. Hypothetical examples are worse than nothing.
+
 === PROMPT GENERATION INSTRUCTIONS ===
 
 Generate a COMPREHENSIVE translation prompt (2000-5000 words) that a senior {detected_domain} translator
@@ -4381,39 +4453,43 @@ SPECIAL DOMAIN INSTRUCTIONS:
 === REFERENCE TRANSLATIONS FROM TM ===
 {tm_instruction}
 
-{f'''=== TERMINOLOGY COLLISIONS DETECTED IN SOURCE ===
-A pre-generation pass scanned the source for groups of Dutch terms whose natural English
-candidates would collide. The collisions below are REAL — they are in this document, not
-hypothetical. Embed the resolutions below directly into the generated prompt's
-PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED) section. Mapping `mantel` to "sleeve" because
-it's the obvious cognate, when the source also contains `huls` and `mantelbuis`, is the
-single most common terminology error in NL→EN patent translation — do not let the generated
-prompt make this mistake.
+{f'''=== PRE-FLAGGED COLLISION HINTS (Dutch mechanical / patent helper) ===
+A small built-in helper scanned the source for a specific known-collision pattern
+(Dutch mechanical / patent vocabulary, the highest-traffic source-language case in
+the Workbench user base). The hints below are CONFIRMED — they are in this source,
+not hypothetical. INCORPORATE these resolutions into the generated prompt's
+PROJECT-SPECIFIC TERMBASE section AND ALSO perform your own collision scan (per the
+SOURCE-AWARE ANALYSIS section above) — collisions can occur in any domain / source
+language, and this helper only covers one specific case.
 
 {terminology_collisions}
-''' if terminology_collisions else ""}{f'''=== SOURCE DEFECTS DETECTED ===
-A pre-generation pass scanned the source for common defect patterns and extracted the
-following verbatim examples. Quote at least two of them in the generated prompt's
-TRANSLATION MANDATE / "preserve defects faithfully" section so the translator AI sees the
-actual surface forms it will encounter (this is far more effective than abstract rules
-about "preserve grammatical slips"):
+''' if terminology_collisions else ""}{f'''=== PRE-FLAGGED DEFECT HINTS (Dutch source helper) ===
+A small built-in helper scanned the source for a few Dutch-specific defect patterns
+(hanging conjunctions, -d/-t verb typos) plus some language-agnostic ones (doubled
+spaces, broken compounds). The hints below are CONFIRMED — they appear verbatim in
+this source. Quote them in the generated prompt's "preserve defects faithfully"
+section AND ALSO perform your own defect scan (per the SOURCE-AWARE ANALYSIS
+section above) using patterns appropriate for the source language — this helper
+only covers one specific case.
 
 {source_defects}
-''' if source_defects else ""}{f'''=== PREFERENCE CASCADES DETECTED IN SOURCE ===
-Patent prose typically contains "bij voorkeur ... bij nog meer voorkeur" cascades that the
-translator AI is tempted to collapse into a single value. Quote at least one of the
-following real examples from the source in the generated prompt's anti-truncation /
-NO HALLUCINATED TRUNCATION section so the rule is anchored in a concrete document-specific
-example, not just generic prose:
+''' if source_defects else ""}{f'''=== PRE-FLAGGED CASCADE HINTS (Dutch / English helper) ===
+A small built-in helper extracted the following real "preferably / more preferably"
+cascades from this source (Dutch `bij voorkeur` / English `preferably`). Quote at
+least one in the generated prompt's anti-truncation section. ALSO perform your own
+cascade scan (per the SOURCE-AWARE ANALYSIS section above) using the source
+language's actual preference vocabulary — this helper only covers Dutch and English.
 
 {source_cascades}
 ''' if source_cascades else ""}{f'''=== PATENT MARKERS DETECTED ({patent_markers_detected}) ===
-The DocumentAnalyzer identified {patent_markers_detected} high-signal patent markers in the
-source (claim numbering, FIG. references, "uitvoeringsvorm", "omvattende", "stand der
-techniek", patent-number citations, etc.). The detected domain "{detected_domain}" is
-data-backed, not a default fallback — the generated prompt's ROLE should frame itself as a
-PATENT translator (not a generic legal or technical one) and apply EPO drafting conventions
-throughout.
+DocumentAnalyzer identified {patent_markers_detected} high-signal patent markers in
+the source (claim numbering, FIG. references, "uitvoeringsvorm", "omvattende",
+"stand der techniek", patent-number citations, etc.). The detected domain
+"{detected_domain}" is data-backed, not a default fallback — the generated prompt's
+ROLE should frame itself as a PATENT translator (not a generic legal or technical
+one) and apply EPO drafting conventions throughout. This signal is patent-specific;
+other domains have no equivalent override yet, so for non-patent documents the
+generated prompt should rely on the detected_domain and template guidance above.
 ''' if patent_markers_detected >= 3 else ""}=== CONSTRAINT LANGUAGE REQUIREMENTS ===
 Use strong, unambiguous language throughout the generated prompt:
 - "NON-NEGOTIABLE" for translation mandate and core rules

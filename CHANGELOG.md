@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.44 (May 16, 2026)
+**Current Version:** v1.10.45 (May 16, 2026)
+
+
+## v1.10.45 – May 16, 2026
+
+### Changed (AutoPrompt source-aware passes are now domain-agnostic and language-agnostic)
+
+- v1.10.44 added five source-aware pre-generation passes (collision detection, defect detection, cascade extraction, etc.) but the heavy lifting was hardcoded for Dutch source language and mechanical / patent terminology. A medical translator working from German, a marketing translator working from French, or a legal translator working from Spanish got nothing useful out of those passes – they silently no-op'd because none of their source-language patterns were in the hardcoded helper lists. Workbench users translate across many language pairs and domains; baking one specific case into the helpers was the wrong default.
+- The meta-prompt now contains an explicit SOURCE-AWARE ANALYSIS REQUIRED block that instructs the LLM to perform the three scans itself (collision detection, defect detection, cascade extraction) using patterns appropriate for the actual source language and detected domain. The instruction includes concrete examples spanning Dutch, German, French, Spanish, Italian, and Portuguese for each scan type – the LLM picks the right patterns based on the detected source language. Domain coverage spans mechanical / patent, medical, legal, marketing, financial, and technical, with examples of typical collision patterns for each.
+- The hardcoded Dutch helpers from v1.10.44 are kept but reframed as `=== PRE-FLAGGED COLLISION HINTS (Dutch mechanical / patent helper) ===` etc. with an explicit "ALSO perform your own scan" instruction. The Dutch user still gets the high-signal hints; every other user gets the LLM-driven scan working against their own source.
+- The `=== PATENT MARKERS DETECTED ===` block now explicitly notes that the patent override is patent-specific and that other domains rely on the detected domain plus template guidance, so the LLM doesn't infer that the absence of patent markers means the domain detection was uncertain.
+- Net effect for a non-Dutch, non-patent user (e.g. French→English marketing, German→English medical, Spanish→English legal): they now get the same quality lift the brief asked for – real collision detection, real defect extraction, real cascade preservation – but driven by the LLM working against their own source instead of by hardcoded patterns that don't match their work.
+- No version of the pipeline guesses at hypothetical findings: every scan is explicitly instructed to OMIT its corresponding subsection from the generated prompt when nothing real is found, rather than padding it with hypothetical examples.
 
 
 ## v1.10.44 – May 16, 2026
