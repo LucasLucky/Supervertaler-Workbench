@@ -241,10 +241,14 @@ class UnifiedPromptLibrary:
             
             # Parse YAML frontmatter
             prompt_data = self._parse_yaml(frontmatter_str) if frontmatter_str else {}
-            
-            # Use filename as name if not specified
-            if 'name' not in prompt_data:
-                prompt_data['name'] = filepath.stem
+
+            # Filename is the authoritative display name.  Any YAML `name:`
+            # field in an existing file is silently ignored on read — this
+            # eliminates the old YAML-name vs filename split that confused
+            # users when they renamed a .md file in Explorer and the tree
+            # still showed the unchanged YAML name.  The file system is now
+            # the single source of truth.
+            prompt_data['name'] = filepath.stem
             
             # Store content
             prompt_data['content'] = prompt_content.strip()
@@ -399,9 +403,13 @@ class UnifiedPromptLibrary:
             frontmatter = ['---']
             frontmatter.append('type: prompt')
 
-            # Fields to include in frontmatter (in order)
+            # Fields to include in frontmatter (in order).
+            # `name` is deliberately absent: the on-disk filename is the
+            # authoritative display name.  Writing `name:` here would
+            # re-introduce the YAML-vs-filename drift the loader now
+            # prevents.
             frontmatter_fields = [
-                'name', 'description', 'category',
+                'description', 'category',
                 'read_only', 'default',
                 # Unified schema
                 'app',

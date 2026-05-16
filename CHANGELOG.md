@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.42 (May 16, 2026)
+**Current Version:** v1.10.43 (May 16, 2026)
+
+
+## v1.10.43 – May 16, 2026
+
+### Changed (Prompt library: filename is now the authoritative display name)
+
+- The prompt manager tree displayed the YAML `name:` field from each prompt file's frontmatter, not the filename on disk. Renaming a .md file in Explorer (without editing the YAML) left the tree showing the old name on refresh, even though the file was correctly re-read – a confusing UX trap with two sources of truth for what to call a prompt.
+- The on-disk filename is now the single source of truth. The loader (`UnifiedPromptLibrary._parse_markdown`) always sets `name` to `filepath.stem`, ignoring any YAML `name:` field that may exist for backward compatibility with older files. The saver (`UnifiedPromptLibrary.save_prompt`) no longer writes `name:` to the YAML frontmatter at all.
+- Effect for users: renaming `MyPrompt.md` to `Better Name.md` in Explorer and clicking refresh now updates the display label immediately. No need to edit YAML inside the file too.
+- Backward compatibility: existing prompt files with a YAML `name:` field still load fine – the field is silently ignored on read, and is dropped from the file the next time the prompt is saved through the UI. No mass migration runs.
+- Shipped in parallel with Supervertaler for Trados v4.19.109 which makes the same change to its C# `PromptLibrary` so both products stay in sync on the shared `prompt_library/` folder.
 
 
 ## v1.10.42 – May 16, 2026
