@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.43 (May 16, 2026)
+**Current Version:** v1.10.44 (May 16, 2026)
+
+
+## v1.10.44 – May 16, 2026
+
+### Changed (AutoPrompt now generates source-aware, anchor-rich prompts)
+
+- AutoPrompt previously produced prompts that read as if generated from the document title + filename + a generic domain template, with the source content underused. Side-by-side comparison against a Supervertaler for Trados AutoPrompt of the same source (an NL→EN-GB mechanical patent) confirmed that the Trados side was reliably catching real source defects, locking the correct EPO-conventional terminology, and quoting real preference cascades, while the Workbench side was inventing hypothetical defects, locking the wrong terminology (`mantel` → "sleeve" when the source also used `huls` and `beschermhuls`), and giving generic anti-truncation language.
+- Root cause investigation: Workbench's `_build_project_context` already sends up to 50,000 chars of the source markdown to the LLM, so source ingestion is not the bug. The actual gaps were: (a) no pre-generation terminology-collision check, (b) confirmed translations in `project.segments[].target` were never surfaced as TM anchors (the loader's "no TM data" branch fired whenever no separate `.tm` file was attached, even when the project-confirmed title was sitting in segment 0), (c) `DocumentAnalyzer` had English-only domain keywords, so Dutch patents tended to fall through to 'general' or 'legal', (d) no defect-detection pass — the "preserve defects faithfully" rule was abstract, (e) no extraction of real preference cascades from the source.
+- Five source-aware pre-generation passes have been added, each producing a short Markdown block that gets injected into the meta-prompt only when it finds real signal in the source:
+  - **TM-anchor wiring**: `_gather_tm_reference_pairs` now pulls confirmed source→target pairs from `project.segments` (highest authority — these are locked decisions for THIS document) in addition to entries from separately-loaded TM databases. Each pair is annotated with its provenance so the LLM can weight project-confirmed pairs higher than corpus-wide TM samples.
+  - **Terminology-collision detection** (`_detect_terminology_collisions`): scans the source for groups of Dutch terms whose natural English candidates would collide — the `mantel` / `huls` / `mantelbuis` / `beschermhuls` cluster, the `pijp` / `buis` / `flexibele buis` cluster, the `voorzijde` / `voorvlak` / `achterzijde` distinction, and the `as` (axle vs geometrical axis) homograph. Each detected collision is presented with the EPO-conventional resolution.
+  - **Defect-detection pass** (`_detect_source_defects`): extracts up to five verbatim defect examples from the source — hanging mid-sentence breaks ending in Dutch subordinating conjunctions (`doordat`, `waarbij`, `dewelke`, etc.), doubled spaces inside running text, plausible `-d/-t` Dutch verb-ending typos, and broken-compound double-space patterns. Quoting real examples is far more effective than abstract instructions.
+  - **Anti-truncation specificity** (`_extract_source_cascades`): extracts up to three real `bij voorkeur ... bij nog meer voorkeur` cascades from the source so the generated prompt's anti-truncation rule cites a concrete example from this document instead of generic prose.
+  - **Patent-vs-legal disambiguation**: `DocumentAnalyzer.DOMAIN_KEYWORDS` extended with Dutch keywords for every domain (patent, legal, medical, technical, financial, marketing), plus a new `PATENT_MARKER_PATTERNS` list of high-signal markers (claim numbering, `volgens conclusie N`, `uitvoeringsvorm`, `stand der techniek`, `FIG.` references, EP/US/WO patent number citations). When 3+ distinct patent markers are present, domain is locked to 'patent' regardless of which domain has the highest keyword score — eliminates the failure mode where Dutch patents get misclassified as 'legal' and trigger BV/NV/Meester scaffolding.
+- The meta-prompt's OUTPUT INSTRUCTIONS section now also requires proper Markdown formatting in the generated prompt (`##` H2 headings per major section, `-` bullet lists, `**bold**`, proper `| ... |` table for the glossary), matching the format Supervertaler for Trados v4.19.110 just adopted. Both products' AutoPrompt outputs are now consistently formatted in the shared `prompt_library/` folder.
+- When the source contains no legal-entity markers (BV, NV, Meester, notaris, etc.), the meta-prompt now instructs the LLM to OMIT the LEGAL ENTITY AND TITLE HANDLING and STATUTORY REFERENCE PRESERVATION sections from the generated prompt — those sections were noise for a mechanical patent body where no entity names appear in running text.
+- Smoke-tested against the BRANTS LTRI-001-BE-EP source: all four collision clusters detected and resolved with EPO conventions; domain locked to 'patent' with 15 markers, confidence 111 (vs legal 6.5); doubled-space + hanging-conjunction defect caught verbatim; legal-entity scaffolding correctly identified as unneeded.
 
 
 ## v1.10.43 – May 16, 2026

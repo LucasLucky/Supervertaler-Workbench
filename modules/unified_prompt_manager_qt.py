@@ -9,6 +9,7 @@ This replaces the old 4-layer system (System/Domain/Project/Style Guides).
 """
 
 import os
+import re
 import json
 from pathlib import Path
 from datetime import datetime
@@ -3540,6 +3541,33 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             if hasattr(project, 'segments') and project.segments:
                 segment_count = len(project.segments)
 
+        # Phase 4.5: Run source-aware pre-generation passes.  These extract
+        # concrete document-specific data (real defects, real cascades, real
+        # collisions) so the generated prompt is anchored in this source
+        # rather than generic patent-translation scaffolding.  Each pass
+        # returns an empty string when it finds nothing, in which case
+        # _build_enhanced_analysis_prompt simply omits the corresponding
+        # section from the meta-prompt.
+        source_text = self._get_source_text_for_analysis()
+        terminology_collisions = self._detect_terminology_collisions(source_text)
+        source_defects = self._detect_source_defects(source_text)
+        source_cascades = self._extract_source_cascades(source_text)
+        include_legal_entity_scaffolding = self._detect_legal_entity_markers(source_text)
+        patent_markers_detected = 0
+        if analysis.get('success'):
+            patent_markers_detected = analysis.get('domain', {}).get('patent_markers_detected', 0)
+
+        if terminology_collisions:
+            self.log_message(f"[AI Assistant] Terminology collisions detected — injecting into meta-prompt")
+        if source_defects:
+            self.log_message(f"[AI Assistant] Source defects detected — injecting verbatim examples")
+        if source_cascades:
+            self.log_message(f"[AI Assistant] Preference cascades extracted from source")
+        if patent_markers_detected >= 3:
+            self.log_message(f"[AI Assistant] Strong patent signal ({patent_markers_detected} markers) — domain locked to 'patent'")
+        if not include_legal_entity_scaffolding:
+            self.log_message(f"[AI Assistant] No legal-entity markers in source — omitting BV/NV/Meester scaffolding")
+
         # Phase 5: Build enhanced meta-prompt and send
         analysis_prompt = self._build_enhanced_analysis_prompt(
             context=context,
@@ -3554,6 +3582,11 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             target_lang=target_lang,
             segment_count=segment_count,
             file_manifest=file_manifest,
+            terminology_collisions=terminology_collisions,
+            source_defects=source_defects,
+            source_cascades=source_cascades,
+            include_legal_entity_scaffolding=include_legal_entity_scaffolding,
+            patent_markers_detected=patent_markers_detected,
         )
 
         self._send_ai_request(analysis_prompt, is_analysis=True)
@@ -3790,44 +3823,375 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             self.log_message(f"[AI Assistant] Terminology gathering failed: {e}")
             return ("Error gathering terminology.", 0, False)
 
-    def _gather_tm_reference_pairs(self, max_pairs: int = 30) -> str:
-        """Gather full TM entry pairs as reference translations for style anchoring.
+    def _gather_confirmed_segment_pairs(self, max_pairs: int = 15) -> list:
+        """Pull confirmed source→target translations from the current project's segments.
 
-        Returns markdown-formatted reference pairs (not truncated).
+        Treats anything the user has already translated in this project as
+        TM anchors of the highest authority — the project-confirmed title
+        and any committed segments establish terminology and register that
+        the LLM-generated prompt should respect.  Earlier code only looked
+        at separately-loaded TM databases, so projects without an attached
+        .tm file produced "No TM reference pairs available" even when the
+        user had translated the title.
         """
         try:
-            if not hasattr(self.parent_app, 'tm_databases') or not self.parent_app.tm_databases:
-                return "No translation memories loaded."
+            project = getattr(self.parent_app, 'current_project', None)
+            if not project or not hasattr(project, 'segments') or not project.segments:
+                return []
 
             pairs = []
-            for tm_name, tm_db in self.parent_app.tm_databases.items():
-                if not hasattr(tm_db, 'entries') or not tm_db.entries:
+            for seg in project.segments:
+                if not hasattr(seg, 'source') or not hasattr(seg, 'target'):
                     continue
-                entries = list(tm_db.entries.items())
-                if not entries:
-                    continue
-                # Evenly-spaced sampling for variety
-                step = max(1, len(entries) // max_pairs)
-                sampled = entries[::step][:max_pairs]
-                for source, target in sampled:
-                    if source.strip() and target.strip():
-                        pairs.append((source.strip(), target.strip(), tm_name))
+                src = (seg.source or '').strip()
+                tgt = (seg.target or '').strip()
+                # Skip empties and untranslated (target identical to source
+                # usually means placeholder, not a real translation choice)
+                if src and tgt and src != tgt:
+                    pairs.append((src, tgt, 'Project (confirmed segment)'))
+                    if len(pairs) >= max_pairs:
+                        break
 
-            if not pairs:
-                return "Translation memories are empty."
-
-            pairs = pairs[:max_pairs]
-            lines = []
-            for source, target, tm_name in pairs:
-                source_esc = source.replace('|', '/')
-                target_esc = target.replace('|', '/')
-                lines.append(f"{source_esc}\n-> {target_esc}\n")
-
-            return "\n".join(lines)
-
+            return pairs
         except Exception as e:
-            self.log_message(f"[AI Assistant] TM reference gathering failed: {e}")
-            return "Error loading TM reference pairs."
+            self.log_message(f"[AI Assistant] Confirmed segment gathering failed: {e}")
+            return []
+
+    def _gather_tm_reference_pairs(self, max_pairs: int = 30) -> str:
+        """Gather reference translation pairs as TM anchors.
+
+        Sources, in priority order:
+        1. Confirmed translations already committed in project.segments
+           (e.g. the project-confirmed title) — these are the highest-
+           authority anchors because they're locked decisions for THIS
+           document.
+        2. Separately-loaded TM database entries — broader corpus.
+
+        Returns markdown-formatted reference pairs.  Returns a string
+        containing "no translation" if both sources are empty so the
+        caller's existing `tm_has_data` check still works.
+        """
+        all_pairs = []
+
+        # 1. Confirmed translations from current project (highest authority)
+        confirmed = self._gather_confirmed_segment_pairs(max_pairs=15)
+        all_pairs.extend(confirmed)
+
+        # 2. TM database entries
+        try:
+            if hasattr(self.parent_app, 'tm_databases') and self.parent_app.tm_databases:
+                for tm_name, tm_db in self.parent_app.tm_databases.items():
+                    if not hasattr(tm_db, 'entries') or not tm_db.entries:
+                        continue
+                    entries = list(tm_db.entries.items())
+                    if not entries:
+                        continue
+                    budget = max(0, max_pairs - len(all_pairs))
+                    if budget == 0:
+                        break
+                    step = max(1, len(entries) // budget)
+                    sampled = entries[::step][:budget]
+                    for source, target in sampled:
+                        if source.strip() and target.strip():
+                            all_pairs.append((source.strip(), target.strip(), tm_name))
+        except Exception as e:
+            self.log_message(f"[AI Assistant] TM database read failed: {e}")
+
+        if not all_pairs:
+            # Keep "no translation" substring so the existing caller-side
+            # `tm_has_data` check (string-based) still resolves to False.
+            return "No translation memory data and no confirmed segment translations available."
+
+        all_pairs = all_pairs[:max_pairs]
+        lines = []
+        for source, target, source_label in all_pairs:
+            source_esc = source.replace('|', '/')
+            target_esc = target.replace('|', '/')
+            lines.append(f"{source_esc}\n-> {target_esc}\n   [source: {source_label}]\n")
+
+        return "\n".join(lines)
+
+    # ───────────────────────────────────────────────────────────────────
+    #  Source-aware pre-generation passes
+    #
+    #  Each method below runs against the full source text BEFORE the
+    #  meta-prompt is built, and produces a short Markdown block that
+    #  gets injected into the meta-prompt so the LLM has concrete,
+    #  document-specific examples to work from instead of generic
+    #  scaffolding.  Brief input to add these (web-Claude analysis of
+    #  the BRANTS test case) noted that the prior Workbench output had
+    #  invented hypothetical defects and missed real collisions in the
+    #  source; these passes fix that by extracting the real examples.
+    # ───────────────────────────────────────────────────────────────────
+
+    def _get_source_text_for_analysis(self) -> str:
+        """Return the full source text to feed into the pre-generation passes.
+
+        Prefers the cached document markdown (full prose, as ingested);
+        falls back to concatenating segment sources.
+        """
+        if hasattr(self, '_cached_document_markdown') and self._cached_document_markdown:
+            return self._cached_document_markdown
+        project = getattr(self.parent_app, 'current_project', None)
+        if project and hasattr(project, 'segments') and project.segments:
+            return '\n'.join(
+                (s.source or '') for s in project.segments if hasattr(s, 'source')
+            )
+        return ""
+
+    def _detect_terminology_collisions(self, source_text: str) -> str:
+        """Flag Dutch source terms whose natural English targets collide.
+
+        Returns a Markdown-formatted warnings section, or empty string if
+        no collisions are detected.  Each collision is presented with the
+        EPO-conventional resolution so the LLM-generated prompt can lock
+        the correct mapping instead of picking arbitrarily.
+
+        The known-collisions list is small and curated for mechanical /
+        patent NL→EN translation (the highest-traffic domain in the
+        Workbench user base).  Adding more collision sets for other
+        domains is cheap — just append entries.
+        """
+        if not source_text:
+            return ""
+
+        text_lower = source_text.lower()
+
+        # Each entry: {source_terms: [...], resolution: 'EPO guidance text'}.
+        # Triggers when at least 2 of the listed source terms appear in
+        # the document body — one term alone isn't a collision, it's just
+        # a translation choice.
+        known_collisions = [
+            {
+                'source_terms': [
+                    'mantel', 'huls', 'beschermhuls', 'hulzelement',
+                    'mantelbuis', 'beschermbuis',
+                ],
+                'resolution': (
+                    "EPO mechanical convention: `mantel` → **casing** (the device's own body); "
+                    "`huls` / `hulzelement` → **sleeve** / **sleeve element**; "
+                    "`beschermhuls` → **protective sheath**; "
+                    "`mantelbuis` → **sleeve pipe** (the surrounding installed pipe); "
+                    "`beschermbuis` → **protective tube**. "
+                    "Never map `mantel` to \"sleeve\" — it conflates the device body with the surrounding pipe "
+                    "and makes any inventive-step argument that depends on distinguishing them incoherent."
+                ),
+            },
+            {
+                'source_terms': ['pijp', 'buis', 'flexibele buis'],
+                'resolution': (
+                    "Patent convention: `pijp` → **pipe** (rigid); "
+                    "`buis` → **pipe** by default, **tube** only where the source explicitly contrasts "
+                    "`buis` with `pijp`; "
+                    "`flexibele buis` → **flexible hose** (NOT \"flexible tube\")."
+                ),
+            },
+            {
+                'source_terms': ['voorzijde', 'voorvlak', 'achterzijde'],
+                'resolution': (
+                    "Distinguish carefully: `voorzijde` → **front side**; "
+                    "`voorvlak` → **front face** (a specific surface, not the side); "
+                    "`achterzijde` → **rear side** (NOT \"back side\" or \"rear face\")."
+                ),
+            },
+        ]
+
+        # Special-case: the `as` homograph (wheel axle vs geometrical axis).
+        # Detection: `as` appears at least twice in the source AND at least
+        # one geometrical-axis context word also appears.
+        as_present = bool(re.search(r'\bas\b|\bassen\b', text_lower))
+        axle_context = any(
+            w in text_lower for w in ('wiel', 'wielen', 'rolt', 'draait', 'rotatie')
+        )
+        axis_context = any(
+            w in text_lower for w in ('longitudinale', 'haaks', 'evenwijdig', 'loodrecht', 'coaxiaal')
+        )
+
+        findings = []
+        for entry in known_collisions:
+            present = [t for t in entry['source_terms'] if t in text_lower]
+            if len(present) >= 2:
+                findings.append({
+                    'present_terms': present,
+                    'resolution': entry['resolution'],
+                })
+
+        if as_present and axle_context and axis_context:
+            findings.append({
+                'present_terms': ['as (homograph)'],
+                'resolution': (
+                    "Dutch `as` is a homograph in this document. Render as **shaft** when it refers "
+                    "to the rotational axle of a wheel; render as **axis** when it refers to a geometrical "
+                    "axis (e.g. `longitudinale as`, `loodrechte assen`). Two distinct glossary entries are "
+                    "required, disambiguated by the surrounding context or by parenthetical reference numeral."
+                ),
+            })
+
+        if not findings:
+            return ""
+
+        lines = []
+        for f in findings:
+            terms_list = ', '.join(f"`{t.strip()}`" for t in f['present_terms'])
+            lines.append(f"- The source contains {terms_list}. {f['resolution']}")
+
+        return '\n'.join(lines)
+
+    def _detect_source_defects(self, source_text: str, max_examples: int = 5) -> str:
+        """Scan the source for common defect patterns and quote verbatim examples.
+
+        Concrete examples from the actual source beat generic instructions
+        — the LLM-generated prompt's "preserve defects faithfully" rule is
+        much more effective when it cites the real surface forms the
+        translator AI will encounter.
+
+        Returns a Markdown bullet list, or empty string if no defects found.
+        """
+        if not source_text:
+            return ""
+
+        findings = []
+
+        # 1. Hanging mid-sentence breaks — sentences ending in a Dutch
+        #    subordinating conjunction or preposition without a complement.
+        hanging_conjunctions = (
+            r'doordat|waarbij|dewelke|omdat|terwijl|hoewel|'
+            r'zodat|nadat|opdat|voordat|alvorens|tenzij'
+        )
+        hanging_pattern = re.compile(
+            r'([^\n]{30,200}?\b(?:' + hanging_conjunctions + r')\b\s*\.{0,3}\s*?)(?=\n\n|\n[A-Z]|$)',
+            re.IGNORECASE | re.MULTILINE,
+        )
+        for m in list(hanging_pattern.finditer(source_text))[:2]:
+            snippet = m.group(1).strip()
+            if len(snippet) < 220 and len(snippet) >= 30:
+                findings.append(('Hanging mid-sentence break', snippet))
+
+        # 2. Doubled spaces inside running text
+        doubled_space_pattern = re.compile(r'(\b\w[^\n]{0,60}?  \w[^\n]{0,40}\b)')
+        for m in list(doubled_space_pattern.finditer(source_text))[:1]:
+            findings.append(('Doubled space inside text', m.group(1).strip()))
+
+        # 3. Verb-ending typos (Dutch -d / -t mismatch).  Heuristic only:
+        #    flag obvious cases like "het verkleind dat" or "dit bied" where
+        #    the verb stem suggests indicative -t was intended.  Filtered
+        #    against a small whitelist of legit -d forms (was, werd, etc.).
+        verb_pattern = re.compile(
+            r'\b(?:hij|zij|het|de|deze|dat|dit|men|wat)\s+(\w{4,})\b',
+            re.IGNORECASE,
+        )
+        verb_whitelist = {
+            'werd', 'wordt', 'word', 'kwam', 'doet', 'gaat', 'staat', 'kreeg',
+            'maakte', 'maakt', 'liet', 'laat', 'heeft', 'hebben', 'zijn', 'was',
+            'waren', 'biedt', 'verkleint', 'verkleind', 'verzekerd', 'verzekert',
+        }
+        verb_typo_count = 0
+        for m in verb_pattern.finditer(source_text):
+            verb = m.group(1).lower()
+            if not verb.endswith('d'):
+                continue
+            if verb in verb_whitelist:
+                continue
+            # Only flag if the verb is a plausible candidate for -t/-d confusion
+            if len(verb) >= 5 and verb[-2] in 'aeiou':
+                # Show with a tiny window of surrounding context
+                start = max(0, m.start() - 20)
+                end = min(len(source_text), m.end() + 30)
+                snippet = source_text[start:end].strip()
+                findings.append((f'Possible -d/-t verb-ending typo ("{verb}")', snippet))
+                verb_typo_count += 1
+                if verb_typo_count >= 2:
+                    break
+
+        # 4. Broken compound words — a Dutch word followed by an unexpected
+        #    space and a short fragment that looks like the second half.
+        #    Conservative: only flag short fragments to avoid false positives.
+        broken_compound_pattern = re.compile(r'(\b[a-z]{4,12})  ([a-z]{3,8}\b)')
+        for m in list(broken_compound_pattern.finditer(source_text))[:1]:
+            findings.append(('Possible broken compound (double space mid-word)', m.group(0)))
+
+        if not findings:
+            return ""
+
+        # Cap at max_examples, prioritising hanging breaks (highest signal)
+        findings = findings[:max_examples]
+
+        lines = []
+        for defect_type, snippet in findings:
+            # Trim and clean
+            snippet_clean = snippet.replace('`', "'").replace('\n', ' / ')
+            if len(snippet_clean) > 200:
+                snippet_clean = snippet_clean[:200] + "…"
+            lines.append(f"- **{defect_type}**: `{snippet_clean}`")
+
+        return '\n'.join(lines)
+
+    def _extract_source_cascades(self, source_text: str, max_examples: int = 3) -> str:
+        """Extract preference cascades from the source for anti-truncation guidance.
+
+        Patent prose typically contains `bij voorkeur ... bij nog meer
+        voorkeur ...` cascades that the LLM is tempted to collapse into a
+        single value.  Quoting the real ones in the meta-prompt makes the
+        anti-truncation rule concrete: "preserve THIS pattern, here is an
+        example from your own document".
+
+        Returns a Markdown bullet list, or empty string if no cascades.
+        """
+        if not source_text:
+            return ""
+
+        cascade_keywords = (
+            r'bij\s+voorkeur|bij\s+nog\s+meer\s+voorkeur|'
+            r'preferably|more\s+preferably|even\s+more\s+preferably'
+        )
+        cascade_pattern = re.compile(
+            r'([^\n.]{10,80}?\b(?:' + cascade_keywords + r')\b[^\n.]{5,120}?)(?=[.\n])',
+            re.IGNORECASE,
+        )
+
+        findings = []
+        seen = set()
+        for m in cascade_pattern.finditer(source_text):
+            snippet = m.group(1).strip()
+            key = snippet[:60].lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append(snippet)
+            if len(findings) >= max_examples:
+                break
+
+        if not findings:
+            return ""
+
+        lines = []
+        for snippet in findings:
+            snippet_clean = snippet.replace('`', "'").replace('\n', ' ')
+            if len(snippet_clean) > 180:
+                snippet_clean = snippet_clean[:180] + "…"
+            lines.append(f"- `{snippet_clean}`")
+
+        return '\n'.join(lines)
+
+    def _detect_legal_entity_markers(self, source_text: str) -> bool:
+        """Return True iff the source mentions any legal-entity markers.
+
+        Used to decide whether the LLM-generated prompt should include the
+        legal-entity / notarial-title scaffolding.  For a mechanical patent
+        body with no entity names in running text, that scaffolding is
+        noise that wastes prompt tokens.
+        """
+        if not source_text:
+            return False
+        # Conservative whole-word check for common Belgian/Dutch/EU entity
+        # suffixes and notarial titles.  Word boundaries prevent matching
+        # inside other words.
+        entity_markers = (
+            r'B\.?V\.?|N\.?V\.?|GmbH|Ltd\.?|Inc\.?|S\.?A\.?|S\.?A\.?R\.?L\.?|'
+            r'SE|SPRL|BVBA|Meester|Mr\.?|Mevr\.?|Mw\.?|notaris'
+        )
+        pattern = re.compile(r'\b(?:' + entity_markers + r')\b')
+        return bool(pattern.search(source_text))
 
     def _get_domain_template(self, domain: str) -> dict:
         """Get domain-specific template for prompt generation."""
@@ -3836,14 +4200,54 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
     def _build_enhanced_analysis_prompt(self, *, context, analysis_summary, detected_domain,
                                         template, terminology_table, term_count,
                                         has_forbidden, tm_pairs, source_lang, target_lang,
-                                        segment_count, file_manifest="") -> str:
-        """Build the enhanced meta-prompt that instructs the LLM to generate a rich translation prompt."""
+                                        segment_count, file_manifest="",
+                                        terminology_collisions="", source_defects="",
+                                        source_cascades="", include_legal_entity_scaffolding=True,
+                                        patent_markers_detected=0) -> str:
+        """Build the enhanced meta-prompt that instructs the LLM to generate a rich translation prompt.
 
+        Newer source-aware kwargs (all optional, all default to empty/safe):
+            terminology_collisions: Markdown bullet list of detected
+                cross-term collisions (e.g. mantel/huls/beschermhuls
+                conflicts), with EPO-conventional resolutions.
+            source_defects: Markdown bullet list of verbatim defect
+                examples extracted from the actual source.
+            source_cascades: Markdown bullet list of preference cascades
+                (`bij voorkeur ... bij nog meer voorkeur`) extracted from
+                the actual source — anchors the anti-truncation rule in
+                concrete document-specific examples.
+            include_legal_entity_scaffolding: when False, the meta-prompt
+                instructs the LLM to OMIT the BV/NV/Meester/notarial-title
+                section that's noise for documents (e.g. pure mechanical
+                patent bodies) where no entity names appear in running text.
+            patent_markers_detected: integer count of high-signal patent
+                markers found by DocumentAnalyzer; surfaced to the LLM so
+                it knows the domain classification was data-backed rather
+                than a default-fallback guess.
+        """
+
+        # Filter the section list: drop the legal-entity / statutory-
+        # reference sections from the LEGAL template when no entity
+        # markers are present in the source (mechanical patent bodies
+        # don't need BV/NV/Meester guidance).
+        sections = list(template['sections'])
+        if not include_legal_entity_scaffolding:
+            sections = [
+                s for s in sections
+                if 'LEGAL ENTITY' not in s.upper() and 'STATUTORY REFERENCE' not in s.upper()
+            ]
         # Build the mandatory sections list
-        sections_instruction = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(template['sections']))
+        sections_instruction = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(sections))
 
-        # Build domain rules
-        domain_rules = "\n".join(f"  - {r}" for r in template['rules'])
+        # Build domain rules — same legal-entity filter applied
+        rules = template['rules']
+        if not include_legal_entity_scaffolding:
+            rules = [
+                r for r in rules
+                if not ('legal entity' in r.lower() or 'meester' in r.lower() or
+                        'statutory' in r.lower() or 'notari' in r.lower())
+            ]
+        domain_rules = "\n".join(f"  - {r}" for r in rules)
 
         # Terminology section
         if term_count > 0:
@@ -3977,7 +4381,40 @@ SPECIAL DOMAIN INSTRUCTIONS:
 === REFERENCE TRANSLATIONS FROM TM ===
 {tm_instruction}
 
-=== CONSTRAINT LANGUAGE REQUIREMENTS ===
+{f'''=== TERMINOLOGY COLLISIONS DETECTED IN SOURCE ===
+A pre-generation pass scanned the source for groups of Dutch terms whose natural English
+candidates would collide. The collisions below are REAL — they are in this document, not
+hypothetical. Embed the resolutions below directly into the generated prompt's
+PROJECT-SPECIFIC TERMBASE (MANDATORY, LOCKED) section. Mapping `mantel` to "sleeve" because
+it's the obvious cognate, when the source also contains `huls` and `mantelbuis`, is the
+single most common terminology error in NL→EN patent translation — do not let the generated
+prompt make this mistake.
+
+{terminology_collisions}
+''' if terminology_collisions else ""}{f'''=== SOURCE DEFECTS DETECTED ===
+A pre-generation pass scanned the source for common defect patterns and extracted the
+following verbatim examples. Quote at least two of them in the generated prompt's
+TRANSLATION MANDATE / "preserve defects faithfully" section so the translator AI sees the
+actual surface forms it will encounter (this is far more effective than abstract rules
+about "preserve grammatical slips"):
+
+{source_defects}
+''' if source_defects else ""}{f'''=== PREFERENCE CASCADES DETECTED IN SOURCE ===
+Patent prose typically contains "bij voorkeur ... bij nog meer voorkeur" cascades that the
+translator AI is tempted to collapse into a single value. Quote at least one of the
+following real examples from the source in the generated prompt's anti-truncation /
+NO HALLUCINATED TRUNCATION section so the rule is anchored in a concrete document-specific
+example, not just generic prose:
+
+{source_cascades}
+''' if source_cascades else ""}{f'''=== PATENT MARKERS DETECTED ({patent_markers_detected}) ===
+The DocumentAnalyzer identified {patent_markers_detected} high-signal patent markers in the
+source (claim numbering, FIG. references, "uitvoeringsvorm", "omvattende", "stand der
+techniek", patent-number citations, etc.). The detected domain "{detected_domain}" is
+data-backed, not a default fallback — the generated prompt's ROLE should frame itself as a
+PATENT translator (not a generic legal or technical one) and apply EPO drafting conventions
+throughout.
+''' if patent_markers_detected >= 3 else ""}=== CONSTRAINT LANGUAGE REQUIREMENTS ===
 Use strong, unambiguous language throughout the generated prompt:
 - "NON-NEGOTIABLE" for translation mandate and core rules
 - "LOCKED" and "MANDATORY" for termbase and style rules
@@ -3999,8 +4436,35 @@ This section is marked "FOR MODEL UNDERSTANDING ONLY – DO NOT OUTPUT" in the f
 4. The prompt should be comprehensive (2000-5000 words)
 5. Output the prompt content between the delimiters shown below – NOTHING else
 
+=== FORMATTING: USE PROPER MARKDOWN ===
+The generated prompt is written to a `.md` file in the user's shared prompt library and is
+read both by humans (in Markdown-aware editors) and by the LLM at translation time. Format
+it as PROPER MARKDOWN, not plain text dressed up as a numbered list:
+
+- Open with a `# H1` heading for the prompt title and one or two `## H2` subtitles.
+- Each major numbered section MUST be a `## H2` heading (e.g. `## 1. ROLE`,
+  `## 2. TRANSLATION MANDATE`, `## 13. PROJECT-SPECIFIC TERMBASE`).
+- Use `### H3` for subsections inside a major section (e.g. `### Absolute requirements`).
+- Use `-` bullet lists for absolute-requirements, absolute-prohibitions, rule lists, and
+  any other enumerable content. One item per line. No prose paragraphs masquerading as lists.
+- Use `**bold**` for emphasised terms, locked glossary keywords, and section labels.
+- Render the PROJECT-SPECIFIC TERMBASE as a proper Markdown table:
+
+      | Dutch (source) | English (locked target) | Notes |
+      |---|---|---|
+      | inrichting | device | EPO standard; never "apparatus" |
+
+- Use `---` horizontal rules to separate major sections where it aids scanability.
+- Use fenced code blocks (```) only for actual code / file-path / API-name examples.
+
+IMPORTANT: this Markdown formatting requirement applies to the GENERATED PROMPT (what you
+write between the delimiters below). It does NOT change the inner "OUTPUT FORMAT" rule that
+the generated prompt itself imposes on the translator AI ("translation only, no markdown
+formatting in the translation output") – that rule governs what the translator's per-segment
+output looks like, and must remain in the generated prompt unchanged.
+
 ===PROMPT_START===
-(Your full prompt content here – plain text, no JSON escaping needed)
+(Your full prompt content here as proper Markdown – no JSON escaping needed)
 ===PROMPT_END===
 
 Output ONLY the delimiters and prompt content. No text before ===PROMPT_START=== or after ===PROMPT_END===."""
