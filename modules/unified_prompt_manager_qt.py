@@ -4536,10 +4536,11 @@ Output ONLY the delimiters and prompt content. No text before ===PROMPT_START===
             from modules.trados_bridge_client import TradosBridgeClient, format_context_for_prompt
             pref = getattr(self.parent_app, "_trados_chip_pref", "auto")
             if pref != "off":
-                client = getattr(self.parent_app, "_trados_bridge_client", None)
-                if client is None:
-                    client = TradosBridgeClient()
-                    self.parent_app._trados_bridge_client = client
+                # Always use the shared singleton so connection pooling
+                # and the cached-availability flag (kept fresh by
+                # TradosBridgePoller) work across every call site.
+                client = TradosBridgeClient.shared()
+                self.parent_app._trados_bridge_client = client
                 if client.is_available():
                     ctx = client.fetch_active_context()
                     if ctx:

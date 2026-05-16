@@ -2,7 +2,28 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.41 (May 14, 2026)
+**Current Version:** v1.10.42 (May 16, 2026)
+
+
+## v1.10.42 – May 16, 2026
+
+### Fixed (Trados bridge poll no longer hogs the UI thread)
+
+- A py-spy profiling pass on a live editing session (issue #203) found `_poll_trados_bridge` consuming ~35% of MainThread CPU in every interactive scenario – scroll, typing, navigation, batch find. Each `ChatViewWidget` (AI tab, grid view, on-demand chat windows) ran its own 3 s `QTimer` that called `TradosBridgeClient.is_available()` synchronously, which in turn opened a fresh TCP connection via `requests.get()` with a 500 ms timeout. When the bridge was unreachable (Trados closed, plugin not running) two widgets × 500 ms timeout / 3 s ≈ 33% of MainThread CPU, matching the observed cost.
+- `TradosBridgeClient` now owns a single shared `requests.Session()` for connection pooling, exposes a process-wide singleton via `TradosBridgeClient.shared()`, and caches the last observed availability so `is_available()` returns instantly.
+- The actual HTTP probe runs on a `QThreadPool` worker driven by a new `TradosBridgePoller(QObject)` singleton. The poller backs off when the bridge is unreachable (3 s → 10 s → 30 s → 60 s) and resets the moment the bridge becomes reachable again, so a Trados-less session costs essentially nothing.
+- `ChatViewWidget` no longer runs its own poll timer; instead it subscribes to the shared poller's `availability_changed` and `pref_changed` signals. Toggling the Trados chip in one chat view propagates to siblings instantly via a signal, instead of waiting up to 3 s for the next poll tick.
+- `UnifiedPromptManager._context_aware_send` now uses `TradosBridgeClient.shared()` too, so the chat-send context fetch also gets connection pooling and the cached availability flag.
+
+### Fixed (Find & Replace no longer rebuilds the entire grid per click)
+
+- The same profiling pass showed `find_next_match` calling `self.load_segments_to_grid()` just to toggle row visibility, with per-cell `_rebuild_grid_stylesheet` re-firing through `load_segments_to_grid`'s widget recreation path. For a 289-segment project, this consumed ~64% of MainThread CPU during a single batch-find run; on larger projects the cost grows super-linearly.
+- Added an `_search_highlighted_cells` set that tracks where yellow search highlights live. `find_next_match`, `find_all_matches`, and `highlight_all_matches` now drop the `load_segments_to_grid()` call and instead clear only the cells from the previous search, then apply new highlights inside a single `setUpdatesEnabled(False)` repaint pass. `clear_search_highlights` uses the same targeted clear instead of a grid rebuild.
+
+### Changed (Find & Replace dialog buttons reorganised to reduce mis-clicks)
+
+- The action-button row was Find next | Find all | Replace this | Replace all | Highlight all | Clear highlights – six buttons in a single line with the destructive Replace pair sandwiched in the middle. A profiling session that was meant to record a Replace All landed on Find next instead because the buttons sit shoulder to shoulder with no visual distinction. Re-grouped as Find next | Find all | Highlight all | Clear highlights | (vertical separator) | Replace this | Replace all, with the Replace buttons given a distinct amber background so they read as destructive at a glance.
+- Wired Enter in the Find field to trigger Find next, and Enter in the Replace field to trigger Replace all (which already shows its own confirmation prompt before doing anything destructive). Previously neither input had a keyboard binding.
 
 
 ## v1.10.41 – May 14, 2026

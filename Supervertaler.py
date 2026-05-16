@@ -42222,40 +42222,65 @@ class SupervertalerQt(QMainWindow):
         options_layout.addStretch()
         main_v_layout.addLayout(options_layout)
         
-        # Row 4: Action buttons - horizontal row
+        # Row 4: Action buttons - horizontal row, grouped to reduce
+        # mis-clicks.  Find/Highlight buttons live to the left of a
+        # visible separator; the destructive Replace buttons sit on
+        # the right with a distinct background colour.
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(8)
-        
+
+        # Find / Highlight cluster (non-destructive)
         find_next_btn = QPushButton("Find next")
         find_next_btn.clicked.connect(lambda: self._fr_find_next())
         buttons_layout.addWidget(find_next_btn)
-        
+
         find_all_btn = QPushButton("Find all")
         find_all_btn.clicked.connect(lambda: self._fr_find_all())
         buttons_layout.addWidget(find_all_btn)
-        
-        replace_this_btn = QPushButton("Replace this")
-        replace_this_btn.clicked.connect(lambda: self.replace_current_match())
-        buttons_layout.addWidget(replace_this_btn)
-        
-        replace_all_btn = QPushButton("Replace all")
-        replace_all_btn.clicked.connect(lambda: self._fr_replace_all())
-        buttons_layout.addWidget(replace_all_btn)
-        
+
         highlight_all_btn = QPushButton("Highlight all")
         highlight_all_btn.clicked.connect(lambda: self.highlight_all_matches())
         buttons_layout.addWidget(highlight_all_btn)
-        
+
         clear_highlight_btn = QPushButton("Clear highlights")
         clear_highlight_btn.clicked.connect(lambda: self.clear_search_highlights())
         buttons_layout.addWidget(clear_highlight_btn)
-        
+
+        # Visual separator before the destructive Replace cluster
+        fr_sep = QFrame()
+        fr_sep.setFrameShape(QFrame.Shape.VLine)
+        fr_sep.setFrameShadow(QFrame.Shadow.Sunken)
+        buttons_layout.addWidget(fr_sep)
+
+        # Replace cluster (destructive — distinct amber background so
+        # a click here is visually unambiguous)
+        replace_btn_style = (
+            "QPushButton { background-color: #FFE082; font-weight: bold; }"
+            "QPushButton:hover { background-color: #FFCC33; }"
+        )
+        replace_this_btn = QPushButton("Replace this")
+        replace_this_btn.setStyleSheet(replace_btn_style)
+        replace_this_btn.clicked.connect(lambda: self.replace_current_match())
+        buttons_layout.addWidget(replace_this_btn)
+
+        replace_all_btn = QPushButton("Replace all")
+        replace_all_btn.setStyleSheet(replace_btn_style)
+        replace_all_btn.clicked.connect(lambda: self._fr_replace_all())
+        buttons_layout.addWidget(replace_all_btn)
+
         buttons_layout.addStretch()
-        
+
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dialog.close)
         buttons_layout.addWidget(close_btn)
-        
+
+        # Keyboard shortcuts: Enter in the Find field triggers Find next;
+        # Enter in the Replace field triggers Replace all (which already
+        # shows a confirmation dialog before actually replacing).  Both
+        # use lineEdit() because HistoryComboBox is a QComboBox.
+        self.find_input.lineEdit().returnPressed.connect(self._fr_find_next)
+        self.replace_input.lineEdit().returnPressed.connect(self._fr_replace_all)
+
         main_v_layout.addLayout(buttons_layout)
         
         # Horizontal separator line
@@ -42316,7 +42341,12 @@ class SupervertalerQt(QMainWindow):
         self.find_replace_dialog = dialog
         self.current_match_index = -1
         self.find_matches = []
-        
+        # Track which cells currently have search-term highlights so a
+        # new search can clear just those, instead of forcing a full
+        # load_segments_to_grid() rebuild (which py-spy showed was ~64%
+        # of MainThread CPU during batch find).
+        self._search_highlighted_cells: set = set()
+
         dialog.show()
     
     def _fr_find_next(self):
@@ -42533,42 +42563,48 @@ class SupervertalerQt(QMainWindow):
         find_text = self.find_input.text()
         if not find_text:
             return
-        
+
         search_source = self.search_source_cb.isChecked()
         search_target = self.search_target_cb.isChecked()
         case_sensitive = self.case_sensitive_cb.isChecked()
         match_mode = self.match_group.checkedId()
-        
+
         # Find all matches if not already done
         if not self.find_matches:
             self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode)
-            
+
             if self.find_matches:
-                # First search - reload grid and filter rows
-                self.load_segments_to_grid()
-                
-                # Get unique rows that have matches
+                # Clear stale highlights from any previous search, then
+                # apply the row-visibility filter.  We deliberately
+                # avoid load_segments_to_grid() here — py-spy showed it
+                # was ~64% of MainThread CPU just to toggle visibility.
+                self._clear_search_highlights_in_cells(self._search_highlighted_cells)
+                self._search_highlighted_cells = set()
+
                 matching_rows = set(row for row, col in self.find_matches)
-                
-                # Hide all non-matching rows (empty structural segments always hidden)
                 segments = self.current_project.segments
-                for row in range(len(segments)):
-                    hidden = row not in matching_rows or not segments[row].source.strip()
-                    self.table.setRowHidden(row, hidden)
+                self.table.setUpdatesEnabled(False)
+                try:
+                    for row in range(len(segments)):
+                        hidden = row not in matching_rows or not segments[row].source.strip()
+                        self.table.setRowHidden(row, hidden)
+                finally:
+                    self.table.setUpdatesEnabled(True)
 
         if not self.find_matches:
             QMessageBox.information(self.find_replace_dialog, "Find", "No matches found.")
             return
-        
+
         # Move to next match
         self.current_match_index = (self.current_match_index + 1) % len(self.find_matches)
         row, col = self.find_matches[self.current_match_index]
-        
+
         # Highlight the current match
         segment = self.current_project.segments[row]
         text = segment.source if col == 2 else segment.target
         self.highlight_search_term(row, col, text, find_text)
-        
+        self._search_highlighted_cells.add((row, col))
+
         # Navigate to the match
         self.table.setCurrentCell(row, col)
         self.table.scrollToItem(self.table.item(row, col))
@@ -42586,35 +42622,38 @@ class SupervertalerQt(QMainWindow):
         match_mode = self.match_group.checkedId()
         
         self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode)
-        
+
         if self.find_matches:
-            # First, reload grid to clear previous highlights
-            self.load_segments_to_grid()
-            
-            # Process events to ensure grid is fully loaded
-            QApplication.processEvents()
-            
-            # Get unique rows that have matches
+            # Clear stale highlights from any previous search, then
+            # apply the row-visibility filter — without the
+            # load_segments_to_grid() rebuild that previously dominated
+            # this code path.
+            self._clear_search_highlights_in_cells(self._search_highlighted_cells)
+            self._search_highlighted_cells = set()
+
             matching_rows = set(row for row, col in self.find_matches)
-            
-            # Hide all non-matching rows (empty structural segments always hidden)
             segments = self.current_project.segments
-            for row in range(len(segments)):
-                hidden = row not in matching_rows or not segments[row].source.strip()
-                self.table.setRowHidden(row, hidden)
-            
-            # Highlight all matches with yellow (after grid is loaded)
-            for row, col in self.find_matches:
-                segment = self.current_project.segments[row]
-                text = segment.source if col == 2 else segment.target
-                self.highlight_search_term(row, col, text, find_text)
-            
+            self.table.setUpdatesEnabled(False)
+            try:
+                for row in range(len(segments)):
+                    hidden = row not in matching_rows or not segments[row].source.strip()
+                    self.table.setRowHidden(row, hidden)
+
+                # Highlight all matches with yellow
+                for row, col in self.find_matches:
+                    segment = self.current_project.segments[row]
+                    text = segment.source if col == 2 else segment.target
+                    self.highlight_search_term(row, col, text, find_text)
+                    self._search_highlighted_cells.add((row, col))
+            finally:
+                self.table.setUpdatesEnabled(True)
+
             # Jump to first match
             first_row, first_col = self.find_matches[0]
             self.table.setCurrentCell(first_row, first_col)
             self.table.scrollToItem(self.table.item(first_row, first_col))
             self.current_match_index = 0
-            
+
             self.log(f"Found {len(self.find_matches)} match(es) in {len(matching_rows)} segment(s)")
         else:
             QMessageBox.information(self.find_replace_dialog, "Find", "No matches found.")
@@ -42660,6 +42699,26 @@ class SupervertalerQt(QMainWindow):
             else:
                 return find_text.lower() in text.lower()
     
+    def _clear_search_highlights_in_cells(self, cells):
+        """Clear yellow search-term highlights from each (row, col) cell.
+
+        Used by find/replace to drop stale highlights from a previous
+        search without forcing a full load_segments_to_grid() rebuild.
+        Cells whose widget has been replaced since the highlight was
+        applied are silently skipped.
+        """
+        if not cells:
+            return
+        from PyQt6.QtGui import QTextCursor, QTextCharFormat
+        for row, col in cells:
+            widget = self.table.cellWidget(row, col)
+            if not widget or not hasattr(widget, 'document'):
+                continue
+            cursor = widget.textCursor()
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.setCharFormat(QTextCharFormat())
+            cursor.clearSelection()
+
     def highlight_search_term(self, row, col, text, find_text):
         """Highlight only the search term within the cell with yellow background.
         Uses the same system as filter highlighting - directly highlights within QTextEdit widget."""
@@ -42959,19 +43018,30 @@ class SupervertalerQt(QMainWindow):
         self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode)
         
         if self.find_matches:
-            # Highlight all matches with yellow (without hiding rows)
-            for row, col in self.find_matches:
-                segment = self.current_project.segments[row]
-                text = segment.source if col == 2 else segment.target
-                self.highlight_search_term(row, col, text, find_text)
-            
+            # Clear any stale highlights, then apply fresh ones in a
+            # single repaint pass.  No grid reload needed.
+            self._clear_search_highlights_in_cells(self._search_highlighted_cells)
+            self._search_highlighted_cells = set()
+
+            self.table.setUpdatesEnabled(False)
+            try:
+                for row, col in self.find_matches:
+                    segment = self.current_project.segments[row]
+                    text = segment.source if col == 2 else segment.target
+                    self.highlight_search_term(row, col, text, find_text)
+                    self._search_highlighted_cells.add((row, col))
+            finally:
+                self.table.setUpdatesEnabled(True)
+
             self.log(f"Highlighted {len(self.find_matches)} match(es)")
         else:
             QMessageBox.information(self.find_replace_dialog, "Highlight All", "No matches found.")
-    
+
     def clear_search_highlights(self):
         """Clear all search highlights and unhide all rows (for Find & Replace dialog)"""
-        self.load_segments_to_grid()
+        # Targeted highlight clear — no full grid rebuild.
+        self._clear_search_highlights_in_cells(self._search_highlighted_cells)
+        self._search_highlighted_cells = set()
 
         # Unhide all rows (empty structural segments stay hidden via pagination)
         self._apply_pagination_to_grid()
