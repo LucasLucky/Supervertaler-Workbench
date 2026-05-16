@@ -1122,67 +1122,56 @@ class ClipboardManagerWidget(QWidget):
     def _populate_text_conversions(self):
         """Conversions that act on whatever's currently on the clipboard.
 
+        Loaded from the file-backed
+        ``<user_data>/text_conversion_library/`` folder.  Each ``.md``
+        file declares one conversion via YAML frontmatter (see
+        :mod:`text_conversion_library` for the schema).  Default
+        conversions are seeded on first launch so a fresh install
+        behaves identically to the pre-library hardcoded list.
+
         Result lands back on the system clipboard; the user pastes with
-        Ctrl+V wherever they're focused. Sidekick used a paste-and-
+        Ctrl+V wherever they're focused.  Sidekick used a paste-and-
         return flow because it floated over another app; in the
         Workbench top tab the user is already where they want to be,
         so "modify clipboard, you paste" is the simpler contract.
         """
-        cat = self._make_action_category("\U0001F524 Text Conversions")
-        self._add_action_leaf(
-            cat, "Uppercase",
-            lambda: self._transform_clipboard(str.upper))
-        self._add_action_leaf(
-            cat, "Lowercase",
-            lambda: self._transform_clipboard(str.lower))
-        self._add_action_leaf(
-            cat, "Title Case",
-            lambda: self._transform_clipboard(str.title))
-        self._add_action_leaf(
-            cat, "Sentence case",
-            lambda: self._transform_clipboard(self._to_sentence_case))
-        self._add_action_leaf(
-            cat, "Single curly quotes: ‘Example’",
-            lambda: self._wrap_clipboard("‘", "’"))
-        self._add_action_leaf(
-            cat, "Double curly quotes: “Example”",
-            lambda: self._wrap_clipboard("“", "”"))
-        self._add_action_leaf(
-            cat, "Round brackets: (Example)",
-            lambda: self._wrap_clipboard("(", ")"))
-        self._add_action_leaf(
-            cat, "Square brackets: [Example]",
-            lambda: self._wrap_clipboard("[", "]"))
-        self._add_action_leaf(
-            cat, "Remove soft hyphens (U+00AD)",
-            lambda: self._transform_clipboard(lambda s: s.replace("­", "")))
-        self._add_action_leaf(
-            cat, "Double quotes → single quotes",
-            lambda: self._transform_clipboard(lambda s: s.replace('"', "'")))
-        self._add_action_leaf(
-            cat, "Make <b>bold</b>",
-            lambda: self._wrap_clipboard("<b>", "</b>"))
+        try:
+            from modules.text_conversion_library import (
+                TextConversionLibrary, DEFAULT_CONVERSIONS,
+            )
 
-    @staticmethod
-    def _to_sentence_case(text: str) -> str:
-        """Lowercase the whole string, then capitalise the first letter
-        of each sentence. Cheap heuristic – matches Sidekick's old
-        helper behaviour."""
-        if not text:
-            return text
-        lowered = text.lower()
-        # Split on ". " / "! " / "? " and re-capitalise
-        out = []
-        capitalise_next = True
-        for ch in lowered:
-            if capitalise_next and ch.isalpha():
-                out.append(ch.upper())
-                capitalise_next = False
-            else:
-                out.append(ch)
-                if ch in '.!?':
-                    capitalise_next = True
-        return ''.join(out)
+            user_data_path = getattr(self._parent_app, 'user_data_path', None)
+            if not user_data_path:
+                return
+
+            library_dir = Path(user_data_path) / "text_conversion_library"
+            lib = TextConversionLibrary(library_dir=str(library_dir))
+            lib.ensure_defaults(DEFAULT_CONVERSIONS)
+            lib.load_all()
+
+            if not lib.conversions:
+                return
+
+            cat = self._make_action_category("\U0001F524 Text Conversions")
+
+            # Sort by category then label so the list is stable and
+            # disk re-organisation (moving files between folders) is
+            # immediately visible.  Disabled conversions are dropped
+            # entirely — `enabled: false` in the YAML hides without
+            # deleting.
+            visible = [c for c in lib.conversions if c.enabled]
+            visible.sort(key=lambda c: (c.category.lower(), c.label.lower()))
+
+            for conv in visible:
+                # Capture conv by default-arg so the lambda doesn't
+                # close over the loop variable.
+                self._add_action_leaf(
+                    cat, conv.label,
+                    lambda c=conv: self._transform_clipboard(c.apply),
+                )
+
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] Text Conversions population error: {e}")
 
     def set_source_window(self, hwnd):
         """Tell the widget which window the user arrived from (via a

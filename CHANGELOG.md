@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.47 (May 16, 2026)
+**Current Version:** v1.10.48 (May 16, 2026)
+
+
+## v1.10.48 – May 16, 2026
+
+### Changed (Text Conversions are now file-backed and user-extensible)
+
+- The Clipboard Manager's "Text Conversions" menu was a hardcoded list of eleven `str → str` transformations inside `clipboard_manager_widget.py`. Adding a new conversion (e.g. a client-specific wrap, a regex cleanup recipe, a custom strip set) meant editing Python source. This was the one entry in the Menu column that didn't live on disk – every other Menu source (Personal Snippets, Special Characters, QuickLauncher Prompts) is a folder of `.md` files the user can edit freely.
+- New module `modules/text_conversion_library.py` mirrors `snippet_library.py`'s pattern: one `.md` file per conversion, YAML frontmatter declares what it does, folder structure is for organisation. Lives at `<user_data>/text_conversion_library/` and is seeded with eleven defaults on first launch matching the previously-hardcoded list one for one.
+- Four supported `type` values cover every existing conversion plus most user use cases without an arbitrary-code escape hatch:
+  - `case` — `mode` is one of `upper` / `lower` / `title` / `sentence` / `swap` / `camel` / `snake` / `kebab`.
+  - `wrap` — `prefix` and `suffix` glue around the clipboard text.
+  - `regex_replace` — `find` + `replace`, with `regex` (default `true`) and `case_sensitive` (default `true`) flags.
+  - `strip_chars` — `chars` lists every character to remove.
+- Common metadata: optional `label` (defaults to filename stem), optional `category` (defaults to parent folder name), optional `enabled` (defaults to `true`; set `false` to hide without deleting).
+- Parsed with `yaml.safe_load`, so escape sequences inside double-quoted strings work properly – `chars: "\\u00AD\\u00A0"` strips both soft hyphens and non-breaking spaces in one go, `find: "—"` matches an em dash literally.
+- The Clipboard Manager's `_populate_text_conversions` now constructs a `TextConversionLibrary`, calls `ensure_defaults(DEFAULT_CONVERSIONS)` to seed missing defaults, then `load_all()` to scan the folder. The existing 🔄 Refresh button picks up disk edits for free – no new reload plumbing.
+- Broken conversion files (invalid `type`, bad regex, missing required field) are silently skipped and logged. The clipboard flow never breaks on a typo – the conversion just no-ops and returns the input text unchanged until the user fixes the YAML and hits Refresh.
+- Each shipped default exercises one of the four types so the files serve as worked examples for users adding their own. The Soft hyphens default also includes a `notes:` body with a one-line hint for extending it.
+- No Python escape hatch in this first cut. If a real user need surfaces that can't be expressed in the four declarative types, a `python_file` type can be added later. Deferred to avoid arbitrary-code-execution risk in user-data files.
 
 
 ## v1.10.47 – May 16, 2026
