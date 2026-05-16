@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.46 (May 16, 2026)
+**Current Version:** v1.10.47 (May 16, 2026)
+
+
+## v1.10.47 – May 16, 2026
+
+### Changed (Clipboard Manager: Refresh button + tab renamed for clarity)
+
+- The Clipboard Manager's Menu column lists items from two file-backed sources: Snippets (`.md` files under `<user_data>/snippet_library/`, including the default "Special Characters" and "Personal Snippets" folders plus any user-created folders) and QuickLauncher Prompts (from the shared `prompt_library/` folder). When the user edited those files directly on disk (rename a snippet, change a snippet body, add a new snippet, edit a QuickLauncher prompt), the changes were not reflected in the Menu lists – the snippet library was re-scanned on each rebuild but the unified prompt library uses a cached `self.prompts` dict that is only refreshed by explicit reload calls, and there was no UI affordance to trigger a rebuild at all.
+- A 🔄 Refresh button has been added to the Menu column header, right-aligned next to the "📑 Menu" label. Clicking it: (a) calls `UnifiedPromptLibrary.load_all_prompts()` to reload the prompt library from disk, (b) constructs a fresh `SnippetLibrary` and re-scans `<user_data>/snippet_library/`, (c) rebuilds the entire action tree from the freshly-loaded data. The button's tooltip explains the use case.
+- The main tab "📋 Clipboard" has been renamed to "📋 Clipboard Manager" to match the widget's actual scope – it has been more than a clipboard history for several versions (Snippets, Text Conversions, QuickLauncher Prompts, plus the clipboard history columns), and the shorter "Clipboard" label undersold what the tab does. The tab index attribute (`self.clipboard_tab_index`) is unchanged, so all keyboard-jump shortcuts and tab-index references continue to work.
 
 
 ## v1.10.46 – May 16, 2026

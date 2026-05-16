@@ -9690,7 +9690,7 @@ class SupervertalerQt(QMainWindow):
         # Sidekick (Floating Assistant) was retired in v1.10.4 and its
         # four tabs now live in Workbench itself:
         #   Chat        → right_tabs "💬 Chat"
-        #   Clipboard   → main_tabs "📋 Clipboard"
+        #   Clipboard   → main_tabs "📋 Clipboard Manager"
         #   Voice       → main_tabs "🎤 Voice"
         #   SuperLookup → main_tabs "🔍 SuperLookup"
         # v1.10.10 finished the cleanup: floating_assistant.py is
@@ -9760,7 +9760,7 @@ class SupervertalerQt(QMainWindow):
         self.superlookup_tab_index = self.main_tabs.count() - 1
 
         clipboard_placeholder = _QW()
-        self.main_tabs.addTab(clipboard_placeholder, "📋 Clipboard")
+        self.main_tabs.addTab(clipboard_placeholder, "📋 Clipboard Manager")
         self.clipboard_tab_index = self.main_tabs.count() - 1
 
         voice_placeholder = _QW()

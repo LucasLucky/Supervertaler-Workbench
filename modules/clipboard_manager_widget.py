@@ -222,7 +222,31 @@ class ClipboardManagerWidget(QWidget):
         # never picked up the focus highlight, so users couldn't tell
         # at a glance when they were in the Menu column.
         self._action_header.setStyleSheet(self._COL_HEADER_INACTIVE)
-        action_col_layout.addWidget(self._action_header)
+        # Menu header row with a Refresh button on the right.  The
+        # snippet library and QuickLauncher prompts are file-backed
+        # (.md files under <user_data>/snippet_library/ and the shared
+        # prompt_library folder respectively); when the user edits
+        # those on disk the changes don't auto-propagate.  Refresh
+        # rebuilds the entire action tree from disk in one shot.
+        action_header_row = QHBoxLayout()
+        action_header_row.setContentsMargins(0, 0, 0, 0)
+        action_header_row.setSpacing(4)
+        action_header_row.addWidget(self._action_header, 1)
+        action_refresh_btn = QPushButton("🔄 Refresh")
+        action_refresh_btn.setToolTip(
+            "Reload the Menu lists from disk.\n\n"
+            "Use this after editing any snippet (.md file under "
+            "snippet_library/) or QuickLauncher prompt outside Workbench."
+        )
+        action_refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        action_refresh_btn.setStyleSheet(
+            f"QPushButton {{ font-size: {scaled_pt(7):.1f}pt; padding: 2px 8px; "
+            "color: #555; border: 1px solid #ccc; border-radius: 3px; background: #f5f5f5; }}"
+            "QPushButton:hover { background: #e8e8e8; color: #000; }"
+        )
+        action_refresh_btn.clicked.connect(self._populate_action_tree)
+        action_header_row.addWidget(action_refresh_btn, 0)
+        action_col_layout.addLayout(action_header_row)
         self._action_tree = self._build_action_tree()
         action_col_layout.addWidget(self._action_tree, 1)
         self._splitter.addWidget(action_col_container)
@@ -928,10 +952,34 @@ class ClipboardManagerWidget(QWidget):
         return tree
 
     def _populate_action_tree(self):
-        """Fill the action tree with categories + entries."""
+        """Fill the action tree with categories + entries.
+
+        Called once during widget construction and again whenever the
+        user clicks the Refresh button on the Menu column header.
+        Always reads file-backed sources fresh from disk so external
+        edits to snippet .md files or QuickLauncher prompt .md files
+        are reflected immediately.
+        """
         tree = self._action_tree
         tree.clear()
         self._action_items.clear()
+
+        # Reload the unified prompt library from disk before populating
+        # the Prompts category — its in-memory cache is shared with the
+        # AI tab's Prompt Manager and is only refreshed by explicit
+        # reload calls.  Without this, Refresh would rebuild the tree
+        # from the stale cache and external prompt edits wouldn't show.
+        # _populate_snippet_library constructs a fresh SnippetLibrary
+        # each call so it's already disk-fresh.
+        try:
+            pm = getattr(self._parent_app, 'prompt_manager_qt', None)
+            lib = getattr(pm, 'library', None) if pm else None
+            if lib and hasattr(lib, 'load_all_prompts'):
+                lib.load_all_prompts()
+        except Exception as e:
+            # Don't let a prompt-library reload failure block the
+            # snippet refresh — log and continue with whatever's cached.
+            print(f"[ClipboardManagerWidget] Prompt library reload failed during Refresh: {e}")
 
         # 1. Snippets (file-backed; includes "Special Characters" and
         #    "Personal Snippets" by default, plus any user-created
