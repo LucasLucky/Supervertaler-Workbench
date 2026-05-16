@@ -4490,7 +4490,96 @@ ROLE should frame itself as a PATENT translator (not a generic legal or technica
 one) and apply EPO drafting conventions throughout. This signal is patent-specific;
 other domains have no equivalent override yet, so for non-patent documents the
 generated prompt should rely on the detected_domain and template guidance above.
-''' if patent_markers_detected >= 3 else ""}=== CONSTRAINT LANGUAGE REQUIREMENTS ===
+''' if patent_markers_detected >= 3 else ""}=== TRANSLATOR-COMMENT METHODOLOGY (REQUIRED IN EVERY GENERATED PROMPT) ===
+
+Every prompt you generate MUST embed the following silent-correction-with-flagged-
+comment methodology. This is a project-wide Supervertaler standard for all
+AutoPrompt-generated prompts, required regardless of source language or domain.
+Do not omit it because the source looks clean — defects appear in nearly every
+real document, and the methodology must be in the prompt so the translator AI
+knows how to handle them when (not if) they do.
+
+**The methodology, in brief:**
+
+The translator AI silently corrects obvious mechanical defects in the source
+(typos, broken words across whitespace, hanging mid-sentence breaks, doubled
+spaces, stray punctuation, missing inflections, reference-numeral mismatches
+that are unambiguous in context, missing diacritics, etc. — the translator AI
+identifies the categories appropriate to the actual source language).
+
+For every silent correction, the translator AI appends ONE concise comment at
+the very end of the segment, in this exact format:
+
+    ⟦TC: short factual description of the fix(es)⟧
+
+- Multiple fixes in one segment are joined with semicolons inside ONE marker.
+  Never more than one ⟦TC: ...⟧ per segment.
+- Segments with no defects emit NO marker. Do not emit empty ⟦TC: ⟧.
+- The opening and closing delimiters MUST be U+27E6 (MATHEMATICAL LEFT WHITE
+  SQUARE BRACKET) and U+27E7 (MATHEMATICAL RIGHT WHITE SQUARE BRACKET). These
+  characters do not occur in source documents, so they are safe as out-of-band
+  markers and can be reliably extracted in post-processing.
+- Where the silent correction inserts a word or short phrase the translator
+  supplied to fill a clear gap, that supplied text is wrapped in standard
+  ASCII square brackets [like this] INSIDE the running translation. The
+  trailing ⟦TC: ...⟧ marker then references this, e.g.
+  ⟦TC: [bracketed text] supplied to close hanging sentence⟧.
+- The comment body is concise — typically 5 to 20 words. Noun-phrase / sentence-
+  fragment style; avoid full sentences, first-person ("I", "the translator",
+  "the LLM"), or apologetic hedging.
+- The marker is the FINAL content of the segment, separated from the running
+  text by exactly one regular space, with no line break, no full stop, and no
+  other punctuation between.
+
+**What the methodology MUST NOT silently correct** (the generated prompt MUST
+state these as hard exclusions, regardless of domain):
+
+- Numerical values, dates, currency figures, dosages (legal / regulatory weight).
+- Anything that changes legal scope (claim language, contract terms, statutory
+  references, etc.) — preserve faithfully even if awkward.
+- Long, repetitive, or awkward source prose — length and repetition are not
+  defects.
+- Synonym variation that may be deliberate (the drafter may have varied for
+  effect; preserve unless clearly an error).
+- Headings, identifiers, proper names, citations — preserve verbatim.
+- Anything the AI cannot resolve unambiguously from immediate context. In case
+  of doubt, translate faithfully and use:
+  ⟦TC: source ambiguous — possible defect at "..." but preserved as written⟧
+
+**How to embed this in the generated prompt:**
+
+1. The generated prompt's TRANSLATION MANDATE section MUST describe the silent-
+   correction methodology in terms appropriate to the source language and
+   domain (the translator AI needs to know which defect categories are
+   relevant — e.g. -d/-t verb-ending typos for Dutch, missing umlauts for
+   German, accent slips for French, conjugation typos for Spanish/Italian).
+2. The generated prompt MUST include a dedicated section titled
+   "TRANSLATOR COMMENT FORMAT" (or equivalent) near the end with the exact
+   ⟦TC: ...⟧ spec verbatim, plus 4–6 example comment bodies adapted to the
+   source language and domain. Example bodies for reference (the LLM should
+   produce equivalents for the actual source language):
+
+       ⟦TC: "verzekerd" corrected to "verzekert"⟧
+       ⟦TC: stray space before full stop closed⟧
+       ⟦TC: doubled space inside sentence collapsed⟧
+       ⟦TC: hanging mid-sentence break reconstructed; [bracketed text] supplied⟧
+       ⟦TC: "achterzijde (6)" corrected to (5) per antecedent in same paragraph⟧
+       ⟦TC: source ambiguous — possible defect at "..." but preserved as written⟧
+
+3. The generated prompt's PREFLIGHT SELF-CHECK and POST-TRANSLATION INTEGRITY
+   sections MUST include a check that any silent correction has its
+   corresponding ⟦TC: ...⟧ marker at the segment end, and that segments
+   without corrections have no marker.
+4. The generated prompt's OUTPUT FORMAT section MUST note that ⟦ and ⟧
+   (U+27E6 / U+27E7) are the sole exception to the "ASCII output only" rule —
+   they are the deliberate out-of-band comment delimiter.
+
+The translator's comments appear inline in the target text as ⟦TC: ...⟧.
+They can be extracted programmatically in downstream tooling (e.g. into Trados
+Studio comments) but the prompt itself does not need to address extraction —
+it just produces the markers reliably.
+
+=== CONSTRAINT LANGUAGE REQUIREMENTS ===
 Use strong, unambiguous language throughout the generated prompt:
 - "NON-NEGOTIABLE" for translation mandate and core rules
 - "LOCKED" and "MANDATORY" for termbase and style rules
