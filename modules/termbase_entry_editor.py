@@ -1057,6 +1057,16 @@ class TermbaseEntryEditor(QDialog):
         or target text (case-insensitive, bidirectional). If more
         than one result, populate + show the dropdown; otherwise
         hide it. Idempotent — safe to call repeatedly.
+
+        v1.10.79: filtered to **active termbases only** for the
+        current project (plus the loaded entry's termbase
+        unconditionally, in case the user opened the dialog on an
+        inactive termbase via the Termbases tab editor). Matches
+        Trados's Edit Term Entry dialog behaviour, and crucial for
+        users with dozens or hundreds of termbases — the
+        unfiltered v1.10.78 query would dump every termbase in the
+        DB that happened to share the surface form, drowning the
+        actually-relevant project termbase entries.
         """
         if (not self.db_manager) or (not self.term_id) or (not self.term_data):
             return
@@ -1066,13 +1076,28 @@ class TermbaseEntryEditor(QDialog):
             if not (src or tgt):
                 return
 
+            # Resolve the current project id by walking the parent
+            # chain to the main window (same pattern setup_ui uses
+            # for the caption query). Falls back to None if we
+            # can't find a project, in which case the activation
+            # filter is skipped — we behave like the v1.10.78
+            # unfiltered query rather than returning zero rows.
+            project_id = None
+            try:
+                ancestor = self.parent()
+                while ancestor is not None and not hasattr(ancestor, 'current_project'):
+                    ancestor = ancestor.parent() if callable(getattr(ancestor, 'parent', None)) else None
+                proj = getattr(ancestor, 'current_project', None) if ancestor else None
+                if proj is not None:
+                    project_id = getattr(proj, 'id', None)
+            except Exception:
+                pass
+
             cur = self.db_manager.cursor
-            # Bidirectional case-insensitive match. Skip empty surface
-            # forms (`AND … != ''`) so we don't false-match every
-            # empty target_term in the DB. Include the termbase name
-            # via JOIN; LEFT JOIN so entries whose termbase row was
-            # deleted (orphan) still appear with a "?" name rather
-            # than disappearing silently.
+            # Build the "surface-form match" WHERE conditions.
+            # Bidirectional case-insensitive against both the loaded
+            # entry's source_term AND target_term. Skip empty needles
+            # so we don't false-match every empty column.
             params = []
             conds = []
             for needle in (src, tgt):
@@ -1080,19 +1105,60 @@ class TermbaseEntryEditor(QDialog):
                     conds.append("LOWER(t.source_term) = LOWER(?)")
                     conds.append("LOWER(t.target_term) = LOWER(?)")
                     params.extend([needle, needle])
-            where_clause = " OR ".join(conds)
-            sql = f"""
-                SELECT t.id,
-                       t.source_term,
-                       t.target_term,
-                       COALESCE(tb.name, '?') as tb_name,
-                       tb.id as tb_id
-                FROM termbase_terms t
-                LEFT JOIN termbases tb
-                    ON CAST(t.termbase_id AS INTEGER) = tb.id
-                WHERE {where_clause}
-                ORDER BY tb.name, t.id
-            """
+            surface_match = "(" + " OR ".join(conds) + ")"
+
+            if project_id is not None:
+                # v1.10.79 activation filter:
+                #
+                #   - The termbase must be active for this project
+                #     (``ta.is_active = 1``), OR be the project's
+                #     "project termbase" (always active by definition,
+                #     ``tb.is_project_termbase = 1``), OR be the
+                #     loaded entry's own termbase (defensive — covers
+                #     the case where the dialog was opened on an
+                #     inactive entry via the Termbases tab editor,
+                #     in which case hiding it from the dropdown
+                #     would be very confusing).
+                #
+                #   - The trailing ``t.id = ?`` clause ensures the
+                #     loaded entry itself is always in the result
+                #     set even if every other condition fails — so
+                #     the dropdown is never empty when the dialog is
+                #     successfully showing an entry.
+                sql = f"""
+                    SELECT t.id,
+                           t.source_term,
+                           t.target_term,
+                           COALESCE(tb.name, '?') as tb_name,
+                           tb.id as tb_id
+                    FROM termbase_terms t
+                    LEFT JOIN termbases tb
+                        ON CAST(t.termbase_id AS INTEGER) = tb.id
+                    LEFT JOIN termbase_activation ta
+                        ON ta.termbase_id = tb.id
+                        AND ta.project_id = ?
+                    WHERE {surface_match}
+                      AND (ta.is_active = 1
+                           OR tb.is_project_termbase = 1
+                           OR t.id = ?)
+                    ORDER BY tb.name, t.id
+                """
+                params = [project_id] + params + [self.term_id]
+            else:
+                # No project context — fall back to the v1.10.78
+                # unfiltered query (better than returning nothing).
+                sql = f"""
+                    SELECT t.id,
+                           t.source_term,
+                           t.target_term,
+                           COALESCE(tb.name, '?') as tb_name,
+                           tb.id as tb_id
+                    FROM termbase_terms t
+                    LEFT JOIN termbases tb
+                        ON CAST(t.termbase_id AS INTEGER) = tb.id
+                    WHERE {surface_match}
+                    ORDER BY tb.name, t.id
+                """
             cur.execute(sql, params)
             rows = cur.fetchall()
         except Exception:

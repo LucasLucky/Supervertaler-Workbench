@@ -2,7 +2,41 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.78 (May 18, 2026)
+**Current Version:** v1.10.79 (May 18, 2026)
+
+
+## v1.10.79 – May 18, 2026
+
+### Changed (v1.10.78 "Editing:" dropdown now filters to active termbases only — matches Trados, and necessary for users with dozens or hundreds of termbases)
+
+The v1.10.78 dropdown deliberately skipped the activation filter so users could "see and edit related entries from inactive termbases too". A user with a large termbase collection (100+ termbases is realistic for a working translator with multiple long-term clients) pushed back immediately: the unfiltered query would dump every entry in the DB that happened to share the surface form, drowning the actually-relevant project termbase entries in noise. For the test entry "inrichting" the unfiltered query returned 4 entries (BEIJER + BRANTS-LTRI + BRANTS-PACC + PATENTS); only 2 of those are active for the current project (BRANTS-LTRI and PATENTS).
+
+This commit adds the activation filter.
+
+**The query:**
+
+```sql
+SELECT t.id, t.source_term, t.target_term, COALESCE(tb.name, '?'), tb.id
+FROM termbase_terms t
+LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
+LEFT JOIN termbase_activation ta ON ta.termbase_id = tb.id AND ta.project_id = ?
+WHERE (LOWER(t.source_term) = LOWER(?) OR LOWER(t.target_term) = LOWER(?)
+       OR LOWER(t.source_term) = LOWER(?) OR LOWER(t.target_term) = LOWER(?))
+  AND (ta.is_active = 1 OR tb.is_project_termbase = 1 OR t.id = ?)
+ORDER BY tb.name, t.id
+```
+
+The three-way OR in the activation clause is deliberate:
+
+ - `ta.is_active = 1` — the termbase is activated for the current project (the normal case).
+ - `tb.is_project_termbase = 1` — the termbase is the project's "project termbase" (always active by definition; doesn't need an explicit activation row).
+ - `t.id = ?` — the loaded entry itself. Defensive: covers the rare case where the dialog was opened on an inactive entry via the Termbases tab "Edit Selected Term" button (TermLens itself never surfaces inactive-termbase entries, but the Termbases tab editor lets you click any termbase including inactive ones). Without this clause the loaded entry could disappear from its own dropdown.
+
+**Project context** — the dialog walks the parent chain to find the main window's `current_project.id`, same pattern `setup_ui` uses for the caption query. If no project is active (e.g. dialog opened from a context without a loaded project — rare but defensible), the activation filter is silently skipped and the v1.10.78 unfiltered behaviour kicks in. Better to show extra entries than zero entries in that edge case.
+
+**Verified against the user's real DB**: for project_id `542263504` (their BRANTS LTRI project) and loaded entry 93174, the dropdown now shows exactly 2 entries (BRANTS-LTRI + PATENTS), matching what their Trados Edit Term Entry dialog shows for the same term. The 2 inactive-termbase entries (BEIJER, BRANTS-PACC) are correctly filtered out.
+
+Net effect: dropdown stays clean and project-scoped regardless of how many other termbases the user has accumulated.
 
 
 ## v1.10.78 – May 18, 2026
