@@ -2,7 +2,46 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.59 (May 17, 2026)
+**Current Version:** v1.10.60 (May 17, 2026)
+
+
+## v1.10.60 – May 17, 2026
+
+### Added (Phase E — DOCX export now anchors Word comments to character ranges, with run-splitting where needed; range-anchored comments feature complete)
+
+Final instalment in the v1.10.57+ series. Phases A–D built up the data model, UI for creating anchored comments, the multi-comment list, and the in-editor visual indicator. This phase delivers the end-user payoff: **the exported `.docx` now has Word comments whose range highlight covers exactly the anchored words**, mirroring Trados / memoQ behaviour.
+
+Implementation:
+
+`_attach_segment_notes_as_docx_comments` rewritten to iterate `segment.comments` (one Word comment per Comment) instead of treating each segment's notes string as a single comment. Behaviour per Comment:
+
+ - **Unanchored (segment-level)**: unchanged from v1.10.55 — Word comment anchors to the full paragraph (all runs).
+ - **Target-anchored**: maps the comment's `anchor_start/end` from the segment's target-text coordinates into the matched paragraph's coordinates, then calls a new `_find_or_split_runs_for_range(para, start, end)` helper to return the runs covering exactly that character range. Runs are split via `_split_docx_run_at_offset` where the range cuts mid-run; formatting (bold, italic, font, colour, etc.) is preserved via deep-copy of the run's XML element and the `rPr` inside it.
+ - **Source-anchored**: source text isn't present in the exported (target-only) DOCX, so the comment can't visually highlight a source range. Falls back to whole-paragraph anchoring with the source snippet prefixed in the comment body: `[Re: "schroef" (source)] use "screw" not "bolt"`. Reviewer reading the Word file sees the comment with the relevant source quote inline.
+
+Run-splitting (`_split_docx_run_at_offset`) is the trickiest piece. Given a Run and a local character offset, it truncates the original run's text to `text[:offset]` and inserts a NEW run immediately after it (via lxml `addnext`) containing `text[offset:]` with the same `rPr` (deep-copied). The new run's `w:t` element has `xml:space="preserve"` so Word doesn't strip leading/trailing whitespace.
+
+The walker (`_find_or_split_runs_for_range`) iterates the paragraph's runs, identifies runs that overlap the target range, splits them at the boundary points, and collects the resulting runs that cover exactly `para.text[start:end]`. Because each split invalidates the iteration order, the walker re-snapshots after each mutation (bounded at 64 iterations — in practice the range produces at most two splits).
+
+Smoke tests at `.dev/test_docx_run_split.py` exercise nine scenarios — anchor aligned to run boundary, anchor cutting mid-run at start / end / both, anchor spanning multiple runs with mid-run cuts, formatting preservation (bold survives split), edge-case offset handling, and end-to-end Word comment save+reopen. All pass.
+
+Counter changes in the log message:
+ - Old: `Attached N segment note(s) as Word comments`
+ - New: `Attached N segment comment(s) as Word comments (K range-anchored)` — the parenthetical only appears when at least one comment got a non-whole-paragraph anchor.
+
+Author resolution moved to a small helper `_comment_author_and_initials()` so the inline body stays readable and the same logic is available for any future code path that needs to write a Word comment.
+
+### Series wrap
+
+Range-anchored comments now work end-to-end:
+
+1. Select text in source or target → **Ctrl+Shift+M** → enter comment → it's anchored to that range. (Phase B)
+2. Anchored text gets a soft amber background in the editor cell — you can see at a glance where comments are attached. (Phase C)
+3. The all-comments list at the top of the Comments tab shows one entry per Comment with anchor info, snippet, author, and a right-click context menu for edit / delete. (Phase D)
+4. Bottom editor auto-locks when a segment has anchored or multiple comments, preventing the legacy single-string flow from clobbering them. (Phase D)
+5. Export to DOCX → Word comments anchor to exactly the right character range, with formatting preserved through any necessary run splits. (Phase E)
+
+Backward compatibility throughout: old `.svproj` files with single-string `segment.notes` load fine (migration on read), simple one-segment-level-comment segments work exactly as before, and the legacy bottom editor is unchanged for the simple case.
 
 
 ## v1.10.59 – May 17, 2026

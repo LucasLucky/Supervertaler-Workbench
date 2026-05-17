@@ -12720,37 +12720,201 @@ class SupervertalerQt(QMainWindow):
             import traceback
             traceback.print_exc()
 
-    def _attach_segment_notes_as_docx_comments(self, docx_path, segments):
-        """Post-process an exported DOCX to attach segment notes as Word comments.
+    def _split_docx_run_at_offset(self, run, offset):
+        """Split a python-docx Run at the given character offset within its text.
 
-        Walks the saved DOCX, finds paragraphs that contain the target text
-        of any segment with a non-empty ``notes`` field, and attaches a
-        Word comment to that paragraph. Matching is by text containment –
-        first unmatched paragraph wins, so if two segments translate to
-        identical text the comments end up on different occurrences in
-        document order.
+        v1.10.60 Phase E: enables Word-comment range anchoring. To anchor
+        a comment to only "schroef" within a longer paragraph, we need
+        Word's commentRangeStart / commentRangeEnd to bracket exactly
+        the runs covering "schroef" — and runs are immutable text
+        fragments with formatting, so cutting mid-run requires creating
+        a new run.
 
-        Silently no-ops if:
-         - no segments have notes, or
-         - the installed python-docx is too old for the comments API
-           (need ``Document.add_comment``, added in python-docx 1.0), or
-         - the saved DOCX can't be reopened (e.g. Okapi produced a
-           format we can't read back).
+        Returns (left, right). The original ``run`` becomes ``left``
+        (its text truncated to ``text[:offset]``). A new run is
+        inserted into the paragraph immediately after the original,
+        with text ``text[offset:]`` and the same formatting (rPr
+        element deep-copied so bold/italic/font/colour all survive).
 
-        Failures attaching individual comments are logged but never abort
-        the export — the underlying DOCX is already saved at the call
-        site, this is a best-effort enhancement.
+        Edge cases:
+         - offset <= 0: no split, returns (None, run).
+         - offset >= len(text): no split, returns (run, None).
         """
-        # Collect segments that have something to attach.
-        candidates = []
+        from copy import deepcopy
+        from docx.oxml.ns import qn
+        from docx.text.run import Run as _DocxRun
+
+        text = run.text or ''
+        if offset <= 0:
+            return (None, run)
+        if offset >= len(text):
+            return (run, None)
+
+        left_text = text[:offset]
+        right_text = text[offset:]
+
+        # Deep-copy the run's XML element so the new run inherits all
+        # of its formatting (rPr child with bold/italic/font/colour/etc.).
+        new_element = deepcopy(run._element)
+
+        # Replace the copied w:t element(s) with a single one containing
+        # right_text. xml:space="preserve" prevents Word from collapsing
+        # leading/trailing whitespace.
+        for t_elem in list(new_element.findall(qn('w:t'))):
+            new_element.remove(t_elem)
+        new_t = run._element.makeelement(qn('w:t'), {qn('xml:space'): 'preserve'})
+        new_t.text = right_text
+        new_element.append(new_t)
+
+        # Truncate the original run.
+        run.text = left_text
+
+        # Insert the new run element immediately after the original.
+        run._element.addnext(new_element)
+
+        new_run = _DocxRun(new_element, run._parent)
+        return (run, new_run)
+
+    def _find_or_split_runs_for_range(self, para, start, end):
+        """Return the runs that exactly cover ``para.text[start:end]``.
+
+        Splits runs at the start and/or end of the range when those
+        boundaries fall mid-run. The returned runs, concatenated,
+        produce exactly ``para.text[start:end]``.
+
+        After splitting, ``para.runs`` itself is also restructured —
+        the new sub-runs are inserted in the paragraph's XML so that
+        subsequent paragraph operations see them.
+
+        Returns an empty list if the range is empty or out of bounds.
+        """
+        if start >= end:
+            return []
+
+        # Walk runs accumulating absolute offsets. We can't trust
+        # para.runs across mutations, so re-snapshot after each split.
+        result: list = []
+
+        def _walk_once():
+            runs = list(para.runs)
+            offset = 0
+            for run in runs:
+                run_text = run.text or ''
+                run_len = len(run_text)
+                run_start = offset
+                run_end = offset + run_len
+                offset = run_end
+
+                # No overlap with [start, end)?
+                if run_end <= start or run_start >= end:
+                    continue
+
+                # The run intersects the range. Two split points to consider:
+                # local_start = where the range begins within this run
+                # local_end   = where the range ends within this run
+                local_start = max(0, start - run_start)
+                local_end = min(run_len, end - run_start)
+
+                if local_start > 0:
+                    # Range starts mid-run — split off the prefix.
+                    _left, _right = self._split_docx_run_at_offset(run, local_start)
+                    return True  # mutation happened; re-walk from scratch
+
+                if local_end < run_len:
+                    # Range ends mid-run — split off the suffix.
+                    _left, _right = self._split_docx_run_at_offset(run, local_end)
+                    return True  # mutation happened; re-walk
+
+                # Run fits entirely within the range — collect it.
+                result.append(run)
+            return False  # walk completed without mutation
+
+        # Iterate until no more splits are needed. Bounded by 2*N splits
+        # max (one each for start and end), so loop count is small.
+        for _ in range(64):
+            result = []
+            if not _walk_once():
+                break
+
+        return result
+
+    def _comment_author_and_initials(self):
+        """Resolve the comment author + initials used in DOCX export.
+
+        Pulled out of the inline body in ``_attach_segment_comments_as_docx_comments``
+        so it can be reused (e.g. when range-anchoring decides to put a
+        snippet-prefixed comment on the whole paragraph for source-anchored
+        comments).
+        """
+        author = self.get_translator_name()
+        parts = author.split()
+        if len(parts) >= 2:
+            initials = ''.join(p[0] for p in parts if p)[:4].upper()
+        elif parts:
+            initials = parts[0][:2].upper()
+        else:
+            initials = 'X'
+        return author, initials
+
+    def _attach_segment_notes_as_docx_comments(self, docx_path, segments):
+        """Post-process an exported DOCX to attach segment comments as Word comments.
+
+        v1.10.60 Phase E: now iterates ``segment.comments`` (the new
+        structured list) instead of the legacy single-string
+        ``segment.notes``. Behaviour per Comment:
+
+         - **Unanchored (segment-level)**: same as v1.10.55 behaviour —
+           Word comment anchors to the full paragraph (all its runs).
+         - **Target-anchored**: finds the paragraph that contains the
+           segment's target text, then finds the character range within
+           that paragraph corresponding to the comment's
+           ``anchor_start/end``. Runs are split if the boundaries cut
+           mid-run, and the comment is anchored to exactly the resulting
+           sub-runs. End result in Word: a yellow comment bubble whose
+           range highlight covers exactly the anchored words.
+         - **Source-anchored**: the source text isn't in the exported
+           DOCX (the export is target-only), so we can't highlight a
+           source range. The comment is attached to the whole paragraph
+           with the source-snippet prefixed in the body so the reviewer
+           knows what it's about: e.g. ``[Re: "schroef" (source)] use
+           "screw" not "bolt"``.
+
+        Silently no-ops on the usual prerequisites: no segments with
+        comments, missing python-docx ``add_comment`` API, DOCX path not
+        reopenable. Failures attaching individual comments are logged
+        but never abort the export.
+
+        Function name and signature kept for backward-compat with the
+        existing call-sites in ``_try_okapi_merge_export`` and
+        ``export_target_only_docx``.
+        """
+        # Collect all (segment, comment) pairs that have something to attach.
+        candidates: list = []  # [(seg, comment), ...] in segment+document order
         for seg in segments:
-            note = (getattr(seg, 'notes', '') or '').strip()
-            if not note:
+            comments_list = getattr(seg, 'comments', None) or []
+            # Backward-compat: if a segment somehow only has the legacy
+            # notes string (older in-memory object that wasn't migrated),
+            # treat it as a single unanchored Comment-shaped tuple.
+            if not comments_list:
+                legacy_note = (getattr(seg, 'notes', '') or '').strip()
+                if legacy_note:
+                    # Build a temporary Comment-like object so the loop
+                    # below doesn't need to special-case.
+                    legacy_comment = Comment(
+                        text=legacy_note, author='', anchor_field='',
+                    )
+                    candidates.append((seg, legacy_comment))
                 continue
-            target = (getattr(seg, 'target', '') or '').strip()
-            if not target:
+            target_text = (getattr(seg, 'target', '') or '').strip()
+            if not target_text and not any(
+                c.anchor_field == 'source' for c in comments_list
+            ):
+                # No target text and no source-anchored comments means
+                # nothing locatable in the exported DOCX. Skip.
                 continue
-            candidates.append((seg, target, note))
+            for c in comments_list:
+                if c.text and c.text.strip():
+                    candidates.append((seg, c))
 
         if not candidates:
             return
@@ -12766,84 +12930,140 @@ class SupervertalerQt(QMainWindow):
             self.log(
                 f"  ⚠ Comment-attach: python-docx version doesn't expose "
                 f"Document.add_comment; install python-docx >= 1.0 to enable "
-                f"segment-note export as Word comments. ({len(candidates)} note(s) skipped.)"
+                f"segment-comment export as Word comments. ({len(candidates)} comment(s) skipped.)"
             )
             return
 
-        # Author comes from Settings → User Identity → Translator Name
-        # (falls back to the system username if the user hasn't set one),
-        # so the Word comments are attributed to whoever did the
-        # translation. Same name is used for SDLXLIFF comments, Trados
-        # return packages, TMX writes, etc.
-        author = self.get_translator_name()
-        # Initials: for multi-word names ("Michael Beijer") take the first
-        # letter of each word ("MB"). For single-word names ("mbeijer")
-        # take the first two characters uppercased ("MB"). Capped at 4
-        # chars to fit Word's narrow initials column.
-        _name_parts = author.split()
-        if len(_name_parts) >= 2:
-            initials = ''.join(p[0] for p in _name_parts if p)[:4].upper()
-        elif _name_parts:
-            initials = _name_parts[0][:2].upper()
-        else:
-            initials = 'X'
+        author, initials = self._comment_author_and_initials()
 
-        # Walk paragraphs in document order. For each, try to attach the
-        # earliest still-unmatched candidate whose target text is a
-        # substring of the paragraph's text. A paragraph can collect
-        # multiple comments if multiple segments map to it.
-        matched_indices: set[int] = set()
-        attached = 0
+        # Build a segment_id → matched-paragraph cache. Multiple
+        # comments on the same segment all reuse the same paragraph
+        # (the one containing the segment's target text). First
+        # encounter populates the cache; subsequent encounters reuse.
+        segment_to_para: dict = {}
+        # Track which paragraphs are already "claimed" by a segment so a
+        # collision (two segments with identical target text) doesn't
+        # repeatedly map to the same paragraph.
+        claimed_paragraph_ids: set = set()
+
+        def _find_paragraph_for_segment(seg):
+            seg_target = (getattr(seg, 'target', '') or '').strip()
+            if not seg_target:
+                return None
+            if seg.id in segment_to_para:
+                return segment_to_para[seg.id]
+            for para in doc.paragraphs:
+                if id(para) in claimed_paragraph_ids:
+                    continue
+                para_text = para.text or ''
+                if seg_target in para_text and para.runs:
+                    segment_to_para[seg.id] = para
+                    claimed_paragraph_ids.add(id(para))
+                    return para
+            return None
+
+        attached_total = 0
+        attached_anchored = 0
+        unmatched_no_para = 0
         skipped_no_runs = 0
 
-        for para in doc.paragraphs:
-            para_text = para.text or ''
-            if not para_text.strip():
+        for seg, comment in candidates:
+            para = _find_paragraph_for_segment(seg)
+            if para is None:
+                unmatched_no_para += 1
                 continue
-            # Allow multiple matches per paragraph in document order.
-            for idx, (seg, target, note) in enumerate(candidates):
-                if idx in matched_indices:
+            if not para.runs:
+                skipped_no_runs += 1
+                continue
+
+            body = comment.text
+            runs_to_anchor = None
+
+            try:
+                if comment.anchor_field == 'target' and comment.is_anchored:
+                    # Target-side range anchoring: split runs as needed.
+                    # The anchor offsets are character offsets within
+                    # the SEGMENT'S target text, but we're anchoring
+                    # inside the PARAGRAPH text. Map by finding the
+                    # segment's target as a substring of the paragraph
+                    # and offsetting.
+                    seg_target = getattr(seg, 'target', '') or ''
+                    para_text = para.text or ''
+                    para_offset = para_text.find(seg_target)
+                    if para_offset < 0:
+                        # Defensive: shouldn't happen because we found
+                        # the paragraph by containment.
+                        runs_to_anchor = list(para.runs)
+                    else:
+                        text_len = len(seg_target)
+                        anchor_start_para = para_offset + max(0, min(comment.anchor_start, text_len))
+                        anchor_end_para = para_offset + max(0, min(comment.anchor_end, text_len))
+                        ranged_runs = self._find_or_split_runs_for_range(
+                            para, anchor_start_para, anchor_end_para
+                        )
+                        if ranged_runs:
+                            runs_to_anchor = ranged_runs
+                            attached_anchored += 1
+                        else:
+                            runs_to_anchor = list(para.runs)
+
+                elif comment.anchor_field == 'source' and comment.is_anchored:
+                    # Source-anchored: prefix the comment body with the
+                    # source snippet so the reviewer knows what it's about,
+                    # then anchor to the whole paragraph (since source text
+                    # isn't present in the exported DOCX).
+                    seg_source = getattr(seg, 'source', '') or ''
+                    slen = len(seg_source)
+                    sstart = max(0, min(comment.anchor_start, slen))
+                    send = max(sstart, min(comment.anchor_end, slen))
+                    snippet = seg_source[sstart:send]
+                    snippet_short = snippet[:120] + ('…' if len(snippet) > 120 else '')
+                    body = f'[Re: "{snippet_short}" (source)] {body}'
+                    runs_to_anchor = list(para.runs)
+
+                else:
+                    # Unanchored / segment-level — anchor to whole paragraph.
+                    runs_to_anchor = list(para.runs)
+
+                if not runs_to_anchor:
+                    skipped_no_runs += 1
                     continue
-                if target and target in para_text:
-                    if not para.runs:
-                        skipped_no_runs += 1
-                        matched_indices.add(idx)
-                        continue
-                    try:
-                        doc.add_comment(
-                            runs=para.runs,
-                            text=note,
-                            author=author,
-                            initials=initials,
-                        )
-                        matched_indices.add(idx)
-                        attached += 1
-                    except Exception as e:
-                        self.log(
-                            f"  ⚠ Comment-attach: failed for segment "
-                            f"#{getattr(seg, 'id', '?')}: {e}"
-                        )
-                        matched_indices.add(idx)  # don't retry endlessly
+
+                doc.add_comment(
+                    runs=runs_to_anchor,
+                    text=body,
+                    author=author,
+                    initials=initials,
+                )
+                attached_total += 1
+            except Exception as e:
+                self.log(
+                    f"  ⚠ Comment-attach: failed for segment "
+                    f"#{getattr(seg, 'id', '?')} (anchor={comment.anchor_field or 'none'}): {e}"
+                )
 
         # Save back only if we actually added anything.
-        if attached > 0:
+        if attached_total > 0:
             try:
                 doc.save(docx_path)
-                unmatched = len(candidates) - len(matched_indices)
-                msg = f"  ✓ Attached {attached} segment note(s) as Word comments"
-                if unmatched:
-                    msg += f" ({unmatched} unmatched — target text not found in any paragraph)"
+                msg = (
+                    f"  ✓ Attached {attached_total} segment comment(s) "
+                    f"as Word comments"
+                )
+                if attached_anchored:
+                    msg += f" ({attached_anchored} range-anchored)"
+                if unmatched_no_para:
+                    msg += f" ({unmatched_no_para} unmatched — target text not found in any paragraph)"
                 if skipped_no_runs:
                     msg += f" ({skipped_no_runs} skipped — empty paragraph)"
                 self.log(msg)
             except Exception as e:
                 self.log(f"  ⚠ Comment-attach: failed to save DOCX with comments: {e}")
         else:
-            unmatched = len(candidates) - len(matched_indices)
-            if unmatched:
+            if unmatched_no_para:
                 self.log(
-                    f"  ⚠ Comment-attach: {unmatched} segment note(s) had no "
-                    f"matching paragraph in the exported DOCX"
+                    f"  ⚠ Comment-attach: {unmatched_no_para} segment "
+                    f"comment(s) had no matching paragraph in the exported DOCX"
                 )
 
     def _try_okapi_merge_export(self, segments, original_path, output_path):
