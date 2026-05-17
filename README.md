@@ -53,7 +53,7 @@ python Supervertaler.py
 
 | Resource | Description |
 |----------|-------------|
-| [Online Manual](https://supervertaler.gitbook.io/help/) | Quick start, guides, and troubleshooting |
+| [Online Manual](https://help.supervertaler.com/workbench/) | Quick start, guides, and troubleshooting |
 | [Changelog](CHANGELOG.md) | Complete version history |
 | [Keyboard Shortcuts](docs/guides/KEYBOARD_SHORTCUTS.md) | Shortcut reference |
 | [FAQ](FAQ.md) | Common questions |
