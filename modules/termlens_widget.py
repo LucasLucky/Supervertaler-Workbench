@@ -67,18 +67,22 @@ class _ChipContainer(QWidget):
 
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        margin = 2
-        right = self.width() - margin
-        top = margin
+        # v1.10.80: indicators painted in the chip's top headroom
+        # strip (TermBlock sets a 10 px top margin on target_layout
+        # when indicators are present, so children sit safely below
+        # y=10). y=1 keeps a thin 1-px gap from the chip's top edge.
+        margin_right = 3
+        right = self.width() - margin_right
+        top = 1
 
         if self._has_metadata:
-            size = 7
+            size = 8
             x = right - size
             y = top
             p.setBrush(QColor("#F59E0B"))     # amber
             p.setPen(QPen(QColor("white"), 1.0))
             p.drawEllipse(x, y, size, size)
-            right = x - 2  # synonym icon goes to the left of the dot
+            right = x - 3  # synonym icon goes to the left of the dot
 
         if self._has_synonyms:
             size = 9
@@ -551,7 +555,22 @@ class TermBlock(QWidget):
                 }}
             """)
             target_layout = QHBoxLayout(target_container)
-            target_layout.setContentsMargins(3, 1, 3, 1)
+            # v1.10.80: top margin is enlarged when corner indicators
+            # are present so the chip text + shortcut badge sit BELOW
+            # the strip _ChipContainer.paintEvent uses to draw the
+            # amber dot / indigo ≡ icon. Previously the layout's 1 px
+            # top margin meant the badge occupied the same top-right
+            # area the indicators were drawn in — children paint
+            # AFTER the parent's paintEvent so the badge covered the
+            # indicators, making them effectively invisible (user
+            # report: "the little orange dot is underneath the
+            # number, not on the corner like in Trados"). Qt clips
+            # paint to widget bounds so we can't overflow above the
+            # chip the way Trados can with its WinForms paint; the
+            # next-best thing is to reserve space inside the chip
+            # for them.
+            top_margin = 10 if (has_metadata or has_synonyms) else 1
+            target_layout.setContentsMargins(3, top_margin, 3, 1)
             target_layout.setSpacing(3)
             
             target_label = QLabel(target_text)
@@ -1590,26 +1609,40 @@ class TermLensWidget(QWidget):
         #   1. Non-forbidden first  (forbidden last — users shouldn't
         #      accidentally insert a "do not use" translation just
         #      because it happens to be from the project termbase).
-        #   2. Project termbase entries first (pink chip for the
+        #   2. Project / priority-1 entries first (pink chip for the
         #      project-canonical translation).
-        #   3. Then by ranking (priority: 1 = top, 99 = default).
+        #   3. Tiebreak by termbase name for stable ordering.
         #
-        # Previously matches_dict[key] was appended in iteration
-        # order, so the primary translation was just "whichever
-        # match was found first" — which meant background-termbase
-        # entries could outrank the project termbase entry and the
-        # chip displayed the wrong translation (blue background,
-        # background-termbase term shown). Reported by a user
-        # comparing the Workbench TermLens to the Trados TermLens
-        # side by side: in Trados the "inrichting" chip showed
-        # "device" (from project termbase BRANTS) in pink; in
-        # Workbench the same chip showed "apparatus" (from
-        # background PATENTS) in blue. This sort closes the gap.
+        # v1.10.80 fix: sort the project-first tier by ``ranking``
+        # (the computed flag from _build_termbase_index that's 1
+        # for project-termbase / priority-1 entries, 0 for the
+        # rest) rather than by the raw ``is_project_termbase``
+        # column.
+        #
+        # The v1.10.77 sort only checked ``is_project_termbase``
+        # which is a column on the ``termbases`` table — but the
+        # *project termbase* designation in practice comes from
+        # ``termbase_activation.priority = 1`` for the current
+        # project, not from that column. So a user with BRANTS
+        # marked as the project termbase via the activation table
+        # (which is how the Termbases tab UI does it) had a
+        # BRANTS row with ``is_project_termbase = 0`` AND
+        # ``priority = 1`` — Workbench's index builder correctly
+        # computed ``ranking = 1`` for it, but the v1.10.77 sort
+        # ignored that and ended up putting PATENTS (ranking=0)
+        # before BRANTS (ranking=1) because lower ranking sorted
+        # first. Result: blue PATENTS chip instead of pink BRANTS
+        # chip on a project where BRANTS *was* the project
+        # termbase. Reported by the user side-by-side with the
+        # Trados TermLens which correctly showed pink. The fix is
+        # to invert the ranking comparison (project-first means
+        # ranking == 1 wins) and tiebreak by termbase name for
+        # stability.
         for _key in matches_dict:
             matches_dict[_key].sort(key=lambda t: (
-                bool(t.get('forbidden', False)),               # False(0) < True(1)
-                not bool(t.get('is_project_termbase', False)), # project first
-                t.get('ranking', 99),                          # ascending ranking
+                bool(t.get('forbidden', False)),               # non-forbidden first
+                not (t.get('ranking') == 1),                   # ranking == 1 (project/priority-1) first
+                t.get('termbase_name', '') or '',              # alphabetical tiebreak
             ))
 
         # Combine all known multi-word terms for tokenization

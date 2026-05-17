@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.79 (May 18, 2026)
+**Current Version:** v1.10.80 (May 18, 2026)
+
+
+## v1.10.80 – May 18, 2026
+
+### Fixed (TermLens chip: project termbase now actually renders pink + amber metadata dot and indigo synonym icon are now visible)
+
+User screenshot showed three remaining gaps vs the Trados TermLens that v1.10.77 didn't actually close:
+
+**1. Project termbase chip wasn't pink** even though the v1.10.77 sort tried to put it first. The user's project (BRANTS LTRI) marks its project termbase via `termbase_activation.priority = 1`, NOT via the `termbases.is_project_termbase` column. Workbench's `_build_termbase_index` correctly computes `ranking = 1` for such entries (the SQL `CASE` clause covers both signals), but my v1.10.77 sort key only checked `is_project_termbase` directly and ignored `ranking`. So with BRANTS (is_project_termbase=0, ranking=1) and PATENTS (is_project_termbase=0, ranking=0), both entries had the same `is_project_termbase` value and the sort fell back to `ranking` *ascending* — putting PATENTS (0) before BRANTS (1). Backwards. The chip displayed PATENTS' "apparatus" (blue) instead of BRANTS' "device" (pink).
+
+Fix: sort key now uses `not (t.get('ranking') == 1)` so any entry with `ranking == 1` (project termbase OR priority-1 activation, whichever the index builder caught) sorts first. Tiebreak by termbase name for stable ordering across ties. Verified by inspection: with the fix, BRANTS sorts first → `is_effective_project = (ranking == 1) = True` → chip renders pink → displays "device" as primary translation.
+
+**2. Amber metadata dot was hidden under the shortcut badge.** v1.10.75 painted it at the top-right corner of the chip via `_ChipContainer.paintEvent`. Trouble is, Qt's children paint AFTER the parent's paintEvent — and the shortcut badge (laid out at the right edge of `target_layout` with a 1 px top margin) was rendered *on top of* the indicator I'd just painted. User report: "the little orange dot is underneath the number, not on the corner like in Trados".
+
+Fix: when the chip has corner indicators (metadata or synonyms), `target_layout` now uses a 10 px top margin instead of 1 px. That reserves a top strip inside the chip for the indicators only; children (text + `+N` + badge) sit cleanly below in the remaining content area. Qt clips paint to widget bounds so we can't overflow above the chip the way Trados does with its WinForms paint; reserving space inside is the next-best thing. Indicators also nudged to `y=1` (was `y=2`) and the synonym icon's size bumped to fit the new headroom precisely.
+
+**3. Indigo ≡ synonym icon was hidden the same way** — same fix as the amber dot. Both indicators are painted by the same `_ChipContainer.paintEvent`; the layout-margin fix benefits both at once.
+
+Net effect: project termbase entries now actually display in pink, and the corner indicators (amber for "this entry has Definition/Domain/Notes/URL — hover for details" and indigo ≡ for "this entry has synonyms") are visible at the chip's top-right corner where they belong. Trados-side parity for the chip presentation is now functionally complete — the remaining gap is purely visual fidelity (Trados's indicators overflow slightly above the chip; Workbench's sit entirely inside), which is a Qt platform constraint, not a feature gap.
 
 
 ## v1.10.79 – May 18, 2026
