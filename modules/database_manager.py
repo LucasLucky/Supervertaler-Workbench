@@ -1022,7 +1022,8 @@ class DatabaseManager:
         return None
 
     def get_exact_matches_batch(self, sources: List[str], tm_ids: List[str] = None,
-                                source_lang: str = None, target_lang: str = None) -> Dict[str, Dict]:
+                                source_lang: str = None, target_lang: str = None,
+                                bidirectional: bool = True) -> Dict[str, Dict]:
         """
         Batch exact match lookup for multiple source texts in a single operation.
 
@@ -1034,9 +1035,17 @@ class DatabaseManager:
             tm_ids: List of TM IDs to search (None = all)
             source_lang: Filter by source language
             target_lang: Filter by target language
+            bidirectional: If True, after the forward sweep, take any sources that
+                didn't match and run a reverse-direction lookup against target_text
+                (mirrors :py:meth:`get_exact_match`). Lets a project pull matches
+                out of a TM whose source/target languages are the inverse of the
+                project's — e.g. an ``en→nl`` TM attached to an ``nl→en`` project.
 
         Returns:
-            Dict mapping source_text -> match dict (only for sources that had matches)
+            Dict mapping source_text -> match dict (only for sources that had matches).
+            Reverse-direction hits carry a ``reverse_match: True`` key and have their
+            source/target fields swapped so downstream consumers can treat them
+            identically to forward hits.
         """
         if not sources:
             return {}
@@ -1162,6 +1171,94 @@ class DatabaseManager:
                         if original_source not in results:
                             results[original_source] = row_dict
 
+        # === REVERSE-DIRECTION FALLBACK ===
+        # Mirrors get_exact_match()'s bidirectional path: any source that didn't
+        # match in the forward sweep gets a second chance against target_text,
+        # with the language filters swapped. Lets an `en→nl` TM serve an `nl→en`
+        # project without the user having to re-import the TMX.
+        #
+        # Note: like the single-segment reverse path, this uses literal
+        # `target_text = ?` equality (no hash variants), so the matching is less
+        # forgiving of whitespace/tag differences than the forward path. That
+        # parity is deliberate — both directions behave the same way.
+        if bidirectional and src_base and tgt_base and src_variants and tgt_variants:
+            unmatched_sources = [s for s in sources if s not in results]
+            if unmatched_sources:
+                # Build reverse language filter once, then chunk the IN-list.
+                reverse_lang_sql = ""
+                reverse_lang_params = []
+
+                if tm_ids:
+                    tm_placeholders = ','.join('?' * len(tm_ids))
+                    reverse_lang_sql += f" AND tm_id IN ({tm_placeholders})"
+                    reverse_lang_params.extend(tm_ids)
+
+                # TM source_lang should match our TARGET language (in reverse)
+                src_conditions_rev = []
+                for variant in tgt_variants:
+                    src_conditions_rev.append("source_lang = ?")
+                    reverse_lang_params.append(variant)
+                    src_conditions_rev.append("source_lang LIKE ?")
+                    reverse_lang_params.append(f"{variant}-%")
+                reverse_lang_sql += f" AND ({' OR '.join(src_conditions_rev)})"
+
+                # TM target_lang should match our SOURCE language (in reverse)
+                tgt_conditions_rev = []
+                for variant in src_variants:
+                    tgt_conditions_rev.append("target_lang = ?")
+                    reverse_lang_params.append(variant)
+                    tgt_conditions_rev.append("target_lang LIKE ?")
+                    reverse_lang_params.append(f"{variant}-%")
+                reverse_lang_sql += f" AND ({' OR '.join(tgt_conditions_rev)})"
+
+                # Chunk the IN clause to respect SQLite's ~999-param ceiling.
+                max_text_params = 900 - len(reverse_lang_params)
+                if max_text_params < 50:
+                    max_text_params = 50
+
+                # Track which sources got reverse hits so we can dedupe within
+                # this loop too (multiple TM rows could share the same
+                # target_text — first wins).
+                for j in range(0, len(unmatched_sources), max_text_params):
+                    text_chunk = unmatched_sources[j:j + max_text_params]
+                    placeholders = ','.join('?' * len(text_chunk))
+                    rev_query = (
+                        f"SELECT id, source_text, target_text, source_lang, target_lang, "
+                        f"tm_id, source_hash, usage_count "
+                        f"FROM translation_units "
+                        f"WHERE target_text IN ({placeholders})"
+                        f"{reverse_lang_sql}"
+                    )
+                    rev_params = list(text_chunk) + reverse_lang_params
+
+                    try:
+                        self.cursor.execute(rev_query, rev_params)
+                        rev_rows = self.cursor.fetchall()
+                    except Exception as e:
+                        print(f"[DEBUG] get_exact_matches_batch (reverse): SQL ERROR: {e}")
+                        continue
+
+                    for row in rev_rows:
+                        row_dict = dict(row)
+                        # In the row, target_text matches one of our source strings.
+                        # Capture that mapping BEFORE swapping fields.
+                        original_source = row_dict['target_text']
+                        if original_source in results:
+                            continue  # already matched (forward or earlier reverse hit)
+
+                        # Swap fields so downstream code sees a normal-looking
+                        # forward match. Mark the result so the UI can distinguish
+                        # it (e.g. show a "reversed" badge in the Match Panel).
+                        row_dict['source_text'], row_dict['target_text'] = (
+                            row_dict['target_text'], row_dict['source_text']
+                        )
+                        row_dict['source_lang'], row_dict['target_lang'] = (
+                            row_dict['target_lang'], row_dict['source_lang']
+                        )
+                        row_dict['reverse_match'] = True
+                        results[original_source] = row_dict
+                        matched_ids.append(row_dict['id'])
+
         # Batch update usage counts in a single operation
         if matched_ids:
             unique_ids = list(set(matched_ids))
@@ -1182,7 +1279,8 @@ class DatabaseManager:
     def search_fuzzy_matches_batch(self, sources: List[str], tm_ids: List[str] = None,
                                     threshold: float = 0.75,
                                     source_lang: str = None, target_lang: str = None,
-                                    progress_callback=None) -> Dict[str, Dict]:
+                                    progress_callback=None,
+                                    bidirectional: bool = True) -> Dict[str, Dict]:
         """
         Batch fuzzy match lookup for multiple source texts.
 
@@ -1197,9 +1295,15 @@ class DatabaseManager:
             source_lang: Filter by source language
             target_lang: Filter by target language
             progress_callback: Optional callback(current, total) called every N segments
+            bidirectional: If True, also load reverse-direction candidates (TMs whose
+                source/target languages are the inverse of the project's) and pre-swap
+                their source/target text so they participate in scoring identically
+                to forward candidates. Mirrors :py:meth:`search_fuzzy_matches`'s
+                bidirectional behaviour for the batch path.
 
         Returns:
-            Dict mapping source_text -> best match dict (with 'similarity' and 'match_pct')
+            Dict mapping source_text -> best match dict (with 'similarity' and 'match_pct').
+            Reverse-direction hits carry a ``reverse_match: True`` key.
         """
         if not sources:
             return {}
@@ -1271,7 +1375,72 @@ class DatabaseManager:
                 'clean': clean,
                 'clean_len': len(clean),
                 'words': words,
+                'reverse_match': False,
             })
+
+        # === REVERSE-DIRECTION CANDIDATES ===
+        # Mirrors search_fuzzy_matches()'s bidirectional path: also pull rows
+        # whose lang pair is the inverse of the project's, and pre-swap their
+        # source/target text so Phase B (the scorer) doesn't need to know
+        # about direction. Each reverse candidate carries reverse_match=True
+        # so the result dict can propagate the flag downstream.
+        if bidirectional and src_base and tgt_base and src_variants and tgt_variants:
+            reverse_lang_sql = ""
+            reverse_lang_params = []
+
+            if tm_ids:
+                tm_placeholders = ','.join('?' * len(tm_ids))
+                reverse_lang_sql += f" AND tm_id IN ({tm_placeholders})"
+                reverse_lang_params.extend(tm_ids)
+
+            # TM source_lang = our TARGET language
+            src_conditions_rev = []
+            for variant in tgt_variants:
+                src_conditions_rev.append("source_lang = ?")
+                reverse_lang_params.append(variant)
+                src_conditions_rev.append("source_lang LIKE ?")
+                reverse_lang_params.append(f"{variant}-%")
+            reverse_lang_sql += f" AND ({' OR '.join(src_conditions_rev)})"
+
+            # TM target_lang = our SOURCE language
+            tgt_conditions_rev = []
+            for variant in src_variants:
+                tgt_conditions_rev.append("target_lang = ?")
+                reverse_lang_params.append(variant)
+                tgt_conditions_rev.append("target_lang LIKE ?")
+                reverse_lang_params.append(f"{variant}-%")
+            reverse_lang_sql += f" AND ({' OR '.join(tgt_conditions_rev)})"
+
+            rev_query = f"""
+                SELECT id, source_text, target_text, tm_id, usage_count
+                FROM translation_units
+                WHERE 1=1 {reverse_lang_sql}
+            """
+            try:
+                self.cursor.execute(rev_query, reverse_lang_params)
+                rev_rows = self.cursor.fetchall()
+            except Exception:
+                rev_rows = []
+
+            for row in rev_rows:
+                # In reverse mode the row's TARGET_TEXT is what we score against,
+                # and its SOURCE_TEXT is what we'd hand back as the translation.
+                # Pre-swap so the candidate slots into Phase B unchanged.
+                match_text = row['target_text']  # was target, now plays as source
+                output_text = row['source_text']  # was source, now plays as target
+                clean = tag_re.sub('', match_text).lower()
+                words = set(clean.split())
+                candidates.append({
+                    'id': row['id'],
+                    'source_text': match_text,
+                    'target_text': output_text,
+                    'tm_id': row['tm_id'],
+                    'usage_count': row['usage_count'],
+                    'clean': clean,
+                    'clean_len': len(clean),
+                    'words': words,
+                    'reverse_match': True,
+                })
 
         # Pre-compute cleaned texts and word sets for all sources
         source_data = []
@@ -1340,7 +1509,8 @@ class DatabaseManager:
                         'tm_id': cand['tm_id'],
                         'usage_count': cand['usage_count'],
                         'similarity': similarity,
-                        'match_pct': int(similarity * 100)
+                        'match_pct': int(similarity * 100),
+                        'reverse_match': cand.get('reverse_match', False),
                     }
 
                     # Early exit on perfect match

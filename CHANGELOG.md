@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.48 (May 16, 2026)
+**Current Version:** v1.10.49 (May 17, 2026)
+
+
+## v1.10.49 – May 17, 2026
+
+### Fixed (TM batch lookup now respects bidirectional TMs, matching single-segment behaviour)
+
+- A user reported that single-segment navigation correctly auto-inserted 100% TM matches from a TM they'd attached, but running Batch Translate against the same TM produced zero hits. After investigation, the cause turned out to be a feature-parity gap between the single-segment and batch TM lookup code paths, not a "TM is one-directional" limitation as initially suspected.
+- The TM database layer (`modules/database_manager.py`) supports bidirectional matching: when a project is `nl→en` and an attached TM is the inverse `en→nl`, the lookup transparently tries the forward direction first and, on miss, falls back to a reverse-direction search against `target_text` with swapped language filters, then swaps the source/target in the result so downstream consumers see a normal forward match (tagged `reverse_match: True`). This had been implemented for the single-segment lookups (`get_exact_match` and `search_fuzzy_matches`) but had never been added to the batch counterparts (`get_exact_matches_batch` and `search_fuzzy_matches_batch`). Users with a reversed-direction TM saw single-segment auto-insert work fine but every batch operation come back empty.
+- `get_exact_matches_batch` now accepts a `bidirectional` parameter (defaults to `True`). After the forward hash-based sweep completes, any sources that didn't match get a second pass against `target_text` with the language filters swapped (TM source_lang = our target_lang, TM target_lang = our source_lang). Matched rows are swapped to look like normal forward results and tagged `reverse_match: True`. The implementation mirrors the single-segment version's literal-equality semantics (no hash variants in reverse) for parity – the trade-off being that the reverse path is slightly less forgiving of whitespace/tag differences than the forward path, identical to the existing single-segment behaviour.
+- `search_fuzzy_matches_batch` now also accepts `bidirectional` (default `True`) and loads reverse-direction candidates as a second batch alongside forward candidates. Each reverse candidate is pre-swapped (the TM's `target_text` is what we score against, and `source_text` is what we return), and tagged with `reverse_match: True`. Phase B (the scorer) is unchanged because reverse candidates are pre-swapped to look like forward candidates – fuzzy scoring, threshold filtering, and best-match selection all work without branching.
+- The wrapper methods in `modules/translation_memory.py` (`get_exact_matches_batch`, `search_all_batch`) automatically pick up the new behaviour because they rely on the default `bidirectional=True`. The `reverse_match` flag is now also propagated through `search_all_batch`'s formatted output so future UI work (e.g. a "reversed TM" chip in the Match Panel) has the data available.
+- All four call-sites of these methods in `Supervertaler.py` (TM-only batch translate, TM pre-check before AI batch translation, TM-only mode inside the AI batch flow, and the dedicated pre-translate-from-TM dialog) go through the wrappers, so the fix lights up everywhere automatically. No code changes were needed in `Supervertaler.py` itself.
+- Practical effect: users no longer need to re-import a TMX into a correctly-oriented TM as a workaround. An `en→nl` TM attached to an `nl→en` project now serves matches in both single-segment and batch flows identically. The bug was a five-month-old gap; bidirectional support for the single-segment paths was added when the TM database was first built but the batch optimisations that came later never inherited the same logic.
 
 
 ## v1.10.48 – May 16, 2026

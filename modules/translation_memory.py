@@ -317,7 +317,11 @@ class TMDatabase:
                 'similarity': 1.0,
                 'match_pct': 100,
                 'tm_name': self.tm_metadata.get(match['tm_id'], {}).get('name', match['tm_id']),
-                'tm_id': match['tm_id']
+                'tm_id': match['tm_id'],
+                # Preserve the reverse-match flag from the db layer so the UI
+                # can mark these visually (e.g. a "reversed TM" chip) and so
+                # downstream consumers can distinguish bidirectional hits.
+                'reverse_match': match.get('reverse_match', False),
             }
 
         # Phase 2: Fuzzy matching for unmatched sources
@@ -340,7 +344,8 @@ class TMDatabase:
                     'similarity': match.get('similarity', 0.75),
                     'match_pct': match.get('match_pct', 75),
                     'tm_name': self.tm_metadata.get(match['tm_id'], {}).get('name', match['tm_id']),
-                    'tm_id': match['tm_id']
+                    'tm_id': match['tm_id'],
+                    'reverse_match': match.get('reverse_match', False),
                 }
 
         return results
