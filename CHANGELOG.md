@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.65 (May 17, 2026)
+**Current Version:** v1.10.66 (May 17, 2026)
+
+
+## v1.10.66 – May 17, 2026
+
+### Added (Termbases tab: click any column header to sort the whole termbase by that column; sort indicator stays in sync with the Sort dropdown)
+
+Follow-up to the v1.10.65 Created column. Sorting now also works by clicking a column header — and not just the new Created column, every data column: Source Term, Target Term, Domain, Notes, Project, Client, Forbidden, Created. Click once for ascending; click again to flip to descending. The up/down arrow indicator on the header makes the current direction obvious.
+
+Important subtlety: we deliberately do **not** call Qt's `setSortingEnabled(True)` on the table. That would tell Qt to sort the currently-loaded *page* in place — 50 or 100 rows out of potentially tens of thousands — which is the wrong answer. Instead, header clicks re-issue the underlying SQL with a new `ORDER BY` clause and reset to page 1, so the sort applies across the whole termbase regardless of pagination. (Same approach as the v1.10.65 Sort dropdown — the header click is just a second entry point into the same machinery.)
+
+Implementation details:
+
+ - **Column → SQL fragment map** (`_COL_SORT`): each data column has a fixed whitelist entry mapping it to the right SQL column name (with `COLLATE NOCASE` on text columns to match the dropdown's case-insensitive alphabetical sort). Column 8 (Delete button) is intentionally omitted — clicks on it are ignored.
+ - **Direction toggle**: clicking the same header twice flips ASC ↔ DESC. Clicking a different header starts at ASC for text/forbidden columns and **DESC** for date columns (so a Created click immediately gives you newest-first — the case you actually want 95% of the time).
+ - **Deterministic tiebreak**: every ORDER BY is suffixed with `, id ASC/DESC` so rows with identical sort values (very common for `created_date` on bulk imports) come back in a stable order across pages — no flickering when paginating.
+ - **Indicator sync**: header clicks update the arrow; dropdown changes also reposition the arrow when the dropdown choice maps to a sortable column (Source A→Z, Source Z→A, Created newest, Created oldest). Modified options leave the arrow alone (no Modified column visible). On termbase load, the arrow starts on column 0 ascending to match the default sort.
+
+Net effect: pick whichever entry point you prefer — header click for direct, dropdown for explicit named presets. Both drive the same underlying SQL and stay visually in sync.
 
 
 ## v1.10.65 – May 17, 2026

@@ -15546,8 +15546,24 @@ class SupervertalerQt(QMainWindow):
 
         def on_sort_changed(idx):
             if 0 <= idx < len(_SORT_OPTIONS):
-                terms_sort_order[0] = _SORT_OPTIONS[idx][1]
+                clause = _SORT_OPTIONS[idx][1]
+                terms_sort_order[0] = clause
                 terms_current_page[0] = 0  # Reset to first page so newest jumps into view
+                # v1.10.66: mirror the dropdown choice on the column
+                # header sort indicator so the two stay visually in sync.
+                # Map: option index → (column index, ascending).
+                # 0:Source A→Z (col 0 ASC), 1:Source Z→A (col 0 DESC),
+                # 2:Created newest (col 7 DESC), 3:Created oldest (col 7 ASC),
+                # 4/5:Modified (no column → leave indicator where it is).
+                _DROPDOWN_TO_HEADER = {
+                    0: (0, True),
+                    1: (0, False),
+                    2: (7, False),
+                    3: (7, True),
+                }
+                hdr = _DROPDOWN_TO_HEADER.get(idx)
+                if hdr is not None:
+                    _set_header_indicator(hdr[0], hdr[1])
                 if current_terms_tb_id[0]:
                     load_terms_page()
         sort_combo.currentIndexChanged.connect(on_sort_changed)
@@ -15615,11 +15631,91 @@ class SupervertalerQt(QMainWindow):
         terms_table.setColumnWidth(7, 130)  # Created (fits "2026-05-17 14:32" with a little slack)
         terms_table.setColumnWidth(8, 30)   # Delete button
         terms_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # v1.10.66: click-to-sort on every data column. We do NOT call
+        # setSortingEnabled(True) — that would tell Qt to sort the
+        # *visible page* in-place (12 rows of 50,000), which is the
+        # wrong answer. Instead we just show the sort indicator and
+        # re-issue the SQL with a new ORDER BY when a header is
+        # clicked. Sort the entire termbase, not just the page that
+        # happens to be loaded.
+        terms_table.horizontalHeader().setSortIndicatorShown(True)
+        terms_table.horizontalHeader().setSectionsClickable(True)
+        # Column-index → (SQL fragment, dropdown index if any). Columns
+        # 8 (Delete button) is not sortable — we filter clicks on it
+        # below. The fragments use COLLATE NOCASE on text columns so
+        # the alphabetical sort isn't case-sensitive (matches the
+        # existing dropdown convention).
+        _COL_SORT = {
+            0: ('source_term COLLATE NOCASE',   0),  # → dropdown "Source term (A→Z)"
+            1: ('target_term COLLATE NOCASE',   None),
+            2: ('domain COLLATE NOCASE',        None),
+            3: ('notes COLLATE NOCASE',         None),
+            4: ('project COLLATE NOCASE',       None),
+            5: ('client COLLATE NOCASE',        None),
+            6: ('forbidden',                    None),  # 0/1 numeric
+            7: ('created_date',                 2),     # → dropdown "Created (newest first)"
+        }
         right_layout.addWidget(terms_table, stretch=1)
-        
+
         # Store current termbase ID for the terms panel
         current_terms_tb_id = [None]  # Use list to allow modification in nested function
-        
+
+        def _set_header_indicator(col: int, ascending: bool):
+            """Show the up/down arrow on the clicked header column.
+
+            We disconnect the dropdown's signal first so changing the
+            dropdown's index here doesn't recurse back into a reload.
+            """
+            from PyQt6.QtCore import Qt as _Qt
+            order = _Qt.SortOrder.AscendingOrder if ascending else _Qt.SortOrder.DescendingOrder
+            terms_table.horizontalHeader().setSortIndicator(col, order)
+
+        def _sync_dropdown_to_sort(sort_clause: str):
+            """Best-effort sync: if the current sort matches one of the
+            dropdown options, surface that option as selected. Otherwise
+            leave the dropdown where it is — it just reads as a 'hint
+            of the last preset chosen' rather than the current sort.
+            """
+            for idx, (_label, clause) in enumerate(_SORT_OPTIONS):
+                if clause.startswith(sort_clause):
+                    sort_combo.blockSignals(True)
+                    sort_combo.setCurrentIndex(idx)
+                    sort_combo.blockSignals(False)
+                    return
+            # No exact match — clear visual selection by selecting
+            # nothing (cosmetic only; sort still applies).
+            pass
+
+        def on_header_clicked(col: int):
+            if col not in _COL_SORT:
+                return  # Delete button column — ignore
+            sql_col, _dropdown_idx = _COL_SORT[col]
+            # Toggle direction if same column was clicked again.
+            current = terms_sort_order[0]
+            if current.startswith(sql_col):
+                ascending = ' DESC' in current  # was DESC, flip to ASC
+            else:
+                # Sensible defaults: text/forbidden columns ascending,
+                # date columns descending (newest first — that's what
+                # users almost always want for "Created" / "Modified").
+                ascending = sql_col not in ('created_date', 'modified_date')
+            direction = 'ASC' if ascending else 'DESC'
+            # Tiebreak by id so the sort is deterministic across pages
+            # when many rows share the same value (esp. timestamps for
+            # bulk-imported termbases).
+            terms_sort_order[0] = f"{sql_col} {direction}, id {direction}"
+            terms_current_page[0] = 0
+            _set_header_indicator(col, ascending)
+            _sync_dropdown_to_sort(f"{sql_col} {direction}")
+            if current_terms_tb_id[0]:
+                load_terms_page()
+
+        terms_table.horizontalHeader().sectionClicked.connect(on_header_clicked)
+
+        # Show the initial indicator on column 0 (matches the default
+        # terms_sort_order = source_term ASC).
+        _set_header_indicator(0, True)
+
         def filter_terms_table(search_text):
             """Filter terms table rows by source or target term"""
             search_text = search_text.lower().strip()
