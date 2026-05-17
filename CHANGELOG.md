@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.60 (May 17, 2026)
+**Current Version:** v1.10.61 (May 17, 2026)
+
+
+## v1.10.61 – May 17, 2026
+
+### Changed (Comment shortcut moved to Ctrl+M to match Trados/memoQ; stale QuickTrans "(Ctrl+M)" labels corrected to point at the real Ctrl+Alt+Q global hotkey)
+
+The "add comment" shortcut shipped in v1.10.57 was bound to **Ctrl+Shift+M** because the QuickTrans menu items had `"(Ctrl+M)"` in their display text, suggesting Ctrl+M was already taken. On investigation: it wasn't. The QuickTrans menu items were just labels — no `setShortcut()` was ever wired, and QuickTrans is in fact triggered exclusively by the **global Ctrl+Alt+Q pynput hotkey** (Meta+Ctrl+Q on macOS), which works system-wide including inside Workbench. The "(Ctrl+M)" labels were stale documentation artifacts from an earlier version where Ctrl+M *was* bound in-app.
+
+This commit:
+ - Reclaims **Ctrl+M for "add comment to selected text"**, matching Trados and memoQ exactly. One shortcut for one concept across CAT-tool muscle memory.
+ - Corrects the two `QAction(f"⚡ QuickTrans ({format_shortcut_for_display('Ctrl+M')})")` labels at lines 3485 and 4306 to reference the actual global hotkey: `Ctrl+Alt+Q` on Windows/Linux, `Meta+Ctrl+Q` on macOS. Both labels now read e.g. `⚡ QuickTrans (Ctrl+Alt+Q)`.
+ - Updates the QuickTrans configuration page subtitle in Settings to mention only the global hotkey and notes that it works inside Workbench too (was previously listing both Ctrl+M and Ctrl+Alt+Q, suggesting two different bindings).
+ - Updates the status-bar hint message ("Click into a source or target cell first, then select text and press **Ctrl+M** to add a comment") to match.
+ - Updates the deprecated `Translation Results panel` stub's docstring + comment to reference Ctrl+Alt+Q instead of Ctrl+M.
+
+Net effect for the user: **Ctrl+M = add comment** (matches Trados/memoQ). **Ctrl+Alt+Q = QuickTrans** (works system-wide, including inside Workbench — same chord whether you're in Workbench, in Trados Studio, or in any other application). One key for each operation, consistent across every context.
+
+The help-site Comments page is updated in a separate commit to use Ctrl+M throughout.
 
 
 ## v1.10.60 – May 17, 2026

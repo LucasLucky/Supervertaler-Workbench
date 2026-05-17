@@ -3482,7 +3482,13 @@ class ReadOnlyGridTextEditor(QTextEdit):
             _sel_text = self.textCursor().selectedText() if self.textCursor().hasSelection() else None
 
             # QuickTrans at the top of the QuickLauncher
-            qt_action = QAction(f"⚡ QuickTrans ({format_shortcut_for_display('Ctrl+M')})", self)
+            # v1.10.61: was "(Ctrl+M)" — that was a stale display hint
+            # from an earlier version; no in-app binding ever existed.
+            # The actual hotkey is the GLOBAL pynput chord (Ctrl+Alt+Q
+            # on Windows/Linux, Meta+Ctrl+Q on macOS) which works
+            # system-wide, including inside Workbench.
+            _qt_hotkey = 'Meta+Ctrl+Q' if IS_MACOS else 'Ctrl+Alt+Q'
+            qt_action = QAction(f"⚡ QuickTrans ({format_shortcut_for_display(_qt_hotkey)})", self)
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
@@ -4297,7 +4303,13 @@ class EditableGridTextEditor(QTextEdit):
             _sel_text = self.textCursor().selectedText() if self.textCursor().hasSelection() else None
 
             # QuickTrans at the top of the QuickLauncher
-            qt_action = QAction(f"⚡ QuickTrans ({format_shortcut_for_display('Ctrl+M')})", self)
+            # v1.10.61: was "(Ctrl+M)" — that was a stale display hint
+            # from an earlier version; no in-app binding ever existed.
+            # The actual hotkey is the GLOBAL pynput chord (Ctrl+Alt+Q
+            # on Windows/Linux, Meta+Ctrl+Q on macOS) which works
+            # system-wide, including inside Workbench.
+            _qt_hotkey = 'Meta+Ctrl+Q' if IS_MACOS else 'Ctrl+Alt+Q'
+            qt_action = QAction(f"⚡ QuickTrans ({format_shortcut_for_display(_qt_hotkey)})", self)
             qt_action.triggered.connect(self._handle_mt_quick_lookup)
             qm_menu.addAction(qt_action)
 
@@ -8170,12 +8182,17 @@ class SupervertalerQt(QMainWindow):
         # Ctrl+N - Focus Comments → Segment sub-tab and start editing
         create_shortcut("editor_focus_notes", "Ctrl+N", self.focus_segment_notes)
 
-        # Ctrl+Shift+M (v1.10.57 Phase B) — Create a comment anchored to the
-        # currently-selected text in the source or target cell. If there's
-        # no selection, the comment is segment-level. Mirrors the
-        # Trados/memoQ workflow (their Ctrl+M is taken in Workbench by
-        # QuickTrans, hence Ctrl+Shift+M).
-        create_shortcut("editor_add_comment", "Ctrl+Shift+M", self.add_comment_from_selection)
+        # Ctrl+M — Create a comment anchored to the currently-selected
+        # text in the source or target cell. If there's no selection,
+        # the comment is segment-level. Mirrors the Trados/memoQ
+        # workflow exactly.
+        # v1.10.61 history: originally Ctrl+Shift+M because the
+        # QuickTrans menu items had "(Ctrl+M)" labels (stale display
+        # text from an earlier version where Ctrl+M *was* bound). The
+        # labels were misleading — no setShortcut() was ever wired, and
+        # QuickTrans is in fact triggered via the global Ctrl+Alt+Q
+        # pynput hotkey. v1.10.61 reclaimed Ctrl+M for comments.
+        create_shortcut("editor_add_comment", "Ctrl+M", self.add_comment_from_selection)
         
         # Ctrl+Q - Open QuickLauncher directly
         create_shortcut("editor_open_quicklauncher", "Ctrl+Q", self.open_quicklauncher)
@@ -8213,16 +8230,20 @@ class SupervertalerQt(QMainWindow):
 
     def add_comment_from_selection(self):
         """Create a new Comment anchored to the text selected in the source
-        or target cell of the focused row (Ctrl+Shift+M).
+        or target cell of the focused row (Ctrl+M).
 
         Phase B of the v1.10.57+ range-anchored comments work.
+        (Originally bound to Ctrl+Shift+M; reclaimed Ctrl+M in v1.10.61
+        once the misleading "(Ctrl+M)" labels on the QuickTrans menu
+        items were corrected — Ctrl+M was never actually bound in-app,
+        QuickTrans uses the global Ctrl+Alt+Q hotkey.)
 
         Behaviour:
          - If the focused widget is a source-cell or target-cell editor
            AND the user has selected text in it, the new Comment is
            anchored to that character range (Python-slice semantics)
            on that field. Example: select "schroef" in the source cell
-           → Ctrl+Shift+M → enter "translated as 'screw' based on
+           → Ctrl+M → enter "translated as 'screw' based on
            context" → Comment is stored with anchor_field='source',
            anchor_start/end matching the selection.
          - If there's no selection (just a cursor position), the
@@ -8255,7 +8276,7 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'status_bar'):
                 self.status_bar.showMessage(
                     "Click into a source or target cell first, "
-                    "then select text and press Ctrl+Shift+M to add a comment.",
+                    "then select text and press Ctrl+M to add a comment.",
                     5000,
                 )
             return
@@ -19426,7 +19447,7 @@ class SupervertalerQt(QMainWindow):
 
         # Header info
         header_info = QLabel(
-            f"⚡ <b>QuickTrans</b> - Configure which providers appear in the QuickTrans popup ({format_shortcut_for_display('Ctrl+M')} / {format_shortcut_for_display('Meta+Ctrl+Q') if IS_MACOS else format_shortcut_for_display('Ctrl+Alt+Q')}).<br>"
+            f"⚡ <b>QuickTrans</b> - Configure which providers appear in the QuickTrans popup ({format_shortcut_for_display('Meta+Ctrl+Q') if IS_MACOS else format_shortcut_for_display('Ctrl+Alt+Q')} — system-wide hotkey, works inside Workbench too).<br>"
             "Enable MT engines and/or LLMs to get instant translation suggestions."
         )
         header_info.setTextFormat(Qt.TextFormat.RichText)
@@ -24533,7 +24554,7 @@ class SupervertalerQt(QMainWindow):
         right_tabs.tabBar().setUsesScrollButtons(True)
         right_tabs.setStyleSheet("QTabBar::tab { outline: 0; } QTabBar::tab:focus { outline: none; } QTabBar::tab:selected { border-bottom: 1px solid #2196F3; background-color: rgba(33, 150, 243, 0.08); }")
 
-        # NOTE: Translation Results panel is deprecated - MT/LLM is now only via QuickTrans (Ctrl+M)
+        # NOTE: Translation Results panel is deprecated - MT/LLM is now only via QuickTrans (Ctrl+Alt+Q global hotkey)
         # Panel is no longer created to save resources. Set to None for compatibility checks.
         self.translation_results_panel = None
         if not hasattr(self, 'results_panels'):
@@ -54853,10 +54874,11 @@ class SupervertalerQt(QMainWindow):
     def _add_mt_and_llm_matches_progressive(self, segment, source_lang, target_lang, source_lang_code, target_lang_code):
         """DEPRECATED: Translation Results panel has been removed.
 
-        MT/LLM translations are now only available via QuickTrans (Ctrl+M).
-        This function is kept as a stub for backwards compatibility.
+        MT/LLM translations are now only available via QuickTrans
+        (Ctrl+Alt+Q global hotkey). This function is kept as a stub
+        for backwards compatibility.
         """
-        pass  # Translation Results panel removed - use QuickTrans (Ctrl+M) for MT/LLM
+        pass  # Translation Results panel removed - use QuickTrans (Ctrl+Alt+Q) for MT/LLM
 
     def _REMOVED_add_mt_and_llm_matches_progressive(self, segment, source_lang, target_lang, source_lang_code, target_lang_code):
         """REMOVED - kept for reference only, will be deleted in future cleanup."""
