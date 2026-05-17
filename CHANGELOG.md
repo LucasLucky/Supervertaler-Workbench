@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.54 (May 17, 2026)
+**Current Version:** v1.10.55 (May 17, 2026)
+
+
+## v1.10.55 – May 17, 2026
+
+### Changed (Segment-note Word comments are now attributed to the configured Translator Name)
+
+- v1.10.54 added segment-notes-as-Word-comments export but hardcoded the comment author as "Supervertaler" / initials "SV". A user (rightly) pointed out that Workbench already has a Settings → User Identity → Translator Name field that's used for SDLXLIFF comments, Trados return packages, TMX writes, and other output — so the new Word comments should be attributed to whoever's actually translating, not the app.
+- `_attach_segment_notes_as_docx_comments` now calls the existing `get_translator_name()` helper (which reads `translator_name` from general settings and falls back to the system username if the field is empty). Initials are derived from the resolved name: multi-word names ("Michael Beijer") take the first letter of each word ("MB"); single-word names ("mbeijer") take the first two characters uppercased ("MB"). Capped at 4 characters to fit Word's narrow initials column.
+- No new setting needed; the same name that flows into every other "translator identity" surface in the app now flows into Word comments too.
 
 
 ## v1.10.54 – May 17, 2026

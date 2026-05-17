@@ -12394,10 +12394,23 @@ class SupervertalerQt(QMainWindow):
             )
             return
 
-        # Author/initials are hardcoded for now. A future setting could
-        # let the user override these from General Settings.
-        author = 'Supervertaler'
-        initials = 'SV'
+        # Author comes from Settings → User Identity → Translator Name
+        # (falls back to the system username if the user hasn't set one),
+        # so the Word comments are attributed to whoever did the
+        # translation. Same name is used for SDLXLIFF comments, Trados
+        # return packages, TMX writes, etc.
+        author = self.get_translator_name()
+        # Initials: for multi-word names ("Michael Beijer") take the first
+        # letter of each word ("MB"). For single-word names ("mbeijer")
+        # take the first two characters uppercased ("MB"). Capped at 4
+        # chars to fit Word's narrow initials column.
+        _name_parts = author.split()
+        if len(_name_parts) >= 2:
+            initials = ''.join(p[0] for p in _name_parts if p)[:4].upper()
+        elif _name_parts:
+            initials = _name_parts[0][:2].upper()
+        else:
+            initials = 'X'
 
         # Walk paragraphs in document order. For each, try to attach the
         # earliest still-unmatched candidate whose target text is a
