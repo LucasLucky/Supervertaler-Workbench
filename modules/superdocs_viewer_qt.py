@@ -1,13 +1,14 @@
 """
 Deprecated Superdocs viewer module.
 
-The in-app Superdocs viewer was removed in favor of the online GitBook documentation.
-This file is kept as a small shim to prevent import-time crashes in older packaged builds.
+The in-app Superdocs viewer was removed in favour of the online help site.
+This file is kept as a small shim to prevent import-time crashes in older
+packaged builds.
 """
 
 def __getattr__(name):
     raise ImportError(
-        "The 'modules.superdocs_viewer_qt' module has been removed. Visit https://supervertaler.gitbook.io/help/ for documentation."
+        "The 'modules.superdocs_viewer_qt' module has been removed. Visit https://help.supervertaler.com/ for documentation."
     )
 
 

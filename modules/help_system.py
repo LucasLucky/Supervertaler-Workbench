@@ -22,7 +22,7 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QApplication
 
 
-DOCS_BASE_URL = "https://supervertaler.gitbook.io/help"
+DOCS_BASE_URL = "https://help.supervertaler.com"
 
 # Property key stored on widgets to identify their help topic
 _HELP_TOPIC_PROPERTY = "_help_topic"
@@ -31,144 +31,139 @@ _HELP_TOPIC_PROPERTY = "_help_topic"
 class Topics:
     """Help topic identifiers, each holding a path appended to ``DOCS_BASE_URL``.
 
-    The path values are the slugs GitBook generates from SUMMARY.md –
-    they intentionally do *not* match the on-disk file paths in the
-    Supervertaler-Help repo. GitBook builds slugs from each section
-    header (e.g. ``## 🖥️ Settings`` → ``settings``) and disambiguates
-    collisions with a numeric suffix (Trados's ``## 🧩 Settings``
-    becomes ``settings``, and Workbench's ``## 🖥️ Settings`` therefore
-    becomes ``settings-1``). When SUMMARY.md is reorganised, regenerate
-    these constants by aligning the SUMMARY.md links with
-    https://supervertaler.gitbook.io/help/sitemap-pages.xml in document
-    order – they line up 1:1.
+    The unified help site at https://help.supervertaler.com (Astro
+    Starlight on Cloudflare Pages, sources from the Supervertaler-Help
+    repo) uses **folder-based URLs**: every page's URL mirrors its
+    on-disk path under ``workbench/`` or ``trados/``. README.md files
+    map to the folder root. Trailing slashes are canonical (Astro
+    issues 301s from the slashless form, so omitting one still works
+    but adds a hop).
+
+    Workbench pages all live under ``workbench/``; Trados pages live
+    under ``trados/``. There are no GitBook-style collision suffixes
+    (``-1``) because the folder prefix already disambiguates.
+
+    Authoritative URL map: ``src/generated/sidebar.js`` in the
+    Supervertaler-Help repo. Regenerate that file with
+    ``python _migrate/generate_sidebar.py`` after editing SUMMARY.md
+    and the entries here line up 1:1 with the ``link`` fields there.
     """
 
-    # Home of the unified help site (no trailing slug).
+    # Home of the unified help site (product chooser landing).
     HOME                = ""
 
-    # Workbench landing page (under "🖥️ Get Started", which collides
-    # with the Trados-side "🧩 Get Started" and so gets the "-1" suffix).
-    WORKBENCH_HOME      = "get-started-1/workbench"
+    # Workbench landing page.
+    WORKBENCH_HOME      = "workbench/"
 
     # Get Started (Workbench)
-    INSTALLATION        = "get-started-1/installation"
-    QUICK_START         = "get-started-1/quick-start"
-    API_KEYS            = "get-started-1/api-keys"
-    FIRST_PROJECT       = "get-started-1/first-project"
+    INSTALLATION        = "workbench/get-started/installation/"
+    QUICK_START         = "workbench/get-started/quick-start/"
+    API_KEYS            = "workbench/get-started/api-keys/"
+    FIRST_PROJECT       = "workbench/get-started/first-project/"
 
     # Supervertaler for Trados landing page.
-    TRADOS_PLUGIN       = "get-started/trados"
+    TRADOS_PLUGIN       = "trados/"
 
     # Editor & Translation
-    TRANSLATION_GRID    = "editor-and-translation/translation-grid"
-    NAVIGATION          = "editor-and-translation/navigation"
-    EDITING             = "editor-and-translation/editing-confirming"
-    SEGMENT_STATUSES    = "editor-and-translation/segment-statuses"
-    KEYBOARD_SHORTCUTS  = "editor-and-translation/keyboard-shortcuts"
-    FIND_REPLACE        = "editor-and-translation/find-replace"
-    FILTERING           = "editor-and-translation/filtering"
-    PAGINATION          = "editor-and-translation/pagination"
+    TRANSLATION_GRID    = "workbench/editor/translation-grid/"
+    NAVIGATION          = "workbench/editor/navigation/"
+    EDITING             = "workbench/editor/editing-confirming/"
+    SEGMENT_STATUSES    = "workbench/editor/segment-statuses/"
+    KEYBOARD_SHORTCUTS  = "workbench/editor/keyboard-shortcuts/"
+    FIND_REPLACE        = "workbench/editor/find-replace/"
+    FILTERING           = "workbench/editor/filtering/"
+    PAGINATION          = "workbench/editor/pagination/"
 
     # AI Translation
-    AI_OVERVIEW         = "ai-translation/overview"
-    AI_PROVIDERS        = "ai-translation/providers"
-    AI_SINGLE_SEGMENT   = "ai-translation/single-segment"
-    AI_BATCH            = "ai-translation/batch-translation"
-    AI_PROMPTS          = "ai-translation/prompts"
-    AI_PROMPT_MANAGER   = "ai-translation/prompt-library"
-    AI_OLLAMA           = "ai-translation/ollama"
+    AI_OVERVIEW         = "workbench/ai-translation/overview/"
+    AI_PROVIDERS        = "workbench/ai-translation/providers/"
+    AI_SINGLE_SEGMENT   = "workbench/ai-translation/single-segment/"
+    AI_BATCH            = "workbench/ai-translation/batch-translation/"
+    AI_PROMPTS          = "workbench/ai-translation/prompts/"
+    AI_PROMPT_MANAGER   = "workbench/ai-translation/prompt-library/"
+    AI_AUTOPROMPT       = "workbench/ai-translation/autoprompt/"
+    AI_OLLAMA           = "workbench/ai-translation/ollama/"
 
-    # CAT Tool Integration
-    CAT_OVERVIEW        = "cat-tool-integration/overview"
-    CAT_TRADOS          = "cat-tool-integration/trados"
-    CAT_MEMOQ           = "cat-tool-integration/memoq"
-    CAT_PHRASE          = "cat-tool-integration/phrase"
-    CAT_CAFETRAN        = "cat-tool-integration/cafetran"
+    # CAT Tool Integration (folder is workbench/cat-tools/ on disk)
+    CAT_OVERVIEW        = "workbench/cat-tools/overview/"
+    CAT_TRADOS          = "workbench/cat-tools/trados/"
+    CAT_MEMOQ           = "workbench/cat-tools/memoq/"
+    CAT_PHRASE          = "workbench/cat-tools/phrase/"
+    CAT_CAFETRAN        = "workbench/cat-tools/cafetran/"
 
     # Translation Memory
-    TM_BASICS           = "translation-memory/basics"
-    TM_MANAGING         = "translation-memory/managing-tms"
-    TM_IMPORTING        = "translation-memory/importing-tmx"
-    TM_TRADOS_SDLTM     = "translation-memory/trados-sdltm"
-    TM_FUZZY            = "translation-memory/fuzzy-matching"
+    TM_BASICS           = "workbench/translation-memory/basics/"
+    TM_MANAGING         = "workbench/translation-memory/managing-tms/"
+    TM_IMPORTING        = "workbench/translation-memory/importing-tmx/"
+    TM_TRADOS_SDLTM     = "workbench/translation-memory/trados-sdltm/"
+    TM_FUZZY            = "workbench/translation-memory/fuzzy-matching/"
     # TM_SUPERMEMORY removed in v1.10.23: Supermemory is no longer a
     # Workbench feature. The functional code was stubbed out back in
     # v1.9.105 (search_supermemory returns 0); v1.10.23 deletes the
     # corresponding help page and all stale references in the help
     # repo. (Supermemory continues to live in Supervertaler for Trados
     # as a paid Assistant feature — see the trados/ai-assistant/
-    # super-memory.md docs there.)
+    # super-memory/ docs there.)
 
     # Glossaries
-    GLOSSARY_BASICS     = "glossaries/basics"
-    GLOSSARY_CREATING   = "glossaries/creating"
-    GLOSSARY_IMPORTING  = "glossaries/importing"
-    GLOSSARY_HIGHLIGHT  = "glossaries/highlighting"
-    GLOSSARY_TERMLENS   = "glossaries/termlens"
-    GLOSSARY_EXTRACTION = "glossaries/extraction"
+    GLOSSARY_BASICS     = "workbench/glossaries/basics/"
+    GLOSSARY_CREATING   = "workbench/glossaries/creating/"
+    GLOSSARY_IMPORTING  = "workbench/glossaries/importing/"
+    GLOSSARY_HIGHLIGHT  = "workbench/glossaries/highlighting/"
+    GLOSSARY_TERMLENS   = "workbench/glossaries/termlens/"
+    GLOSSARY_EXTRACTION = "workbench/glossaries/extraction/"
 
-    # Import & Export
-    IMPORT_FORMATS      = "import-and-export/formats"
-    IMPORT_DOCX         = "import-and-export/docx-import"
-    IMPORT_TXT          = "import-and-export/txt-import"
-    IMPORT_MULTI        = "import-and-export/multi-file"
-    EXPORT              = "import-and-export/exporting"
-    BILINGUAL_TABLES    = "import-and-export/bilingual-tables"
+    # Import & Export (folder is workbench/import-export/ on disk)
+    IMPORT_FORMATS      = "workbench/import-export/formats/"
+    IMPORT_DOCX         = "workbench/import-export/docx-import/"
+    IMPORT_TXT          = "workbench/import-export/txt-import/"
+    IMPORT_MULTI        = "workbench/import-export/multi-file/"
+    EXPORT              = "workbench/import-export/exporting/"
+    BILINGUAL_TABLES    = "workbench/import-export/bilingual-tables/"
 
     # Superlookup
-    SUPERLOOKUP         = "superlookup/overview"
-    SUPERLOOKUP_TM      = "superlookup/tm-search"
-    SUPERLOOKUP_GLOSS   = "superlookup/glossary-search"
-    SUPERLOOKUP_MT      = "superlookup/mt"
-    SUPERLOOKUP_WEB     = "superlookup/web-resources"
+    SUPERLOOKUP         = "workbench/superlookup/overview/"
+    SUPERLOOKUP_TM      = "workbench/superlookup/tm-search/"
+    SUPERLOOKUP_GLOSS   = "workbench/superlookup/glossary-search/"
+    SUPERLOOKUP_MT      = "workbench/superlookup/mt/"
+    SUPERLOOKUP_WEB     = "workbench/superlookup/web-resources/"
 
-    # Quality Assurance
-    QA_SPELLCHECK       = "quality-assurance/spellcheck"
-    QA_TAGS             = "quality-assurance/tag-validation"
-    QA_NT               = "quality-assurance/non-translatables"
+    # Quality Assurance (folder is workbench/qa/ on disk)
+    QA_SPELLCHECK       = "workbench/qa/spellcheck/"
+    QA_TAGS             = "workbench/qa/tag-validation/"
+    QA_NT               = "workbench/qa/non-translatables/"
 
-    # Companion Tabs (was "Sidekick" through v1.10.x – renamed in
-    # the help repo when Sidekick was retired in Workbench v1.10.4
-    # and its four tabs were promoted into Workbench itself).
-    # GitBook builds section slugs from SUMMARY.md headers and page
-    # slugs from file basenames, so renaming the section header
-    # changes the URL from /sidekick/* to /companion-tabs/* while
-    # the page leaf stays the file basename (overview, voice,
-    # clipboard, trados-aware-chat). The on-disk file paths in the
-    # help repo stay at workbench/sidekick/* for backlink stability;
-    # only the section slug exposed to users changes.
-    SIDEKICK            = "companion-tabs/overview"
-    TRADOS_AWARE_CHAT   = "companion-tabs/trados-aware-chat"
-    VOICE               = "companion-tabs/voice"
-    CLIPBOARD           = "companion-tabs/clipboard"
-    # QuickTrans Popup. Has moved twice in the help repo:
-    #   v1.10.21: renamed file quicklauncher.md → quicktrans-popup.md
-    #             URL: /ai-translation/quicklauncher → /ai-translation/quicktrans-popup
-    #   v1.10.22: moved file workbench/ai-translation/ → workbench/sidekick/
-    #             and SUMMARY.md entry AI Translation section → Companion
-    #             Tabs section. Conceptually a companion-tab popup, not an
-    #             AI-translation feature.
-    #             URL: /ai-translation/quicktrans-popup → /companion-tabs/quicktrans-popup
-    # AI_QUICKLAUNCHER alias kept for any external code that imports the
-    # old name (no in-tree call-sites; defensive only).
-    QUICKTRANS_POPUP    = "companion-tabs/quicktrans-popup"
+    # Companion Tabs — file paths in the help repo are still under
+    # workbench/sidekick/ for backlink stability (the section was
+    # renamed in SUMMARY.md from "Sidekick" to "Companion Tabs", but
+    # files weren't moved). The Astro site uses folder-based URLs,
+    # so the URL stays at /workbench/sidekick/*.
+    SIDEKICK            = "workbench/sidekick/overview/"
+    TRADOS_AWARE_CHAT   = "workbench/sidekick/trados-aware-chat/"
+    VOICE               = "workbench/sidekick/voice/"
+    CLIPBOARD           = "workbench/sidekick/clipboard/"
+    # QuickTrans Popup. Lives at workbench/sidekick/quicktrans-popup.md
+    # in the help repo since v1.10.22 (was workbench/ai-translation/
+    # before). AI_QUICKLAUNCHER alias kept for any external code that
+    # imports the old name (no in-tree call-sites; defensive only).
+    QUICKTRANS_POPUP    = "workbench/sidekick/quicktrans-popup/"
     AI_QUICKTRANS_POPUP = QUICKTRANS_POPUP   # v1.10.21 alias
     AI_QUICKLAUNCHER    = QUICKTRANS_POPUP   # pre-v1.10.21 alias
 
     # Tools (TOOL_VOICE removed – voice/dictation is the Voice tab in Sidekick)
-    TOOL_PDF_RESCUE     = "tools/pdf-rescue"
-    TOOL_TMX_EDITOR     = "tools/tmx-editor"
-    TOOL_IMAGE_EXTRACT  = "tools/image-extractor"
+    TOOL_PDF_RESCUE     = "workbench/tools/pdf-rescue/"
+    TOOL_TMX_EDITOR     = "workbench/tools/tmx-editor/"
+    TOOL_IMAGE_EXTRACT  = "workbench/tools/image-extractor/"
 
-    # Settings (Workbench section, collides with Trados → "-1" suffix)
-    SETTINGS_GENERAL    = "settings-1/general"
-    SETTINGS_VIEW       = "settings-1/view"
-    SETTINGS_SHORTCUTS  = "settings-1/shortcuts"
-    SETTINGS_THEME      = "settings-1/theme"
-    SETTINGS_FONTS      = "settings-1/fonts"
+    # Settings
+    SETTINGS_GENERAL    = "workbench/settings/general/"
+    SETTINGS_VIEW       = "workbench/settings/view/"
+    SETTINGS_SHORTCUTS  = "workbench/settings/shortcuts/"
+    SETTINGS_THEME      = "workbench/settings/theme/"
+    SETTINGS_FONTS      = "workbench/settings/fonts/"
 
     # Troubleshooting
-    TROUBLESHOOTING     = "troubleshooting/common-issues"
+    TROUBLESHOOTING     = "workbench/troubleshooting/common-issues/"
 
 
 class _HelpEventFilter(QObject):
@@ -220,11 +215,16 @@ def set_topic(widget, topic: str):
 def open_help(topic: str = None):
     """Open the documentation page for the given topic."""
     if topic:
-        # TRADOS_PLUGIN is a full URL to the separate Trados help site
+        # Defensive: any consumer that hands us a full URL (legacy
+        # behaviour from when the Trados site was separate) is passed
+        # through unchanged.
         if topic.startswith("http"):
             url = topic
         else:
-            url = f"{DOCS_BASE_URL}/{topic.strip('/')}"
+            # lstrip only — preserve trailing slashes from the Topics
+            # constants so Astro serves the page directly instead of
+            # issuing a 301 redirect to the slash-terminated form.
+            url = f"{DOCS_BASE_URL}/{topic.lstrip('/')}"
     else:
         url = DOCS_BASE_URL
     QDesktopServices.openUrl(QUrl(url))
