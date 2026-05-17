@@ -731,12 +731,22 @@ class TermLensWidget(QWidget):
         self._btn_refresh.setFixedSize(22, 20)
         self._btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_refresh.setToolTip(
-            "Refresh termbases from disk\n"
+            "Refresh termbase + TM matches  (F5)\n"
             "\n"
-            "Rebuilds the in-memory termbase index from the database.\n"
-            "Use this after editing terms in another tool (e.g. the\n"
-            "Supervertaler for Trados plugin) — without it, TermLens\n"
-            "may keep showing deleted entries or miss newly-added ones."
+            "Same as pressing F5. Re-runs all searches for the\n"
+            "current segment and redraws TermLens, the Match Panel,\n"
+            "and the source-cell highlights.\n"
+            "\n"
+            "If the underlying database has been modified by another\n"
+            "process (typically the Supervertaler for Trados plugin\n"
+            "sharing the same database), the in-memory termbase\n"
+            "index is rebuilt from disk first — so cross-process\n"
+            "edits are picked up immediately.\n"
+            "\n"
+            "Auto-refresh runs in the background whenever the\n"
+            "database file changes externally, so you rarely need\n"
+            "to click this manually; it's here as an explicit\n"
+            "'do it now' trigger."
         )
         self._btn_refresh.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._btn_refresh.clicked.connect(self._on_refresh_clicked)

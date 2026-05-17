@@ -2,7 +2,42 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.71 (May 17, 2026)
+**Current Version:** v1.10.72 (May 17, 2026)
+
+
+## v1.10.72 – May 17, 2026
+
+### Changed (F5 + TermLens 🔄 button + auto-refresh collapsed into one path: ``force_refresh_matches`` with smart snapshot-gated index rebuild)
+
+A user pointed out that having two refresh systems (F5 keyboard shortcut and the TermLens 🔄 button) was confusing — which one to press? When does each apply? Before this commit there were genuinely two different code paths (``force_refresh_matches`` for F5, ``_post_termbase_delete_refresh`` for the button + auto-refresh + delete paths) that did slightly different things, and the asymmetry was both the cause of v1.10.71's display-under-refresh bug and a UX gotcha.
+
+This commit collapses everything into one path:
+
+**``force_refresh_matches`` is now the single refresh entry point** for the whole termbase + TM display chain. F5, the TermLens 🔄 button, the file-watcher auto-refresh, and every delete path all route through it. At the top of the function it runs a **smart snapshot check** — using the same `_snapshot_termbase_db_state` helper introduced in v1.10.69 for the watcher's debounce gating — to decide whether the in-memory termbase index needs to be rebuilt:
+
+ - **Snapshot unchanged** (same row counts, same MAX(id), same MAX(modified_date) on both `termbases` and `termbase_terms`) → skip the rebuild step. The common case for F5 ("I just want to redraw the current segment") stays fast: <100 ms total, no extra DB roundtrip.
+ - **Snapshot changed** (own-write that bypassed `_build_termbase_index`, cross-process edit from the Trados plugin, external SQL tool) → rebuild the in-memory index from disk first (~0.5–1 s on a typical termbase), then continue with the rest of the refresh.
+
+After the index check, the rest of the function is unchanged from the pre-v1.10.72 F5 code: clear per-segment caches → re-search termbases / TMs / NT lists → redraw TermLens widgets → redraw the Translation Results panel → update source-cell highlights.
+
+**Net effect for the user:**
+
+ - **F5** and the **🔄 button** are now exactly the same operation. Press whichever is more convenient. The button's tooltip now mentions `(F5)` so the shortcut is discoverable.
+ - **Auto-refresh** (file watcher) calls the same function — no duplication.
+ - **Delete paths** call the same function — the snapshot will always show the delete and the rebuild fires (correctly evicting the deleted term from the in-memory index so it doesn't surface as a phantom match on the next search).
+ - The v1.10.71 "F5 fixes what the 🔄 button leaves under-refreshed" symptom is gone by construction — there's no longer a "lighter" path to leave anything under-refreshed.
+
+`_post_termbase_delete_refresh` is now a thin wrapper that just calls `force_refresh_matches` + refreshes the Termbases tab UI. Kept around so the existing call sites (translation_results_panel, modules/termbase_entry_editor's delete-from-dialog walk) don't need to be updated.
+
+The tooltip on the 🔄 button is updated to surface all of this:
+
+> Refresh termbase + TM matches  (F5)
+>
+> Same as pressing F5. Re-runs all searches for the current segment and redraws TermLens, the Match Panel, and the source-cell highlights.
+>
+> If the underlying database has been modified by another process (typically the Supervertaler for Trados plugin sharing the same database), the in-memory termbase index is rebuilt from disk first — so cross-process edits are picked up immediately.
+>
+> Auto-refresh runs in the background whenever the database file changes externally, so you rarely need to click this manually; it's here as an explicit 'do it now' trigger.
 
 
 ## v1.10.71 – May 17, 2026

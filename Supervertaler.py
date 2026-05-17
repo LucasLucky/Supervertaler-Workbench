@@ -14903,29 +14903,19 @@ class SupervertalerQt(QMainWindow):
         self.log(f"👁️  Termbase DB auto-refresh: watching {_os.path.basename(db_path)} (2s debounce)")
 
     def _on_termbase_db_debounce_fire(self):
-        """Debounce timer fired — DB has been quiet for 2 s. Decide
-        whether to rebuild the index by comparing snapshots.
+        """Debounce timer fired — DB has been quiet for 2 s.
+
+        v1.10.72: just defers to ``force_refresh_matches``, which
+        does its own snapshot-gating (only rebuilds the index when
+        the termbase tables actually changed) and then runs the full
+        per-segment refresh chain. The pre-v1.10.72 version did its
+        own snapshot check here and called a separate
+        ``_post_termbase_delete_refresh``; merging both into the F5
+        path collapses every refresh entry point (F5, 🔄 button,
+        auto-refresh) into a single code path.
         """
         try:
-            fresh = self._snapshot_termbase_db_state()
-            prev = getattr(self, '_termbase_db_last_snapshot', None)
-            if fresh is None:
-                # Couldn't snapshot — be safe and rebuild.
-                self.log("🔄 Termbase DB watcher: snapshot failed, rebuilding to be safe")
-                self._post_termbase_delete_refresh()
-                return
-            if fresh == prev:
-                # File mtime ticked but termbase tables didn't change
-                # — probably a TM / project-metadata write. Skip.
-                return
-            self.log(
-                f"🔄 Termbase DB changed externally — auto-refreshing index "
-                f"(termbases:{prev[0] if prev else '?'}→{fresh[0]}, "
-                f"terms:{prev[2] if prev else '?'}→{fresh[2]})"
-            )
-            self._post_termbase_delete_refresh()
-            # _post_termbase_delete_refresh → _build_termbase_index updates
-            # the snapshot, so we don't need to set it again here.
+            self.force_refresh_matches()
         except Exception as e:
             self.log(f"⚠️ Termbase DB auto-refresh failed: {e}")
 
@@ -15008,28 +14998,24 @@ class SupervertalerQt(QMainWindow):
         Safe to call when nothing's open / no current segment / no
         termbase tab — every step is wrapped in best-effort try/except.
         """
+        # v1.10.72: collapsed into ``force_refresh_matches``. Every
+        # entry point that used to call this helper (the five delete
+        # paths from v1.10.64) now gets the same treatment users get
+        # from F5 / the 🔄 button: smart index rebuild (snapshot
+        # check decides whether the rebuild step actually runs),
+        # then the full per-segment cache clear + re-search + redraw.
+        #
+        # After a delete, the snapshot will always differ (one fewer
+        # row in termbase_terms), so the rebuild will always fire
+        # here — which is correct: the deleted term must be evicted
+        # from the in-memory index or the next TermLens search will
+        # surface it again as a phantom match. The snapshot gating
+        # makes no-op refreshes cheap for other callers, but it's
+        # not used to *skip* the rebuild after a known delete.
         try:
-            with self.termbase_cache_lock:
-                self.termbase_cache.clear()
+            self.force_refresh_matches()
         except Exception as e:
-            self.log(f"⚠️ post-delete refresh: cache clear failed: {e}")
-        try:
-            self._build_termbase_index()
-        except Exception as e:
-            self.log(f"⚠️ post-delete refresh: index rebuild failed: {e}")
-        # v1.10.71: route the display update through the F5 path
-        # (force_refresh_matches) rather than the lightweight
-        # _refresh_termbase_display_for_current_segment. The light path
-        # left the TermLens widget under-refreshed in a reported case
-        # where some pills (specifically for terms just added before the
-        # 🔄 refresh button was clicked) didn't render until the user
-        # pressed F5 — even though the cache + index both contained the
-        # matches. See _force_termlens_display_redraw for the full
-        # rationale; tldr: F5 demonstrably works, so route through it.
-        try:
-            self._force_termlens_display_redraw()
-        except Exception as e:
-            self.log(f"⚠️ post-delete refresh: segment refresh failed: {e}")
+            self.log(f"⚠️ post-delete refresh failed: {e}")
         try:
             if hasattr(self, 'termbase_tab_refresh_callback') and self.termbase_tab_refresh_callback:
                 self.termbase_tab_refresh_callback()
@@ -44909,15 +44895,71 @@ class SupervertalerQt(QMainWindow):
         self.log("Search highlights cleared")
     
     def force_refresh_matches(self):
-        """Force refresh all glossary and TM matches for current segment (F5)
-        
-        Clears all caches and performs a fresh search on:
-        - All connected glossaries/termbases
-        - All translation memories
+        """Force refresh all glossary and TM matches for current segment.
+
+        Bound to F5 and to the TermLens 🔄 button (v1.10.72: collapsed
+        into a single code path). Does:
+
+        1. **Smart index rebuild** — compares a fresh snapshot of the
+           termbase tables against the snapshot captured at the end of
+           the last ``_build_termbase_index()`` call (same gating the
+           v1.10.69 file watcher uses). If anything changed in
+           ``termbases`` or ``termbase_terms`` (count, max id, max
+           modified_date), rebuilds the in-memory index from disk so
+           cross-process edits (typically from the Supervertaler for
+           Trados plugin sharing the same SQLite database) are picked
+           up. If nothing changed, skips the rebuild — keeping the
+           common-case F5 fast (<100 ms) for "I just want to redraw".
+
+        2. **Cache clear** — drops the per-segment termbase match cache
+           and the per-segment translation-matches cache for the
+           current segment.
+
+        3. **Fresh re-search** — termbases (via the in-memory index),
+           TMs (via SQL), NT lists.
+
+        4. **Full redraw** — TermLens widgets (both instances) and the
+           Translation Results panel.
+
+        Before v1.10.72 this was the "F5-only" path and a separate
+        ``_post_termbase_delete_refresh`` did step 1 unconditionally.
+        Having two paths was confusing — users didn't know which to
+        press — and the lighter F5 path occasionally left the TermLens
+        widget under-refreshed after term edits (the v1.10.71 issue).
+        Collapsing into one path with smart gating fixes both: F5 and
+        🔄 do the same thing, and the snapshot decides whether the
+        rebuild step actually runs.
         """
         if not self.current_project:
             self.statusBar().showMessage("No project open", 3000)
             return
+
+        # v1.10.72: smart index rebuild — only if the termbase tables
+        # actually changed since we last rebuilt. The snapshot is
+        # updated at the end of every ``_build_termbase_index()``
+        # call, so own-writes that ran through a full rebuild don't
+        # re-trigger here. Cross-process writes (Trados plugin) and
+        # own-writes via the optimisation path that bypassed the
+        # rebuild will both have shifted the snapshot, and the
+        # rebuild fires.
+        try:
+            fresh_snap = self._snapshot_termbase_db_state()
+            prev_snap = getattr(self, '_termbase_db_last_snapshot', None)
+            if fresh_snap is None or prev_snap is None or fresh_snap != prev_snap:
+                if prev_snap is not None and fresh_snap is not None:
+                    self.log(
+                        f"🔄 Termbase DB changed since last rebuild — "
+                        f"rebuilding index "
+                        f"(termbases:{prev_snap[0]}→{fresh_snap[0]}, "
+                        f"terms:{prev_snap[2]}→{fresh_snap[2]})"
+                    )
+                else:
+                    self.log("🔄 Termbase index snapshot missing — rebuilding")
+                self._build_termbase_index()
+                # _build_termbase_index updates _termbase_db_last_snapshot
+                # so subsequent F5 / 🔄 presses skip the rebuild step.
+        except Exception as e:
+            self.log(f"⚠️ Smart index-rebuild check failed: {e}")
         
         # Get current segment
         current_row = self.table.currentRow()
@@ -50326,24 +50368,31 @@ class SupervertalerQt(QMainWindow):
             self.log(f"✗ Error editing termbase entry: {e}")
     
     def _on_termlens_refresh_requested(self):
-        """Handle the TermLens refresh button (v1.10.68).
+        """Handle the TermLens 🔄 refresh button (v1.10.68).
 
-        Reuses ``_post_termbase_delete_refresh`` — the same helper
-        every delete path runs through — because the work needed is
-        identical: drop the in-memory termbase cache, rebuild the
-        in-memory ``termbase_index`` from the database, refresh the
-        current segment's match display, refresh the Termbases tab.
+        v1.10.72: collapsed into the same handler as F5
+        (``force_refresh_matches``). The button is now just a
+        discoverable visual entry point for the F5 shortcut — useful
+        for users who don't know about F5 but find the button by
+        hovering. Behaviour is identical to pressing F5:
 
-        This is what users press after editing terms in another
-        process (most often the Supervertaler for Trados plugin
-        sharing the same SQLite database). Without it, the TermLens
-        index reflects whatever state the DB was in when the project
-        was loaded, regardless of subsequent cross-process writes.
+         - Snapshot-check whether the termbase tables actually
+           changed since the last index rebuild; if yes, rebuild
+           the in-memory index from disk (catches cross-process
+           edits from the Trados plugin or external tools); if no,
+           skip the rebuild (keeps the common case fast).
+         - Clear per-segment caches.
+         - Re-search termbases / TMs / NT lists.
+         - Redraw TermLens widgets + the Translation Results panel.
+
+        Before v1.10.72 this called a separate
+        ``_post_termbase_delete_refresh`` that always rebuilt the
+        index. Having two near-identical refresh paths confused
+        users and caused the v1.10.71 "F5 fixes what the 🔄 button
+        leaves under-refreshed" symptom; the merge fixes both.
         """
         try:
-            self.log("🔄 TermLens refresh: rebuilding index from disk…")
-            self._post_termbase_delete_refresh()
-            self.log("✓ TermLens refresh: termbase index rebuilt")
+            self.force_refresh_matches()
         except Exception as e:
             self.log(f"✗ TermLens refresh failed: {e}")
 
