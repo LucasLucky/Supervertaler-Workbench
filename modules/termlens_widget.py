@@ -1552,6 +1552,10 @@ class TermLensWidget(QWidget):
                     'forbidden': match.get('forbidden', False),
                     'is_nontranslatable': match.get('is_nontranslatable', False),
                     'matched_via_abbreviation': match.get('matched_via_abbreviation', False),
+                    # v1.10.81 — primary chip entry; not a synonym.
+                    # The sort key below uses this to keep primary
+                    # entries above their own synonyms.
+                    'is_synonym': False,
                 })
 
                 # Add target synonyms as additional translation chips.
@@ -1568,7 +1572,29 @@ class TermLensWidget(QWidget):
                     matches_dict[key].append({
                         'target_term': synonym,
                         'termbase_name': match.get('termbase_name', '') + ' (syn)',
-                        'ranking': match.get('ranking', 99) + 1,
+                        # v1.10.81 — synonym ranking now inherits the
+                        # parent entry's ranking unchanged. The
+                        # previous "+ 1" was written when ranking was
+                        # a higher-is-lower-priority number (99 =
+                        # default low); with the v1.10.69 ranking-as-
+                        # flag semantics (1 = project-priority, 0 =
+                        # background) it had the opposite effect — a
+                        # background entry's synonyms became
+                        # ranking=1, accidentally promoting them to
+                        # project-priority and getting them sorted
+                        # ABOVE their own parent's primary entry by
+                        # the v1.10.80 sort. End result: a synonym
+                        # of a background termbase term displayed in
+                        # pink (the project-termbase colour) and
+                        # outranked the primary translation. Reported
+                        # by a user: "I am wondering why 'Comes With'
+                        # is pink, though, since none of these are in
+                        # the project glossary." Inheriting the
+                        # parent's ranking keeps synonym colour
+                        # accurate; the new is_synonym flag below
+                        # handles "synonyms sort after primary"
+                        # without needing the ranking arithmetic.
+                        'ranking': match.get('ranking', 99),
                         'is_project_termbase': match.get('is_project_termbase', False),
                         'term_id': match.get('term_id'),
                         'termbase_id': match.get('termbase_id'),
@@ -1585,6 +1611,11 @@ class TermLensWidget(QWidget):
                         # Synonym chips are never abbreviation chips —
                         # only the main match position can be one.
                         'matched_via_abbreviation': False,
+                        # v1.10.81 — synonym marker. Used by the sort
+                        # below to keep synonyms below their parent's
+                        # primary entry (parent first, syn1, syn2 …)
+                        # within the same ranking tier.
+                        'is_synonym': True,
                     })
         
         # Convert NT matches to dict keyed by lowercase text. Each entry
@@ -1642,6 +1673,7 @@ class TermLensWidget(QWidget):
             matches_dict[_key].sort(key=lambda t: (
                 bool(t.get('forbidden', False)),               # non-forbidden first
                 not (t.get('ranking') == 1),                   # ranking == 1 (project/priority-1) first
+                bool(t.get('is_synonym', False)),              # primary entries before synonyms
                 t.get('termbase_name', '') or '',              # alphabetical tiebreak
             ))
 

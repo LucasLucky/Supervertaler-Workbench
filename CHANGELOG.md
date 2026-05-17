@@ -2,7 +2,36 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.80 (May 18, 2026)
+**Current Version:** v1.10.81 (May 18, 2026)
+
+
+## v1.10.81 – May 18, 2026
+
+### Fixed (target-synonym chips were rendering as pink and outranking their own parent — broken `ranking + 1` arithmetic after the v1.10.69 ranking-as-flag change)
+
+User noticed an off-colour chip after v1.10.80: the "met" chip in their Dutch source segment displayed primary translation `comes with` in **pink** (project-termbase colour) even though `comes with` is a target synonym of a PATENTS entry (a background termbase, not project). Database evidence: PATENTS term 89706 (`complete with → met`) has source-side synonyms `['comes with', 'including']`, which after the v1.10.62 direction swap become target synonyms in the project's NL→EN direction.
+
+**Root cause** — pre-v1.10.69 the synonym-append code in `update_with_matches` did `'ranking': match.get('ranking', 99) + 1` to push synonyms "slightly lower priority than their parent". That arithmetic was correct when `ranking` was a higher-is-lower-priority number (99 = default low, 1 = high). But the v1.10.69 index builder changed `ranking` to a **flag** (1 = project-termbase / priority-1 activation, 0 = background) without updating the synonym arithmetic. So a background-termbase entry's parent has `ranking = 0`; `0 + 1 = 1`; the synonym chip is now flagged as if it were a project entry. The v1.10.80 sort key prioritises `ranking == 1` entries → the synonym sorts AHEAD of its own parent → becomes the primary chip → `is_effective_project = (ranking == 1) = True` → pink.
+
+End result the user saw: `comes with` (synonym) sorted before `complete with` (the actual primary translation) and rendered pink, when the whole entry should have been blue with `complete with` as the primary.
+
+**Fix** — two changes in `termlens_widget.update_with_matches`:
+
+ 1. **Synonyms now inherit the parent entry's `ranking` unchanged** (was `ranking + 1`). A synonym of a PATENTS entry now has `ranking = 0`, matching its parent.
+ 2. **New `is_synonym` boolean flag** on every chip-translation entry — primary entries set `False`, synonym appendings set `True`. The sort key in this function has been extended with `is_synonym` as a tier between the ranking comparison and the termbase-name tiebreak, so primary entries always come before synonyms within the same `ranking` tier:
+
+    ```python
+    matches_dict[_key].sort(key=lambda t: (
+        bool(t.get('forbidden', False)),     # non-forbidden first
+        not (t.get('ranking') == 1),         # project-priority first
+        bool(t.get('is_synonym', False)),    # primary before synonyms
+        t.get('termbase_name', '') or '',    # alphabetical tiebreak
+    ))
+    ```
+
+    That separates the two concerns the old `+ 1` was conflating: priority ordering (now purely from `ranking`) and primary-vs-synonym ordering (now from `is_synonym`). No semantic regression — alternative translations still sort below the primary in the `+N` popup.
+
+Net effect: `met` chip now shows `complete with` (primary) in blue (PATENTS = background termbase), with `comes with` and `including` listed as `+2` alternatives. Restart Workbench to pick it up.
 
 
 ## v1.10.80 – May 18, 2026
