@@ -35265,12 +35265,14 @@ class SupervertalerQt(QMainWindow):
             target_text = match.get('target', '')
             tm_name = match.get('tm_name', 'Unknown TM')
             match_pct = match.get('match_pct', 0)
+            reverse_match = match.get('reverse_match', False)
         else:
             tm_source_text = getattr(match, 'compare_source', '') or getattr(match, 'source', '')
             target_text = getattr(match, 'target', '')
             md = match.metadata if hasattr(match, 'metadata') and match.metadata else {}
             tm_name = md.get('tm_name', 'Unknown TM')
             match_pct = getattr(match, 'relevance', 0)
+            reverse_match = bool(md.get('reverse_match', False))
 
         # Update navigation label
         if hasattr(self, 'match_panel_tm_nav_label') and self.match_panel_tm_nav_label:
@@ -35302,9 +35304,33 @@ class SupervertalerQt(QMainWindow):
             target_display = self.apply_invisible_replacements(target_display)
         self.match_panel_tm_target.setPlainText(target_display)
 
-        # Update metadata label (TM name, percentage)
+        # Update metadata label (TM name, percentage, optional reverse-match chip)
         if hasattr(self, 'match_panel_tm_target_label') and self.match_panel_tm_target_label:
-            metadata_html = f"<span style='font-size:10px'>{tm_name}</span> (<span style='font-size:8px'>{match_pct}%</span>)"
+            # v1.10.50: append a small "⇄ reversed" chip when the match came
+            # from a TM whose source/target languages are the inverse of this
+            # project's. The chip uses a muted amber colour so it reads as
+            # "informational, not alarming." Tooltip on the label spells it
+            # out for users who don't recognise the symbol.
+            reverse_chip = ""
+            if reverse_match:
+                reverse_chip = (
+                    " <span style='font-size:8px; color:#b45309; "
+                    "background-color:rgba(245,158,11,0.18); "
+                    "padding:1px 5px; border-radius:6px;'>⇄ reversed</span>"
+                )
+                self.match_panel_tm_target_label.setToolTip(
+                    "This match comes from a TM whose source/target languages "
+                    "are the inverse of this project. The match is from the "
+                    "TM's target column; Workbench has swapped fields so it "
+                    "displays normally."
+                )
+            else:
+                self.match_panel_tm_target_label.setToolTip("")
+            metadata_html = (
+                f"<span style='font-size:10px'>{tm_name}</span> "
+                f"(<span style='font-size:8px'>{match_pct}%</span>)"
+                f"{reverse_chip}"
+            )
             self.match_panel_tm_target_label.setText(metadata_html)
     
     def _match_panel_tm_context_menu(self, pos):
@@ -35745,11 +35771,12 @@ class SupervertalerQt(QMainWindow):
         
         match = self.compare_panel_tm_matches[self.compare_panel_tm_index]
         total = len(self.compare_panel_tm_matches)
-        
+
         # Get metadata
         tm_name = match.get('tm_name', 'TM')
         match_pct = match.get('match_pct', 0)
-        
+        reverse_match = bool(match.get('reverse_match', False))
+
         # Update metadata labels with emphasis:
         # - TM name: larger
         # - Match %: larger + bold
@@ -35765,12 +35792,32 @@ class SupervertalerQt(QMainWindow):
         except Exception:
             match_pct_display = match_pct
 
+        # v1.10.50: optional "⇄ reversed" chip when the match came from a TM
+        # whose source/target languages are the inverse of this project's.
+        reverse_chip = ""
+        if reverse_match:
+            reverse_chip = (
+                " <span style='font-size:8px; color:#b45309; "
+                "background-color:rgba(245,158,11,0.18); "
+                "padding:1px 5px; border-radius:6px;'>⇄ reversed</span>"
+            )
+
         nav_html = (
             f"(<span style='font-size:8px'>{idx}/{total}</span>) "
             f"<span style='font-size:10px'>{tm_name_escaped}</span> "
             f"<span style='font-size:8px'>•</span> "
             f"<span style='font-size:10px; font-weight:700'>{match_pct_display}%</span>"
+            f"{reverse_chip}"
         )
+
+        # Tooltip on both labels (set whether or not chip is present so we
+        # clear the tooltip when navigating away from a reversed match).
+        reverse_tooltip = (
+            "This match comes from a TM whose source/target languages are "
+            "the inverse of this project. The match is from the TM's "
+            "target column; Workbench has swapped fields so it displays "
+            "normally."
+        ) if reverse_match else ""
 
         if hasattr(self, 'compare_panel_tm_nav_label') and self.compare_panel_tm_nav_label:
             # Avoid a fixed font-size stylesheet overriding rich text emphasis, but keep theme color
@@ -35780,6 +35827,7 @@ class SupervertalerQt(QMainWindow):
             else:
                 self.compare_panel_tm_nav_label.setStyleSheet("background: transparent; border: none;")
             self.compare_panel_tm_nav_label.setText(nav_html)
+            self.compare_panel_tm_nav_label.setToolTip(reverse_tooltip)
 
         if hasattr(self, 'compare_panel_tm_target_label') and self.compare_panel_tm_target_label:
             label_color = getattr(self.compare_panel_tm_target_label, '_compare_text_color', None)
@@ -35788,6 +35836,7 @@ class SupervertalerQt(QMainWindow):
             else:
                 self.compare_panel_tm_target_label.setStyleSheet("background: transparent; border: none;")
             self.compare_panel_tm_target_label.setText(nav_html)
+            self.compare_panel_tm_target_label.setToolTip(reverse_tooltip)
         
         # Update TM Source with diff highlighting
         # Strip any stale invisible markers from TM data before processing
@@ -38604,7 +38653,10 @@ class SupervertalerQt(QMainWindow):
                         'target': batch_match.get('target', ''),
                         'tm_name': batch_match.get('tm_name', 'TM'),
                         'tm_id': batch_match.get('tm_id', ''),
-                        'match_pct': batch_match.get('match_pct', 100)
+                        'match_pct': batch_match.get('match_pct', 100),
+                        # v1.10.50: surface reverse-match info so the Match
+                        # Panel can show a "⇄ reversed" chip.
+                        'reverse_match': batch_match.get('reverse_match', False),
                     }]
                     self.set_compare_panel_matches(segment.id, search_source, tm_matches, [])
 
@@ -50997,7 +51049,10 @@ class SupervertalerQt(QMainWindow):
                             'target': match['target'],
                             'match_pct': match_pct,
                             'tm_name': match.get('tm_name', ''),
-                            'tm_id': match.get('tm_id', '')
+                            'tm_id': match.get('tm_id', ''),
+                            # v1.10.50: flag reverse-direction hits so the
+                            # Match Panel can show a "⇄ reversed" chip.
+                            'reverse_match': match.get('reverse_match', False),
                         }
                         success_count += 1
                     else:
@@ -51319,7 +51374,9 @@ class SupervertalerQt(QMainWindow):
                                     'target': tm_match,
                                     'match_pct': 100,
                                     'tm_name': self.tm_metadata.get(exact_match.get('tm_id', ''), {}).get('name', '') if hasattr(self, 'tm_metadata') else '',
-                                    'tm_id': exact_match.get('tm_id', '')
+                                    'tm_id': exact_match.get('tm_id', ''),
+                                    # v1.10.50: flag reverse-direction hits
+                                    'reverse_match': exact_match.get('reverse_match', False),
                                 }
                                 tm_matches_found += 1
                                 translated_count += 1
@@ -51431,7 +51488,9 @@ class SupervertalerQt(QMainWindow):
                                 'target': tm_match,
                                 'match_pct': match_pct,
                                 'tm_name': match.get('tm_name', ''),
-                                'tm_id': match.get('tm_id', '')
+                                'tm_id': match.get('tm_id', ''),
+                                # v1.10.50: flag reverse-direction hits
+                                'reverse_match': match.get('reverse_match', False),
                             }
                             translated_count += 1
 

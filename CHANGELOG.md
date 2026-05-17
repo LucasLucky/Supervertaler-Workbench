@@ -2,12 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.49 (May 17, 2026)
+**Current Version:** v1.10.50 (May 17, 2026)
 
 
-## v1.10.49 – May 17, 2026
+## v1.10.50 – May 17, 2026
 
-### Fixed (TM batch lookup now respects bidirectional TMs, matching single-segment behaviour)
+### Added (Match Panel and Compare Panel now show a "⇄ reversed" chip when a TM match came from a reversed-direction TM)
+
+- v1.10.49 added bidirectional TM lookup to the batch path so that an `en→nl` TM attached to an `nl→en` project serves matches correctly. The match data carries a `reverse_match: True` flag end-to-end, but the UI ignored it – users got the matches but had no way to tell at a glance that a particular hit came via the reverse-direction fallback rather than a forward match. That's worth knowing: it tells the user the TM is mis-oriented for this project (so they may want to re-import the TMX into a correctly-oriented TM at some point), and it explains why the source displayed in the TM Source pane was originally stored as the TM's target column.
+- The single-segment **Match Panel**'s TM Target label now appends a small amber chip `⇄ reversed` after the TM name/percentage when `reverse_match` is True (e.g. the label reads `scratch (100%) ⇄ reversed` instead of just `scratch (100%)`). The chip uses a muted amber colour (`#b45309` text on `rgba(245,158,11,0.18)` background, 6px pill radius, 8px font) so it reads as informational, not alarming. Hovering the label surfaces a tooltip: *"This match comes from a TM whose source/target languages are the inverse of this project. The match is from the TM's target column; Workbench has swapped fields so it displays normally."*
+- The **Compare Panel** (used by the batch translate flow and the side-by-side comparison view) gets the same chip in both its nav label and target label, with the same tooltip. The chip is conditionally inserted so navigating between matches updates it correctly when some matches are reversed and others aren't.
+- The flag now flows from the database layer (`reverse_match: True` set by the bidirectional fallback in `get_exact_match`, `get_exact_matches_batch`, `search_fuzzy_matches`, `search_fuzzy_matches_batch`) through the translation_memory wrappers, through the per-segment `_batch_tm_match` cache (all three storage sites in `Supervertaler.py` updated to include the flag), through the display-dict construction in the navigation handler, and into the renderer. No path is dropping the flag any more.
+- The renderer covers both code-path conventions for match data – dict-shaped matches read `match.get('reverse_match', False)` directly, and TranslationMatch objects read `md.get('reverse_match', False)` from the metadata dict. Defaults to `False` everywhere so existing forward matches render unchanged.
+- Implementation note: the chip is added as inline HTML inside the existing rich-text label rather than as a separate Qt widget, so layout reflow and theme colours continue to work without dedicated widget plumbing. The tooltip is set on the label itself so the entire metadata line acts as a hover target.
 
 - A user reported that single-segment navigation correctly auto-inserted 100% TM matches from a TM they'd attached, but running Batch Translate against the same TM produced zero hits. After investigation, the cause turned out to be a feature-parity gap between the single-segment and batch TM lookup code paths, not a "TM is one-directional" limitation as initially suspected.
 - The TM database layer (`modules/database_manager.py`) supports bidirectional matching: when a project is `nl→en` and an attached TM is the inverse `en→nl`, the lookup transparently tries the forward direction first and, on miss, falls back to a reverse-direction search against `target_text` with swapped language filters, then swaps the source/target in the result so downstream consumers see a normal forward match (tagged `reverse_match: True`). This had been implemented for the single-segment lookups (`get_exact_match` and `search_fuzzy_matches`) but had never been added to the batch counterparts (`get_exact_matches_batch` and `search_fuzzy_matches_batch`). Users with a reversed-direction TM saw single-segment auto-insert work fine but every batch operation come back empty.
