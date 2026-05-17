@@ -1269,14 +1269,32 @@ class TermbaseEntryEditor(QDialog):
                 except Exception:
                     pass
 
-                # Update existing term
+                # Update existing term.
+                #
+                # v1.10.74: bump ``modified_date`` to CURRENT_TIMESTAMP.
+                # The schema column was created with a
+                # ``DEFAULT CURRENT_TIMESTAMP`` (which only fires on
+                # INSERT, not on UPDATE — SQLite won't auto-bump it
+                # for us), so prior UPDATEs left the row's
+                # modified_date frozen at its INSERT time. That broke
+                # the v1.10.69/v1.10.72 snapshot gating chain: an
+                # edit-only change (e.g. user edits definition + URL
+                # + notes via the Edit Termbase Entry dialog) doesn't
+                # bump COUNT or MAX(id), and if it doesn't bump
+                # MAX(modified_date) either, the snapshot looks
+                # identical and ``force_refresh_matches`` skips the
+                # index rebuild — the TermLens display keeps showing
+                # the stale pre-edit index entry with empty metadata.
+                # Bumping modified_date here flips MAX(modified_date)
+                # on the next snapshot, so the rebuild fires correctly.
                 cursor.execute("""
                     UPDATE termbase_terms
                     SET source_term = ?, target_term = ?,
                         definition = ?, domain = ?, notes = ?, url = ?,
                         project = ?, client = ?,
                         forbidden = ?, is_nontranslatable = ?,
-                        source_abbreviation = ?, target_abbreviation = ?
+                        source_abbreviation = ?, target_abbreviation = ?,
+                        modified_date = CURRENT_TIMESTAMP
                     WHERE id = ?
                 """, (source_term, target_term, definition, domain, notes, url,
                       project, client, forbidden, 1 if is_nt else 0,

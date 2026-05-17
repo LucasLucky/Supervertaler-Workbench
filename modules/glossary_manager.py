@@ -251,9 +251,14 @@ class TermbaseManager:
                 updates.append("non_translatable = ?")
                 params.append(non_translatable)
             
+            # v1.10.74: always bump modified_date on UPDATE so the
+            # snapshot-gated auto-refresh sees the change. SQLite's
+            # DEFAULT CURRENT_TIMESTAMP only fires on INSERT.
+            updates.append("modified_date = CURRENT_TIMESTAMP")
+
             params.append(term_id)
             query = f"UPDATE termbase_terms SET {', '.join(updates)} WHERE id = ?"
-            
+
             cursor.execute(query, params)
             self.db.connection.commit()
             return cursor.rowcount > 0

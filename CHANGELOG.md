@@ -2,7 +2,31 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.73 (May 17, 2026)
+**Current Version:** v1.10.74 (May 17, 2026)
+
+
+## v1.10.74 – May 17, 2026
+
+### Fixed (v1.10.73 edit-dialog metadata changes weren't visible in TermLens until a manual restart, because UPDATEs to termbase_terms didn't bump modified_date and the v1.10.69/v1.10.72 snapshot gating skipped the index rebuild)
+
+A user immediately tested v1.10.73 by adding a definition, notes, URL, and project to a term entry via the Edit Termbase Entry dialog — saved cleanly, but the TermLens chip tooltip on the same term still showed only the synonym ("Also: uiteindeSYN") with no Definition / Notes / URL / Project rows. The data was in the database; the in-memory termbase index just hadn't been rebuilt to pick it up.
+
+**Root cause: snapshot gating + SQLite's UPDATE behaviour.** The v1.10.69 / v1.10.72 auto-refresh chain decides whether to rebuild the in-memory index by snapshotting four cheap aggregates: `COUNT` + `MAX(id)` on `termbases`, plus `COUNT` + `MAX(id)` + `MAX(modified_date)` on `termbase_terms`. An UPDATE-only change doesn't shift `COUNT` or `MAX(id)` — that only catches INSERT / DELETE. And SQLite's `DEFAULT CURRENT_TIMESTAMP` on the `modified_date` column **only fires on INSERT, not on UPDATE** — it never auto-bumps. So the column stays frozen at INSERT time, the snapshot looks identical pre- and post-edit, `force_refresh_matches` skips the index rebuild, and the TermLens chip keeps showing the pre-edit data forever (until a project reload or a separate INSERT/DELETE triggers the snapshot).
+
+The synonym in the user's report came through because synonyms are a separate INSERT into `termbase_synonyms` (the save dialog does `DELETE FROM termbase_synonyms WHERE term_id = ?; INSERT …` to handle the wipe-and-reinsert pattern), and the v1.10.73 bulk loader picks up the new synonym on the next rebuild. Except… the rebuild doesn't fire here either, because the snapshot only watches `termbase_terms`, not `termbase_synonyms`. So even the synonym wouldn't show on a different session — it only worked for the user because *another* trigger (probably the optimisation-path index append when they added the term in the first place) had populated it earlier.
+
+**Fix.** Every UPDATE statement that touches `termbase_terms` now explicitly bumps `modified_date = CURRENT_TIMESTAMP`. Four sites covered:
+
+ - `modules/termbase_entry_editor.save_term` — the Edit Termbase Entry dialog's main UPDATE.
+ - `Supervertaler.save_forbidden_state` — the inline Forbidden checkbox toggler in the Termbases tab.
+ - `Supervertaler.save_term_edit` — the inline cell-edit handler in the Termbases tab.
+ - `modules/termbase_manager.update_term` and `modules/glossary_manager.update_term` — both dynamic-SQL builders; `modified_date = CURRENT_TIMESTAMP` is appended to the `updates` list unconditionally before the SET clause is joined.
+
+(`modules/termbase_manager.set_nontranslatable` was already bumping `modified_date` from before — no change needed there.)
+
+Net effect: edit any termbase entry, save the dialog, and the snapshot gating in `force_refresh_matches` sees `MAX(modified_date)` shift, fires the index rebuild, and the TermLens chip tooltip updates within ~100 ms with the new metadata. No project reload, no manual F5, no manual 🔄 click.
+
+Future-proofing: a later commit could also extend the snapshot to include `(COUNT, MAX(id))` on `termbase_synonyms` so synonym-only changes are detected on first edit too, but in practice every synonym edit happens as part of an entry save (the dialog wraps both together) so the term's `modified_date` bump already covers it.
 
 
 ## v1.10.73 – May 17, 2026

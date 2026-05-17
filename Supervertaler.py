@@ -16238,8 +16238,13 @@ class SupervertalerQt(QMainWindow):
         def save_forbidden_state(term_id, forbidden):
             """Save the forbidden state of a term"""
             try:
+                # v1.10.74: bump modified_date so the snapshot-gated
+                # auto-refresh in force_refresh_matches sees the
+                # change. See modules/termbase_entry_editor.save_term
+                # for the full rationale.
                 self.db_manager.cursor.execute(
-                    "UPDATE termbase_terms SET forbidden = ? WHERE id = ?",
+                    "UPDATE termbase_terms SET forbidden = ?, "
+                    "modified_date = CURRENT_TIMESTAMP WHERE id = ?",
                     (1 if forbidden else 0, term_id)
                 )
                 self.db_manager.connection.commit()
@@ -16306,9 +16311,20 @@ class SupervertalerQt(QMainWindow):
             client = terms_table.item(row, 5).text() if terms_table.item(row, 5) else ""
 
             try:
+                # v1.10.74: bump modified_date so the snapshot-gated
+                # auto-refresh sees the change. Required because
+                # SQLite doesn't auto-update modified_date on UPDATE
+                # — the column's DEFAULT CURRENT_TIMESTAMP only
+                # fires on INSERT. Without this bump, inline grid
+                # edits to terms (Termbases tab) wouldn't propagate
+                # to the live TermLens display because the snapshot
+                # would still match. See entry_editor.save_term for
+                # the full back-story.
                 self.db_manager.cursor.execute(
                     """UPDATE termbase_terms
-                       SET source_term = ?, target_term = ?, domain = ?, notes = ?, project = ?, client = ?
+                       SET source_term = ?, target_term = ?, domain = ?, notes = ?,
+                           project = ?, client = ?,
+                           modified_date = CURRENT_TIMESTAMP
                        WHERE id = ?""",
                     (source, target, domain, notes, project, client, term_id)
                 )

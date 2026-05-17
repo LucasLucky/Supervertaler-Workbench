@@ -987,12 +987,21 @@ class TermbaseManager:
             
             if not updates:
                 return False
-            
+
+            # v1.10.74: always bump modified_date on UPDATE so the
+            # snapshot-gated auto-refresh in
+            # Supervertaler.force_refresh_matches sees the change.
+            # SQLite's DEFAULT CURRENT_TIMESTAMP only fires on
+            # INSERT, not UPDATE, so without this the row's
+            # modified_date would stay frozen at INSERT time and
+            # edit-only changes wouldn't propagate to TermLens.
+            updates.append("modified_date = CURRENT_TIMESTAMP")
+
             params.append(term_id)
             sql = f"UPDATE termbase_terms SET {', '.join(updates)} WHERE id = ?"
             cursor.execute(sql, params)
             self.db_manager.connection.commit()
-            
+
             self.log(f"✓ Updated term {term_id}")
             return True
         except Exception as e:
