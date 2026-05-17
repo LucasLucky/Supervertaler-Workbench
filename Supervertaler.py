@@ -14429,6 +14429,86 @@ class SupervertalerQt(QMainWindow):
 
         self.log(f"🔄 Refreshed termbase display for segment {segment.id} (TM untouched)")
     
+    def _orient_term_for_termbase(self, source_text: str, target_text: str, termbase: dict):
+        """Return (source_term, target_term, source_lang_code, target_lang_code)
+        oriented to match the **termbase's declared direction**, not the
+        project's.
+
+        v1.10.62 termbase-direction bug fix. Mirrors the Trados v4.19.22
+        fix (commit ``cf8d70b`` — "termbase direction overhaul"). The
+        write side of the codebase previously trusted the project's
+        direction blindly: it took ``project.source_lang`` as the
+        term's ``source_lang`` and ``source_text`` as the term's
+        ``source_term``, even when the termbase declared the opposite
+        direction. Result for users running e.g. NL→EN projects with
+        EN→NL termbases: the Dutch term landed in the column the
+        termbase declares as English (and vice versa), and per-row
+        lang codes pointed the wrong way. The bidirectional read-side
+        indexer (``_build_termbase_index``) then swapped them again
+        on lookup, so TermLens searched the Dutch segment for the
+        English text and found nothing.
+
+        This helper sits between the call sites (Ctrl+Q quick-add,
+        Ctrl+Alt+T dialog add, Alt+Up project-termbase add) and
+        ``TermbaseManager.add_term`` to do a per-termbase orientation
+        fix: if the termbase declares the reverse of the project's
+        direction, swap source/target text and lang codes so the
+        INSERT lands them in the columns the termbase actually
+        expects.
+
+        Returns the inputs unchanged when:
+         - there is no current project, or
+         - the termbase declares no languages (legacy), or
+         - the termbase's direction matches the project's, or
+         - the termbase's direction is unrelated to the project's
+           (different language pair entirely).
+
+        In the matching case (termbase aligned with project) we still
+        normalise the lang codes to ISO via
+        ``_convert_language_to_code`` so the per-row ``source_lang`` /
+        ``target_lang`` columns always carry codes, never full names.
+        """
+        # No project context → can't compare; trust the caller.
+        if not self.current_project:
+            return source_text, target_text, '', ''
+
+        project_source = self._convert_language_to_code(
+            self.current_project.source_lang or '') or ''
+        project_target = self._convert_language_to_code(
+            self.current_project.target_lang or '') or ''
+        tb_source = self._convert_language_to_code(
+            termbase.get('source_lang') or '') or ''
+        tb_target = self._convert_language_to_code(
+            termbase.get('target_lang') or '') or ''
+
+        # Termbase has no declared direction → write project-direction
+        # codes; harmless and at least populates the columns for any
+        # future indexer that needs them.
+        if not tb_source or not tb_target:
+            return source_text, target_text, project_source, project_target
+
+        # Reverse case: termbase's source matches project's target AND
+        # termbase's target matches project's source. Swap so the
+        # storage layer's source_term column always contains a term in
+        # the termbase's declared source language.
+        if (project_source and project_target
+                and tb_source == project_target
+                and tb_target == project_source):
+            tb_name = termbase.get('name', '?')
+            self.log(
+                f"⚠️ Termbase '{tb_name}' direction ({tb_source}→{tb_target}) "
+                f"is reverse of project ({project_source}→{project_target}); "
+                f"swapping source/target on save so the term lands in the "
+                f"columns the termbase expects."
+            )
+            return target_text, source_text, tb_source, tb_target
+
+        # Default: termbase direction matches project direction (or the
+        # two are unrelated entirely). Write project-direction lang
+        # codes; the storage row's source_term/target_term already
+        # match the termbase's declared direction by definition.
+        return source_text, target_text, project_source, project_target
+
     def add_term_pair_to_termbase(self, source_text: str, target_text: str):
         """Add a term pair to active termbase(s) with metadata dialog"""
         # Check if we have a current project
@@ -14510,20 +14590,17 @@ class SupervertalerQt(QMainWindow):
         self._last_selected_termbase_ids = selected_termbase_ids
         self.log(f"💾 Stored writable termbase IDs for Ctrl+Q: {selected_termbase_ids}")
         
-        # Get source and target languages from current project
-        source_lang = self.current_project.source_lang if self.current_project else 'English'
-        target_lang = self.current_project.target_lang if self.current_project else 'Dutch'
-        
-        # Convert to language codes for database storage
-        source_lang_code = self._convert_language_to_code(source_lang)
-        target_lang_code = self._convert_language_to_code(target_lang)
-        
-        self.log(f"📝 Adding term with languages: {source_lang} ({source_lang_code}) → {target_lang} ({target_lang_code})")
+        # v1.10.62: orient + write is now per-termbase, since each
+        # destination termbase may declare a different direction.
+        # Synonym lists ride along unchanged — orientation only
+        # decides which COLUMN the primary source/target text lands
+        # in, not which list a synonym belongs to.
+        self.log(f"📝 Adding term: {source_text} → {target_text}")
         if source_synonyms:
             self.log(f"   With {len(source_synonyms)} source synonym(s): {', '.join([s['text'] for s in source_synonyms])}")
         if target_synonyms:
             self.log(f"   With {len(target_synonyms)} target synonym(s): {', '.join([s['text'] for s in target_synonyms])}")
-        
+
         # Add term to selected termbases only
         success_count = 0
         duplicate_count = 0
@@ -14531,14 +14608,27 @@ class SupervertalerQt(QMainWindow):
         for tb in active_termbases:
             if tb['id'] not in selected_termbase_ids:
                 continue  # Skip unselected termbases
-            
+
+            # v1.10.62 per-termbase orientation (see _orient_term_for_termbase).
+            src_term, tgt_term, src_lang, tgt_lang = (
+                self._orient_term_for_termbase(source_text, target_text, tb)
+            )
+            # Detect whether orient flipped source<->target. If yes, the
+            # dialog's "source synonyms" panel (user-typed in project's
+            # source language) actually belongs in the termbase's
+            # TARGET column, and vice versa. Flip the language tag
+            # passed to add_synonym accordingly.
+            tb_was_swapped = (src_term != source_text)
+            syn_source_lang = 'target' if tb_was_swapped else 'source'
+            syn_target_lang = 'source' if tb_was_swapped else 'target'
+
             try:
                 term_id = self.termbase_mgr.add_term(
                     termbase_id=tb['id'],
-                    source_term=source_text,
-                    target_term=target_text,
-                    source_lang=source_lang_code,
-                    target_lang=target_lang_code,
+                    source_term=src_term,
+                    target_term=tgt_term,
+                    source_lang=src_lang,
+                    target_lang=tgt_lang,
                     domain=metadata['domain'],
                     notes=metadata['notes'],
                     project=metadata['project'],
@@ -14555,13 +14645,16 @@ class SupervertalerQt(QMainWindow):
                     success_count += 1
                     self.log(f"✓ Added term to termbase '{tb['name']}': {source_text} → {target_text}")
                     
-                    # Add source synonyms if any
+                    # Add source synonyms if any. Language tag is
+                    # ``syn_source_lang`` (= 'source' normally, or
+                    # 'target' when the termbase is reverse-direction
+                    # to the project — see the swap-detection above).
                     if source_synonyms:
                         for syn_data in source_synonyms:
                             if self.termbase_mgr.add_synonym(
-                                term_id, 
-                                syn_data['text'], 
-                                language='source',
+                                term_id,
+                                syn_data['text'],
+                                language=syn_source_lang,
                                 display_order=syn_data['order'],
                                 forbidden=syn_data['forbidden']
                             ):
@@ -14569,14 +14662,14 @@ class SupervertalerQt(QMainWindow):
                                 self.log(f"  ✓ Added source synonym: {syn_data['text']}{forbidden_marker}")
                             else:
                                 self.log(f"  ✗ Failed to add source synonym: {syn_data['text']}")
-                    
-                    # Add target synonyms if any
+
+                    # Add target synonyms if any (same flip logic).
                     if target_synonyms:
                         for syn_data in target_synonyms:
                             if self.termbase_mgr.add_synonym(
-                                term_id, 
-                                syn_data['text'], 
-                                language='target',
+                                term_id,
+                                syn_data['text'],
+                                language=syn_target_lang,
                                 display_order=syn_data['order'],
                                 forbidden=syn_data['forbidden']
                             ):
@@ -14689,29 +14782,32 @@ class SupervertalerQt(QMainWindow):
             self._last_selected_termbase_ids = None
             return
         
-        # Get source and target languages from current project
-        source_lang = self.current_project.source_lang if self.current_project else 'English'
-        target_lang = self.current_project.target_lang if self.current_project else 'Dutch'
-        
-        # Convert to language codes for database storage
-        source_lang_code = self._convert_language_to_code(source_lang)
-        target_lang_code = self._convert_language_to_code(target_lang)
-        
         termbase_names = [tb['name'] for tb in target_termbases]
         self.log(f"⚡ Quick-adding term: {source_text} → {target_text}")
         self.log(f"   To termbase(s): {', '.join(termbase_names)}")
-        
+
         success_count = 0
         duplicate_count = 0
         error_count = 0
         for target_termbase in target_termbases:
+            # v1.10.62: orient per termbase. Each termbase in the
+            # batch may declare a different direction; per-termbase
+            # orientation lets a single Ctrl+Q correctly populate a
+            # mix of forward and reverse termbases without corrupting
+            # any of them. (Trados v4.19.22 cf8d70b fixed the same
+            # bug on its side.)
+            src_term, tgt_term, src_lang, tgt_lang = (
+                self._orient_term_for_termbase(
+                    source_text, target_text, target_termbase
+                )
+            )
             try:
                 term_id = self.termbase_mgr.add_term(
                     termbase_id=target_termbase['id'],
-                    source_term=source_text,
-                    target_term=target_text,
-                    source_lang=source_lang_code,
-                    target_lang=target_lang_code,
+                    source_term=src_term,
+                    target_term=tgt_term,
+                    source_lang=src_lang,
+                    target_lang=tgt_lang,
                     notes="",
                     domain="",
                     project="",
@@ -14839,21 +14935,24 @@ class SupervertalerQt(QMainWindow):
             self.statusBar().showMessage(f"No {label} found – check Resources → Termbases", 3000)
             return
         
-        # Get language codes
-        source_lang = self.current_project.source_lang if self.current_project else 'English'
-        target_lang = self.current_project.target_lang if self.current_project else 'Dutch'
-        source_lang_code = self._convert_language_to_code(source_lang)
-        target_lang_code = self._convert_language_to_code(target_lang)
-        
         self.log(f"⚡ Quick-adding term to {label} '{target_termbase['name']}': {source_text} → {target_text}")
-        
+
+        # v1.10.62: orient for termbase direction. Project termbases
+        # are usually aligned with the project, but background
+        # termbases (also reachable here in some configurations) may
+        # not be. _orient_term_for_termbase is the single source of
+        # truth for the swap decision.
+        src_term, tgt_term, src_lang, tgt_lang = (
+            self._orient_term_for_termbase(source_text, target_text, target_termbase)
+        )
+
         try:
             term_id = self.termbase_mgr.add_term(
                 termbase_id=target_termbase['id'],
-                source_term=source_text,
-                target_term=target_text,
-                source_lang=source_lang_code,
-                target_lang=target_lang_code,
+                source_term=src_term,
+                target_term=tgt_term,
+                source_lang=src_lang,
+                target_lang=tgt_lang,
                 priority=99,  # Default priority for the term itself
                 notes="",
                 domain="",
@@ -16940,6 +17039,11 @@ class SupervertalerQt(QMainWindow):
         terms_table.setColumnWidth(4, 100)
         terms_table.setColumnWidth(5, 100)
         terms_table.setColumnWidth(6, 80)
+        # v1.10.62: extended selection so the Reverse Direction action
+        # can repair multiple legacy reversed entries at once.
+        terms_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        terms_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        terms_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         
         # Load terms
         def refresh_terms_table():
@@ -17008,9 +17112,154 @@ class SupervertalerQt(QMainWindow):
         add_layout.addWidget(add_btn)
         layout.addLayout(add_layout)
         
+        # v1.10.62: Reverse source/target on selected term(s).
+        # Repair action for the pre-v1.10.62 termbase-direction bug:
+        # entries written with project source/target swapped relative
+        # to the termbase's declared direction can be fixed in place
+        # here. Works on a single selected row or multiple rows at
+        # once. Mirrors the Trados v4.19.22 "Reverse source/target"
+        # right-click action that solved the same bug there.
+        def reverse_direction_on_selected():
+            from PyQt6.QtWidgets import QMessageBox as _QMessageBox
+            # Collect distinct selected rows. Items() returns
+            # QTableWidgetItem objects, possibly multiple per row;
+            # dedupe via a set of row indices.
+            selected_rows = sorted({
+                item.row() for item in terms_table.selectedItems()
+            })
+            if not selected_rows:
+                _QMessageBox.warning(
+                    dialog, "No selection",
+                    "Select one or more terms first, then use this action "
+                    "to swap their source ↔ target text + language tags."
+                )
+                return
+
+            # Collect the (term_id, source, target) tuples for confirmation.
+            entries_to_reverse = []
+            for row in selected_rows:
+                id_item = terms_table.item(row, 0)
+                if not id_item:
+                    continue
+                term_id = id_item.data(Qt.ItemDataRole.UserRole)
+                if not term_id:
+                    continue
+                source = terms_table.item(row, 0).text() if terms_table.item(row, 0) else ''
+                target = terms_table.item(row, 1).text() if terms_table.item(row, 1) else ''
+                entries_to_reverse.append((term_id, source, target))
+
+            if not entries_to_reverse:
+                return
+
+            # Confirmation dialog. Show the first few rows so the user
+            # can sanity-check what's about to flip.
+            preview_lines = []
+            for tid, s, t in entries_to_reverse[:5]:
+                preview_lines.append(f"  • '{s}' ↔ '{t}'")
+            preview = "\n".join(preview_lines)
+            extra = (f"\n  ... and {len(entries_to_reverse) - 5} more"
+                     if len(entries_to_reverse) > 5 else "")
+
+            reply = _QMessageBox.question(
+                dialog, "Reverse source/target",
+                f"Reverse source ↔ target on {len(entries_to_reverse)} "
+                f"term(s)?\n\n{preview}{extra}\n\n"
+                f"This swaps each entry's source_term, target_term, "
+                f"source_lang, target_lang, source_abbreviation, and "
+                f"target_abbreviation. It also flips each synonym's "
+                f"language tag (source ↔ target). The change is committed "
+                f"in a single transaction.\n\n"
+                f"Use this to fix terms that were saved with text in the "
+                f"wrong columns before the v1.10.62 termbase-direction fix.",
+                _QMessageBox.StandardButton.Yes | _QMessageBox.StandardButton.No,
+                _QMessageBox.StandardButton.No,
+            )
+            if reply != _QMessageBox.StandardButton.Yes:
+                return
+
+            cursor = self.db_manager.cursor
+            try:
+                cursor.execute("BEGIN")
+                for tid, _s, _t in entries_to_reverse:
+                    # Swap text + lang + abbreviation pairs in one row.
+                    cursor.execute(
+                        """
+                        UPDATE termbase_terms
+                        SET source_term = target_term,
+                            target_term = source_term,
+                            source_lang = target_lang,
+                            target_lang = source_lang,
+                            source_abbreviation = target_abbreviation,
+                            target_abbreviation = source_abbreviation
+                        WHERE id = ?
+                        """,
+                        (tid,),
+                    )
+                    # Flip every synonym's language: 'source' → 'target'
+                    # and vice versa. Done in two passes via a temporary
+                    # sentinel to avoid mid-update collisions.
+                    cursor.execute(
+                        "UPDATE termbase_synonyms SET language = '__tmp__' "
+                        "WHERE term_id = ? AND language = 'source'",
+                        (tid,),
+                    )
+                    cursor.execute(
+                        "UPDATE termbase_synonyms SET language = 'source' "
+                        "WHERE term_id = ? AND language = 'target'",
+                        (tid,),
+                    )
+                    cursor.execute(
+                        "UPDATE termbase_synonyms SET language = 'target' "
+                        "WHERE term_id = ? AND language = '__tmp__'",
+                        (tid,),
+                    )
+                self.db_manager.connection.commit()
+                self.log(f"🔄 Reversed direction on {len(entries_to_reverse)} term(s) in '{tb_name}'")
+            except Exception as e:
+                self.db_manager.connection.rollback()
+                _QMessageBox.critical(
+                    dialog, "Reverse failed",
+                    f"Could not reverse direction:\n\n{e}\n\n"
+                    f"No changes were committed (transaction rolled back).",
+                )
+                return
+
+            refresh_terms_table()
+            # Rebuild the in-memory index so TermLens immediately
+            # reflects the swap.
+            try:
+                with self.termbase_cache_lock:
+                    self.termbase_cache.clear()
+                self._build_termbase_index()
+            except Exception as e:
+                self.log(f"⚠️ Index rebuild after reverse failed: {e}")
+
+        # Right-click context menu on terms_table — same action, more
+        # discoverable for power users.
+        def show_terms_context_menu(pos):
+            from PyQt6.QtWidgets import QMenu as _QMenu
+            from PyQt6.QtGui import QAction as _QAction
+            menu = _QMenu(terms_table)
+            reverse_action = _QAction("🔄 Reverse source / target on selected", menu)
+            reverse_action.triggered.connect(reverse_direction_on_selected)
+            menu.addAction(reverse_action)
+            menu.exec(terms_table.viewport().mapToGlobal(pos))
+
+        terms_table.customContextMenuRequested.connect(show_terms_context_menu)
+
         # Action buttons
         action_layout = QHBoxLayout()
-        
+
+        # Reverse direction button (v1.10.62 termbase-direction repair).
+        reverse_dir_btn = QPushButton("🔄 Reverse Source/Target")
+        reverse_dir_btn.setToolTip(
+            "Swap source ↔ target on selected term(s). Use this to repair "
+            "terms that were saved in the wrong direction before the "
+            "v1.10.62 fix."
+        )
+        reverse_dir_btn.clicked.connect(reverse_direction_on_selected)
+        action_layout.addWidget(reverse_dir_btn)
+
         # Edit selected term button
         edit_term_btn = QPushButton("✏️ Edit Selected Term")
         def edit_selected_term():

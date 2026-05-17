@@ -2,7 +2,37 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.61 (May 17, 2026)
+**Current Version:** v1.10.62 (May 17, 2026)
+
+
+## v1.10.62 – May 17, 2026
+
+### Fixed (Termbase direction bug: terms added via Ctrl+Q, Ctrl+Alt+T, or Alt+Up now go into the correct columns regardless of project↔termbase direction)
+
+A user reported that terms quick-added during a Dutch→English translation were saving "reversed" into an English→Dutch termbase: the Dutch term ended up in the column the termbase declared as English, and TermLens never surfaced them in the editor. Investigation found this was the same class of bug that the Trados side hit pre-v4.19.22 (commit `cf8d70b` — "termbase direction overhaul") and fixed there. Since Workbench and Trados share the same `termbase_terms` table layout via the shared SQLite database, the same fix shape applies.
+
+**Bug.** Three add-term call sites in `Supervertaler.py` — `quick_add_term_pair_to_termbase` (Ctrl+Q), `add_term_pair_to_termbase` (Ctrl+Alt+T dialog), and the Alt+Up project-termbase quick-add — all passed the **project's** source/target text and lang codes straight to `TermbaseManager.add_term`, which does a raw INSERT with whatever it's given. No comparison against the destination termbase's *declared* direction (stored in `termbases.source_lang` / `termbases.target_lang`). When the two directions matched, no problem; when they were opposites (NL→EN project, EN→NL termbase), the Dutch text landed in the column the termbase declared as English, and the per-row lang codes pointed the wrong way.
+
+This was particularly invisible because the **read side** has always been direction-aware: `_build_termbase_index` reads each termbase's declared direction and swaps source/target on lookup when the termbase is reverse to the project. So the indexer "corrected" the already-wrong write by swapping it again — meaning TermLens then searched the Dutch segment for the English text and found nothing. The user's empirical observation ("terms don't show up in TermLens") was the downstream symptom of this double-swap.
+
+**Fix.** New `_orient_term_for_termbase(source_text, target_text, termbase)` helper that returns the four values (`source_term`, `target_term`, `source_lang_code`, `target_lang_code`) correctly oriented for the termbase's declared direction. Mirrors Trados's `TermbaseReader.InsertTermBatch` per-termbase swap logic. The decision is:
+ - **Termbase has no declared languages** → trust the caller; write project lang codes (harmless, populates the columns).
+ - **Termbase aligned with project** → return inputs as-is, normalised to ISO codes.
+ - **Termbase declares opposite direction to project** → swap source ↔ target text AND source ↔ target lang codes so the INSERT lands them in the columns the termbase actually expects. Log the swap so it's visible in the session log.
+ - **Unrelated language pair** → don't swap; just write project codes (avoids spurious flips for cross-language termbases).
+
+All three call sites now route through this helper per destination termbase, so a single Ctrl+Q can correctly populate a mix of forward and reverse termbases without corrupting any of them. (Trados's original v4.19.22 commit notes the exact same per-termbase requirement.) The Ctrl+Alt+T flow additionally flips synonym language tags (`source` ↔ `target`) when its orient swap fires, so source/target synonym lists from the dialog land in the columns the termbase expects.
+
+Re-uses normalisation logic already present in `_convert_language_to_code` (used by `_check_termbase_status` for the same direction-comparison), so "English" / "en" / "en-US" / "en-GB" all compare equal — matching the v4.18.39 Trados fix for the same-language-pair false-inversion case.
+
+**Repair UI for existing bad data.** Pre-v1.10.62 terms that were already written reversed need a one-time fix-up. Added:
+ - **"🔄 Reverse Source/Target"** button in the Termbase Editor's action bar.
+ - **Right-click "Reverse source / target on selected"** context menu on the terms table (extended selection mode is now on, so you can select multiple rows and reverse them all in one transaction).
+ - Confirmation dialog shows a preview of the first few rows about to flip.
+ - The transaction swaps `source_term`, `target_term`, `source_lang`, `target_lang`, `source_abbreviation`, `target_abbreviation` in the term row, and flips every linked synonym's `language` tag (`source` ↔ `target`) — done via a temporary `__tmp__` sentinel to avoid mid-update collisions. Single `BEGIN ... COMMIT`; rolls back on any error.
+ - After the swap, the in-memory termbase index is rebuilt so TermLens immediately reflects the change.
+
+Smoke tests at `.dev/test_termbase_direction_orient.py` — 9 scenarios all pass, covering: aligned + reverse in both directions, no-direction termbases, full-name vs ISO normalisation, unrelated language pairs, same-language locale pairs, and an end-to-end SQL exercise of the reverse-direction repair transaction (column swap + synonym language flip).
 
 
 ## v1.10.61 – May 17, 2026
