@@ -105,13 +105,26 @@ class Topics:
     # as a paid Assistant feature — see the trados/ai-assistant/
     # super-memory/ docs there.)
 
-    # Glossaries
-    GLOSSARY_BASICS     = "workbench/glossaries/basics/"
-    GLOSSARY_CREATING   = "workbench/glossaries/creating/"
-    GLOSSARY_IMPORTING  = "workbench/glossaries/importing/"
-    GLOSSARY_HIGHLIGHT  = "workbench/glossaries/highlighting/"
-    GLOSSARY_TERMLENS   = "workbench/glossaries/termlens/"
-    GLOSSARY_EXTRACTION = "workbench/glossaries/extraction/"
+    # Termbases — folder on disk renamed from glossaries → termbases
+    # in the help repo on 2026-05-18 (commit in Supervertaler-Help
+    # for the same date). Old /workbench/glossaries/* URLs still
+    # redirect via public/_redirects (301), so older Workbench
+    # versions whose HelpTopics still point at the old paths
+    # continue to work — but new help-link clicks land directly on
+    # the canonical /workbench/termbases/* URLs without a redirect
+    # hop.
+    #
+    # Constant names kept as GLOSSARY_* for now to avoid a
+    # mass-rename of every set_help_topic(…, HelpTopics.GLOSSARY_*)
+    # call site across the GUI. The constants are pure data; only
+    # their *values* (the URL slugs) need to change for the
+    # in-app Help button to land on the right page.
+    GLOSSARY_BASICS     = "workbench/termbases/basics/"
+    GLOSSARY_CREATING   = "workbench/termbases/creating/"
+    GLOSSARY_IMPORTING  = "workbench/termbases/importing/"
+    GLOSSARY_HIGHLIGHT  = "workbench/termbases/highlighting/"
+    GLOSSARY_TERMLENS   = "workbench/termbases/termlens/"
+    GLOSSARY_EXTRACTION = "workbench/termbases/extraction/"
 
     # Import & Export (folder is workbench/import-export/ on disk)
     IMPORT_FORMATS      = "workbench/import-export/formats/"
@@ -124,7 +137,7 @@ class Topics:
     # Superlookup
     SUPERLOOKUP         = "workbench/superlookup/overview/"
     SUPERLOOKUP_TM      = "workbench/superlookup/tm-search/"
-    SUPERLOOKUP_GLOSS   = "workbench/superlookup/glossary-search/"
+    SUPERLOOKUP_GLOSS   = "workbench/superlookup/termbase-search/"
     SUPERLOOKUP_MT      = "workbench/superlookup/mt/"
     SUPERLOOKUP_WEB     = "workbench/superlookup/web-resources/"
 

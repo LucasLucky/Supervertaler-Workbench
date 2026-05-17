@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.75 (May 17, 2026)
+**Current Version:** v1.10.76 (May 18, 2026)
+
+
+## v1.10.76 – May 18, 2026
+
+### Changed (HelpTopics URL slugs repointed at the new /workbench/termbases/ paths after the help-site folder rename)
+
+The Supervertaler-Help repo renamed `workbench/glossaries/` → `workbench/termbases/` and `workbench/superlookup/glossary-search.md` → `termbase-search.md` so the live help URLs match the in-app terminology ("termbase" everywhere in the Workbench UI since v1.10.62). The 7 `HelpTopics` URL slugs in `modules/help_system.py` that targeted the old paths are repointed here.
+
+ - `GLOSSARY_BASICS`     → `workbench/termbases/basics/`
+ - `GLOSSARY_CREATING`   → `workbench/termbases/creating/`
+ - `GLOSSARY_IMPORTING`  → `workbench/termbases/importing/`
+ - `GLOSSARY_HIGHLIGHT`  → `workbench/termbases/highlighting/`
+ - `GLOSSARY_TERMLENS`   → `workbench/termbases/termlens/`
+ - `GLOSSARY_EXTRACTION` → `workbench/termbases/extraction/`
+ - `SUPERLOOKUP_GLOSS`   → `workbench/superlookup/termbase-search/`
+
+Constant *names* kept as `GLOSSARY_*` for now to avoid a mass-rename of every `set_help_topic(…, HelpTopics.GLOSSARY_*)` call site across the GUI (dozens of references). The constants are pure data; only their *values* (the URL slugs) need to change for the in-app Help button to land on the right page. The constant names can be renamed in a follow-up.
+
+**Older installed Workbench versions are unaffected** — the help repo's `public/_redirects` adds Cloudflare Pages 301 redirects from `/workbench/glossaries/*` → `/workbench/termbases/:splat` and `/workbench/superlookup/glossary-search/` → `/workbench/superlookup/termbase-search/`. So any in-app help link from a pre-v1.10.76 install still lands on the right page (just via a redirect hop).
 
 
 ## v1.10.75 – May 17, 2026
