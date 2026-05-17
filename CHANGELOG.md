@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.67 (May 17, 2026)
+**Current Version:** v1.10.68 (May 17, 2026)
+
+
+## v1.10.68 – May 17, 2026
+
+### Added (🔄 refresh button on the TermLens widget — rebuilds the in-memory termbase index from disk, for after cross-process edits via the Supervertaler for Trados plugin)
+
+When the same SQLite database is open in both Workbench and the Supervertaler for Trados plugin, and the user edits terms in one while the other is running, the receiving side's display goes stale. Workbench's TermLens is driven by an **in-memory** `termbase_index` (built once on project load by `_build_termbase_index` — replaces thousands of per-word DB queries with a single bulk load, see the v1.9.182 performance optimisation), so when the Trados plugin deletes a term, Workbench's TermLens keeps showing the pill until the index is rebuilt. Pressing F5 or re-clicking the segment doesn't help — those re-run the *search* against the (stale) index; they don't rebuild the index itself.
+
+This was the root cause behind a user report of "TermLens shows deleted terms" and "right-click → Edit opens an empty dialog" (the latter happening because the dialog receives a stale `term_id` whose backing row was deleted in Trados — v1.10.67 surfaces this case with a clear warning, but doesn't fix the underlying staleness).
+
+**The button.** A small 🔄 icon button next to the existing `A-` / `A+` font zoomer at the top-right of the TermLens widget. Clicking it:
+ - Emits a new `refresh_requested` signal on `TermLensWidget`.
+ - Host (`Supervertaler.py._on_termlens_refresh_requested`) handles it by calling `_post_termbase_delete_refresh()` — the same helper every delete path runs through. Drops the per-segment match cache, rebuilds the in-memory `termbase_index` from the database, refreshes the current segment's match display, refreshes the Termbases tab.
+ - Brief visual feedback: button flips to `✓` and disables for 500ms; info label shows "Refreshing termbases from disk…" for the duration of the rebuild. On typical termbase sizes the rebuild is sub-second, but the feedback makes the click register even when work is instant.
+ - Tooltip: *"Refresh termbases from disk — rebuilds the in-memory termbase index from the database. Use this after editing terms in another tool (e.g. the Supervertaler for Trados plugin) — without it, TermLens may keep showing deleted entries or miss newly-added ones."*
+
+Both TermLens instances (the bottom-of-window tab and the right-side Match panel embed) share the same `TermLensWidget` class, so both get the button automatically. Both hosts wire `refresh_requested` → same handler. Cheap (sub-second) enough that users can hit it whenever they suspect drift; no harm if pressed unnecessarily.
+
+A future iteration could auto-detect the staleness via SQLite hooks or filesystem mtime watching and rebuild without user input, but the explicit button is the cleanest first step — visible affordance, predictable cost, no chance of firing during a write the user is in the middle of.
 
 
 ## v1.10.67 – May 17, 2026

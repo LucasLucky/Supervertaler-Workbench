@@ -630,6 +630,7 @@ class TermLensWidget(QWidget):
     edit_entry_requested = pyqtSignal(int, int)  # term_id, termbase_id
     delete_entry_requested = pyqtSignal(int, int, str, str)  # term_id, termbase_id, source, target
     font_size_changed = pyqtSignal(int)  # Emits new font size (points) when user clicks A-/A+
+    refresh_requested = pyqtSignal()  # v1.10.68: user clicked the refresh button (e.g. after external DB edits via the Trados plugin)
 
     # Bounds for the inline A-/A+ font zoomer. Match the Settings spin box range
     # (6-16 pt) plus a little extra headroom on both sides.
@@ -704,6 +705,45 @@ class TermLensWidget(QWidget):
         zoom_row.setContentsMargins(0, 0, 0, 0)
         zoom_row.setSpacing(2)
         zoom_row.addStretch()
+
+        # ── Refresh button (v1.10.68) ──
+        # Workbench's TermLens display is driven by an in-memory
+        # ``termbase_index`` built once on project load. When the same
+        # SQLite database is modified by another process — most often
+        # the Supervertaler for Trados plugin deleting / adding terms
+        # while Workbench is also open — the index goes stale.
+        # Symptoms: deleted terms keep appearing as TermLens pills,
+        # right-click → Edit opens an empty dialog (stale term_id),
+        # newly-added terms don't show up. F5 / re-clicking the
+        # segment doesn't help because that just re-searches the
+        # stale index; the index itself needs a full rebuild.
+        #
+        # This button gives the user a one-click way to drop the
+        # in-memory state and reread from the database. Emits a
+        # ``refresh_requested`` signal — the host (Supervertaler.py)
+        # wires it up to ``_post_termbase_delete_refresh`` (cache
+        # clear + index rebuild + TermLens refresh for current
+        # segment). Cheap (<1 second on typical termbase sizes), so
+        # users can hit it whenever they suspect drift.
+        self._btn_refresh = QPushButton("🔄")
+        refresh_font = QFont("Segoe UI", 9)
+        self._btn_refresh.setFont(refresh_font)
+        self._btn_refresh.setFixedSize(22, 20)
+        self._btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_refresh.setToolTip(
+            "Refresh termbases from disk\n"
+            "\n"
+            "Rebuilds the in-memory termbase index from the database.\n"
+            "Use this after editing terms in another tool (e.g. the\n"
+            "Supervertaler for Trados plugin) — without it, TermLens\n"
+            "may keep showing deleted entries or miss newly-added ones."
+        )
+        self._btn_refresh.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_refresh.clicked.connect(self._on_refresh_clicked)
+        zoom_row.addWidget(self._btn_refresh)
+
+        # Thin separator between refresh and font zoomer.
+        zoom_row.addSpacing(6)
 
         self._btn_font_down = QPushButton("A")
         font_down_font = QFont("Segoe UI", 7)
@@ -812,6 +852,45 @@ class TermLensWidget(QWidget):
                     self._status_hint if hasattr(self, '_status_hint') else None
                 )
     
+    def _on_refresh_clicked(self):
+        """User clicked the 🔄 refresh button.
+
+        Just emits ``refresh_requested`` and gives a brief visual cue
+        (status text + temporary button-disabled state) so the user
+        sees the action registered. The host wires the signal to
+        ``_post_termbase_delete_refresh`` which does the actual work
+        (cache clear + ``_build_termbase_index`` + segment re-search).
+        """
+        try:
+            # Tiny UX: flip the button to a check + disable for half a
+            # second so it's obvious the click registered, even though
+            # the underlying rebuild is usually instant.
+            self._btn_refresh.setEnabled(False)
+            self._btn_refresh.setText("✓")
+            # Surface the request in the info label too so users on
+            # large termbases (where the rebuild takes a beat) get
+            # immediate confirmation rather than wondering if the
+            # button did anything.
+            try:
+                if hasattr(self, 'info_label') and self.info_label is not None:
+                    self.info_label.setText("Refreshing termbases from disk…")
+            except Exception:
+                pass
+
+            self.refresh_requested.emit()
+            self.log("🔄 TermLens: Refresh requested by user")
+        finally:
+            # Re-enable after a short delay so the visual cue is
+            # noticeable but doesn't block rapid re-clicks.
+            from PyQt6.QtCore import QTimer
+            def _restore():
+                try:
+                    self._btn_refresh.setEnabled(True)
+                    self._btn_refresh.setText("🔄")
+                except Exception:
+                    pass
+            QTimer.singleShot(500, _restore)
+
     def _change_font_size(self, delta: int):
         """Bump the TermLens font size by ±delta points (clamped) and refresh.
 

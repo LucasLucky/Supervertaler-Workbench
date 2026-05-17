@@ -24836,6 +24836,11 @@ class SupervertalerQt(QMainWindow):
         self.termlens_widget.edit_entry_requested.connect(self._on_termlens_edit_entry)
         self.termlens_widget.delete_entry_requested.connect(self._on_termlens_delete_entry)
         self.termlens_widget.font_size_changed.connect(self._on_termlens_font_size_changed)
+        # v1.10.68: refresh button rebuilds the in-memory termbase
+        # index (covers cross-process edits — e.g. terms deleted /
+        # added via the Supervertaler for Trados plugin while
+        # Workbench is open against the same shared SQLite database).
+        self.termlens_widget.refresh_requested.connect(self._on_termlens_refresh_requested)
 
         # Apply saved termlens font settings
         font_settings = self.load_general_settings()
@@ -36615,6 +36620,10 @@ class SupervertalerQt(QMainWindow):
         self.termlens_widget_match.term_insert_requested.connect(self.insert_termlens_text)
         self.termlens_widget_match.edit_entry_requested.connect(self._on_termlens_edit_entry)
         self.termlens_widget_match.delete_entry_requested.connect(self._on_termlens_delete_entry)
+        # v1.10.68: refresh button on the Match-panel TermLens too —
+        # both instances share the same backing index, so the handler
+        # is the same.
+        self.termlens_widget_match.refresh_requested.connect(self._on_termlens_refresh_requested)
         self.termlens_widget_match.font_size_changed.connect(self._on_termlens_font_size_changed)
         # Apply font settings
         font_settings = self.load_general_settings()
@@ -50048,6 +50057,28 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"✗ Error editing termbase entry: {e}")
     
+    def _on_termlens_refresh_requested(self):
+        """Handle the TermLens refresh button (v1.10.68).
+
+        Reuses ``_post_termbase_delete_refresh`` — the same helper
+        every delete path runs through — because the work needed is
+        identical: drop the in-memory termbase cache, rebuild the
+        in-memory ``termbase_index`` from the database, refresh the
+        current segment's match display, refresh the Termbases tab.
+
+        This is what users press after editing terms in another
+        process (most often the Supervertaler for Trados plugin
+        sharing the same SQLite database). Without it, the TermLens
+        index reflects whatever state the DB was in when the project
+        was loaded, regardless of subsequent cross-process writes.
+        """
+        try:
+            self.log("🔄 TermLens refresh: rebuilding index from disk…")
+            self._post_termbase_delete_refresh()
+            self.log("✓ TermLens refresh: termbase index rebuilt")
+        except Exception as e:
+            self.log(f"✗ TermLens refresh failed: {e}")
+
     def _on_termlens_delete_entry(self, term_id: int, termbase_id: int, source_term: str, target_term: str):
         """Handle delete glossary entry request from TermLens"""
         from PyQt6.QtWidgets import QMessageBox
