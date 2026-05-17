@@ -6072,7 +6072,11 @@ class TMSearchWorker(QThread):
                     'similarity': 1.0,
                     'match_pct': 100,
                     'tm_name': self.tm_metadata.get(exact_match['tm_id'], {}).get('name', exact_match['tm_id']),
-                    'tm_id': exact_match['tm_id']
+                    'tm_id': exact_match['tm_id'],
+                    # v1.10.51: preserve reverse-match flag through the worker
+                    # thread so _on_tm_search_results can put it on the
+                    # TranslationMatch's metadata for the renderer to read.
+                    'reverse_match': exact_match.get('reverse_match', False),
                 }]
                 if not self._cancelled:
                     self.results_ready.emit(self.segment_id, results)
@@ -6101,7 +6105,8 @@ class TMSearchWorker(QThread):
                     'similarity': match.get('similarity', 0.85),
                     'match_pct': match.get('match_pct', 85),
                     'tm_name': self.tm_metadata.get(match['tm_id'], {}).get('name', match['tm_id']),
-                    'tm_id': match['tm_id']
+                    'tm_id': match['tm_id'],
+                    'reverse_match': match.get('reverse_match', False),
                 })
 
             if not self._cancelled:
@@ -38867,12 +38872,17 @@ class SupervertalerQt(QMainWindow):
                         for tm in cached_matches.get("TM", []):
                             tm_name = tm.metadata.get('tm_name', 'TM') if tm.metadata else 'TM'
                             tm_id = tm.metadata.get('tm_id', '') if tm.metadata else ''
+                            # v1.10.51: read reverse_match from the
+                            # TranslationMatch's metadata so the chip
+                            # survives the cache-hit re-render path too.
+                            rev = bool(tm.metadata.get('reverse_match', False)) if tm.metadata else False
                             tm_matches_for_panel.append({
                                 'source': tm.compare_source or tm.source,
                                 'target': tm.target,
                                 'tm_name': tm_name,
                                 'tm_id': tm_id,
-                                'match_pct': int(tm.relevance)
+                                'match_pct': int(tm.relevance),
+                                'reverse_match': rev,
                             })
                         self.set_compare_panel_matches(
                             segment_id,
@@ -40793,7 +40803,15 @@ class SupervertalerQt(QMainWindow):
                                             'target': row['source_text'],
                                             'match_pct': 95,  # High relevance for reverse exact match
                                             'tm_name': f"{row['tm_id'].replace('_', ' ').title()} (Reverse)",
-                                            'tm_id': row['tm_id']
+                                            'tm_id': row['tm_id'],
+                                            # v1.10.51: explicit flag in addition to the legacy
+                                            # "(Reverse)" name suffix, so the Match Panel chip
+                                            # works for this older code path too. This whole
+                                            # block is now functionally redundant with the
+                                            # bidirectional support in db.get_exact_match /
+                                            # get_exact_matches_batch, but is left in place
+                                            # until the call site is refactored.
+                                            'reverse_match': True,
                                         })
                                     
                                     self.log(f"🟢 TM SEARCH: Found {len(reverse_matches)} reverse matches")
@@ -53057,6 +53075,11 @@ class SupervertalerQt(QMainWindow):
             # Convert to TranslationMatch objects
             tm_match_objects = []
             for match in all_tm_matches:
+                # v1.10.51: reverse_match flows through from the db layer's
+                # bidirectional fallback. Older code here tried to derive
+                # direction from a "Reverse" substring in the TM name, but
+                # that heuristic was unreliable; the explicit flag is correct.
+                reverse_match = bool(match.get('reverse_match', False))
                 match_obj = TranslationMatch(
                     source=match.get('source', ''),
                     target=match.get('target', ''),
@@ -53066,7 +53089,10 @@ class SupervertalerQt(QMainWindow):
                         'tm_name': match.get('tm_name', ''),
                         'tm_id': match.get('tm_id', ''),
                         'timestamp': match.get('created_at', ''),
-                        'direction': 'reverse' if 'Reverse' in match.get('tm_name', '') else 'primary'
+                        'direction': 'reverse' if reverse_match else 'primary',
+                        # Explicit flag for the Match Panel chip renderer
+                        # (md.get('reverse_match', False) in the renderer).
+                        'reverse_match': reverse_match,
                     },
                     match_type='TM',
                     compare_source=match.get('source', ''),
@@ -53104,12 +53130,19 @@ class SupervertalerQt(QMainWindow):
                 for tm in tm_match_objects:
                     tm_name = tm.metadata.get('tm_name', 'TM') if tm.metadata else 'TM'
                     tm_id = tm.metadata.get('tm_id', '') if tm.metadata else ''
+                    # v1.10.51: surface the bidirectional reverse-match flag
+                    # so the Match Panel's metadata-line renderer can show
+                    # its "⇄ reversed" chip. Previously the panel-bridge dict
+                    # was built without this field, so the chip never showed
+                    # even after the lower layers were patched.
+                    rev = bool(tm.metadata.get('reverse_match', False)) if tm.metadata else False
                     tm_matches_for_panel.append({
                         'source': tm.compare_source or tm.source,
                         'target': tm.target,
                         'tm_name': tm_name,
                         'tm_id': tm_id,
-                        'match_pct': int(tm.relevance)
+                        'match_pct': int(tm.relevance),
+                        'reverse_match': rev,
                     })
                 self._compare_panel_tm_matches = tm_matches_for_panel
                 self.set_compare_panel_matches(

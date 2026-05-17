@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.50 (May 17, 2026)
+**Current Version:** v1.10.51 (May 17, 2026)
+
+
+## v1.10.51 – May 17, 2026
+
+### Fixed (the "⇄ reversed" chip from v1.10.50 didn't actually appear because four upstream layers were stripping the flag before it reached the renderer)
+
+- After v1.10.50 shipped, a real-world test showed that batch-translating against a reversed-direction TM brought back matches correctly (the v1.10.49 bidirectional fix works) but the "⇄ reversed" chip from v1.10.50 never appeared in the Match Panel. The data layer was setting `reverse_match: True`, but four separate intermediate code paths were stripping the flag before it reached the renderer that drew the chip.
+- The Match Panel's "fresh single-segment lookup" path runs through a background `TMSearchWorker` (a `QThread` that owns its own SQLite connection), then through `_on_tm_search_results` (which converts dicts into `TranslationMatch` objects), then through a panel-bridge dict construction (which converts the `TranslationMatch` objects back into dicts for the panel). Each of those three steps reconstructed the dict from scratch and only copied a small allowlist of fields – `tm_name`, `tm_id`, `match_pct`, `source`, `target` – dropping everything else including `reverse_match`. The "cache hit" path (line ~38875) does its own panel-bridge reconstruction and was also stripping the flag.
+- Additionally, the two convenience wrappers `TranslationMemory.search_all` and `DatabaseManager.search_all` both rebuilt result dicts to a fixed shape that didn't include the flag. So _any_ caller using these wrappers (not just the Match Panel path) had no way to know a match came from a reversed-direction lookup.
+- All four strippers are now patched to forward `reverse_match` along:
+  - `TMSearchWorker.run()` (Supervertaler.py ~6069 + ~6098): exact + fuzzy result-dict construction.
+  - `_on_tm_search_results` (~53060): puts `reverse_match` on the `TranslationMatch.metadata` dict (alongside the existing `direction: 'reverse' | 'primary'` field, which has been rewired to use the explicit flag instead of a fragile `"Reverse" in tm_name` substring heuristic).
+  - The panel-bridge dict at the same handler (~53128) and the cache-hit re-render at ~38875: both now read `tm.metadata.get('reverse_match', False)` and include it in the panel dict.
+  - `TranslationMemory.search_all` (modules/translation_memory.py ~227, ~256): exact + fuzzy result formatter.
+  - `DatabaseManager.search_all` (modules/database_manager.py ~1780, ~1798): exact + fuzzy result formatter.
+- One more side-effect: there's a legacy bidirectional-search block at Supervertaler.py ~40790 that pre-dates the db-layer bidirectional support. It runs its own custom SQL with a degraded score (95% instead of 100%) and tags results with a `"(Reverse)"` suffix on the TM name. The block is functionally redundant with the new db-layer support but still wired, so it now also emits `reverse_match: True` for chip consistency. A separate cleanup commit can drop the block once we're confident nothing depends on the degraded-score behaviour.
+- End-to-end smoke path that should now work: user has an `en→nl` TM attached to an `nl→en` project → batch translate or single-segment navigation → TM Target metadata label reads `tm_name (100%) ⇄ reversed` instead of just `tm_name (100%)` → hovering the label surfaces the explanatory tooltip.
 
 
 ## v1.10.50 – May 17, 2026

@@ -1782,17 +1782,19 @@ class DatabaseManager:
                 'target': exact['target_text'],
                 'match_pct': 100,
                 'tm_name': exact['tm_id'].replace('_', ' ').title(),
-                'tm_id': exact['tm_id']
+                'tm_id': exact['tm_id'],
+                # v1.10.51: preserve reverse-match flag for UI badge propagation
+                'reverse_match': exact.get('reverse_match', False),
             }]
-        
+
         # No exact match, try fuzzy
         fuzzy_matches = self.search_fuzzy_matches(
-            source, 
+            source,
             tm_ids=tm_ids,
             threshold=threshold,
             max_results=max_results
         )
-        
+
         results = []
         for match in fuzzy_matches:
             results.append({
@@ -1800,9 +1802,10 @@ class DatabaseManager:
                 'target': match['target_text'],
                 'match_pct': match['match_pct'],
                 'tm_name': match['tm_id'].replace('_', ' ').title(),
-                'tm_id': match['tm_id']
+                'tm_id': match['tm_id'],
+                'reverse_match': match.get('reverse_match', False),
             })
-        
+
         return results
     
     def get_tm_entries(self, tm_id: str, limit: int = None) -> List[Dict]:

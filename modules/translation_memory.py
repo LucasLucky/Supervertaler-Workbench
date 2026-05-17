@@ -230,9 +230,14 @@ class TMDatabase:
                 'similarity': 1.0,
                 'match_pct': 100,
                 'tm_name': self.tm_metadata.get(exact_match['tm_id'], {}).get('name', exact_match['tm_id']),
-                'tm_id': exact_match['tm_id']
+                'tm_id': exact_match['tm_id'],
+                # v1.10.51: preserve the reverse-match flag so the Match Panel
+                # can show its "⇄ reversed" chip on a fresh single-segment
+                # lookup (previously dropped here, so the chip only ever showed
+                # for the cached _batch_tm_match path).
+                'reverse_match': exact_match.get('reverse_match', False),
             }]
-        
+
         # Try fuzzy matches
         fuzzy_matches = self.db.search_fuzzy_matches(
             source=source,
@@ -252,9 +257,10 @@ class TMDatabase:
                 'similarity': match.get('similarity', 0.85),
                 'match_pct': match.get('match_pct', 85),
                 'tm_name': self.tm_metadata.get(match['tm_id'], {}).get('name', match['tm_id']),
-                'tm_id': match['tm_id']
+                'tm_id': match['tm_id'],
+                'reverse_match': match.get('reverse_match', False),
             })
-        
+
         return formatted_matches
 
     def get_exact_matches_batch(self, sources: List[str], tm_ids: List[str] = None) -> Dict[str, Dict]:
