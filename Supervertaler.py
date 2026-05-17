@@ -1351,6 +1351,61 @@ def strip_invisible_markers(text: str) -> str:
 
 
 @dataclass
+class Comment:
+    """A user-authored comment attached to a segment.
+
+    v1.10.57 introduced this as part of the move from single-string
+    per-segment notes (``segment.notes``) to a list of structured
+    comments (``segment.comments``). The structured form supports:
+
+    * Multiple comments per segment.
+    * Each comment carrying its own author + timestamp.
+    * Optional anchoring to a specific character range within the
+      segment's source or target text. When ``anchor_field`` is set
+      to ``"source"`` or ``"target"`` and ``anchor_end > anchor_start``,
+      the comment is anchored to that character range (Python-slice
+      semantics: start inclusive, end exclusive). DOCX export uses
+      this to produce Word comments that highlight only the
+      referenced text, the same way Trados and memoQ do it. When
+      ``anchor_field`` is empty, the comment is segment-level
+      (anchors to the whole paragraph in export).
+
+    Backward-compat: old ``.svproj`` files store user notes as a
+    single string in ``segment.notes``. ``Segment.from_dict`` migrates
+    those to a single segment-level Comment with the legacy text.
+    """
+    id: str = ""             # UUID hex; auto-assigned in __post_init__ if blank
+    text: str = ""           # Comment body
+    author: str = ""         # Author name (translator's name, "AI", etc.)
+    created: str = ""        # ISO timestamp; auto-set in __post_init__ if blank
+    anchor_field: str = ""   # "source", "target", or "" (segment-level)
+    anchor_start: int = 0    # Character offset (inclusive)
+    anchor_end: int = 0      # Character offset (exclusive)
+
+    def __post_init__(self):
+        if not self.id:
+            import uuid as _uuid
+            self.id = _uuid.uuid4().hex
+        if not self.created:
+            self.created = datetime.now().isoformat()
+
+    @property
+    def is_anchored(self) -> bool:
+        """True iff this comment is anchored to a specific text range."""
+        return bool(self.anchor_field) and self.anchor_end > self.anchor_start
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Comment':
+        """Build a Comment from a dict, dropping unknown keys."""
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+
+
+@dataclass
 class Segment:
     """Translation segment (matches tkinter version format)"""
     id: int
@@ -1358,7 +1413,11 @@ class Segment:
     target: str = ""
     status: str = DEFAULT_STATUS.key
     type: str = "para"  # para, heading, list_item, table_cell
-    notes: str = ""  # Segment note (user-authored)
+    notes: str = ""  # DEPRECATED: legacy single-string note. New code should use comments[]
+                     # instead. Kept for backward-compat with .svproj files (and for code
+                     # paths not yet migrated). Kept in sync with comments[] by
+                     # _sync_notes_from_comments() and the segment-helper methods below.
+    comments: List['Comment'] = field(default_factory=list)  # v1.10.57: structured comments
     proofreading_notes: Dict[str, str] = field(default_factory=dict)  # LLM model name → proofreading issue text
     match_percent: Optional[int] = None  # memoQ match score if provided
     memoQ_status: str = ""  # Raw memoQ status text
@@ -1382,16 +1441,110 @@ class Segment:
     okapi_segment_index: int = -1  # Segment index within Okapi text unit (-1 = not from Okapi)
 
     def __post_init__(self):
-        """Initialize timestamps if not provided"""
+        """Initialize timestamps and reconcile comments[] ↔ notes."""
         if not self.created_at:
             self.created_at = datetime.now().isoformat()
         if not self.modified_at:
             self.modified_at = datetime.now().isoformat()
-    
+        # v1.10.57: bring comments[] and notes into a consistent state.
+        # - If we have notes but no comments → migrate: create one
+        #   segment-level Comment from the notes string.
+        # - If we have comments but no notes → derive notes for any
+        #   legacy code path that still reads segment.notes directly.
+        # - If we have both: trust comments[] (it's the new source of
+        #   truth); regenerate notes from it so the two agree.
+        if self.notes and not self.comments:
+            self.comments = [Comment(
+                text=self.notes,
+                author='',  # Unknown for migrated legacy notes
+                created=self.modified_at,
+                anchor_field='',
+                anchor_start=0,
+                anchor_end=0,
+            )]
+        elif self.comments:
+            self.notes = self._joined_comment_text()
+
+    # ── Comment helpers (v1.10.57) ──
+    def _joined_comment_text(self) -> str:
+        """Return the joined text of all comments (used to keep
+        legacy segment.notes in sync with the new comments[] list)."""
+        return '\n\n'.join(c.text for c in self.comments if c.text)
+
+    def add_comment(self, text: str, author: str = '',
+                    anchor_field: str = '', anchor_start: int = 0,
+                    anchor_end: int = 0) -> 'Comment':
+        """Append a new Comment, sync legacy notes, return the Comment.
+
+        Use this instead of mutating ``segment.comments`` directly so
+        that the legacy ``segment.notes`` mirror stays consistent for
+        any code path that still reads it (memoQ bilingual exports,
+        tooltips on the grid status column, the all-comments list
+        widget, etc.).
+        """
+        comment = Comment(
+            text=text,
+            author=author,
+            anchor_field=anchor_field,
+            anchor_start=anchor_start,
+            anchor_end=anchor_end,
+        )
+        self.comments.append(comment)
+        self.notes = self._joined_comment_text()
+        return comment
+
+    def update_comment(self, comment_id: str, text: str) -> bool:
+        """Update an existing comment's text. Returns True if found."""
+        for c in self.comments:
+            if c.id == comment_id:
+                c.text = text
+                self.notes = self._joined_comment_text()
+                return True
+        return False
+
+    def remove_comment(self, comment_id: str) -> bool:
+        """Remove a comment by id. Returns True if found."""
+        before = len(self.comments)
+        self.comments = [c for c in self.comments if c.id != comment_id]
+        if len(self.comments) < before:
+            self.notes = self._joined_comment_text()
+            return True
+        return False
+
+    def get_comment(self, comment_id: str) -> Optional['Comment']:
+        for c in self.comments:
+            if c.id == comment_id:
+                return c
+        return None
+
+    def replace_all_comments_with_text(self, text: str, author: str = '') -> None:
+        """Legacy bridge: replace the entire comments list with a single
+        segment-level Comment whose text is ``text``. Empty text leaves
+        the list empty. Used by the pre-v1.10.57 single-string editor
+        flow (``_on_bottom_notes_changed``) which writes to segment.notes
+        as if it were one string."""
+        if text and text.strip():
+            # Preserve author/anchor from the previous single comment when
+            # possible — a no-op edit shouldn't churn the metadata.
+            if (len(self.comments) == 1
+                    and not self.comments[0].is_anchored):
+                self.comments[0].text = text
+            else:
+                self.comments = [Comment(
+                    text=text,
+                    author=author,
+                    anchor_field='',
+                    anchor_start=0,
+                    anchor_end=0,
+                )]
+        else:
+            self.comments = []
+        self.notes = self._joined_comment_text()
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Segment':
         """Create Segment from dictionary, ignoring unknown fields"""
@@ -1421,6 +1574,15 @@ class Segment:
             # Store proofreading text under "legacy" key (original LLM unknown)
             if proofread_text:
                 filtered_data['proofreading_notes'] = {"legacy": proofread_text}
+        # v1.10.57: deserialize nested Comment dicts into Comment objects.
+        # asdict() on save produces plain dicts; this is the corresponding
+        # inverse on load.
+        raw_comments = filtered_data.get('comments')
+        if raw_comments:
+            filtered_data['comments'] = [
+                Comment.from_dict(c) if isinstance(c, dict) else c
+                for c in raw_comments
+            ]
         return cls(**filtered_data)
 
 
@@ -46398,7 +46560,16 @@ class SupervertalerQt(QMainWindow):
         for seg in self.current_project.segments:
             if seg.id == segment_id:
                 new_notes = self.bottom_notes_edit.toPlainText()
-                seg.notes = new_notes
+                # v1.10.57: route the assignment through the legacy
+                # bridge helper so segment.comments stays in sync with
+                # the legacy segment.notes single-string field. The
+                # bridge preserves the existing comment's id when the
+                # text is edited in place (no churn), or replaces the
+                # comments list with a single new Comment otherwise.
+                seg.replace_all_comments_with_text(
+                    new_notes,
+                    author=self.get_translator_name() if hasattr(self, 'get_translator_name') else '',
+                )
                 self.project_modified = True
                 # Sync with Translation Results panel notes
                 if hasattr(self, 'translation_results_panel') and self.translation_results_panel:

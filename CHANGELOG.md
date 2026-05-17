@@ -2,7 +2,33 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.56 (May 17, 2026)
+**Current Version:** v1.10.57 (May 17, 2026)
+
+
+## v1.10.57 – May 17, 2026
+
+### Added (Foundational data model for multiple range-anchored comments per segment)
+
+This is the first commit in the multi-phase work to bring Workbench up to feature parity with Trados / memoQ on comment anchoring (the ability to select a few words in a segment and attach a comment to that specific range, which renders in Word export as a yellow comment bubble anchored to those exact words rather than to the whole paragraph). Phase A is the foundation — data model + migration only, no visible UI changes.
+
+- New `Comment` dataclass with fields: `id` (auto-uuid), `text`, `author`, `created` (auto-ISO-timestamp), `anchor_field` (`"source"`, `"target"`, or `""` for segment-level), `anchor_start`, `anchor_end` (character offsets, Python-slice semantics — start inclusive, end exclusive). Property `is_anchored` returns True iff `anchor_field` is set and `anchor_end > anchor_start`.
+- `Segment` gains a `comments: List[Comment]` field alongside the existing `notes: str`. The notes field is now considered the *legacy single-string mirror* of comments[]; comments[] is the authoritative source going forward. The two are kept in sync automatically: `__post_init__` migrates old notes-only segments to one Comment, and regenerates notes from comments on every load.
+- Legacy `.svproj` migration: any segment whose project file has `notes` but no `comments` field gets migrated on load to a single segment-level Comment carrying the original notes text. The legacy `⚠️ PROOFREAD:` migration from earlier versions still runs before this; cleaned-up user notes after that step land in the migrated Comment.
+- Five new helper methods on `Segment`:
+  - `add_comment(text, author='', anchor_field='', anchor_start=0, anchor_end=0)` → returns the new Comment, keeps notes in sync.
+  - `update_comment(comment_id, text)` → True if found.
+  - `remove_comment(comment_id)` → True if removed.
+  - `get_comment(comment_id)` → Comment or None.
+  - `replace_all_comments_with_text(text, author='')` → the legacy bridge used by `_on_bottom_notes_changed` (the existing single-string editor). Preserves an existing comment's id when editing in place (no churn on metadata); replaces the list with a single new Comment otherwise; clears the list if text is empty.
+- `_on_bottom_notes_changed` (the editor's textChanged handler) now routes through `replace_all_comments_with_text` instead of writing directly to `seg.notes`, so a comment edited through the legacy editor keeps the same id and the comments[] list stays consistent.
+- Serialisation: `to_dict` works unchanged (`asdict` recurses into nested dataclasses). `from_dict` rehydrates the list of dicts back into `Comment` objects via `Comment.from_dict`.
+- Smoke tests at `.dev/test_comment_dataclass.py` exercise nine scenarios (new segment, legacy migration, add/update/remove/get, in-place edit preserves id, multi → one collapse, empty-string clear, round-trip, PROOFREAD migration unaffected). All pass.
+
+Coming in subsequent commits (same version family, separate commits for git readability):
+ - **Phase B**: Editor selection capture — Ctrl+Shift+M creates a new Comment anchored to the currently selected text, via a small dialog. (Ctrl+M was the natural shortcut but it's taken by QuickTrans; Ctrl+Shift+M is free and reads as "specialised M action.")
+ - **Phase C**: Visual indicator — anchored text gets a coloured underline in the editor cells so you can see at a glance where comments are attached.
+ - **Phase D**: All-comments list rebuilt for multiple comments per segment, with anchored-snippet display in each entry.
+ - **Phase E**: DOCX export — Word comment anchors to the specific character range (run-splitting if needed) instead of the whole paragraph. This is the visible end-user payoff.
 
 
 ## v1.10.56 – May 17, 2026
