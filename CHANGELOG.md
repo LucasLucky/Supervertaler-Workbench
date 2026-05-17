@@ -2,7 +2,28 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.63 (May 17, 2026)
+**Current Version:** v1.10.64 (May 17, 2026)
+
+
+## v1.10.64 – May 17, 2026
+
+### Fixed (TermLens kept showing deleted termbase entries until next project reload + diagnostic instrumentation for the open "synonym vanishes after save" report)
+
+**Deleted terms hanging around in TermLens.** A user reported that deleting a term — either via the right-click "Delete Termbase Entry" on a TermLens pill, or via the red Delete button inside the Edit Termbase Entry dialog — left the term still visible in TermLens as a "match" on the current segment. Reopening the termbase confirmed the term really was gone from the database; the bug was purely in the in-memory state.
+
+Investigation: there are **five** separate code paths that delete a term — the Termbases tab "Delete Term" button (`Supervertaler.py` line 15754), the Termbase Editor's "Delete Selected Term" (line 17289), the dialog's red Delete button (`modules/termbase_entry_editor.py` `TermbaseEntryEditor.delete_term`), the right-click "Delete Termbase Entry" on translation-results match cards (`modules/translation_results_panel.py`), and the right-click "Delete Termbase Entry" on TermLens blocks (`_on_termlens_delete_entry`). Each one did a partial refresh: typically `self.termbase_cache.clear()` plus a re-search of the current segment. None rebuilt **`self.termbase_index`** — the in-memory lookup index that `find_termbase_matches_in_source` actually reads. So the search re-ran against a stale index, hit the deleted entry, and TermLens dutifully displayed it again.
+
+Fix: new `_post_termbase_delete_refresh()` helper on the main window that consolidates the full refresh chain: cache clear → index rebuild (`_build_termbase_index`) → segment refresh (`_refresh_termbase_display_for_current_segment`) → Termbases tab refresh (term-count badge). All five delete paths now route through it. The TermLens path replaces its old `_refresh_current_segment_matches` call. The translation-results-panel path replaces its inline cache-clear-and-re-search. The dialog's delete path also walks the parent chain to find the helper on the main window, so dialogs opened from any module surface still get a full refresh. The edit-via-dialog handler (`_on_termlens_edit_entry`) now calls the same helper after `dialog.exec()` returns Accepted — that's necessary for the delete-via-dialog path (the dialog's red Delete button calls `accept()` so the caller can't tell save from delete), and a sub-second harmless overhead for the edit-via-dialog path.
+
+Net effect: deleting a term anywhere in the UI now removes it from TermLens immediately, no project reload needed.
+
+**Diagnostic instrumentation for the synonym-vanishes report.** A second user report — adding a synonym to a reverse-direction term entry, closing the dialog, and finding the synonym missing (and the terms apparently reversed) on reopen — could not be reproduced from code inspection: the v1.10.63 caption fix is one-way (captions only, values flow unchanged); the save path writes `source_edit.text()` straight to `source_term` with no swap; `save_synonyms` wipes-and-reinserts the synonym table cleanly. Rather than ship a speculative fix that might mask the real cause, this commit adds session-log instrumentation to capture ground truth the next time the bug fires:
+
+ - `load_term_data` logs `[TermbaseEntryEditor] LOAD term_id=… tb_id=… src='…' tgt='…'` so the dialog's starting state is on record.
+ - `save_term` logs three lines per save: `BEFORE-DB` (what the DB held when the user clicked Save), `WRITING` (what the dialog is about to UPDATE), and `AFTER-DB` (what the DB holds immediately after commit). If `AFTER-DB` doesn't match `WRITING`, a loud `⚠️ SAVE MISMATCH` line fires — pointing at cross-process / trigger / shared-DB interference rather than a dialog bug.
+ - `save_synonyms` logs `SAVE-SYNONYMS term_id=… src(N)=[…] tgt(M)=[…]` after commit so the wipe-and-reinsert pattern leaves a trail.
+
+All log lines route through the host window's `log()` if reachable (walks the parent chain — same pattern as the v1.10.64 delete helper hook), falling back to `print()` otherwise. No behaviour change; if the symptom recurs, the session log will have the data to diagnose it.
 
 
 ## v1.10.63 – May 17, 2026

@@ -911,6 +911,29 @@ class TermbaseEntryEditor(QDialog):
     # EDIT-MODE: DB LOAD / SAVE / DELETE
     # ========================================================================
 
+    # ------------------------------------------------------------------
+    # Diagnostic log helper (v1.10.64)
+    # ------------------------------------------------------------------
+    # Routes log lines to the host window's log() if reachable; falls
+    # back to print() otherwise. Used to instrument the load/save cycle
+    # so a future "synonyms vanish on save" bug report can be triaged
+    # from the session log rather than re-running the user's exact
+    # click path.
+    def _diag_log(self, msg: str):
+        try:
+            ancestor = self.parent()
+            while ancestor is not None and not hasattr(ancestor, 'log'):
+                ancestor = ancestor.parent() if callable(getattr(ancestor, 'parent', None)) else None
+            if ancestor is not None:
+                ancestor.log(msg)
+                return
+        except Exception:
+            pass
+        try:
+            print(msg)
+        except Exception:
+            pass
+
     def load_term_data(self):
         """Load existing term data from the database (edit mode only)."""
         if not self.db_manager or not self.term_id:
@@ -951,6 +974,14 @@ class TermbaseEntryEditor(QDialog):
                     'source_abbreviation': row[10] or '',
                     'target_abbreviation': row[11] or '',
                 }
+                # v1.10.64 diagnostic: log what the dialog actually
+                # loaded from the DB so any future "values are wrong"
+                # report can be checked against ground truth without
+                # poking the DB by hand.
+                self._diag_log(
+                    f"[TermbaseEntryEditor] LOAD term_id={self.term_id} tb_id={self.termbase_id} "
+                    f"src='{row[0]}' tgt='{row[1]}'"
+                )
 
                 # Populate fields
                 self.source_edit.setText(self.term_data['source_term'])
@@ -1069,6 +1100,22 @@ class TermbaseEntryEditor(QDialog):
                 cursor = self.db_manager.cursor
                 cursor.execute("DELETE FROM termbase_terms WHERE id = ?", (self.term_id,))
                 self.db_manager.connection.commit()
+                # v1.10.64: defensive post-delete refresh in case the
+                # outer caller doesn't run one. Walks the parent chain
+                # to find an ancestor with _post_termbase_delete_refresh
+                # (Supervertaler.py main window) and calls it. Safe
+                # no-op if not found — the outer caller's own refresh
+                # (e.g. _on_termlens_edit_entry) already covers the
+                # main paths; this is belt-and-braces for any future
+                # opener that forgets.
+                try:
+                    ancestor = self.parent()
+                    while ancestor is not None and not hasattr(ancestor, '_post_termbase_delete_refresh'):
+                        ancestor = ancestor.parent() if callable(getattr(ancestor, 'parent', None)) else None
+                    if ancestor is not None:
+                        ancestor._post_termbase_delete_refresh()
+                except Exception:
+                    pass
                 QMessageBox.information(self, "Success", "Termbase entry deleted")
                 self.accept()  # Close dialog with success
             except Exception as e:
@@ -1112,6 +1159,26 @@ class TermbaseEntryEditor(QDialog):
             target_abbr = self.target_abbr_edit.text().strip() if hasattr(self, 'target_abbr_edit') else ""
 
             if self.term_id:
+                # v1.10.64 diagnostic: log what the dialog is about to
+                # write so the LOAD ... SAVE round-trip can be audited
+                # in the session log. Useful for chasing any future
+                # "terms reversed after save" report — three lines per
+                # save (pre-update DB state, dialog values, post-update
+                # DB state) give the full picture.
+                try:
+                    cursor.execute(
+                        "SELECT source_term, target_term FROM termbase_terms WHERE id = ?",
+                        (self.term_id,),
+                    )
+                    before = cursor.fetchone() or (None, None)
+                    self._diag_log(
+                        f"[TermbaseEntryEditor] SAVE term_id={self.term_id} "
+                        f"BEFORE-DB src='{before[0]}' tgt='{before[1]}' | "
+                        f"WRITING src='{source_term}' tgt='{target_term}'"
+                    )
+                except Exception:
+                    pass
+
                 # Update existing term
                 cursor.execute("""
                     UPDATE termbase_terms
@@ -1147,6 +1214,33 @@ class TermbaseEntryEditor(QDialog):
 
             self.save_synonyms()
 
+            # v1.10.64 diagnostic + sanity check: re-read the row we
+            # just wrote and confirm the DB matches the dialog. If a
+            # row mysteriously comes back with source/target swapped
+            # vs what we wrote (the symptom in the open Bug 2 report),
+            # log loudly so the next session log captures evidence of
+            # whatever cross-process / trigger / shared-DB conflict is
+            # at play.
+            try:
+                cursor.execute(
+                    "SELECT source_term, target_term FROM termbase_terms WHERE id = ?",
+                    (self.term_id,),
+                )
+                after = cursor.fetchone() or (None, None)
+                self._diag_log(
+                    f"[TermbaseEntryEditor] SAVE term_id={self.term_id} "
+                    f"AFTER-DB src='{after[0]}' tgt='{after[1]}'"
+                )
+                if (after[0] != source_term) or (after[1] != target_term):
+                    self._diag_log(
+                        f"[TermbaseEntryEditor] ⚠️ SAVE MISMATCH term_id={self.term_id}: "
+                        f"wrote src='{source_term}' tgt='{target_term}' but "
+                        f"DB now has src='{after[0]}' tgt='{after[1]}'. "
+                        f"Possible cross-process write or trigger."
+                    )
+            except Exception:
+                pass
+
             # Success
             self.accept()
 
@@ -1168,25 +1262,41 @@ class TermbaseEntryEditor(QDialog):
             # Delete existing synonyms for this term
             cursor.execute("DELETE FROM termbase_synonyms WHERE term_id = ?", (self.term_id,))
 
+            src_count = self.source_synonym_list.count()
+            tgt_count = self.target_synonym_list.count()
+
             # Save source synonyms
-            for i in range(self.source_synonym_list.count()):
+            src_texts = []
+            for i in range(src_count):
                 item = self.source_synonym_list.item(i)
                 data = item.data(Qt.ItemDataRole.UserRole)
+                src_texts.append(data['text'])
                 cursor.execute("""
                     INSERT INTO termbase_synonyms (term_id, synonym_text, language, display_order, forbidden)
                     VALUES (?, ?, 'source', ?, ?)
                 """, (self.term_id, data['text'], i, 1 if data['forbidden'] else 0))
 
             # Save target synonyms
-            for i in range(self.target_synonym_list.count()):
+            tgt_texts = []
+            for i in range(tgt_count):
                 item = self.target_synonym_list.item(i)
                 data = item.data(Qt.ItemDataRole.UserRole)
+                tgt_texts.append(data['text'])
                 cursor.execute("""
                     INSERT INTO termbase_synonyms (term_id, synonym_text, language, display_order, forbidden)
                     VALUES (?, ?, 'target', ?, ?)
                 """, (self.term_id, data['text'], i, 1 if data['forbidden'] else 0))
 
             self.db_manager.connection.commit()
+
+            # v1.10.64 diagnostic: log what was saved so the open Bug 2
+            # report (synonym vanishes after save) can be triaged from
+            # the session log. The wipe-and-reinsert pattern means a
+            # silent failure would otherwise leave no trace.
+            self._diag_log(
+                f"[TermbaseEntryEditor] SAVE-SYNONYMS term_id={self.term_id} "
+                f"src({src_count})={src_texts!r} tgt({tgt_count})={tgt_texts!r}"
+            )
 
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Failed to save synonyms: {e}")

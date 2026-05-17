@@ -14741,9 +14741,61 @@ class SupervertalerQt(QMainWindow):
                     pass
                 QMessageBox.warning(self, "Error Adding Term", "Failed to add term to any termbase. Check the log for details.")
     
+    def _post_termbase_delete_refresh(self):
+        """Run the full refresh chain after a term is deleted from any
+        termbase, from any UI surface.
+
+        v1.10.64 bug fix. Five different code paths can delete a term
+        (Termbases tab "Delete Term" button, the Termbase Editor's
+        "Delete Selected Term", the Edit Termbase Entry dialog's red
+        Delete button, the right-click "Delete Termbase Entry" on a
+        translation-results match card, and the right-click "Delete
+        Termbase Entry" on a TermLens block). All five used to do an
+        ``UPDATE termbase_terms`` followed by *partial* refresh logic
+        — typically clearing ``self.termbase_cache`` and re-running
+        ``find_termbase_matches_in_source`` for the current segment.
+
+        The bug: ``find_termbase_matches_in_source`` reads from the
+        **in-memory** ``self.termbase_index`` (built by
+        ``_build_termbase_index``). That index still contains the
+        just-deleted entry until it's rebuilt. So the user deletes a
+        term, looks at TermLens, and sees the "deleted" term still
+        there because the search hit comes from the stale index.
+
+        This helper consolidates the post-delete refresh into one
+        place. It:
+         1. Clears ``self.termbase_cache`` (per-segment match cache).
+         2. Rebuilds ``self.termbase_index`` (the lookup index).
+         3. Re-runs the search for the current segment so TermLens
+            and the source-cell highlight reflect the change.
+         4. Refreshes the Termbases tab UI if it's open, so the
+            "term count" badge and the terms grid update.
+
+        Safe to call when nothing's open / no current segment / no
+        termbase tab — every step is wrapped in best-effort try/except.
+        """
+        try:
+            with self.termbase_cache_lock:
+                self.termbase_cache.clear()
+        except Exception as e:
+            self.log(f"⚠️ post-delete refresh: cache clear failed: {e}")
+        try:
+            self._build_termbase_index()
+        except Exception as e:
+            self.log(f"⚠️ post-delete refresh: index rebuild failed: {e}")
+        try:
+            self._refresh_termbase_display_for_current_segment()
+        except Exception as e:
+            self.log(f"⚠️ post-delete refresh: segment refresh failed: {e}")
+        try:
+            if hasattr(self, 'termbase_tab_refresh_callback') and self.termbase_tab_refresh_callback:
+                self.termbase_tab_refresh_callback()
+        except Exception as e:
+            self.log(f"⚠️ post-delete refresh: tab refresh failed: {e}")
+
     def quick_add_term_pair_to_termbase(self, source_text: str, target_text: str):
         """Quick add a term pair to the last-used termbase without showing any dialogs (Ctrl+Q)
-        
+
         Uses the termbase(s) selected in the last Ctrl+E dialog. If none selected yet,
         prompts the user to use Ctrl+E first.
         """
@@ -15773,9 +15825,10 @@ class SupervertalerQt(QMainWindow):
                                 break
                     # Also refresh termbase list to update term count
                     refresh_termbase_list()
-                    # Clear termbase cache
-                    with self.termbase_cache_lock:
-                        self.termbase_cache.clear()
+                    # v1.10.64: clear cache + rebuild index + refresh
+                    # TermLens for current segment so the deleted term
+                    # stops showing up as a match.
+                    self._post_termbase_delete_refresh()
                 except Exception as e:
                     QMessageBox.warning(self, "Error", f"Failed to delete term: {e}")
         
@@ -17312,6 +17365,11 @@ class SupervertalerQt(QMainWindow):
                         self.db_manager.connection.commit()
                         self.log(f"✓ Deleted term: {source_term} → {target_term}")
                         refresh_terms_table()
+                        # v1.10.64: full post-delete refresh chain
+                        # (clears cache, rebuilds index, refreshes
+                        # TermLens for current segment) so the just-
+                        # deleted term stops appearing as a match.
+                        self._post_termbase_delete_refresh()
                     except Exception as e:
                         QMessageBox.critical(dialog, "Error", f"Failed to delete term: {e}")
         
@@ -49791,9 +49849,15 @@ class SupervertalerQt(QMainWindow):
             )
             
             if dialog.exec():
-                # Entry was edited, refresh termlens and translation results
-                self.log(f"✓ Termbase entry {term_id} updated")
-                self._refresh_current_segment_matches()
+                # Entry was edited (or deleted via the dialog's red
+                # Delete button — both paths call self.accept()).
+                # v1.10.64: use the full post-delete refresh helper
+                # so the in-memory termbase_index is rebuilt too.
+                # That's necessary for the delete-via-dialog path; it's
+                # harmless overhead for the edit-via-dialog path (index
+                # rebuild is sub-second on typical term counts).
+                self.log(f"✓ Termbase entry {term_id} updated/deleted via dialog")
+                self._post_termbase_delete_refresh()
         except Exception as e:
             self.log(f"✗ Error editing termbase entry: {e}")
     
@@ -49816,9 +49880,17 @@ class SupervertalerQt(QMainWindow):
                     try:
                         if self.termbase_mgr.delete_term(term_id):
                             self.log(f"✓ Deleted termbase entry: {source_term} → {target_term}")
-                            
-                            # Refresh termlens and translation results
-                            self._refresh_current_segment_matches()
+
+                            # v1.10.64: previously this only called
+                            # _refresh_current_segment_matches, which
+                            # clears the per-segment cache and re-runs
+                            # find_termbase_matches_in_source. But that
+                            # search reads from the in-memory
+                            # termbase_index, which still contained the
+                            # just-deleted entry → the term kept showing
+                            # in TermLens after delete. The post-delete
+                            # helper additionally rebuilds the index.
+                            self._post_termbase_delete_refresh()
                         else:
                             self.log(f"✗ Failed to delete termbase entry")
                     except Exception as e:

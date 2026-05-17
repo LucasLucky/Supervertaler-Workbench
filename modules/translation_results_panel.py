@@ -345,30 +345,42 @@ class CompactMatchItem(QFrame):
                         if hasattr(parent_window, 'log'):
                             parent_window.log(f"   ✅ Deleted {rows_deleted} row(s) from database")
                         
-                        # Clear termbase cache to force refresh
-                        if hasattr(parent_window, 'termbase_cache'):
-                            with parent_window.termbase_cache_lock:
-                                parent_window.termbase_cache.clear()
+                        # v1.10.64: route through the main window's
+                        # consolidated post-delete refresh helper.
+                        # Previously this clear-cache-and-re-search
+                        # ran without rebuilding the in-memory
+                        # termbase_index, so find_termbase_matches_in_source
+                        # would hit the stale index and keep returning
+                        # the just-deleted term — TermLens showed it as
+                        # a "match" until the next full project reload.
+                        # The helper does cache clear + index rebuild +
+                        # segment refresh + termbase-tab refresh.
+                        if hasattr(parent_window, '_post_termbase_delete_refresh'):
+                            try:
+                                parent_window._post_termbase_delete_refresh()
+                            except Exception as refresh_err:
                                 if hasattr(parent_window, 'log'):
-                                    parent_window.log(f"   ✅ Cleared termbase cache")
-                        
+                                    parent_window.log(f"   ⚠️ post-delete refresh failed: {refresh_err}")
+
                         # Reset the last selected row to force re-highlighting when returning to this segment
                         if hasattr(parent_window, '_last_selected_row'):
                             parent_window._last_selected_row = None
-                        
-                        # Trigger re-highlighting of source text to remove deleted term
+
+                        # Update this card's source-cell highlight too
+                        # (the helper above handles TermLens but not the
+                        # cell-level termbase highlighting on the source
+                        # widget). Kept as a defensive belt-and-braces
+                        # pass — overrides any stale highlight from
+                        # before the helper ran.
                         if hasattr(parent_window, 'table') and hasattr(parent_window, 'find_termbase_matches_in_source'):
                             current_row = parent_window.table.currentRow()
                             if current_row >= 0:
-                                # Get source text widget
                                 source_widget = parent_window.table.cellWidget(current_row, 2)
                                 if source_widget and hasattr(source_widget, 'toPlainText'):
                                     source_text = source_widget.toPlainText()
-                                    # Re-find matches and re-highlight
                                     termbase_matches = parent_window.find_termbase_matches_in_source(source_text)
                                     if hasattr(source_widget, 'highlight_termbase_matches'):
                                         source_widget.highlight_termbase_matches(termbase_matches)
-                                    # Update the widget's stored matches to reflect the deletion
                                     if hasattr(source_widget, 'termbase_matches'):
                                         source_widget.termbase_matches = termbase_matches
                         
