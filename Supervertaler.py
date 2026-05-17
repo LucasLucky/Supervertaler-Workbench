@@ -8005,7 +8005,7 @@ class SupervertalerQt(QMainWindow):
         # Alt+D - Add word at cursor to dictionary
         create_shortcut("editor_add_to_dictionary", "Alt+D", self.add_word_to_dictionary_shortcut)
         
-        # Ctrl+N - Focus Segment Note tab
+        # Ctrl+N - Focus Comments → Segment sub-tab and start editing
         create_shortcut("editor_focus_notes", "Ctrl+N", self.focus_segment_notes)
         
         # Ctrl+Q - Open QuickLauncher directly
