@@ -50011,8 +50011,23 @@ class SupervertalerQt(QMainWindow):
     def _on_termlens_edit_entry(self, term_id: int, termbase_id: int):
         """Handle edit glossary entry request from TermLens"""
         try:
+            # v1.10.67 diagnostic: record what TermLens actually
+            # emitted so an open user report (dialog opens with empty
+            # fields or with project-direction captions when the
+            # termbase declares the reverse direction) can be checked
+            # against the dialog's LOAD line. If termbase_id here
+            # disagrees with the real termbases.id for this term, the
+            # bug is in the TermLens display pipeline upstream — the
+            # dialog itself self-corrects via the term_id JOIN in
+            # TermbaseEntryEditor.setup_ui (v1.10.67).
+            self.log(
+                f"[edit-from-termlens] received term_id={term_id!r} "
+                f"termbase_id={termbase_id!r} (types: "
+                f"{type(term_id).__name__}, {type(termbase_id).__name__})"
+            )
+
             from modules.termbase_entry_editor import TermbaseEntryEditor
-            
+
             dialog = TermbaseEntryEditor(
                 parent=self,
                 db_manager=self.db_manager,

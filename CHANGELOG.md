@@ -2,7 +2,42 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.66 (May 17, 2026)
+**Current Version:** v1.10.67 (May 17, 2026)
+
+
+## v1.10.67 – May 17, 2026
+
+### Fixed (Edit Termbase Entry dialog opened empty / showed terms under wrong-language captions; root cause was a corrupted termbase_id flowing through the TermLens emit pipeline)
+
+A user reported two confusing bugs after the v1.10.63 / v1.10.64 / v1.10.66 round of fixes, with a diagnostic log line that pinpointed the cause exactly:
+
+```
+[TermbaseEntryEditor] LOAD term_id=93195 tb_id=-1343206784 src='cable' tgt='kabel'
+```
+
+That `tb_id=-1343206784` is meaningless — the actual `termbases.id` for the PATENTS termbase is the small autoincrement `13`. Verified by inspecting the user's database: term `93195` correctly stores `termbase_id='13'` with `source_lang='en', target_lang='nl'`, and termbase row `13` is PATENTS declared `en→nl`. The data is fine. The dialog was just receiving garbage in its `termbase_id` argument — most likely a 32-bit narrowing of a Python int through some `pyqtSignal(int, int)` hop in the TermLens display pipeline.
+
+When the v1.10.63 caption-resolution code did `SELECT source_lang, target_lang FROM termbases WHERE id = -1343206784`, it got nothing back, silently fell through to **project direction**, and ended up captioning the columns "Dutch:" / "English:" (NL→EN project) while populating them from the database's `source_term`/`target_term` in correct **termbase storage order** (en→nl). So the English word landed under a "Dutch:" caption and vice versa — exactly the v1.10.63 bug we thought we'd fixed.
+
+**Fix.** Rather than chase whatever narrowed the int upstream, this commit makes the dialog **robust** to a wrong `termbase_id` argument. In `setup_ui`, the caption-resolution lookup now joins through `termbase_terms` using the reliable `self.term_id`:
+
+```sql
+SELECT tb.source_lang, tb.target_lang, tb.id
+FROM termbase_terms t
+JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
+WHERE t.id = ?
+```
+
+`self.term_id` is reliable because `load_term_data` immediately uses it to fetch the row — if it were wrong, the dialog would have empty fields, which is the *other* bug we're fixing in this commit. Whatever `termbase_id` the caller passed in, this SQL finds the actual termbase row via the foreign-key cast and returns the row's declared direction. Defensively also backfills `self.termbase_id` with the resolved value so the dialog's later save / delete operations use the correct ID.
+
+**Bug 2.** The user's other screenshot showed the dialog opening with **empty** Dutch / English / abbreviation fields. That means `load_term_data` ran but `cursor.fetchone()` returned `None` — the `term_id` itself was wrong (likely from a stale TermLens block whose backing term has been deleted between display and click, or a wrong term_id reaching the in-memory index). Previously the dialog silently presented an empty form, leaving the user staring at an editor that couldn't possibly save back to a non-existent row. v1.10.67 now:
+ - Logs a `LOAD MISS` diagnostic line with the term_id / tb_id that was passed.
+ - Shows a clear warning ("This termbase entry could not be loaded — it may have been deleted from the database already. The TermLens display is probably showing a stale reference.") and tells the user to refresh the segment.
+ - Closes the dialog via `QTimer.singleShot(0, self.reject)` so the caller's `.exec()` actually runs and immediately returns.
+
+**Diagnostic.** Added a `[edit-from-termlens] received term_id=… termbase_id=…` log line on the receiving side (`_on_termlens_edit_entry`) recording both values plus their Python types. Cross-referencing this with the dialog's `LOAD` / `LOAD MISS` line and the database's actual `termbase_terms.termbase_id` for that term_id will pinpoint exactly where any future corrupted-id transmission enters the pipeline.
+
+Net effect: even with the upstream pipeline still occasionally emitting a corrupted `termbase_id`, the dialog now captions and saves correctly, and tells you clearly when a term has gone missing rather than presenting an empty form you'll spend time wondering about.
 
 
 ## v1.10.66 – May 17, 2026

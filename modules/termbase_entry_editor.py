@@ -250,20 +250,62 @@ class TermbaseEntryEditor(QDialog):
 
             # Edit-mode override: use the termbase's declared direction
             # if we have it.
+            #
+            # v1.10.67 robustness: previously the lookup was
+            #   ``SELECT source_lang, target_lang FROM termbases
+            #     WHERE id = ?``
+            # bound to ``self.termbase_id`` (passed in by the caller).
+            # In the wild, a user report turned up cases where the
+            # value flowing in was a hash-like negative integer (e.g.
+            # -1343206784) rather than the actual termbase row's
+            # primary key — likely a 32-bit narrowing of a Python int
+            # through pyqtSignal(int, int) somewhere upstream in the
+            # TermLens display pipeline. When that happened the
+            # SELECT returned no rows and the caption code silently
+            # fell back to **project** direction — exactly the bug
+            # the v1.10.63 caption fix was meant to solve. The
+            # symptom: in an NL→EN project with an EN→NL termbase,
+            # the dialog would still show "Dutch:" left and "English:"
+            # right while populating the fields from
+            # ``source_term``/``target_term`` in (correct) termbase
+            # storage order — so the English word landed under a
+            # "Dutch:" caption and vice versa.
+            #
+            # The fix: join through ``termbase_terms`` using
+            # ``self.term_id`` (which is reliable — load_term_data
+            # uses it to fetch the row successfully). Whatever
+            # ``self.termbase_id`` arrived as, the SQL finds the
+            # actual termbase via the foreign-key cast and returns
+            # the row's declared direction. Defensively also
+            # backfills ``self.termbase_id`` with the resolved value
+            # so downstream operations (delete-via-parent-walk in
+            # ``delete_term``, sanity-check SELECT in ``save_term``)
+            # use the correct ID even if the caller passed garbage.
             is_edit_mode = self.term_id is not None
-            if is_edit_mode and self.db_manager is not None and self.termbase_id is not None:
+            if is_edit_mode and self.db_manager is not None:
                 try:
                     cur = self.db_manager.cursor
                     cur.execute(
-                        "SELECT source_lang, target_lang FROM termbases WHERE id = ?",
-                        (self.termbase_id,),
+                        """
+                        SELECT tb.source_lang, tb.target_lang, tb.id
+                        FROM termbase_terms t
+                        JOIN termbases tb
+                          ON CAST(t.termbase_id AS INTEGER) = tb.id
+                        WHERE t.id = ?
+                        """,
+                        (self.term_id,),
                     )
                     row = cur.fetchone()
                     if row:
-                        tb_src, tb_tgt = row[0] or '', row[1] or ''
+                        tb_src, tb_tgt, real_tb_id = row[0] or '', row[1] or '', row[2]
                         if tb_src and tb_tgt:
                             src_lang_for_caption = tb_src
                             tgt_lang_for_caption = tb_tgt
+                        # Backfill termbase_id with the real value
+                        # whenever the caller's value disagrees — keeps
+                        # subsequent save/delete operations consistent.
+                        if real_tb_id is not None and self.termbase_id != real_tb_id:
+                            self.termbase_id = real_tb_id
                 except Exception:
                     pass  # fall through to project direction
 
@@ -982,6 +1024,40 @@ class TermbaseEntryEditor(QDialog):
                     f"[TermbaseEntryEditor] LOAD term_id={self.term_id} tb_id={self.termbase_id} "
                     f"src='{row[0]}' tgt='{row[1]}'"
                 )
+            else:
+                # v1.10.67: row is None — term_id doesn't match any
+                # row in termbase_terms. Surfacing an empty dialog
+                # silently is worse than telling the user, because:
+                #  - they'll edit empty fields and the Save UPDATE
+                #    will hit zero rows (no harm but no save either)
+                #  - they have no idea their click landed on a
+                #    stale/deleted reference until they re-open and
+                #    see it's still gone
+                # Show the diagnostic, warn the user, and close the
+                # dialog so the caller's refresh handler can run
+                # (typically a re-search of the current segment, which
+                # will drop the stale TermLens pill on the next pass).
+                self._diag_log(
+                    f"[TermbaseEntryEditor] LOAD MISS term_id={self.term_id} "
+                    f"tb_id={self.termbase_id}: no row in termbase_terms. "
+                    f"Likely a stale TermLens entry (term was deleted in another session, "
+                    f"or the in-memory index has a wrong term_id)."
+                )
+                QMessageBox.warning(
+                    self,
+                    "Term not found",
+                    "This termbase entry could not be loaded — it may have been "
+                    "deleted from the database already. The TermLens display is "
+                    "probably showing a stale reference.\n\n"
+                    "Close this dialog and refresh the segment (re-click it or "
+                    "press F5) to clear the stale pill.",
+                )
+                # Defer reject() until after __init__ returns so the
+                # caller's .exec() actually opens and immediately
+                # closes (rather than blowing up in the constructor).
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, self.reject)
+                return
 
                 # Populate fields
                 self.source_edit.setText(self.term_data['source_term'])
