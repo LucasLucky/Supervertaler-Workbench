@@ -35323,11 +35323,19 @@ class SupervertalerQt(QMainWindow):
                     "background-color:rgba(245,158,11,0.18); "
                     "padding:1px 5px; border-radius:6px;'>⇄ reversed</span>"
                 )
+                # v1.10.52: wrap tooltip text in HTML with explicit colours
+                # so it survives Windows-11 OS-level tooltip rendering, which
+                # in dark mode ignores both the per-widget QToolTip stylesheet
+                # and the QPalette ToolTipBase/Text roles. Inline HTML in the
+                # tooltip text itself is always honoured.
                 self.match_panel_tm_target_label.setToolTip(
+                    "<div style='background-color:#1f2937; color:#f9fafb; "
+                    "padding:6px 8px; max-width:360px;'>"
                     "This match comes from a TM whose source/target languages "
                     "are the inverse of this project. The match is from the "
                     "TM's target column; Workbench has swapped fields so it "
                     "displays normally."
+                    "</div>"
                 )
             else:
                 self.match_panel_tm_target_label.setToolTip("")
@@ -35817,11 +35825,17 @@ class SupervertalerQt(QMainWindow):
 
         # Tooltip on both labels (set whether or not chip is present so we
         # clear the tooltip when navigating away from a reversed match).
+        # v1.10.52: wrap in HTML with explicit colours so the tooltip stays
+        # readable under Windows-11 dark-mode tooltip rendering, which
+        # ignores both QToolTip stylesheet and ToolTipBase/Text palette.
         reverse_tooltip = (
+            "<div style='background-color:#1f2937; color:#f9fafb; "
+            "padding:6px 8px; max-width:360px;'>"
             "This match comes from a TM whose source/target languages are "
             "the inverse of this project. The match is from the TM's "
             "target column; Workbench has swapped fields so it displays "
             "normally."
+            "</div>"
         ) if reverse_match else ""
 
         if hasattr(self, 'compare_panel_tm_nav_label') and self.compare_panel_tm_nav_label:

@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.51 (May 17, 2026)
+**Current Version:** v1.10.52 (May 17, 2026)
+
+
+## v1.10.52 – May 17, 2026
+
+### Fixed (the "⇄ reversed" tooltip rendered as unreadable dark-on-dark on Windows 11)
+
+- The chip from v1.10.50 and the flag plumbing from v1.10.51 worked correctly – the chip showed and the tooltip box appeared on hover – but on Windows 11 the tooltip text rendered as near-invisible (dark text on a near-black background). Theme manager already sets light tooltip colours via both `QToolTip` stylesheet and the `ToolTipBase`/`ToolTipText` palette roles, but Windows-11 dark-mode tooltip rendering ignores both: it short-circuits Qt's QToolTip painting and uses the OS-level dark tooltip palette directly, leaving the application no way to override colours through normal stylesheet/palette channels.
+- Workaround: wrap the tooltip text in inline HTML with explicit `background-color` and `color` style attributes. Qt always honours inline HTML in the tooltip text itself regardless of the OS-level rendering path, because the colours are baked into the rich-text document the tooltip widget paints from. The wrap is a `<div style='background-color:#1f2937; color:#f9fafb; padding:6px 8px; max-width:360px;'>...</div>` – dark slate background, near-white text, a small padding for breathing room, and a width cap so the box wraps at a comfortable line length instead of stretching across the screen.
+- Applied at both tooltip sites: `_update_match_panel_tm_display` (single-segment Match Panel TM Target label) and `_update_compare_panel_tm_display` (Compare Panel nav + target labels). The tooltip is still cleared (`setToolTip("")`) when navigating to a non-reversed match so the box doesn't stick around.
+- This is purely a styling fix; the chip itself, the underlying bidirectional TM support (v1.10.49), the flag plumbing (v1.10.50–v1.10.51), and all match data continue to work exactly as before. Users on macOS / Linux / older Windows / light-mode-on-Windows-11 will see the same readable tooltip they already saw; users on Windows-11 dark mode now also see readable text instead of dark-on-dark.
 
 
 ## v1.10.51 – May 17, 2026
