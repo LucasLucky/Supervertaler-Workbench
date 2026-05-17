@@ -2,7 +2,30 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.57 (May 17, 2026)
+**Current Version:** v1.10.58 (May 17, 2026)
+
+
+## v1.10.58 – May 17, 2026
+
+### Added (Phase B + D — Ctrl+Shift+M to add anchored comments; all-comments list rebuilt for multiple per segment with edit/delete)
+
+Second instalment in the v1.10.57+ range-anchored-comments work. Phase A (v1.10.57) shipped the data model. This commit makes it user-visible.
+
+**Ctrl+Shift+M — add a comment anchored to selected text.** New keyboard shortcut. Click into a source or target cell, select the text the comment is about (e.g. "schroef"), press Ctrl+Shift+M, type the comment in the dialog. The Comment is stored with `anchor_field='source'|'target'` and `anchor_start/end` matching the selection. If there's no selection (just a cursor), the Comment is segment-level (no anchor). Mirrors the Trados / memoQ workflow — their Ctrl+M was the natural pick but it's already taken in Workbench by QuickTrans, hence Ctrl+Shift+M.
+
+The dialog shows the segment id + whether the comment is anchored or segment-level, a snippet of the anchored text (truncated to 140 chars with an ellipsis if longer, properly HTML-escaped) for confirmation, and a multi-line text input for the comment body. Author defaults to the Translator Name from Settings → User Identity, falling back to the system username — same source as Word-comment export, SDLXLIFF comments, and TMX writes.
+
+**All-comments list rebuilt for multiple comments per segment.** The list at the top of the Comments → Segment sub-tab now shows **one entry per Comment** instead of one entry per segment. A segment with three comments shows three entries, each with its own anchor snippet (when anchored), author, timestamp, and a right-click context menu for **Edit comment…** and **Delete comment** (the latter with a confirmation prompt). Edit opens a small dialog pre-populated with the existing comment text; saving with empty text deletes the comment.
+
+Each entry's header now reads `Segment #N  ⚓ source` (or `⚓ target`) when the comment is anchored, so you can see at a glance which comments are anchored vs segment-level. Clicking the header still jumps the grid to that segment (cross-page-aware, unchanged from v1.10.56).
+
+**Bottom editor auto-lock for "complex" segments.** The bottom text editor in the Segment sub-tab was designed for the simple one-segment-level-comment case (writes to `segment.notes` via the `replace_all_comments_with_text` bridge, which collapses multiple comments into one). When the currently-selected segment has more than one comment OR any anchored comment, the editor goes read-only with a placeholder telling the user to manage individual comments via the list above. This prevents silent clobbering. Simple segments (zero or one segment-level comment) keep the existing edit-as-you-type behaviour exactly as before.
+
+`_update_bottom_notes_for_segment` was rewritten to read from `segment.comments` directly: shows the single comment's text if there's exactly one unanchored comment, shows empty otherwise. The legacy `segment.notes` path is kept as a fallback for any edge case where the comments[] list is absent (shouldn't happen after v1.10.57 migration but defensive).
+
+**Still coming in this version family:**
+ - Phase C: visual indicator (coloured underline / highlight) on anchored text inside the editor cells, so you can see where comments are attached without opening the list.
+ - Phase E: DOCX export — Word comment anchors to the specific character range (run-splitting where needed) instead of the whole paragraph. This is the visible end-user payoff in the exported file.
 
 
 ## v1.10.57 – May 17, 2026
