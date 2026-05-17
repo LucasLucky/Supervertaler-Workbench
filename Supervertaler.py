@@ -14741,6 +14741,194 @@ class SupervertalerQt(QMainWindow):
                     pass
                 QMessageBox.warning(self, "Error Adding Term", "Failed to add term to any termbase. Check the log for details.")
     
+    # ------------------------------------------------------------------
+    # Termbase DB file watcher (v1.10.69)
+    # ------------------------------------------------------------------
+    # Background:
+    # Workbench's TermLens / source-cell highlighting is driven by an
+    # in-memory ``termbase_index`` built once per project load (the
+    # v1.9.182 perf optimisation that took 365s → <1s for 349
+    # segments). When the same SQLite database is also open in the
+    # Supervertaler for Trados plugin and the user deletes / adds
+    # terms there, Workbench's index goes stale — TermLens keeps
+    # showing deleted pills and misses newly-added ones until the
+    # user presses the v1.10.68 🔄 refresh button.
+    #
+    # This block makes that refresh **automatic** via QFileSystemWatcher.
+    # Design choices that matter for the "don't misfire" requirement
+    # the user called out explicitly:
+    #
+    #  1. **Debounce**: any DB-file modification restarts a single-
+    #     shot 2-second timer. The rebuild only runs once the file
+    #     has been quiet for 2 s, so a batch of own-writes (e.g. an
+    #     INSERT followed by SELECT-verify followed by activation-
+    #     table update) collapses into one rebuild.
+    #
+    #  2. **Snapshot gating**: even after debounce fires, we don't
+    #     blindly rebuild. We snapshot the termbases / termbase_terms
+    #     state (row counts + MAX(id) + MAX(modified_date)) at the
+    #     end of every ``_build_termbase_index`` call, and at fire
+    #     time we re-snapshot and compare. If nothing changed since
+    #     the last rebuild — e.g. the file mtime ticked because of a
+    #     TM write or a project metadata save, not a termbase edit —
+    #     we skip. So routine non-termbase DB writes don't cause a
+    #     visible TermLens flicker.
+    #
+    #  3. **Own-write integration**: every code path that modifies
+    #     termbases already calls ``_post_termbase_delete_refresh``
+    #     (add / delete / quick-add etc.), which in turn calls
+    #     ``_build_termbase_index`` which updates the snapshot. So
+    #     own-writes update the snapshot synchronously; when the
+    #     watcher debounce later fires for that same write, the
+    #     snapshot comparison sees no change and skips. Zero
+    #     spurious rebuilds for own-writes.
+    #
+    #  4. **Defensive**: setup is wrapped in try/except. If the
+    #     QFileSystemWatcher fails (network drive, OneDrive, exotic
+    #     filesystem), the failure is logged and the manual 🔄
+    #     button still works.
+    #
+    # Wired in by ``_setup_termbase_db_watcher`` which is called once
+    # the db_manager + current_project are available (from the
+    # project-load chain at the bottom of ``_load_project_data``).
+
+    def _snapshot_termbase_db_state(self):
+        """Return a small tuple summarising the termbase tables' state.
+
+        Used by the file watcher to decide whether anything actually
+        changed in the termbase tables before triggering a rebuild.
+        Cheap (4 aggregate queries, sub-millisecond). Returns ``None``
+        on any error so the caller can fall back to "assume changed".
+        """
+        try:
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                return None
+            cur = self.db_manager.cursor
+            cur.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM termbases")
+            row_tb = cur.fetchone() or (0, 0)
+            cur.execute("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(modified_date), '') FROM termbase_terms")
+            row_terms = cur.fetchone() or (0, 0, '')
+            return (row_tb[0], row_tb[1], row_terms[0], row_terms[1], row_terms[2])
+        except Exception:
+            return None
+
+    def _setup_termbase_db_watcher(self):
+        """Install a QFileSystemWatcher on the active SQLite DB file
+        and wire it to a debounced auto-refresh of the termbase index.
+
+        Safe to call repeatedly — the previous watcher (if any) is
+        torn down first, so this can be re-invoked on project switch
+        without leaking watchers or duplicate-firing.
+        """
+        try:
+            from PyQt6.QtCore import QFileSystemWatcher, QTimer
+        except Exception as e:
+            self.log(f"⚠️ Termbase DB watcher: PyQt6 missing QFileSystemWatcher? {e}")
+            return
+
+        # Tear down any previous watcher / timer cleanly.
+        try:
+            old_w = getattr(self, '_termbase_db_watcher', None)
+            if old_w is not None:
+                try:
+                    paths = old_w.files()
+                    if paths:
+                        old_w.removePaths(paths)
+                except Exception:
+                    pass
+                old_w.deleteLater()
+            old_t = getattr(self, '_termbase_db_debounce_timer', None)
+            if old_t is not None:
+                old_t.stop()
+                old_t.deleteLater()
+        except Exception:
+            pass
+        self._termbase_db_watcher = None
+        self._termbase_db_debounce_timer = None
+
+        # Resolve the DB path. Bail quietly if no db_manager yet —
+        # caller can retry after init.
+        try:
+            db_path = getattr(self.db_manager, 'db_path', None) if hasattr(self, 'db_manager') else None
+            if not db_path:
+                return
+            import os as _os
+            if not _os.path.isfile(db_path):
+                self.log(f"⚠️ Termbase DB watcher: file does not exist ({db_path}); skipping auto-refresh")
+                return
+        except Exception as e:
+            self.log(f"⚠️ Termbase DB watcher: path resolution failed ({e}); skipping auto-refresh")
+            return
+
+        # Snapshot the current termbase state so the first fire after
+        # setup has a reference point to compare against.
+        self._termbase_db_last_snapshot = self._snapshot_termbase_db_state()
+
+        try:
+            watcher = QFileSystemWatcher(self)
+            ok = watcher.addPath(db_path)
+            if not ok:
+                self.log(f"⚠️ Termbase DB watcher: addPath returned False for {db_path}; skipping auto-refresh")
+                watcher.deleteLater()
+                return
+        except Exception as e:
+            self.log(f"⚠️ Termbase DB watcher: failed to install ({e}); manual 🔄 still works")
+            return
+
+        # Debounce timer — restarted on every fileChanged hit; only
+        # actually fires the rebuild once changes have stopped.
+        debounce = QTimer(self)
+        debounce.setSingleShot(True)
+        debounce.setInterval(2000)  # 2 s quiet window
+        debounce.timeout.connect(self._on_termbase_db_debounce_fire)
+
+        def _on_changed(_path):
+            # Some platforms (Windows in particular) remove the file
+            # from the watcher's tracking list when it's
+            # rewritten / replaced (which happens with SQLite WAL
+            # checkpoints). Re-add the path defensively if it
+            # disappeared so subsequent edits still fire events.
+            try:
+                if db_path not in watcher.files():
+                    watcher.addPath(db_path)
+            except Exception:
+                pass
+            debounce.start()  # restart the quiet window
+
+        watcher.fileChanged.connect(_on_changed)
+
+        self._termbase_db_watcher = watcher
+        self._termbase_db_debounce_timer = debounce
+        self._termbase_db_path = db_path
+        self.log(f"👁️  Termbase DB auto-refresh: watching {_os.path.basename(db_path)} (2s debounce)")
+
+    def _on_termbase_db_debounce_fire(self):
+        """Debounce timer fired — DB has been quiet for 2 s. Decide
+        whether to rebuild the index by comparing snapshots.
+        """
+        try:
+            fresh = self._snapshot_termbase_db_state()
+            prev = getattr(self, '_termbase_db_last_snapshot', None)
+            if fresh is None:
+                # Couldn't snapshot — be safe and rebuild.
+                self.log("🔄 Termbase DB watcher: snapshot failed, rebuilding to be safe")
+                self._post_termbase_delete_refresh()
+                return
+            if fresh == prev:
+                # File mtime ticked but termbase tables didn't change
+                # — probably a TM / project-metadata write. Skip.
+                return
+            self.log(
+                f"🔄 Termbase DB changed externally — auto-refreshing index "
+                f"(termbases:{prev[0] if prev else '?'}→{fresh[0]}, "
+                f"terms:{prev[2] if prev else '?'}→{fresh[2]})"
+            )
+            self._post_termbase_delete_refresh()
+            # _post_termbase_delete_refresh → _build_termbase_index updates
+            # the snapshot, so we don't need to set it again here.
+        except Exception as e:
+            self.log(f"⚠️ Termbase DB auto-refresh failed: {e}")
+
     def _post_termbase_delete_refresh(self):
         """Run the full refresh chain after a term is deleted from any
         termbase, from any UI surface.
@@ -27072,7 +27260,20 @@ class SupervertalerQt(QMainWindow):
             # Start background batch processing of termbase matches for all segments
             # This pre-fills the cache while user works on the project
             self._start_termbase_batch_worker()
-            
+
+            # v1.10.69: install the auto-refresh file watcher on the
+            # active SQLite DB so cross-process termbase edits (most
+            # commonly via the Supervertaler for Trados plugin sharing
+            # the same DB) automatically trigger an index rebuild.
+            # Snapshot-gated and debounced; see
+            # _setup_termbase_db_watcher for the full rationale.
+            try:
+                self._setup_termbase_db_watcher()
+            except Exception as _e:
+                # Non-fatal — the manual 🔄 button on TermLens always
+                # works regardless of whether the watcher succeeded.
+                self.log(f"⚠️ Could not install termbase DB auto-refresh watcher: {_e}")
+
             # Start prefetch worker for first 50 segments (instant switching like memoQ)
             if len(self.current_project.segments) > 0:
                 prefetch_ids = [seg.id for seg in self.current_project.segments[:50]]
@@ -27211,6 +27412,18 @@ class SupervertalerQt(QMainWindow):
 
             elapsed = time.time() - start_time
             self.log(f"✅ Built termbase index: {len(new_index)} terms in {elapsed:.2f}s")
+
+            # v1.10.69: take a fresh snapshot of the termbase tables
+            # so the file watcher's snapshot-gate (see
+            # _on_termbase_db_debounce_fire) recognises subsequent
+            # own-writes as "already accounted for" and skips
+            # redundant rebuilds. Without this, every own-write would
+            # cause a no-op rebuild ~2 s later when the file watcher
+            # fired — harmless but wasteful.
+            try:
+                self._termbase_db_last_snapshot = self._snapshot_termbase_db_state()
+            except Exception:
+                pass
 
         except Exception as e:
             self.log(f"❌ Failed to build termbase index: {e}")

@@ -2,7 +2,39 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.68 (May 17, 2026)
+**Current Version:** v1.10.69 (May 17, 2026)
+
+
+## v1.10.69 – May 17, 2026
+
+### Added (Automatic termbase index refresh when the shared SQLite DB is modified by another process — e.g. the Supervertaler for Trados plugin — with snapshot gating to avoid spurious rebuilds)
+
+Follow-up to the v1.10.68 manual 🔄 refresh button: the rebuild now also happens automatically, with careful gating to address the user's explicit "I don't want it misfiring or making trouble" requirement.
+
+**How it works.** `QFileSystemWatcher` installs on the active SQLite DB file at project-load time (`_setup_termbase_db_watcher`, called from the end of the project-load chain right after `_start_termbase_batch_worker`). Whenever the file's mtime ticks, a single-shot 2-second debounce timer (re)starts. When the timer eventually fires — meaning the file has been quiet for the last 2 seconds — the handler **snapshot-gates** the rebuild:
+
+ - Before doing anything, it queries four cheap aggregates from the database: `COUNT(*)` and `MAX(id)` from `termbases`, plus `COUNT(*)`, `MAX(id)`, and `MAX(modified_date)` from `termbase_terms`.
+ - Compares the fresh tuple to the snapshot taken at the end of the last `_build_termbase_index()` call.
+ - **Skips the rebuild entirely** if nothing in the termbase tables actually changed. The file mtime ticking is normal for any DB write — TM saves, project metadata, segment confirmations — and we don't want a rebuild firing 50× per minute during normal editing.
+ - Only when the snapshot genuinely differs does it call `_post_termbase_delete_refresh()` (same helper the manual button uses).
+
+**Why this is safe.** Three layers of "don't misfire":
+
+ 1. **Debounce (2 s)** collapses bursts of writes into one fire. A batch of own-INSERTs followed by activation-table updates → one timer event, not five.
+ 2. **Snapshot gating** filters out non-termbase DB writes (TM, project state) so only actual termbase-table changes trigger a rebuild.
+ 3. **Own-write integration**: every code path that modifies termbases already routes through `_post_termbase_delete_refresh` → `_build_termbase_index`, which now also re-snapshots at the end. So an own-write updates the snapshot synchronously; when the watcher debounce fires ~2 s later for that same write, the comparison sees no change and the rebuild is correctly skipped. **Zero spurious rebuilds from own-writes.**
+
+**Cross-process behaviour** — the actual point of the feature:
+
+ - User adds / deletes a term in the Supervertaler for Trados plugin.
+ - Trados commits to the same SQLite DB → file mtime ticks → Workbench's watcher fires.
+ - 2 s quiet window passes (so a batch of related Trados writes finishes first).
+ - Snapshot diff detects the change → `_post_termbase_delete_refresh()` runs.
+ - TermLens display updates automatically; no user action needed.
+
+**Defensive layout.** Watcher setup is wrapped in `try/except`; failure (network drive, OneDrive, exotic filesystem, missing PyQt6 component) logs a warning and the manual 🔄 button from v1.10.68 still works as a fallback. On project switch, the old watcher is torn down and a new one installed. Windows-specific quirk handled too: SQLite WAL checkpoints sometimes drop a file from `QFileSystemWatcher`'s tracking list when the file gets rewritten; the change handler re-adds the path before restarting the debounce timer so subsequent edits still fire events.
+
+Status-line summary on project load: `👁️  Termbase DB auto-refresh: watching <filename> (2s debounce)`. Each successful auto-refresh logs `🔄 Termbase DB changed externally — auto-refreshing index (termbases:X→Y, terms:N→M)` so you can see exactly what changed and when.
 
 
 ## v1.10.68 – May 17, 2026
