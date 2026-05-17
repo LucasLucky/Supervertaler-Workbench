@@ -21,7 +21,7 @@ visuals were already identical, so the merge is mostly a behavioural one.
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QTextEdit, QPushButton, QGroupBox,
+    QTextEdit, QPushButton, QGroupBox, QComboBox,
     QMessageBox, QListWidget, QListWidgetItem, QMenu, QScrollArea,
     QWidget, QToolButton, QApplication, QFormLayout
 )
@@ -208,6 +208,44 @@ class TermbaseEntryEditor(QDialog):
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
 
+        # ── Related-entries switcher (v1.10.78) ──────────────────
+        # When the same source term has entries in multiple termbases
+        # (very common: a project termbase like BRANTS plus a
+        # background termbase like PATENTS both have "inrichting"),
+        # this dropdown lets the user jump between them without
+        # closing the dialog and re-opening it on a different chip.
+        # Mirrors the Trados Edit Term Entry dialog's "Editing in:"
+        # dropdown.
+        #
+        # Hidden by default — only shown if the query in
+        # ``_populate_related_entries_combo()`` (called at the end
+        # of ``load_term_data``) finds more than one entry sharing
+        # the loaded entry's source-term or target-term surface
+        # forms.
+        self._related_row = QHBoxLayout()
+        self._related_row.setSpacing(6)
+        self._related_label = QLabel("Editing:")
+        self._related_label.setStyleSheet("color: #666; font-weight: bold;")
+        self._related_combo = QComboBox()
+        self._related_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._related_combo.setToolTip(
+            "Switch between termbase entries that share this source term. "
+            "Each entry can be edited independently in this dialog."
+        )
+        # Suppress the change handler while we populate the combo
+        # programmatically — otherwise the very first setCurrentIndex
+        # call would trigger a load of the current entry (no-op but
+        # wasteful) or worse, a different entry if the order shifts.
+        self._related_combo_suppress = False
+        self._related_combo.currentIndexChanged.connect(self._on_related_entry_selected)
+        self._related_row.addWidget(self._related_label)
+        self._related_row.addWidget(self._related_combo, stretch=1)
+        # Container widget so we can show/hide the whole row.
+        self._related_container = QWidget()
+        self._related_container.setLayout(self._related_row)
+        self._related_container.setVisible(False)
+        layout.addWidget(self._related_container)
+
         # Term pair – editable, side by side (Trados-style).
         term_row = QHBoxLayout()
         term_row.setSpacing(12)
@@ -318,10 +356,16 @@ class TermbaseEntryEditor(QDialog):
         self._src_caption = src_caption
         self._tgt_caption = tgt_caption
 
-        # Source column: term, abbreviation, (later) synonyms
+        # Source column: term, abbreviation, (later) synonyms.
+        # v1.10.78: caption QLabels stored as instance attributes so
+        # the v1.10.78 related-entry switcher can update them when
+        # the user picks a different termbase entry from the
+        # dropdown (the new entry may have a different direction,
+        # so the captions need to flip).
         source_col = QVBoxLayout()
         source_col.setSpacing(2)
-        source_col.addWidget(QLabel(f"<b>{src_caption}:</b>"))
+        self._src_caption_label = QLabel(f"<b>{src_caption}:</b>")
+        source_col.addWidget(self._src_caption_label)
         self.source_edit = QLineEdit(self.source_term)
         self.source_edit.setStyleSheet("padding: 4px;")
         source_col.addWidget(self.source_edit)
@@ -333,7 +377,8 @@ class TermbaseEntryEditor(QDialog):
         # Target column: term, abbreviation, (later) synonyms
         target_col = QVBoxLayout()
         target_col.setSpacing(2)
-        target_col.addWidget(QLabel(f"<b>{tgt_caption}:</b>"))
+        self._tgt_caption_label = QLabel(f"<b>{tgt_caption}:</b>")
+        target_col.addWidget(self._tgt_caption_label)
         self.target_edit = QLineEdit(self.target_term)
         self.target_edit.setStyleSheet("padding: 4px;")
         target_col.addWidget(self.target_edit)
@@ -431,9 +476,12 @@ class TermbaseEntryEditor(QDialog):
         # columns above, so left-vs-right semantics stay consistent
         # whether the termbase is aligned or reversed relative to the
         # project.
-        source_syn_label = QLabel(f"{getattr(self, '_src_caption', 'Source')} Synonyms (Optional)")
-        source_syn_label.setStyleSheet("font-weight: bold;")
-        source_syn_header.addWidget(source_syn_label)
+        # v1.10.78: stored as attribute so the related-entry switcher
+        # can update the language label when the user picks an entry
+        # from a differently-oriented termbase.
+        self._source_syn_label = QLabel(f"{getattr(self, '_src_caption', 'Source')} Synonyms (Optional)")
+        self._source_syn_label.setStyleSheet("font-weight: bold;")
+        source_syn_header.addWidget(self._source_syn_label)
         source_syn_header.addStretch()
         source_syn_main_layout.addLayout(source_syn_header)
 
@@ -527,9 +575,10 @@ class TermbaseEntryEditor(QDialog):
         self.target_syn_toggle.setChecked(False)
         target_syn_header.addWidget(self.target_syn_toggle)
 
-        target_syn_label = QLabel(f"{getattr(self, '_tgt_caption', 'Target')} Synonyms (Optional)")
-        target_syn_label.setStyleSheet("font-weight: bold;")
-        target_syn_header.addWidget(target_syn_label)
+        # v1.10.78: stored as attribute (see source counterpart above).
+        self._target_syn_label = QLabel(f"{getattr(self, '_tgt_caption', 'Target')} Synonyms (Optional)")
+        self._target_syn_label.setStyleSheet("font-weight: bold;")
+        target_syn_header.addWidget(self._target_syn_label)
         target_syn_header.addStretch()
         target_syn_main_layout.addLayout(target_syn_header)
 
@@ -976,6 +1025,246 @@ class TermbaseEntryEditor(QDialog):
         except Exception:
             pass
 
+    # ──────────────────────────────────────────────────────────────
+    # v1.10.78 — Related-entries dropdown ("Editing in:" switcher)
+    # ──────────────────────────────────────────────────────────────
+    # Mirrors the Trados Edit Term Entry dialog. When the loaded term's
+    # source word has entries in multiple termbases (or multiple
+    # entries in the same termbase, e.g. one normal-direction and one
+    # reverse-direction), the dropdown at the top of the dialog lets
+    # the user switch between them in place without closing the dialog
+    # and re-opening it on a different chip.
+    #
+    # Population (``_populate_related_entries_combo``) runs at the end
+    # of every successful ``load_term_data`` — including after a
+    # switch, so the dropdown stays consistent.
+    #
+    # The match is bidirectional: an entry is "related" if its
+    # ``source_term`` OR ``target_term`` (case-insensitive) matches
+    # the loaded entry's ``source_term`` OR ``target_term``. So for
+    # a loaded entry "inrichting → device":
+    #  - All entries with source_term="inrichting" are included
+    #    (other termbases' normal-direction entries for this NL term)
+    #  - All entries with target_term="inrichting" are included
+    #    (reverse-direction entries — EN→NL termbases where the
+    #    Dutch word lives in the target column)
+    #  - All entries with source_term="device" are included
+    #  - All entries with target_term="device" are included
+    # Matches Trados's "anything containing this surface form".
+
+    def _populate_related_entries_combo(self):
+        """Query the DB for all entries sharing this entry's source
+        or target text (case-insensitive, bidirectional). If more
+        than one result, populate + show the dropdown; otherwise
+        hide it. Idempotent — safe to call repeatedly.
+        """
+        if (not self.db_manager) or (not self.term_id) or (not self.term_data):
+            return
+        try:
+            src = (self.term_data.get('source_term') or '').strip()
+            tgt = (self.term_data.get('target_term') or '').strip()
+            if not (src or tgt):
+                return
+
+            cur = self.db_manager.cursor
+            # Bidirectional case-insensitive match. Skip empty surface
+            # forms (`AND … != ''`) so we don't false-match every
+            # empty target_term in the DB. Include the termbase name
+            # via JOIN; LEFT JOIN so entries whose termbase row was
+            # deleted (orphan) still appear with a "?" name rather
+            # than disappearing silently.
+            params = []
+            conds = []
+            for needle in (src, tgt):
+                if needle:
+                    conds.append("LOWER(t.source_term) = LOWER(?)")
+                    conds.append("LOWER(t.target_term) = LOWER(?)")
+                    params.extend([needle, needle])
+            where_clause = " OR ".join(conds)
+            sql = f"""
+                SELECT t.id,
+                       t.source_term,
+                       t.target_term,
+                       COALESCE(tb.name, '?') as tb_name,
+                       tb.id as tb_id
+                FROM termbase_terms t
+                LEFT JOIN termbases tb
+                    ON CAST(t.termbase_id AS INTEGER) = tb.id
+                WHERE {where_clause}
+                ORDER BY tb.name, t.id
+            """
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        except Exception:
+            return
+
+        # Filter to unique term_ids (defensive — the bidirectional OR
+        # could in theory match the same row twice if e.g. source
+        # and target text are identical strings).
+        seen = set()
+        entries = []
+        for row in rows:
+            tid = row[0]
+            if tid in seen:
+                continue
+            seen.add(tid)
+            entries.append({
+                'term_id': tid,
+                'source_term': row[1] or '',
+                'target_term': row[2] or '',
+                'termbase_name': row[3] or '?',
+                'termbase_id': row[4],
+            })
+
+        # Hide the row entirely if there's only one entry (or none).
+        if len(entries) <= 1:
+            self._related_container.setVisible(False)
+            return
+
+        # Populate the combo. Suppress the change signal while we
+        # rebuild so setCurrentIndex doesn't fire a phantom switch
+        # to the entry we're already on.
+        self._related_combo_suppress = True
+        try:
+            self._related_combo.clear()
+            current_idx = 0
+            for i, e in enumerate(entries):
+                label = f"{e['termbase_name']}: {e['source_term']} → {e['target_term']}"
+                # Stash the term_id on the item via UserData so the
+                # change handler can look it up by index without
+                # parsing the label text.
+                self._related_combo.addItem(label, e['term_id'])
+                if e['term_id'] == self.term_id:
+                    current_idx = i
+            self._related_combo.setCurrentIndex(current_idx)
+        finally:
+            self._related_combo_suppress = False
+        self._related_container.setVisible(True)
+
+    def _on_related_entry_selected(self, idx: int):
+        """Dropdown selection changed — load the chosen entry's data.
+
+        No "unsaved changes" check for now: matches the Trados dialog,
+        which also switches in place without prompting. The Save
+        button only acts on the currently-loaded entry, so unsaved
+        edits to entry A are simply discarded when the user picks
+        entry B. Add an explicit warning in a future iteration if
+        users actually hit this.
+        """
+        if self._related_combo_suppress:
+            return
+        if idx < 0:
+            return
+        try:
+            new_term_id = self._related_combo.itemData(idx)
+            if new_term_id is None or new_term_id == self.term_id:
+                return
+            self._switch_to_term_id(int(new_term_id))
+        except Exception as e:
+            try:
+                self._diag_log(f"[TermbaseEntryEditor] switch-entry failed: {e}")
+            except Exception:
+                pass
+
+    def _switch_to_term_id(self, new_term_id: int):
+        """Switch the dialog to edit a different term entry in place.
+
+        Steps:
+          1. Update self.term_id (which load_term_data + the caption
+             query both key off).
+          2. Re-query the termbase direction for the new term and
+             update the column / synonym section captions.
+          3. Clear the existing form fields (so leftover values
+             from the previous entry don't bleed through if the
+             new entry has empty fields).
+          4. Call load_term_data which repopulates everything from
+             the DB AND re-runs ``_populate_related_entries_combo``
+             so the dropdown stays consistent.
+          5. Update the window title to show the new entry's ID +
+             termbase name.
+        """
+        self.term_id = new_term_id
+
+        # Clear synonym lists — load_synonyms() appends without
+        # clearing first, so without this we'd accumulate across
+        # switches.
+        try:
+            self.source_synonym_list.clear()
+            self.target_synonym_list.clear()
+        except Exception:
+            pass
+
+        # Update captions from the new termbase's declared direction.
+        self._update_captions_from_termbase()
+
+        # Reload everything for the new entry. load_term_data already
+        # calls _populate_related_entries_combo at the end on success.
+        self.load_term_data()
+
+        # Refresh the window title with the new entry's id + termbase.
+        try:
+            tb_name = ''
+            if self.db_manager and self.termbase_id is not None:
+                cur = self.db_manager.cursor
+                cur.execute(
+                    "SELECT name FROM termbases WHERE id = ?",
+                    (self.termbase_id,),
+                )
+                r = cur.fetchone()
+                if r:
+                    tb_name = r[0] or ''
+            title = "Edit Termbase Entry"
+            if self.term_id is not None:
+                title += f" (ID {self.term_id})"
+            if tb_name:
+                title += f" — {tb_name}"
+            self.setWindowTitle(title)
+        except Exception:
+            pass
+
+    def _update_captions_from_termbase(self):
+        """Re-query the termbase's declared direction for the
+        current ``self.term_id`` and update the column-caption
+        QLabels (and synonym-section labels) accordingly. Called by
+        ``_switch_to_term_id`` so a switch to a different-direction
+        termbase's entry flips the captions to match.
+        """
+        if (self.db_manager is None) or (self.term_id is None):
+            return
+        try:
+            cur = self.db_manager.cursor
+            cur.execute(
+                """
+                SELECT tb.source_lang, tb.target_lang, tb.id
+                FROM termbase_terms t
+                JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
+                WHERE t.id = ?
+                """,
+                (self.term_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return
+            tb_src, tb_tgt, real_tb_id = row[0] or '', row[1] or '', row[2]
+            if not (tb_src and tb_tgt):
+                return
+            if real_tb_id is not None:
+                self.termbase_id = real_tb_id
+            src = self._language_display_name(tb_src) or "Source"
+            tgt = self._language_display_name(tb_tgt) or "Target"
+            self._src_caption = src
+            self._tgt_caption = tgt
+            if hasattr(self, '_src_caption_label'):
+                self._src_caption_label.setText(f"<b>{src}:</b>")
+            if hasattr(self, '_tgt_caption_label'):
+                self._tgt_caption_label.setText(f"<b>{tgt}:</b>")
+            if hasattr(self, '_source_syn_label'):
+                self._source_syn_label.setText(f"{src} Synonyms (Optional)")
+            if hasattr(self, '_target_syn_label'):
+                self._target_syn_label.setText(f"{tgt} Synonyms (Optional)")
+        except Exception:
+            pass
+
     def load_term_data(self):
         """Load existing term data from the database (edit mode only)."""
         if not self.db_manager or not self.term_id:
@@ -1067,6 +1356,18 @@ class TermbaseEntryEditor(QDialog):
 
                 # Load synonyms
                 self.load_synonyms()
+                # v1.10.78 — populate the related-entries dropdown so
+                # the user can switch between sibling entries from
+                # other termbases that share this surface term. Done
+                # here (end of successful load) rather than in
+                # setup_ui because we need the loaded source_term /
+                # target_term to seed the query.
+                try:
+                    self._populate_related_entries_combo()
+                except Exception as _e:
+                    # Non-critical — if the lookup fails the dropdown
+                    # just stays hidden and the dialog works as before.
+                    pass
             else:
                 # v1.10.67: row is None — term_id doesn't match any
                 # row in termbase_terms. Surfacing an empty dialog

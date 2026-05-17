@@ -2,7 +2,40 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.77 (May 18, 2026)
+**Current Version:** v1.10.78 (May 18, 2026)
+
+
+## v1.10.78 – May 18, 2026
+
+### Added (Edit Termbase Entry dialog: "Editing:" dropdown to switch between related entries in place — Trados parity)
+
+A user comparing the Workbench Edit Termbase Entry dialog to the Trados equivalent pointed out a useful affordance Workbench was missing: in Trados, when the same source word has entries in multiple termbases (very common — a project termbase plus one or more background termbases all carry the same head word), the Edit Term Entry dialog has a dropdown at the top labelled "Editing in:" that lets you switch between those entries in place without closing the dialog and re-opening it on a different chip.
+
+**New dropdown at the top of the Edit Termbase Entry dialog.** Hidden when only one entry exists; shown when two or more sibling entries share this entry's surface form. Each item is labelled `"{termbase_name}: {source_term} → {target_term}"` so the user can see what they're picking before they pick it. Selecting a different item:
+
+ - Updates `self.term_id` to the new entry's id.
+ - Re-queries the new entry's termbase direction and **flips the column captions + synonym section labels** if the new entry's termbase is oriented differently (so e.g. switching from a BRANTS NL→EN entry to a PATENTS EN→NL entry flips "Dutch:" / "English:" caption order).
+ - Clears the synonym lists (they're append-only without this, so the new entry would inherit the old's synonyms cosmetically).
+ - Calls `load_term_data` to repopulate every field from the DB — including the metadata block, the abbreviations, the NT / forbidden checkboxes, and the synonym lists.
+ - Updates the window title to show the new entry's id + termbase name.
+
+**Bidirectional match.** Two entries are "related" if either of their `source_term` or `target_term` (case-insensitive) matches either of the loaded entry's `source_term` or `target_term`. So for a loaded entry "inrichting → device":
+
+ - Other termbases' normal-direction entries with `source_term="inrichting"` are included.
+ - Reverse-direction termbases' entries where `target_term="inrichting"` (e.g. PATENTS' `"apparatus → inrichting"`) are included.
+ - Entries containing "device" in either column are also included.
+
+Matches the Trados behaviour of "show me everything related to this surface term concept", with the same caveat that "device" can sometimes pull in entries from unrelated translation pairs that happen to share that English word. Acceptable for a v1; can add tighter filtering (anchor strictly on source surface text) in a future iteration if users find it noisy.
+
+**No activation filter** — entries from inactive termbases (other projects' termbases, archived termbases, etc.) are included in the dropdown. Trados filters by active termbases; Workbench is more permissive here on the theory that someone explicitly editing a term entry might also want to clean up related entries in inactive termbases. Easy to add a filter toggle later if users disagree.
+
+**No "unsaved changes" warning** on switch — mirrors the Trados dialog, which also switches in place without prompting. If the user edited fields on entry A and then switches to entry B, the edits to A are silently discarded. The Save button only acts on the currently-loaded entry. Explicit warning can be added if it becomes a real footgun.
+
+**Implementation entirely dialog-side** — no signal-chain changes (`TermLensWidget.edit_requested`, `_on_termlens_edit_entry`, etc. all unchanged). The dialog runs its own SQL query in `_populate_related_entries_combo()` at the end of `load_term_data`. So every existing call site — TermLens right-click, translation-results panel right-click, Termbases tab "Edit Selected Term" button — automatically gets the new dropdown without any caller-side changes.
+
+Idempotent: `_populate_related_entries_combo` runs after every successful `load_term_data`, including after a switch, so the dropdown stays consistent if the surface terms of the newly-loaded entry differ from the previously-loaded one.
+
+Net effect: switching between related entries goes from "close dialog → open new dialog on a different chip" (≈ 3 clicks) to one dropdown pick.
 
 
 ## v1.10.77 – May 18, 2026
