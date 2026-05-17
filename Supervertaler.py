@@ -8378,7 +8378,7 @@ class SupervertalerQt(QMainWindow):
         except Exception:
             pass
 
-        # Refresh the all-comments list + status cell.
+        # Refresh the all-comments list + status cell + anchor highlight.
         try:
             self._refresh_segment_comments_list()
         except Exception as e:
@@ -8387,6 +8387,11 @@ class SupervertalerQt(QMainWindow):
             self._refresh_segment_status(segment)
         except Exception:
             pass
+        # Re-paint anchor highlights on the affected row's cells.
+        try:
+            self._apply_comment_anchors_to_cell(row, segment)
+        except Exception as e:
+            self.log(f"⚠ Anchor highlight refresh failed: {e}")
 
         if hasattr(self, 'status_bar'):
             anchor_note = (
@@ -35739,7 +35744,16 @@ class SupervertalerQt(QMainWindow):
                 target_widget = self.table.cellWidget(row, 3)
                 if target_widget:
                     target_widget.blockSignals(False)
-            
+
+            # v1.10.57 Phase C: paint background highlight on any
+            # anchored comment ranges. Done after all cells are
+            # populated and signals are unblocked, so the highlight
+            # applies to the final character formatting layer.
+            try:
+                self._apply_comment_anchors_to_all_cells()
+            except Exception as e:
+                self.log(f"⚠ Anchor highlights skipped: {e}")
+
             # Update progress stats in status bar
             self.update_progress_stats()
 
@@ -46563,6 +46577,135 @@ class SupervertalerQt(QMainWindow):
                 self._refresh_segment_status(seg)
                 break
     
+    # ──────────────────────────────────────────────────────────────
+    # Comment-anchor visual indicators in editor cells (v1.10.57 Phase C)
+    # ──────────────────────────────────────────────────────────────
+
+    # Amber background for ranges anchored by a Comment. Mirrors the
+    # default Word-comment highlight colour so the in-app cell matches
+    # what users will see in the exported DOCX (Phase E).
+    _COMMENT_ANCHOR_BG_QCOLOR = None  # Lazily built — needs Qt module
+
+    def _comment_anchor_bg_color(self):
+        if self._COMMENT_ANCHOR_BG_QCOLOR is None:
+            # Use a light amber with full alpha — cell renderers don't
+            # always honour transparency, and full-alpha picks up cleanly
+            # against the editor's default white background.
+            self._COMMENT_ANCHOR_BG_QCOLOR = QColor(254, 240, 138)  # amber-200
+        return self._COMMENT_ANCHOR_BG_QCOLOR
+
+    def _apply_comment_anchors_to_cell(self, row: int, segment):
+        """Apply a background highlight to every anchored character range
+        in this row's source and target cell editors.
+
+        Called from load_segments_to_grid (initial paint), after
+        Ctrl+Shift+M creates a comment, and after edit/delete.
+        Cheap to call repeatedly — at most one cursor pass per
+        anchored comment, and visible cells only.
+
+        Defensive against text-length mismatches: anchor offsets are
+        clamped to the actual cell text length. If the user has
+        edited the target text since the comment was anchored, the
+        highlight may not match the original wording, but at least
+        it won't crash or wander into invalid territory.
+        """
+        if not segment or not getattr(segment, 'comments', None):
+            return
+        if not hasattr(self, 'table') or not self.table:
+            return
+
+        from PyQt6.QtGui import QTextCursor as _QTextCursor, QTextCharFormat as _QTextCharFormat
+
+        bg_color = self._comment_anchor_bg_color()
+        fmt = _QTextCharFormat()
+        fmt.setBackground(bg_color)
+
+        for col, field_name in [(2, 'source'), (3, 'target')]:
+            editor = self.table.cellWidget(row, col)
+            if editor is None or not hasattr(editor, 'document'):
+                continue
+            text_len = len(editor.toPlainText())
+            for c in segment.comments:
+                if c.anchor_field != field_name or not c.is_anchored:
+                    continue
+                start = max(0, min(c.anchor_start, text_len))
+                end = max(start, min(c.anchor_end, text_len))
+                if start == end:
+                    continue
+                cursor = _QTextCursor(editor.document())
+                cursor.setPosition(start)
+                cursor.setPosition(end, _QTextCursor.MoveMode.KeepAnchor)
+                cursor.mergeCharFormat(fmt)
+
+    def _apply_comment_anchors_to_all_cells(self):
+        """Apply anchor highlights to every currently-visible row.
+
+        Called once at the end of load_segments_to_grid so the
+        highlights show up immediately after a project load or a
+        page-switch (with pagination, only the current page's rows
+        actually have cell widgets).
+        """
+        if (not self.current_project
+                or not self.current_project.segments
+                or not hasattr(self, 'table')
+                or not self.table):
+            return
+
+        # Build a quick lookup: segment_id → segment, since cells store id only.
+        by_id = {s.id: s for s in self.current_project.segments}
+
+        for row in range(self.table.rowCount()):
+            id_item = self.table.item(row, 0)
+            if not id_item:
+                continue
+            try:
+                seg_id = int(id_item.text())
+            except (ValueError, AttributeError):
+                continue
+            segment = by_id.get(seg_id)
+            if segment is None:
+                continue
+            self._apply_comment_anchors_to_cell(row, segment)
+
+    def _refresh_cell_text_for_anchors(self, row: int, segment):
+        """Reset character formatting on this row's source/target cells.
+
+        Used as a "cheap clear" before re-applying anchor highlights,
+        since mergeCharFormat is additive (no per-range undo). Calling
+        setPlainText() with the cell's current text strips all rich-text
+        char formats (Qt documented behaviour) without changing the text
+        content. Signals are blocked so the legacy textChanged handlers
+        don't interpret this as a user edit.
+        """
+        if not hasattr(self, 'table') or not self.table:
+            return
+        for col in (2, 3):
+            editor = self.table.cellWidget(row, col)
+            if editor is None or not hasattr(editor, 'setPlainText'):
+                continue
+            current_text = editor.toPlainText()
+            editor.blockSignals(True)
+            try:
+                editor.setPlainText(current_text)
+            finally:
+                editor.blockSignals(False)
+
+    def _find_row_for_segment_id(self, segment_id: int) -> int:
+        """Return the row index for a segment id in the visible table,
+        or -1 if the segment isn't on the current page. Helper for the
+        targeted anchor-refresh after a single comment is created/edited."""
+        if not hasattr(self, 'table') or not self.table:
+            return -1
+        for row in range(self.table.rowCount()):
+            id_item = self.table.item(row, 0)
+            if id_item:
+                try:
+                    if int(id_item.text()) == segment_id:
+                        return row
+                except (ValueError, AttributeError):
+                    continue
+        return -1
+
     def _refresh_segment_comments_list(self):
         """Rebuild the all-comments list at the top of the Comments → Segment sub-tab.
 
@@ -46749,6 +46892,17 @@ class SupervertalerQt(QMainWindow):
                 except Exception:
                     pass
                 self._refresh_segment_comments_list()
+                # Re-apply anchor highlights on the affected row (the
+                # removed comment's highlight needs to go; remaining
+                # anchored comments stay highlighted).
+                affected_row = self._find_row_for_segment_id(segment.id)
+                if affected_row >= 0:
+                    # We need to clear ALL char-format backgrounds first
+                    # since mergeCharFormat is additive and we have no
+                    # cheap way to identify "our" old highlight to undo.
+                    # Easiest: refresh the cell text, which resets formats.
+                    self._refresh_cell_text_for_anchors(affected_row, segment)
+                    self._apply_comment_anchors_to_cell(affected_row, segment)
                 # Keep the bottom editor in sync if the deleted comment
                 # belonged to the currently-selected segment.
                 if hasattr(self, '_update_bottom_notes_for_segment'):
@@ -46836,6 +46990,13 @@ class SupervertalerQt(QMainWindow):
         except Exception:
             pass
         self._refresh_segment_comments_list()
+        # Re-apply anchor highlights on the affected row (text content
+        # of the anchor is unchanged but a delete-via-empty-edit may
+        # have removed a comment whose highlight needs to go).
+        affected_row = self._find_row_for_segment_id(segment.id)
+        if affected_row >= 0:
+            self._refresh_cell_text_for_anchors(affected_row, segment)
+            self._apply_comment_anchors_to_cell(affected_row, segment)
         if hasattr(self, '_update_bottom_notes_for_segment'):
             self._update_bottom_notes_for_segment(segment)
 

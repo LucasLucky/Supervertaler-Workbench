@@ -2,7 +2,31 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.58 (May 17, 2026)
+**Current Version:** v1.10.59 (May 17, 2026)
+
+
+## v1.10.59 – May 17, 2026
+
+### Added (Phase C — anchored comment ranges get a background highlight in the editor cells)
+
+Third instalment in the range-anchored comments series. Phases A (data) and B+D (UI + list) made anchored comments createable and manageable. This phase makes them **visible at a glance in the source/target cells** so the translator can see at a glance which words have comments attached, the same way Trados and memoQ show comment-anchored ranges with a coloured background.
+
+Implementation:
+ - New helper `_apply_comment_anchors_to_cell(row, segment)` walks the segment's comments[], picks out anchored ones (`is_anchored` True) by their `anchor_field` (source = col 2, target = col 3), and applies a Tailwind-amber-200 (`#FEF08A`) background to the anchored character range in the corresponding cell editor via `QTextCursor.mergeCharFormat`.
+ - New `_apply_comment_anchors_to_all_cells()` iterates every visible row at once. Called at the end of `load_segments_to_grid` so the highlights appear immediately after a project load, a page-switch (pagination repaints), or any grid reload.
+ - Targeted single-row refresh after Ctrl+Shift+M creates a comment, and after `_edit_comment_dialog` / context-menu delete. Avoids unnecessary work on the rest of the grid.
+ - `_refresh_cell_text_for_anchors(row, segment)` provides a "cheap clear" before re-applying highlights when a comment is removed: setPlainText() with the cell's current text strips all character formats (documented Qt behaviour), and the subsequent anchor re-apply paints only the still-present anchors. Signals are blocked during the reset so the legacy textChanged handlers don't interpret it as a user edit.
+ - Anchor offsets are defensively clamped to the actual cell text length on each apply. If the user has edited the target text since the comment was anchored, the highlight may land on slightly-different wording, but it won't crash or wander into invalid territory.
+
+Interaction with existing formatting:
+ - The existing `TagHighlighter` (QSyntaxHighlighter) only sets formats on tag matches, invisible-character symbols, and misspelled words via `setFormat(start, length, format)`. It leaves the format on plain-text ranges untouched, so the amber background applied by `mergeCharFormat` survives subsequent syntax-highlight passes on the same cell.
+ - Order of operations: cell `setPlainText` (clears formats) → syntax highlighter runs (paints tag/spellcheck formats) → end of `load_segments_to_grid` → our `_apply_comment_anchors_to_all_cells` runs (paints amber background on plain text). Our layer goes on top.
+
+Known limitation (will revisit in a later refinement, not this phase):
+ - When the user edits the cell text, the syntax highlighter re-runs on the affected block, which doesn't disturb our background highlight per se — but the underlying character positions may now refer to wrong text. Anchor positions are *not* live-tracked through edits; they're stored as absolute offsets. A future enhancement could either auto-invalidate anchors when their range is modified, or use Qt's `QTextCursor` position tracking to follow edits.
+
+Still coming:
+ - Phase E: DOCX export — Word comment anchors to the specific character range (with run-splitting where the anchor cuts mid-run) instead of the whole paragraph. This is the end-user payoff in the exported file.
 
 
 ## v1.10.58 – May 17, 2026
