@@ -136,6 +136,55 @@ class TermbaseEntryEditor(QDialog):
             pass
 
     # ------------------------------------------------------------------
+    # Language helpers (v1.10.63)
+    # ------------------------------------------------------------------
+    # Local code → human-readable name map. Covers the language pairs
+    # this dialog has historically labelled. Falls back to title-casing
+    # the input for anything not in the table. Kept inline (rather than
+    # imported from the main module) so this dialog stays standalone-
+    # importable from any module without pulling Supervertaler.py.
+    _LANGUAGE_NAMES = {
+        'en': 'English', 'en-us': 'English', 'en-gb': 'English',
+        'nl': 'Dutch',   'nl-nl': 'Dutch',   'nl-be': 'Dutch',
+        'de': 'German',  'de-de': 'German',
+        'fr': 'French',  'fr-fr': 'French',
+        'es': 'Spanish', 'es-es': 'Spanish',
+        'it': 'Italian', 'it-it': 'Italian',
+        'pt': 'Portuguese',
+        'pl': 'Polish',
+        'ru': 'Russian',
+        'zh': 'Chinese',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+    }
+
+    @classmethod
+    def _language_display_name(cls, code_or_name: str) -> str:
+        """Return a human-readable language name for an ISO code or a
+        full name. Idempotent: ``"Dutch"`` → ``"Dutch"``,
+        ``"nl"`` → ``"Dutch"``, ``"nl-BE"`` → ``"Dutch"``.
+
+        Falls back to the input (title-cased) for codes / names not in
+        the table — so unfamiliar languages still get *something*
+        readable instead of vanishing."""
+        if not code_or_name:
+            return ''
+        key = code_or_name.strip().lower()
+        # Exact match (covers ISO codes and locale variants).
+        if key in cls._LANGUAGE_NAMES:
+            return cls._LANGUAGE_NAMES[key]
+        # Strip a locale tail and retry: "nl-be" → "nl".
+        if '-' in key:
+            base = key.split('-', 1)[0]
+            if base in cls._LANGUAGE_NAMES:
+                return cls._LANGUAGE_NAMES[base]
+        # Reverse lookup — caller may already have passed a full name.
+        if code_or_name.strip().title() in cls._LANGUAGE_NAMES.values():
+            return code_or_name.strip().title()
+        # Fallback: title-case the input.
+        return code_or_name.strip().title()
+
+    # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
     def setup_ui(self):
@@ -163,21 +212,69 @@ class TermbaseEntryEditor(QDialog):
         term_row = QHBoxLayout()
         term_row.setSpacing(12)
 
-        # Resolve language names for the column captions. Walk up the
-        # parent chain because this dialog can be opened from contexts
-        # (TermLens, results panel) that aren't the main window directly.
+        # Resolve language names for the column captions.
+        #
+        # v1.10.63: in **edit mode**, the captions reflect the
+        # *termbase's* declared direction (queried from the termbases
+        # table), so the dialog matches the Termbase Editor grid view.
+        # This fixes a confusing case where the termbase ran opposite
+        # to the project: the dialog used to caption the columns by
+        # project direction but populate the values from
+        # source_term/target_term in storage order — making it look as
+        # if the entry was reversed (e.g. "end" appearing under a
+        # "Dutch:" caption in a NL→EN project with an EN→NL termbase).
+        # The values are correct in storage; the captions just need to
+        # tell the truth about what's stored where.
+        #
+        # In **add mode**, the dialog isn't tied to a specific termbase
+        # yet (the v1.10.62 per-termbase orient in the writer picks the
+        # direction at INSERT time), so we keep project-direction
+        # captions there.
+        #
+        # Either way, ISO codes ("nl", "en") get expanded to full
+        # human-readable names ("Dutch", "English") for readability.
         src_caption, tgt_caption = "Source", "Target"
         try:
+            # Walk up the parent chain — this dialog can be opened from
+            # surfaces (TermLens, results panel) that aren't the main
+            # window directly.
             ancestor = self.parent()
             while ancestor is not None and not hasattr(ancestor, 'current_project'):
                 ancestor = ancestor.parent() if callable(getattr(ancestor, 'parent', None)) else None
             proj = getattr(ancestor, 'current_project', None) if ancestor else None
-            if proj and getattr(proj, 'source_lang', None):
-                src_caption = proj.source_lang
-            if proj and getattr(proj, 'target_lang', None):
-                tgt_caption = proj.target_lang
+
+            # Defaults: project direction (for add mode, or as a fallback
+            # if edit-mode lookup fails).
+            src_lang_for_caption = (proj.source_lang if proj else '') or 'Source'
+            tgt_lang_for_caption = (proj.target_lang if proj else '') or 'Target'
+
+            # Edit-mode override: use the termbase's declared direction
+            # if we have it.
+            is_edit_mode = self.term_id is not None
+            if is_edit_mode and self.db_manager is not None and self.termbase_id is not None:
+                try:
+                    cur = self.db_manager.cursor
+                    cur.execute(
+                        "SELECT source_lang, target_lang FROM termbases WHERE id = ?",
+                        (self.termbase_id,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        tb_src, tb_tgt = row[0] or '', row[1] or ''
+                        if tb_src and tb_tgt:
+                            src_lang_for_caption = tb_src
+                            tgt_lang_for_caption = tb_tgt
+                except Exception:
+                    pass  # fall through to project direction
+
+            src_caption = self._language_display_name(src_lang_for_caption) or "Source"
+            tgt_caption = self._language_display_name(tgt_lang_for_caption) or "Target"
         except Exception:
             pass
+
+        # Stash so the synonym section labels below can reuse them.
+        self._src_caption = src_caption
+        self._tgt_caption = tgt_caption
 
         # Source column: term, abbreviation, (later) synonyms
         source_col = QVBoxLayout()
@@ -287,7 +384,12 @@ class TermbaseEntryEditor(QDialog):
         self.source_syn_toggle.setChecked(False)
         source_syn_header.addWidget(self.source_syn_toggle)
 
-        source_syn_label = QLabel("Source Synonyms (Optional)")
+        # v1.10.63: synonym section labels use the same direction-aware
+        # caption ("Dutch synonyms" / "English synonyms") as the term
+        # columns above, so left-vs-right semantics stay consistent
+        # whether the termbase is aligned or reversed relative to the
+        # project.
+        source_syn_label = QLabel(f"{getattr(self, '_src_caption', 'Source')} Synonyms (Optional)")
         source_syn_label.setStyleSheet("font-weight: bold;")
         source_syn_header.addWidget(source_syn_label)
         source_syn_header.addStretch()
@@ -383,7 +485,7 @@ class TermbaseEntryEditor(QDialog):
         self.target_syn_toggle.setChecked(False)
         target_syn_header.addWidget(self.target_syn_toggle)
 
-        target_syn_label = QLabel("Target Synonyms (Optional)")
+        target_syn_label = QLabel(f"{getattr(self, '_tgt_caption', 'Target')} Synonyms (Optional)")
         target_syn_label.setStyleSheet("font-weight: bold;")
         target_syn_header.addWidget(target_syn_label)
         target_syn_header.addStretch()

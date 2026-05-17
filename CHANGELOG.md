@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.62 (May 17, 2026)
+**Current Version:** v1.10.63 (May 17, 2026)
+
+
+## v1.10.63 – May 17, 2026
+
+### Fixed (Edit Termbase Entry dialog: language labels now reflect termbase direction, not project direction, and use full names not ISO codes)
+
+Two related cleanups in the Edit Termbase Entry dialog after the v1.10.62 fix landed:
+
+**Direction-aware captions.** When the termbase ran opposite to the project (e.g. NL→EN project, EN→NL termbase), the dialog's two columns were captioned with the *project's* source/target language but populated from the database's `source_term`/`target_term` columns in *storage* (termbase) order. Result: the left column read e.g. `Dutch:` but contained the English term, and vice versa — making it look as if the entry was reversed even when the underlying data was correct. The Termbase Editor grid view above the dialog has always labelled its columns by the termbase's declared direction (it reads `tb.source_lang` / `tb.target_lang` directly), so the two views disagreed; only the dialog had the issue.
+
+In edit mode, the dialog now queries the `termbases` table for the row's declared `source_lang` / `target_lang` and uses those for the column captions. The left column always shows whatever the termbase calls "source"; the right column shows whatever it calls "target". Values from `source_term` / `target_term` flow into left/right unchanged — captions and values now agree, regardless of project direction.
+
+In **add mode** (Ctrl+Alt+T, where the dialog isn't tied to a specific termbase yet — the v1.10.62 per-termbase orient at INSERT time picks the right direction for each destination), captions stay in project direction. That's the right behaviour there too — the user enters values in the language they're thinking in (project direction), and the writer figures out per-termbase orientation when it saves.
+
+**Full language names.** The captions previously showed ISO codes (`nl:`, `en:`) — readable but not friendly. They now expand to the human form: `Dutch:`, `English:`, etc. A small in-module ``_LANGUAGE_NAMES`` table covers the languages this dialog has historically labelled (English, Dutch, German, French, Spanish, Italian, Portuguese, Polish, Russian, Chinese, Japanese, Korean) plus their common locale variants (`en-US`, `nl-BE`, etc.); anything else falls back to title-casing the input rather than vanishing. Idempotent — passing in `"Dutch"` returns `"Dutch"`, passing in `"nl"` also returns `"Dutch"`.
+
+The synonym section headers (`Source Synonyms (Optional)` / `Target Synonyms (Optional)`) now use the same direction-aware caption — so a reversed termbase shows `English Synonyms (Optional)` on the left and `Dutch Synonyms (Optional)` on the right, matching the term columns above. Left vs right semantics stay consistent throughout the dialog regardless of termbase direction.
+
+Helper lives on the dialog class (`_language_display_name`) rather than calling into `Supervertaler.py._convert_language_to_code` via parent-walking, so the dialog stays standalone-importable from any module without pulling the main file.
 
 
 ## v1.10.62 – May 17, 2026
