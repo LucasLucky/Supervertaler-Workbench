@@ -2,7 +2,33 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.69 (May 17, 2026)
+**Current Version:** v1.10.70 (May 17, 2026)
+
+
+## v1.10.70 – May 17, 2026
+
+### Fixed (Edit Termbase Entry dialog opened with empty fields after the v1.10.67 LOAD MISS branch was added with wrong indentation)
+
+Hot on the heels of v1.10.67, a user reported that even with the new term_id-JOIN caption fix in place, right-clicking a freshly-added term and choosing Edit still opened a dialog with **empty** Source and Target fields. The diagnostic line at the bottom of their screenshot confirmed the SELECT had fetched the row correctly:
+
+```
+[TermbaseEntryEditor] LOAD term_id=93203 tb_id=13 src='pipe.' tgt='pijp'
+```
+
+So `cursor.fetchone()` returned the row, `self.term_data` was populated, the LOAD diagnostic fired — and yet the fields displayed nothing. The `tb_id=13` even showed v1.10.67's termbase-id self-correction was working (the caller passed garbage; the JOIN found the real PATENTS row at id=13 and backfilled).
+
+**Root cause: a regression I introduced in v1.10.67.** When adding the `else:` LOAD-MISS branch, I moved the entire "Populate fields" block (the dozen `setText` / `setPlainText` / `setChecked` calls that actually fill the dialog) **inside** the new `else:` branch and **after** its `return`. That made it unreachable in **both** branches:
+
+ - `if row:` branch — set `term_data`, fired the LOAD diagnostic, fell out of the `if` block. No `setText` calls. → Empty fields, no error.
+ - `else:` branch — fired the LOAD MISS warning, scheduled `reject()`, returned. The populate code that followed was dead code after the return.
+
+End result: every successful term load left the dialog visually empty despite the data being present in memory. The values were even sitting in `self.term_data` ready to use — they just never got pushed to the widgets. No exception thrown, no warning fired, just an empty form.
+
+This commit moves the populate block back where it belongs (inside the `if row:` branch, before the `else`), which is what v1.10.67 was *supposed* to look like. The `else:` LOAD MISS path remains unchanged — it still shows the user a clear warning and closes the dialog when the term has genuinely gone missing from the database (the case that was the actual reason for adding the `else` in the first place).
+
+Lesson: the `# Populate fields` block was deeply indented to begin with (sitting inside both a `try:` and an `if row:`). When grafting in a sibling `else:`, the visual indentation made it look like the populate code was a sibling-of-the-`else` rather than a child of the `if` it had always belonged to. The smoke tests (which exercise the orient helper, not the dialog's display path) couldn't catch this — only a human running the dialog would notice that pressing Edit on a real term opened a blank form. A future regression test should construct the dialog with a real db_manager + term_id and assert the source/target QLineEdit widgets contain the expected text after construction.
+
+Apologies for the round-trip — v1.10.67 fixed the caption misalignment but broke field population in the process; v1.10.70 restores field population while keeping the caption fix and the LOAD MISS warning.
 
 
 ## v1.10.69 – May 17, 2026

@@ -1024,6 +1024,49 @@ class TermbaseEntryEditor(QDialog):
                     f"[TermbaseEntryEditor] LOAD term_id={self.term_id} tb_id={self.termbase_id} "
                     f"src='{row[0]}' tgt='{row[1]}'"
                 )
+
+                # Populate fields.
+                #
+                # v1.10.70 regression fix: in v1.10.67 the LOAD MISS
+                # else-branch below was added with the wrong
+                # indentation, which inadvertently moved this entire
+                # populate block INTO the else and AFTER its
+                # ``return`` — making it unreachable in BOTH branches.
+                # Effect on users: the LOAD diagnostic fired (visible
+                # in the session log) but the fields displayed empty,
+                # because setText was never actually called. Reported
+                # by a user who right-clicked a freshly-added term
+                # 'pipe.' → 'pijp' (term_id=93203 in PATENTS) and saw
+                # an empty dialog despite the log line confirming the
+                # row had been fetched. This restores the populate
+                # block to its rightful place under ``if row:``.
+                self.source_edit.setText(self.term_data['source_term'])
+                self.target_edit.setText(self.term_data['target_term'])
+                self.source_abbr_edit.setText(self.term_data['source_abbreviation'])
+                self.target_abbr_edit.setText(self.term_data['target_abbreviation'])
+                self.domain_edit.setText(self.term_data['domain'])
+                self.definition_edit.setPlainText(self.term_data['definition'])
+                self.notes_edit.setPlainText(self.term_data['notes'])
+                self.url_edit.setText(self.term_data['url'])
+                self.project_edit.setText(self.term_data['project'])
+                self.client_edit.setText(self.term_data['client'])
+                self.forbidden_check.setChecked(self.term_data['forbidden'])
+                # Block the toggled signal on initial load so populating the
+                # checkbox doesn't mirror source into target and overwrite
+                # an intentionally-different target on a legacy NT entry.
+                self.nontranslatable_check.blockSignals(True)
+                self.nontranslatable_check.setChecked(self.term_data['is_nontranslatable'])
+                self.nontranslatable_check.blockSignals(False)
+
+                # Mirror source/target term into the instance attrs so the
+                # synonym-add validation ("can't be the same as the main
+                # term") checks against the freshly-loaded values rather
+                # than the empty add-mode defaults.
+                self.source_term = self.term_data['source_term']
+                self.target_term = self.term_data['target_term']
+
+                # Load synonyms
+                self.load_synonyms()
             else:
                 # v1.10.67: row is None — term_id doesn't match any
                 # row in termbase_terms. Surfacing an empty dialog
@@ -1058,35 +1101,6 @@ class TermbaseEntryEditor(QDialog):
                 from PyQt6.QtCore import QTimer
                 QTimer.singleShot(0, self.reject)
                 return
-
-                # Populate fields
-                self.source_edit.setText(self.term_data['source_term'])
-                self.target_edit.setText(self.term_data['target_term'])
-                self.source_abbr_edit.setText(self.term_data['source_abbreviation'])
-                self.target_abbr_edit.setText(self.term_data['target_abbreviation'])
-                self.domain_edit.setText(self.term_data['domain'])
-                self.definition_edit.setPlainText(self.term_data['definition'])
-                self.notes_edit.setPlainText(self.term_data['notes'])
-                self.url_edit.setText(self.term_data['url'])
-                self.project_edit.setText(self.term_data['project'])
-                self.client_edit.setText(self.term_data['client'])
-                self.forbidden_check.setChecked(self.term_data['forbidden'])
-                # Block the toggled signal on initial load so populating the
-                # checkbox doesn't mirror source into target and overwrite
-                # an intentionally-different target on a legacy NT entry.
-                self.nontranslatable_check.blockSignals(True)
-                self.nontranslatable_check.setChecked(self.term_data['is_nontranslatable'])
-                self.nontranslatable_check.blockSignals(False)
-
-                # Mirror source/target term into the instance attrs so the
-                # synonym-add validation ("can't be the same as the main
-                # term") checks against the freshly-loaded values rather
-                # than the empty add-mode defaults.
-                self.source_term = self.term_data['source_term']
-                self.target_term = self.term_data['target_term']
-
-                # Load synonyms
-                self.load_synonyms()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load term data: {e}")
