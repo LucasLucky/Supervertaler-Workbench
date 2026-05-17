@@ -627,92 +627,178 @@ class TermBlock(QWidget):
             # into its own additional-translation chip — they appear in
             # the "Alternatives:" list further down the tooltip rather
             # than as a metadata line.
-            def _meta_lines(tr):
-                lines = []
-                src_syns = tr.get('source_synonyms', [])
-                if src_syns:
-                    # Plain-text join — synonyms are user-supplied
-                    # strings, no HTML escaping needed for ASCII Latin
-                    # script but defensive replace of < / > stops any
-                    # accidental angle brackets from breaking the
-                    # tooltip layout.
-                    safe = ", ".join(
-                        (s or '').replace('<', '&lt;').replace('>', '&gt;')
-                        for s in src_syns if s
-                    )
-                    if safe:
-                        lines.append(f"<i>Also: {safe}</i>")
-                src_abbr = tr.get('source_abbreviation', '')
-                tgt_abbr = tr.get('target_abbreviation', '')
-                if src_abbr or tgt_abbr:
-                    pair = " / ".join(x for x in (src_abbr, tgt_abbr) if x)
-                    lines.append(f"<i>Abbr: {pair}</i>")
-                definition = tr.get('definition', '')
-                if definition:
-                    lines.append(f"<i>Definition: {definition}</i>")
-                domain = tr.get('domain', '')
-                if domain:
-                    lines.append(f"<i>Domain: {domain}</i>")
-                url = tr.get('url', '')
-                if url:
-                    lines.append(f"<i>URL: {url}</i>")
-                return lines
+            # v1.10.77 — popup HTML now rendered per-entry, matching
+            # the Trados TermBlock.BuildMetadataLines layout:
+            #
+            #   source → target [TermbaseName] (ID 12345)
+            #     Notes:
+            #       <multi-line notes, line breaks preserved>
+            #     Def: <definition>
+            #     Domain: <domain>
+            #     URL: <clickable link>
+            #     Also: <source synonyms comma-separated>
+            #   ──────────────────────────────────────────
+            #   source → target [TermbaseName2] (ID 67890)
+            #     <metadata for second entry>
+            #
+            # Each entry from each termbase gets its own heading +
+            # metadata block, separated by a thin horizontal rule.
+            # That makes it obvious WHICH termbase a translation
+            # came from when the same source term has entries in
+            # multiple termbases (very common for users with both a
+            # project termbase and a domain termbase).
+            #
+            # Previously the popup showed only the primary entry's
+            # metadata in detail and collapsed alternatives to a
+            # numbered list — the alternatives' notes / definitions /
+            # URLs were dropped entirely. Reported by a user
+            # comparing the Workbench TermLens to the Trados TermLens
+            # side by side. This rewrite closes the gap.
+            from html import escape as _html_escape
 
-            # v1.10.75 (Tier 3d): Build HTML content for the floating
-            # TermPopup (shown on TermBlock hover). Same content shape
-            # as the pre-v1.10.75 Qt tooltip — multi-translation case
-            # gets a primary line + "Alternatives:" list; single-
-            # translation case gets just the primary. The popup
-            # replaces the tooltip entirely (no setToolTip call) so
-            # there's no double-render; we keep the Qt tooltip on the
-            # source label only as a fallback noted in the right-click
-            # context menu hint.
-            if len(self.translations) > 1:
-                popup_lines = [f"<b>{target_text}</b> (click to insert){shortcut_hint}<br>"]
-                notes = primary_translation.get('notes', '')
+            popup_chunks = []
+            for entry_idx, entry in enumerate(self.translations):
+                if entry_idx > 0:
+                    # Thin separator between entries (Trados uses a
+                    # PopupLineType.Separator; HTML <hr> is the same
+                    # affordance).
+                    popup_chunks.append(
+                        '<hr style="border:none;border-top:1px solid #DDDDDD;'
+                        'margin:6px 0;">'
+                    )
+
+                # Heading: source → target [TermbaseName] (ID N).
+                # source_text is the chip's display text (from the
+                # tokenizer) — same word for every entry of the same
+                # source key, so it's fine to use the outer variable.
+                src_h = _html_escape(self.source_text or '')
+                tgt_h = _html_escape(entry.get('target_term', entry.get('target', '')) or '')
+                tb_h = _html_escape(entry.get('termbase_name', '') or '')
+                tid = entry.get('term_id')
+
+                heading = f"<b>{src_h} → {tgt_h}</b>"
+                if tb_h:
+                    heading += f" <span style='color:#666;'>[{tb_h}]</span>"
+                if tid is not None:
+                    heading += f" <span style='color:#999;'>(ID {tid})</span>"
+                popup_chunks.append(heading)
+
+                # Shortcut hint only on the primary entry (the chip's
+                # Alt+digit binding inserts the primary's target,
+                # not the alternatives').
+                if entry_idx == 0 and shortcut_hint:
+                    popup_chunks.append(shortcut_hint)
+
+                # Notes — render with "Notes:" bold label + line-break
+                # preservation. Notes are user-authored prose; HTML-
+                # escape to prevent stray < / > in user text from
+                # breaking the popup layout.
+                notes = entry.get('notes', '') or ''
                 if notes:
-                    popup_lines.append(f"<br><i>Note: {notes}</i>")
-                meta = _meta_lines(primary_translation)
-                if meta:
-                    popup_lines.append("<br>" + "<br>".join(meta))
-                popup_lines.append("<br><b>Alternatives:</b>")
-                for i, trans in enumerate(self.translations[1:], 1):
-                    alt_target = trans.get('target_term', trans.get('target', ''))
-                    alt_termbase = trans.get('termbase_name', '')
-                    popup_lines.append(f"{i}. {alt_target} ({alt_termbase})")
-                self._popup_html = "<br>".join(popup_lines)
-            else:
-                popup_text = f"<b>{target_text}</b><br>From: {termbase_name}{shortcut_hint}"
-                notes = primary_translation.get('notes', '')
-                if notes:
-                    popup_text += f"<br><i>Note: {notes}</i>"
-                meta = _meta_lines(primary_translation)
-                if meta:
-                    popup_text += "<br>" + "<br>".join(meta)
-                popup_text += "<br>(click to insert)"
-                self._popup_html = popup_text
+                    notes_html = _html_escape(notes).replace('\n', '<br>')
+                    popup_chunks.append(
+                        f"<div style='margin-top:4px;'>"
+                        f"<b>Notes:</b><br>{notes_html}</div>"
+                    )
+
+                # Definition — same treatment, separate label.
+                definition = entry.get('definition', '') or ''
+                if definition:
+                    def_html = _html_escape(definition).replace('\n', '<br>')
+                    popup_chunks.append(
+                        f"<div style='margin-top:4px;'>"
+                        f"<b>Def:</b> {def_html}</div>"
+                    )
+
+                # Domain — single line.
+                domain = entry.get('domain', '') or ''
+                if domain:
+                    popup_chunks.append(
+                        f"<div style='margin-top:2px;'>"
+                        f"<b>Domain:</b> {_html_escape(domain)}</div>"
+                    )
+
+                # URL — clickable link (popup already enables
+                # openExternalLinks). Display as the URL itself
+                # rather than truncating, since translators often
+                # want to verify the source.
+                url = entry.get('url', '') or ''
+                if url:
+                    url_safe = _html_escape(url)
+                    popup_chunks.append(
+                        f"<div style='margin-top:2px;'>"
+                        f"<b>URL:</b> <a href='{url_safe}'>{url_safe}</a></div>"
+                    )
+
+                # Abbreviations.
+                src_abbr = entry.get('source_abbreviation', '') or ''
+                tgt_abbr = entry.get('target_abbreviation', '') or ''
+                if src_abbr or tgt_abbr:
+                    pair = " / ".join(_html_escape(x) for x in (src_abbr, tgt_abbr) if x)
+                    popup_chunks.append(
+                        f"<div style='margin-top:2px;'>"
+                        f"<i>Abbr: {pair}</i></div>"
+                    )
+
+                # Source synonyms.
+                src_syns = entry.get('source_synonyms', []) or []
+                if src_syns:
+                    safe = ", ".join(_html_escape(s or '') for s in src_syns if s)
+                    if safe:
+                        popup_chunks.append(
+                            f"<div style='margin-top:2px;'>"
+                            f"<i>Also: {safe}</i></div>"
+                        )
+
+            popup_chunks.append(
+                "<div style='margin-top:6px;color:#888;font-style:italic;'>"
+                "(click chip to insert primary translation)</div>"
+            )
+
+            self._popup_html = "".join(popup_chunks)
             
             target_layout.addWidget(target_label)
-            
+
+            # v1.10.77 — "+N" indicator now rendered INLINE on the chip
+            # itself (immediately right of the target text, before any
+            # shortcut badge), matching Trados TermBlock. Previously
+            # the "+1" / "+2" count was a tiny gray label BELOW the
+            # chip in 7-pt font, which was easy to miss — users
+            # comparing the Workbench TermLens with the Trados one
+            # noted the +N was much less prominent. Putting it on
+            # the chip surface keeps it tight to the translation it
+            # qualifies + makes it large enough to register at
+            # normal reading distance.
+            if len(self.translations) > 1:
+                plus_count = len(self.translations) - 1
+                plus_label = QLabel(f"+{plus_count}")
+                plus_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                # Subtle but legible — slightly darker than the
+                # background, smaller than the target text, no
+                # decoration. The shortcut badge that follows it
+                # has the strong visual weight.
+                plus_color = "#7A8B9F" if is_dark else "#555555"
+                plus_label.setStyleSheet(f"""
+                    QLabel {{
+                        color: {plus_color};
+                        font-size: 9px;
+                        font-weight: 600;
+                        padding: 0px 2px;
+                        background-color: transparent;
+                    }}
+                """)
+                plus_label.setToolTip(
+                    f"{plus_count} more translation{'s' if plus_count != 1 else ''} "
+                    f"(hover the chip for details)"
+                )
+                target_layout.addWidget(plus_label)
+
             # Add shortcut number badge if assigned (0-9 for first 10, 00/11/22/.../99 for 11-20)
             if self.shortcut_number is not None and self.shortcut_number < 20:
                 # Alt+0 (and Alt+0,0) are reserved for the Compare Panel.
                 # Hide the corresponding TermLens badges (0 and 00).
                 if self.shortcut_number in (0, 10):
                     layout.addWidget(target_container)
-                    
-                    # Show count if multiple translations - very compact
-                    if len(self.translations) > 1:
-                        count_label = QLabel(f"+{len(self.translations) - 1}")
-                        count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                        count_color = "#AAA" if is_dark else "#999"  # Lighter in dark mode
-                        count_label.setStyleSheet(f"""
-                            QLabel {{
-                                color: {count_color};
-                                font-size: 7px;
-                            }}
-                        """)
-                        layout.addWidget(count_label)
                     return
 
                 # Badge text: 0-9 for first 10 terms, 00/11/22/.../99 for terms 11-20
@@ -749,19 +835,10 @@ class TermBlock(QWidget):
                 target_layout.addWidget(badge_label)
             
             layout.addWidget(target_container)
-
-            # Show count if multiple translations - very compact
-            if len(self.translations) > 1:
-                count_label = QLabel(f"+{len(self.translations) - 1}")
-                count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                count_color = "#AAA" if is_dark else "#999"  # Lighter in dark mode
-                count_label.setStyleSheet(f"""
-                    QLabel {{
-                        color: {count_color};
-                        font-size: 7px;
-                    }}
-                """)
-                layout.addWidget(count_label)
+            # v1.10.77 — count_label removed from here; the "+N"
+            # indicator is rendered INLINE on the chip itself (added
+            # to target_layout above) so it stays tight to the
+            # translation it qualifies, matching Trados TermBlock.
         else:
             # No translation found - very subtle (theme-aware)
             is_dark = self.theme_manager and self.theme_manager.current_theme.name == "Dark"
@@ -1507,6 +1584,34 @@ class TermLensWidget(QWidget):
                         'termbase_id': match.get('termbase_id'),
                     }
         
+        # v1.10.77 — sort each translation list so the chip's primary
+        # entry (translations[0]) matches the Trados TermBlock sort
+        # order:
+        #   1. Non-forbidden first  (forbidden last — users shouldn't
+        #      accidentally insert a "do not use" translation just
+        #      because it happens to be from the project termbase).
+        #   2. Project termbase entries first (pink chip for the
+        #      project-canonical translation).
+        #   3. Then by ranking (priority: 1 = top, 99 = default).
+        #
+        # Previously matches_dict[key] was appended in iteration
+        # order, so the primary translation was just "whichever
+        # match was found first" — which meant background-termbase
+        # entries could outrank the project termbase entry and the
+        # chip displayed the wrong translation (blue background,
+        # background-termbase term shown). Reported by a user
+        # comparing the Workbench TermLens to the Trados TermLens
+        # side by side: in Trados the "inrichting" chip showed
+        # "device" (from project termbase BRANTS) in pink; in
+        # Workbench the same chip showed "apparatus" (from
+        # background PATENTS) in blue. This sort closes the gap.
+        for _key in matches_dict:
+            matches_dict[_key].sort(key=lambda t: (
+                bool(t.get('forbidden', False)),               # False(0) < True(1)
+                not bool(t.get('is_project_termbase', False)), # project first
+                t.get('ranking', 99),                          # ascending ranking
+            ))
+
         # Combine all known multi-word terms for tokenization
         all_terms_dict = dict(matches_dict)
         for nt_key in nt_dict:

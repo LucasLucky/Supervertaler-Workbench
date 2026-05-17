@@ -2,7 +2,48 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.76 (May 18, 2026)
+**Current Version:** v1.10.77 (May 18, 2026)
+
+
+## v1.10.77 – May 18, 2026
+
+### Changed (TermLens chip + popup polish to match the Trados TermLens — project-termbase entries now rank first, popup gets per-entry layout with Trados-style headings, "+N" indicator moves inline on the chip)
+
+A user posted a side-by-side comparison of the Workbench TermLens and the Trados TermLens for the same segment. Three concrete differences fixed here:
+
+**1. Project-termbase-first sort.** For the source term "inrichting" (which has entries in both the project termbase BRANTS and the background termbase PATENTS), Trados showed "device" (BRANTS, project) as the primary chip in pink; Workbench showed "apparatus" (PATENTS, background) in blue. Workbench was appending translations in iteration order — first match found wins — instead of sorting by project-termbase precedence the way Trados does.
+
+`update_with_matches` now sorts every `matches_dict[key]` list before building chips:
+
+ 1. Non-forbidden first (forbidden last — don't let a "do not use" translation become the primary just because it happens to be from the project termbase).
+ 2. Project termbase first (so the chip background + primary translation reflect the user's canonical project choice).
+ 3. Then by `ranking` (priority: 1 = top, 99 = default).
+
+Same precedence Trados uses in `TermBlock.cs` `sortedEntries.Sort(…)`. After the sort, the primary chip displays the project-canonical translation in pink — matching Trados.
+
+**2. Popup format: per-entry Trados-style layout.** The previous popup showed only the primary entry's metadata in detail and collapsed alternatives to a bare numbered list — the alternatives' notes, definitions, URLs were dropped entirely. The Trados popup shows each entry separately with a heading + its own metadata block. Workbench now does the same:
+
+```
+source → target [TermbaseName] (ID 12345)
+  Notes:
+    <multi-line notes, line breaks preserved>
+  Def: <definition>
+  Domain: <domain>
+  URL: <clickable link>
+  Abbr: <src / tgt>
+  Also: <source synonyms>
+─────────────────────────────────────
+source → target [TermbaseName2] (ID 67890)
+  <metadata for the second entry>
+```
+
+Each entry from each termbase gets its own heading + metadata block, separated by a thin horizontal rule. The heading uses `[TermbaseName]` in mid-grey and `(ID N)` in light-grey so the source → target pair stays visually dominant. Multi-line notes preserve newlines (`\n` → `<br>`). User-authored prose is HTML-escaped (`<` / `>` → `&lt;` / `&gt;`) so a stray angle bracket can't break the popup layout. URLs are clickable (popup already enables `openExternalLinks`).
+
+**3. "+N" indicator moves inline on the chip.** Previously rendered as a separate tiny gray QLabel below the chip in 7-pt font — easy to miss. Now lives inside the chip's horizontal layout, immediately right of the target text and before the shortcut badge — same position as Trados. Slightly bigger (9 pt, weight 600), slightly darker grey (`#555555` light mode / `#7A8B9F` dark mode) so it's actually noticeable. Tooltip on the +N tells you the exact count and that hovering the chip surfaces the details.
+
+The unused `_meta_lines` inner helper that the popup used in v1.10.75 is now removed (the per-entry rewrite supersedes it). No other call sites — the function was scoped to `init_ui`.
+
+Net effect: the two products' TermLens panels now read the same way. Side-by-side comparisons should be hard to tell apart on a per-chip basis.
 
 
 ## v1.10.76 – May 18, 2026
