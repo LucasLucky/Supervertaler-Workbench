@@ -14391,6 +14391,12 @@ class SupervertalerQt(QMainWindow):
                         'target_abbreviation': match.get('target_abbreviation', ''),
                         'source_synonyms': match.get('source_synonyms', []),
                         'target_synonyms': match.get('target_synonyms', []),
+                        # v1.10.75 (Tier 3): forbidden + NT flags for
+                        # the new background-colour treatment in TermBlock.
+                        'forbidden': match.get('forbidden', False),
+                        'is_nontranslatable': match.get('is_nontranslatable', False),
+                        # v1.10.75 (Tier 3c) abbreviation marker
+                        'matched_via_abbreviation': match.get('matched_via_abbreviation', False),
                     }
                     for match in termbase_matches.values() if isinstance(match, dict)
                 ] if isinstance(termbase_matches, dict) else []
@@ -15394,6 +15400,11 @@ class SupervertalerQt(QMainWindow):
                                             'target_abbreviation': match.get('target_abbreviation', ''),
                                             'source_synonyms': match.get('source_synonyms', []),
                                             'target_synonyms': match.get('target_synonyms', []),
+                                            # v1.10.75 (Tier 3) flags
+                                            'forbidden': match.get('forbidden', False),
+                                            'is_nontranslatable': match.get('is_nontranslatable', False),
+                                            # v1.10.75 (Tier 3c) abbreviation marker
+                                            'matched_via_abbreviation': match.get('matched_via_abbreviation', False),
                                         }
                                         for match in cached_matches.values() if isinstance(match, dict)
                                     ]
@@ -27602,6 +27613,36 @@ class SupervertalerQt(QMainWindow):
                     # If regex fails, use simple substring matching
                     pattern = None
 
+                # v1.10.75 (Tier 3c): build abbreviation patterns
+                # for pipe-separated source_abbreviation variants
+                # (e.g. "GC|G.C.|gc"). Each variant gets its own
+                # regex with the same word-boundary semantics as the
+                # main term pattern. Stored as
+                # ``[(variant_lower, compiled_pattern), …]`` so the
+                # search loop can iterate variants and report which
+                # one matched. Empty source_abbreviation OR empty
+                # target_abbreviation means "no abbreviation chip" —
+                # we want both sides because the abbreviation chip
+                # displays target_abbreviation as the primary text;
+                # without one the chip would have nothing to show.
+                abbreviation_variants = []
+                if row_src_abbr and row_tgt_abbr:
+                    for variant in row_src_abbr.split('|'):
+                        variant = variant.strip()
+                        if not variant:
+                            continue
+                        variant_lower = variant.lower()
+                        try:
+                            if any(c in variant_lower for c in '.%,/-'):
+                                v_pattern = re.compile(
+                                    r'(?<!\w)' + re.escape(variant_lower) + r'(?!\w)')
+                            else:
+                                v_pattern = re.compile(
+                                    r'\b' + re.escape(variant_lower) + r'\b')
+                            abbreviation_variants.append((variant, variant_lower, v_pattern))
+                        except re.error:
+                            pass
+
                 new_index.append({
                     'term_id': row[0],
                     'source_term': source_term,
@@ -27629,7 +27670,11 @@ class SupervertalerQt(QMainWindow):
                     # target orientation.
                     'source_synonyms': source_synonyms,
                     'target_synonyms': target_synonyms,
-                    'pattern': pattern,  # Pre-compiled regex
+                    # v1.10.75 (Tier 3c): pipe-split abbreviation
+                    # variants with pre-compiled regexes for the
+                    # abbreviation-as-primary chip rendering.
+                    'abbreviation_variants': abbreviation_variants,
+                    'pattern': pattern,  # Pre-compiled regex (main source_term)
                 })
 
             # Sort by term length (longest first) for better phrase matching
@@ -27685,20 +27730,45 @@ class SupervertalerQt(QMainWindow):
             term_lower = term['source_term_lower']
 
             # Quick substring check first (very fast, implemented in C)
-            if term_lower not in source_lower:
-                continue
+            main_in_source = term_lower in source_lower
 
-            # Word boundary validation using pre-compiled pattern
-            pattern = term.get('pattern')
-            if pattern:
-                if not pattern.search(source_lower):
+            # Word boundary validation using pre-compiled pattern.
+            # When the main source_term doesn't substring-hit, we
+            # still need to consider abbreviation matches below.
+            main_matched = False
+            if main_in_source:
+                pattern = term.get('pattern')
+                if pattern is None or pattern.search(source_lower):
+                    main_matched = True
+
+            # v1.10.75 (Tier 3c): try every abbreviation variant
+            # in addition to the main source_term. When the
+            # abbreviation form ("GC") appears in the source as a
+            # separate token, register a SECOND entry in the matches
+            # dict keyed by a synthetic ``abbr_<id>_<idx>`` key, so
+            # the TermLens widget gets a chip for the abbreviation
+            # form (purple bg, target_abbreviation as display text)
+            # in addition to (or instead of) the full-term chip.
+            abbr_hits = []  # [(variant_text, variant_lower)]
+            for variant_text, variant_lower, abbr_pattern in term.get('abbreviation_variants', []):
+                if variant_lower not in source_lower:
                     continue
+                if abbr_pattern.search(source_lower):
+                    abbr_hits.append((variant_text, variant_lower))
+
+            if not (main_matched or abbr_hits):
+                continue
 
             # Term matches! Add to results
             term_id = term['term_id']
-            matches[term_id] = {
-                'source': term['source_term'],
-                'translation': term['target_term'],
+
+            # v1.10.75 (Tier 3c): build a base match dict that both
+            # the main entry and any abbreviation entries share —
+            # they all carry the same metadata (definition / domain /
+            # notes / URL / synonyms / flags / etc.) since those are
+            # properties of the underlying termbase term, not of the
+            # particular surface form that matched.
+            base = {
                 'term_id': term_id,
                 'termbase_id': term['termbase_id'],
                 'termbase_name': term['termbase_name'],
@@ -27711,22 +27781,37 @@ class SupervertalerQt(QMainWindow):
                 'client': term['client'],
                 # v1.10.73 (Tier 1): metadata fields surfaced for
                 # the TermBlock tooltip's ``_meta_lines`` renderer.
-                # Default to empty string for index entries that
-                # predate the new fields (defensive, shouldn't
-                # actually happen post-rebuild).
                 'definition': term.get('definition', ''),
                 'url': term.get('url', ''),
                 'source_abbreviation': term.get('source_abbreviation', ''),
                 'target_abbreviation': term.get('target_abbreviation', ''),
-                # v1.10.73 (Tier 2): synonyms — TermBlock uses
-                # ``target_synonyms`` as additional clickable
-                # alternatives (one chip per synonym in the popup,
-                # contributing to the +N count) and ``source_synonyms``
-                # as the tooltip "Also: …" line so the user can see
-                # alternative source forms at a glance.
+                # v1.10.73 (Tier 2): synonyms.
                 'source_synonyms': term.get('source_synonyms', []),
                 'target_synonyms': term.get('target_synonyms', []),
+                # v1.10.75 (Tier 3a): forbidden / NT flags drive chip bg.
+                'is_nontranslatable': term.get('is_nontranslatable', False),
             }
+
+            if main_matched:
+                matches[term_id] = dict(base, **{
+                    'source': term['source_term'],
+                    'translation': term['target_term'],
+                    'matched_via_abbreviation': False,
+                })
+
+            # v1.10.75 (Tier 3c): one entry per matched abbreviation
+            # variant, keyed by a synthetic string so it doesn't
+            # collide with the main ``matches[term_id]`` integer key.
+            # ``source`` is the variant text ("GC"); ``translation``
+            # is the target_abbreviation (also "GC" typically) so the
+            # chip displays the abbreviation pair, not the full term.
+            for i, (variant_text, variant_lower) in enumerate(abbr_hits):
+                synthetic_key = f"abbr_{term_id}_{i}"
+                matches[synthetic_key] = dict(base, **{
+                    'source': variant_text,
+                    'translation': term.get('target_abbreviation', '') or term['target_term'],
+                    'matched_via_abbreviation': True,
+                })
 
         return matches
 
@@ -45270,6 +45355,11 @@ class SupervertalerQt(QMainWindow):
                         'url': match_info.get('url', ''),
                         'source_abbreviation': match_info.get('source_abbreviation', ''),
                         'target_abbreviation': match_info.get('target_abbreviation', ''),
+                        # v1.10.75 (Tier 3) flags
+                        'forbidden': match_info.get('forbidden', False),
+                        'is_nontranslatable': match_info.get('is_nontranslatable', False),
+                        # v1.10.75 (Tier 3c) abbreviation marker
+                        'matched_via_abbreviation': match_info.get('matched_via_abbreviation', False),
                     })
                 # Get status hint for termbase activation
                 status_hint = self._get_termbase_status_hint()

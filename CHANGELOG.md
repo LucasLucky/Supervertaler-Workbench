@@ -2,7 +2,82 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.74 (May 17, 2026)
+**Current Version:** v1.10.75 (May 17, 2026)
+
+
+## v1.10.75 – May 17, 2026
+
+### Added (TermLens Tier 3 visual parity: forbidden / non-translatable / abbreviation chip colours, corner indicators for metadata + synonyms, floating sticky popup replacing the Qt tooltip)
+
+Closes the Trados TermLens feature-parity audit. v1.10.73 brought the metadata fields and synonyms through to the tooltip ("Tier 1 + 2"); v1.10.75 ports the **visual polish** that makes the same information discoverable at a glance without hovering.
+
+**Tier 3a — chip colour precedence**
+
+Chip backgrounds now follow a five-way precedence ladder matching the Trados TermBlock:
+
+1. **Forbidden term** → red `#E53935` background, white text, strikethrough font — unmistakable visual stop sign for forbidden terms (memoQ and MultiTerm use the same convention).
+2. **Non-translatable** → amber `#FFF3D0` background (Trados-matching), dark text — signals "copy through, don't translate".
+3. **Abbreviation match** → light purple `#E8DAFF` background, dark purple text — tells the user "this chip is the GC → GC pair, not the full term".
+4. **Project termbase** → pink (existing behaviour).
+5. **Regular termbase** → blue (existing behaviour).
+
+Highest-precedence flag wins. A forbidden NT chip displays as forbidden (red) because the user absolutely needs to know not to use it.
+
+**Tier 3b — corner indicators on the chip**
+
+New `_ChipContainer` widget (custom QWidget subclass) paints two small icons in the top-right corner of every chip, on top of the stylesheet background:
+
+- **Amber dot** (`#F59E0B`) when the entry has at least one of: definition, domain, notes, URL. Tells the user "there's more here, hover for the tooltip" without making the chip itself bigger.
+- **Indigo ≡ circle** (`#6366F1`) when the entry has synonyms (source or target) — drawn as three horizontal white lines inside a filled circle, matching Trados's visual.
+
+The paint uses the standard Qt "stylesheet + custom paint" pattern (`QStyleOption` + `drawPrimitive(PE_Widget)`) so the QSS background-color still renders normally underneath the indicators. Both indicators are drawn fully inside the widget bounds (Qt clips paint to widget bounds; half-outside indicators just wouldn't render).
+
+**Tier 3c — abbreviation-as-primary chip**
+
+`_build_termbase_index` now compiles regex patterns for each pipe-separated `source_abbreviation` variant (e.g. `"GC|G.C.|gc"` → three patterns), stored as `abbreviation_variants` on each index entry. `_search_termbase_in_memory` tries every variant in addition to the main `source_term` pattern; matched variants emit a SECOND entry in the matches dict keyed by a synthetic `f"abbr_{term_id}_{i}"` string so it doesn't collide with the main `term_id` integer key.
+
+The abbreviation-match entry carries `matched_via_abbreviation=True` and uses `target_abbreviation` as its `translation`. Downstream, TermLens renders it as its own chip with a purple background and target_abbreviation as the chip text — so "GC" in the source gets a "GC → GC" purple chip, while "gas chromatography" elsewhere in the same segment gets the regular "gas chromatography → gaschromatografie" blue chip. Clicking either inserts the appropriate form (full term or abbreviation) — the chip's `target_term` is what gets inserted on click.
+
+Multi-variant supported: `source_abbreviation` like `"GC|G.C."` matches both "GC" and "G.C." in the source, each producing its own chip via separate synthetic keys.
+
+**Tier 3d — floating sticky popup replaces the Qt tooltip**
+
+New `TermPopup` singleton (one shared instance across the app) replaces the per-chip Qt tooltip. Behavioural advantages over the built-in QToolTip:
+
+ - **Stays open while hovered**: mouse moves don't dismiss it. Multi-line Definition / Notes / synonym lists are actually readable.
+ - **No size cap**: dense metadata renders without clipping. `maximumWidth = 420 px` for word-wrap legibility.
+ - **Clickable URLs**: `setOpenExternalLinks(True)` so a URL in the popup is a proper link, not just display text.
+ - **Sticky grace period**: 250 ms close timer cancels if the mouse re-enters either the chip or the popup itself, so a slight wobble while moving from chip to popup doesn't lose the content.
+ - **Screen-edge clamping**: positions below the chip by default; flips above if no room; clamps to the right edge to avoid going off-screen.
+
+Lifecycle matches Trados's `TermPopup`:
+ - `TermBlock.enterEvent` → `TermPopup.show_for(chip, html)` (cancels any pending close, anchors below the chip).
+ - `TermBlock.leaveEvent` → `TermPopup.schedule_close()` (250 ms grace).
+ - `TermPopup.enterEvent` → cancels close (user is reading).
+ - `TermPopup.leaveEvent` → schedules close.
+
+Content shape is the same HTML the pre-v1.10.75 tooltip used — primary target + shortcut hint + notes + Abbr / Definition / Domain / URL / "Also: source synonyms" rows + (for multi-translation chips) an "Alternatives:" list with synonyms + cross-termbase alternatives.
+
+Future: Markdown rendering on Definition / Notes (via the `markdown` library already in deps) is a small follow-up — for now the popup renders the raw text from those fields just like the tooltip did.
+
+**Net effect** vs the Trados TermLens, after v1.10.75:
+
+| Trados feature | Workbench status |
+|---|---|
+| Pink (project) / blue (regular) chip backgrounds | ✅ since forever |
+| Shortcut number badges with tier numbering | ✅ since forever |
+| `+N` indicator for extra translations | ✅ since forever |
+| Synonyms in hover popup | ✅ v1.10.73 |
+| Abbreviations / Definition / Domain / URL in hover | ✅ v1.10.73 |
+| Amber corner dot for metadata-rich entries | ✅ v1.10.75 |
+| ≡ indigo badge for synonyms | ✅ v1.10.75 |
+| Abbreviation-as-primary chip (purple) | ✅ v1.10.75 |
+| Forbidden visual (red + strikethrough) | ✅ v1.10.75 |
+| Non-translatable visual (amber) | ✅ v1.10.75 |
+| Sticky floating popup with Markdown | ✅ v1.10.75 (Markdown deferred) |
+| MultiTerm green chip | N/A (Workbench has no MultiTerm support) |
+
+Feature parity reached. The two products' TermLens panels now read the same way regardless of which one you're working in.
 
 
 ## v1.10.74 – May 17, 2026

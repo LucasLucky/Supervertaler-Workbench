@@ -13,12 +13,221 @@ Features:
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
                               QHBoxLayout, QPushButton, QToolTip, QLayout, QLayoutItem, QSizePolicy, QStyle,
-                              QMenu, QMessageBox)
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QSize
-from PyQt6.QtGui import QFont, QCursor, QAction
+                              QStyleOption, QMenu, QMessageBox, QApplication)
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QSize, QTimer
+from PyQt6.QtGui import QFont, QCursor, QAction, QPainter, QColor, QPen
 from typing import Dict, List, Optional, Tuple
 import re
 from modules.shortcut_display import format_shortcut_for_display
+
+
+class _ChipContainer(QWidget):
+    """v1.10.75 (Tier 3b) — QWidget subclass for the coloured target
+    chip background that ALSO paints metadata + synonym corner
+    indicators on top of the stylesheet background.
+
+    Two indicators, in top-right corner of the chip (rightmost first):
+
+      • **Amber dot** — entry has at least one of: definition, domain,
+        notes, URL. Tells the user "there's more here, hover for the
+        tooltip". Matches the colour Trados TermBlock uses (#F59E0B).
+
+      • **Indigo ≡ circle** — entry has at least one synonym (source
+        or target). Tells the user "alternative wordings exist".
+        Matches Trados (#6366F1).
+
+    The standard Qt pattern for "stylesheet background + custom paint
+    on top" needs a manual QStyle.drawPrimitive(PE_Widget) call to
+    apply the stylesheet's background-color, otherwise overriding
+    paintEvent suppresses it. The QStyleOption boilerplate at the
+    top is exactly that.
+
+    Indicators are drawn inside the widget bounds (top-right corner,
+    2 px margin) rather than half-outside the chip — Qt clips paint
+    to widget bounds, so half-outside indicators simply wouldn't
+    render.
+    """
+
+    def __init__(self, has_metadata: bool = False, has_synonyms: bool = False, parent=None):
+        super().__init__(parent)
+        self._has_metadata = bool(has_metadata)
+        self._has_synonyms = bool(has_synonyms)
+
+    def paintEvent(self, event):
+        # Standard stylesheet+custom-paint trick: drawPrimitive paints
+        # the QSS background-color (without this call, overriding
+        # paintEvent means the stylesheet bg never renders).
+        opt = QStyleOption()
+        opt.initFrom(self)
+        p = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
+
+        if not (self._has_metadata or self._has_synonyms):
+            return
+
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        margin = 2
+        right = self.width() - margin
+        top = margin
+
+        if self._has_metadata:
+            size = 7
+            x = right - size
+            y = top
+            p.setBrush(QColor("#F59E0B"))     # amber
+            p.setPen(QPen(QColor("white"), 1.0))
+            p.drawEllipse(x, y, size, size)
+            right = x - 2  # synonym icon goes to the left of the dot
+
+        if self._has_synonyms:
+            size = 9
+            x = right - size
+            y = top
+            p.setBrush(QColor("#6366F1"))     # indigo
+            p.setPen(QPen(QColor("white"), 1.0))
+            p.drawEllipse(x, y, size, size)
+            # Three horizontal lines (≡) inside the circle
+            cx = x + size / 2.0
+            cy = y + size / 2.0
+            p.setPen(QPen(QColor("white"), 1.0))
+            p.drawLine(int(cx - 2), int(cy - 2), int(cx + 2), int(cy - 2))
+            p.drawLine(int(cx - 2), int(cy),     int(cx + 2), int(cy))
+            p.drawLine(int(cx - 2), int(cy + 2), int(cx + 2), int(cy + 2))
+
+
+class TermPopup(QFrame):
+    """v1.10.75 (Tier 3d) — sticky floating popup that replaces the
+    Qt tooltip on TermBlock chips, giving a bigger, richer surface
+    for the metadata lines.
+
+    **Why a popup instead of the built-in QToolTip:**
+     - Tooltips auto-hide when the mouse moves at all, even slightly.
+       Users couldn't actually READ a long Definition / Notes block
+       without keeping the mouse perfectly still.
+     - Tooltips have a hard size cap; multi-line metadata gets
+       clipped on dense entries.
+     - Tooltips can't host clickable links.
+     - The Trados TermLens uses the same pattern (its TermPopup
+       singleton). Visual + behavioural parity matters across the
+       two products.
+
+    **Lifecycle (matches Trados TermPopup):**
+     - **Show**: TermBlock.enterEvent on a chip with content calls
+       ``show_for``. A 200 ms debounce timer prevents flicker when
+       the user is just moving across chips quickly.
+     - **Stay open while hovered**: enterEvent on the popup itself
+       cancels the pending close, so the user can move the mouse
+       from the chip into the popup to read / click links.
+     - **Hide**: chip leaveEvent + popup leaveEvent both call
+       ``schedule_close``, which starts a 250 ms grace timer.
+       The user can re-enter the chip OR the popup within the
+       grace period to keep it open.
+
+    **One shared instance** across the whole application — only one
+    popup ever visible at a time. ``get_instance()`` lazy-creates it
+    on first hover.
+    """
+
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = TermPopup()
+        return cls._instance
+
+    def __init__(self):
+        # ToolTip window flag = no taskbar entry, no focus stealing,
+        # always-on-top relative to the parent app, no border.
+        # WA_ShowWithoutActivating = stays compatible with the
+        # currently-focused editor (don't yank focus away from the
+        # source/target cell the user is typing in).
+        super().__init__(None, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setStyleSheet("""
+            TermPopup {
+                background-color: #FFFFFF;
+                border: 1px solid #CCCCCC;
+                border-radius: 6px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(0)
+        self._label = QLabel("")
+        self._label.setTextFormat(Qt.TextFormat.RichText)
+        self._label.setWordWrap(True)
+        self._label.setOpenExternalLinks(True)
+        self._label.setMaximumWidth(420)
+        layout.addWidget(self._label)
+
+        # Close grace timer — close 250 ms after leaveEvent unless
+        # the mouse re-enters the chip / popup in the meantime.
+        self._close_timer = QTimer(self)
+        self._close_timer.setSingleShot(True)
+        self._close_timer.setInterval(250)
+        self._close_timer.timeout.connect(self.hide)
+
+        self.hide()
+
+    def show_for(self, anchor_widget, html_content: str):
+        """Position and show the popup beneath ``anchor_widget``,
+        rendering ``html_content`` (Qt rich-text subset).
+
+        If positioning below would push the popup off the bottom of
+        the screen, flips to showing above the anchor. If still too
+        wide, clamps to the screen's right edge so the content
+        stays on-screen.
+        """
+        self._close_timer.stop()
+        self._label.setText(html_content or "")
+        self.adjustSize()
+
+        try:
+            screen = QApplication.primaryScreen().availableGeometry()
+        except Exception:
+            self.show()
+            return
+
+        # Default: just below the anchor.
+        anchor_pos = anchor_widget.mapToGlobal(QPoint(0, anchor_widget.height() + 4))
+        x, y = anchor_pos.x(), anchor_pos.y()
+        # Clamp right edge
+        if x + self.width() > screen.right():
+            x = screen.right() - self.width() - 4
+        if x < screen.left():
+            x = screen.left() + 4
+        # Flip above if no room below
+        if y + self.height() > screen.bottom():
+            above_pos = anchor_widget.mapToGlobal(QPoint(0, -self.height() - 4))
+            if above_pos.y() >= screen.top() + 4:
+                y = above_pos.y()
+            else:
+                # Neither fits cleanly — clamp to top
+                y = screen.top() + 4
+        self.move(x, y)
+        self.show()
+
+    def schedule_close(self):
+        """Start the close grace timer. Cancelled by ``enterEvent`` if
+        the mouse re-enters the popup (or by ``show_for`` if another
+        chip's hover re-opens the popup with new content).
+        """
+        self._close_timer.start()
+
+    def enterEvent(self, event):
+        """Mouse entered the popup itself — keep it open so the
+        user can read multi-line content or click links."""
+        self._close_timer.stop()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Mouse left the popup — schedule close. If the user
+        re-enters within the grace window, ``enterEvent`` cancels."""
+        self._close_timer.start()
+        super().leaveEvent(event)
 
 
 class LineBreakWidget(QWidget):
@@ -244,26 +453,100 @@ class TermBlock(QWidget):
             target_text = primary_translation.get('target_term', primary_translation.get('target', ''))
             termbase_name = primary_translation.get('termbase_name', '')
 
-            # Background color based on termbase type (theme-aware)
+            # v1.10.75 (Tier 3a + 3c): chip background colour is now a
+            # five-way precedence ladder matching Trados TermBlock:
+            #   1. Forbidden term            → red bg, white text, strikethrough
+            #   2. Non-translatable          → amber bg, dark text (copy-through cue)
+            #   3. Abbreviation match         → purple bg ("this chip is the GC → GC pair")
+            #   4. Project termbase           → pink bg, blue text
+            #   5. Regular termbase           → blue bg, blue text
+            # Highest-precedence flag wins; e.g. a forbidden NT shows as
+            # forbidden (red) because users absolutely need to know not
+            # to use it. Abbreviation match wins over project/regular
+            # because the purple chip explains why the chip text is
+            # "GC" instead of the full term.
+            self.is_forbidden = bool(primary_translation.get('forbidden', False))
+            self.is_nontranslatable = bool(primary_translation.get('is_nontranslatable', False))
+            self.is_abbreviation_match = bool(primary_translation.get('matched_via_abbreviation', False))
+
+            # Background color based on flags + termbase type (theme-aware).
             is_dark = self.theme_manager and self.theme_manager.current_theme.name == "Dark"
-            if is_dark:
-                # Dark mode: darker backgrounds
-                bg_color = "#4A2D3A" if self.is_effective_project else "#2D3E4A"  # Dark pink/blue
-                hover_color = "#5A3D4A" if self.is_effective_project else "#3D4E5A"  # Lighter on hover
+            if self.is_forbidden:
+                # Red, same in both themes — forbidden terms must read
+                # the same way regardless of theme.
+                bg_color = "#E53935"
+                hover_color = "#C62828"
+            elif self.is_nontranslatable:
+                if is_dark:
+                    bg_color = "#5A4A1F"   # darker amber for dark mode
+                    hover_color = "#6A5A2F"
+                else:
+                    bg_color = "#FFF3D0"   # light amber matching Trados
+                    hover_color = "#FFE8A0"
+            elif self.is_abbreviation_match:
+                if is_dark:
+                    bg_color = "#3E2D5A"   # darker purple for dark mode
+                    hover_color = "#4E3D6A"
+                else:
+                    bg_color = "#E8DAFF"   # light purple matching Trados
+                    hover_color = "#D8C8FF"
+            elif is_dark:
+                # Dark mode pink/blue
+                bg_color = "#4A2D3A" if self.is_effective_project else "#2D3E4A"
+                hover_color = "#5A3D4A" if self.is_effective_project else "#3D4E5A"
             else:
-                # Light mode: original colors
-                bg_color = "#FFE5F0" if self.is_effective_project else "#D6EBFF"  # Pink for project, light blue for regular
-                hover_color = "#FFD0E8" if self.is_effective_project else "#BBDEFB"  # Slightly darker on hover
+                # Light mode pink/blue
+                bg_color = "#FFE5F0" if self.is_effective_project else "#D6EBFF"
+                hover_color = "#FFD0E8" if self.is_effective_project else "#BBDEFB"
             
-            # Create horizontal layout for target + shortcut badge
-            # Apply background to container so it covers both text and badge
-            target_container = QWidget()
+            # v1.10.75 (Tier 3b): figure out which corner indicators
+            # this chip needs BEFORE constructing the container, so
+            # the container can paint them inline on top of its
+            # stylesheet background. We inspect EVERY entry (not just
+            # the primary) so e.g. a chip showing target_term="cable"
+            # also lights up the synonym indicator if any of the
+            # underlying termbase entries for "kabel" have synonyms,
+            # matching Trados TermBlock's _entries.Any(t => …) logic.
+            #
+            # Metadata = any of {definition, domain, notes, url}.
+            # Synonyms = source or target synonyms.
+            has_metadata = any(
+                bool((t or {}).get('definition')) or
+                bool((t or {}).get('domain')) or
+                bool((t or {}).get('notes')) or
+                bool((t or {}).get('url'))
+                for t in self.translations
+            )
+            has_synonyms = any(
+                bool((t or {}).get('source_synonyms')) or
+                # target_synonyms are inlined as additional translations
+                # in matches_dict, so the primary entry's target_synonyms
+                # list is normally empty by the time we get here. Detect
+                # synonyms via the presence of *additional* translations
+                # OR explicit source_synonyms on any entry.
+                bool((t or {}).get('target_synonyms'))
+                for t in self.translations
+            ) or len(self.translations) > 1  # +N alternatives count as synonyms-ish
+
+            # Create container for target + shortcut badge with the
+            # coloured background covering both text and badge.
+            # _ChipContainer (custom QWidget subclass) paints the
+            # stylesheet background + the corner indicators on top.
+            target_container = _ChipContainer(
+                has_metadata=has_metadata,
+                has_synonyms=has_synonyms,
+            )
+            # v1.10.75 (Tier 3d): keep the chip reference on the
+            # TermBlock so enterEvent below can anchor the floating
+            # TermPopup beneath the chip itself (not under the source
+            # label, which is the OUTER widget's top-left).
+            self.target_container = target_container
             target_container.setStyleSheet(f"""
-                QWidget {{
+                _ChipContainer {{
                     background-color: {bg_color};
                     border-radius: 3px;
                 }}
-                QWidget:hover {{
+                _ChipContainer:hover {{
                     background-color: {hover_color};
                 }}
             """)
@@ -275,10 +558,31 @@ class TermBlock(QWidget):
             target_font = QFont(self.font_family)
             target_font.setPointSize(self.font_size)  # Same size as source
             target_font.setBold(self.font_bold)
+            # v1.10.75 (Tier 3a): forbidden terms get a strikethrough
+            # font effect so they're unmistakable at a glance — same
+            # convention as Trados TermBlock (and as memoQ and Trados
+            # MultiTerm display forbidden terms).
+            if self.is_forbidden:
+                target_font.setStrikeOut(True)
             target_label.setFont(target_font)
             target_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            # Theme-aware text color
-            target_text_color = "#B0C4DE" if is_dark else "#0052A3"  # Light blue in dark mode
+            # v1.10.75 (Tier 3a + 3c): text colour follows chip background:
+            #  - Forbidden (red bg)          → white text for max contrast
+            #  - Non-translatable (amber)     → dark text (matches Trados)
+            #  - Abbreviation (purple)        → dark purple text
+            #  - Regular (pink/blue)          → blue text (existing behaviour)
+            if self.is_forbidden:
+                target_text_color = "#FFFFFF"
+            elif self.is_nontranslatable:
+                # Dark text on amber — reads cleanly in both themes.
+                target_text_color = "#3E2A0F" if is_dark else "#5C3F12"
+            elif self.is_abbreviation_match:
+                # Indigo/purple text on light purple bg, light purple
+                # text on dark purple bg. Conveys "this chip is an
+                # abbreviation pair" via colour resonance.
+                target_text_color = "#C8B8FF" if is_dark else "#4A2D8A"
+            else:
+                target_text_color = "#B0C4DE" if is_dark else "#0052A3"
             target_label.setStyleSheet(f"""
                 QLabel {{
                     color: {target_text_color};
@@ -354,33 +658,39 @@ class TermBlock(QWidget):
                     lines.append(f"<i>URL: {url}</i>")
                 return lines
 
-            # Set tooltip if multiple translations exist
+            # v1.10.75 (Tier 3d): Build HTML content for the floating
+            # TermPopup (shown on TermBlock hover). Same content shape
+            # as the pre-v1.10.75 Qt tooltip — multi-translation case
+            # gets a primary line + "Alternatives:" list; single-
+            # translation case gets just the primary. The popup
+            # replaces the tooltip entirely (no setToolTip call) so
+            # there's no double-render; we keep the Qt tooltip on the
+            # source label only as a fallback noted in the right-click
+            # context menu hint.
             if len(self.translations) > 1:
-                tooltip_lines = [f"<b>{target_text}</b> (click to insert){shortcut_hint}<br>"]
-                # Add notes if available
+                popup_lines = [f"<b>{target_text}</b> (click to insert){shortcut_hint}<br>"]
                 notes = primary_translation.get('notes', '')
                 if notes:
-                    tooltip_lines.append(f"<br><i>Note: {notes}</i>")
+                    popup_lines.append(f"<br><i>Note: {notes}</i>")
                 meta = _meta_lines(primary_translation)
                 if meta:
-                    tooltip_lines.append("<br>" + "<br>".join(meta))
-                tooltip_lines.append("<br><b>Alternatives:</b>")
+                    popup_lines.append("<br>" + "<br>".join(meta))
+                popup_lines.append("<br><b>Alternatives:</b>")
                 for i, trans in enumerate(self.translations[1:], 1):
                     alt_target = trans.get('target_term', trans.get('target', ''))
                     alt_termbase = trans.get('termbase_name', '')
-                    tooltip_lines.append(f"{i}. {alt_target} ({alt_termbase})")
-                target_label.setToolTip("<br>".join(tooltip_lines))
+                    popup_lines.append(f"{i}. {alt_target} ({alt_termbase})")
+                self._popup_html = "<br>".join(popup_lines)
             else:
-                # Build tooltip for single translation
-                tooltip_text = f"<b>{target_text}</b><br>From: {termbase_name}{shortcut_hint}"
+                popup_text = f"<b>{target_text}</b><br>From: {termbase_name}{shortcut_hint}"
                 notes = primary_translation.get('notes', '')
                 if notes:
-                    tooltip_text += f"<br><i>Note: {notes}</i>"
+                    popup_text += f"<br><i>Note: {notes}</i>"
                 meta = _meta_lines(primary_translation)
                 if meta:
-                    tooltip_text += "<br>" + "<br>".join(meta)
-                tooltip_text += "<br>(click to insert)"
-                target_label.setToolTip(tooltip_text)
+                    popup_text += "<br>" + "<br>".join(meta)
+                popup_text += "<br>(click to insert)"
+                self._popup_html = popup_text
             
             target_layout.addWidget(target_label)
             
@@ -461,6 +771,33 @@ class TermBlock(QWidget):
             no_match_label.setStyleSheet(f"color: {no_match_dot_color}; font-size: 8px;")
             layout.addWidget(no_match_label)
     
+    # v1.10.75 (Tier 3d): TermBlock hover handlers drive the floating
+    # TermPopup. The popup is a singleton — at most one ever visible
+    # across the app — so moving from chip to chip just re-anchors
+    # the same popup with new HTML content.
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        # Only show the popup for chips with actual translations.
+        # No-translation chips (the "·" dot) have no metadata worth
+        # showing, and we don't want a popup over plain unmatched
+        # source words.
+        if self.translations and getattr(self, '_popup_html', '') and getattr(self, 'target_container', None) is not None:
+            try:
+                TermPopup.get_instance().show_for(self.target_container, self._popup_html)
+            except Exception:
+                # Popup is non-critical — if anything goes wrong (rare),
+                # just swallow rather than tear down the segment view.
+                pass
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        # Grace timer in the popup itself handles the "user moved
+        # into the popup" case; just kick off the close-pending state.
+        try:
+            TermPopup.get_instance().schedule_close()
+        except Exception:
+            pass
+
     def on_translation_clicked(self, target_text: str):
         """Handle click on translation to insert into target"""
         self.term_clicked.emit(self.source_text, target_text)
@@ -1114,6 +1451,11 @@ class TermLensWidget(QWidget):
                     'source_abbreviation': match.get('source_abbreviation', ''),
                     'target_abbreviation': match.get('target_abbreviation', ''),
                     'source_synonyms': match.get('source_synonyms', []),
+                    # v1.10.75 (Tier 3) — forbidden + NT flags drive
+                    # the new background-colour treatment in TermBlock.
+                    'forbidden': match.get('forbidden', False),
+                    'is_nontranslatable': match.get('is_nontranslatable', False),
+                    'matched_via_abbreviation': match.get('matched_via_abbreviation', False),
                 })
 
                 # Add target synonyms as additional translation chips.
@@ -1141,6 +1483,12 @@ class TermLensWidget(QWidget):
                         'source_abbreviation': match.get('source_abbreviation', ''),
                         'target_abbreviation': match.get('target_abbreviation', ''),
                         'source_synonyms': match.get('source_synonyms', []),
+                        # v1.10.75 (Tier 3) flags inherited from main entry.
+                        'forbidden': match.get('forbidden', False),
+                        'is_nontranslatable': match.get('is_nontranslatable', False),
+                        # Synonym chips are never abbreviation chips —
+                        # only the main match position can be one.
+                        'matched_via_abbreviation': False,
                     })
         
         # Convert NT matches to dict keyed by lowercase text. Each entry
