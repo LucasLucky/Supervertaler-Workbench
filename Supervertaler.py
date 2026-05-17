@@ -12205,7 +12205,7 @@ class SupervertalerQt(QMainWindow):
 
                 doc.save(file_path)
                 self.log(f"✓ Replaced {replaced_count} text segments in original document structure")
-                
+
             else:
                 # No original document - create simple paragraph-based export
                 self.log("No original document found - creating new document (formatting may differ)")
@@ -12319,6 +12319,12 @@ class SupervertalerQt(QMainWindow):
 
                 doc.save(file_path)
 
+            # Attach segment notes as Word comments (post-process). Runs
+            # for both the "copy original as template" branch above and
+            # the "no original document" simple-paragraph branch — either
+            # way the file at file_path is a saved DOCX by this point.
+            self._attach_segment_notes_as_docx_comments(file_path, segments)
+
             self.log(f"✓ Exported {len(segments)} segments to: {os.path.basename(file_path)}")
             
             QMessageBox.information(
@@ -12337,6 +12343,119 @@ class SupervertalerQt(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to export DOCX:\n\n{str(e)}")
             import traceback
             traceback.print_exc()
+
+    def _attach_segment_notes_as_docx_comments(self, docx_path, segments):
+        """Post-process an exported DOCX to attach segment notes as Word comments.
+
+        Walks the saved DOCX, finds paragraphs that contain the target text
+        of any segment with a non-empty ``notes`` field, and attaches a
+        Word comment to that paragraph. Matching is by text containment –
+        first unmatched paragraph wins, so if two segments translate to
+        identical text the comments end up on different occurrences in
+        document order.
+
+        Silently no-ops if:
+         - no segments have notes, or
+         - the installed python-docx is too old for the comments API
+           (need ``Document.add_comment``, added in python-docx 1.0), or
+         - the saved DOCX can't be reopened (e.g. Okapi produced a
+           format we can't read back).
+
+        Failures attaching individual comments are logged but never abort
+        the export — the underlying DOCX is already saved at the call
+        site, this is a best-effort enhancement.
+        """
+        # Collect segments that have something to attach.
+        candidates = []
+        for seg in segments:
+            note = (getattr(seg, 'notes', '') or '').strip()
+            if not note:
+                continue
+            target = (getattr(seg, 'target', '') or '').strip()
+            if not target:
+                continue
+            candidates.append((seg, target, note))
+
+        if not candidates:
+            return
+
+        try:
+            from docx import Document
+            doc = Document(docx_path)
+        except Exception as e:
+            self.log(f"  ⚠ Comment-attach: could not reopen exported DOCX ({e})")
+            return
+
+        if not hasattr(doc, 'add_comment'):
+            self.log(
+                f"  ⚠ Comment-attach: python-docx version doesn't expose "
+                f"Document.add_comment; install python-docx >= 1.0 to enable "
+                f"segment-note export as Word comments. ({len(candidates)} note(s) skipped.)"
+            )
+            return
+
+        # Author/initials are hardcoded for now. A future setting could
+        # let the user override these from General Settings.
+        author = 'Supervertaler'
+        initials = 'SV'
+
+        # Walk paragraphs in document order. For each, try to attach the
+        # earliest still-unmatched candidate whose target text is a
+        # substring of the paragraph's text. A paragraph can collect
+        # multiple comments if multiple segments map to it.
+        matched_indices: set[int] = set()
+        attached = 0
+        skipped_no_runs = 0
+
+        for para in doc.paragraphs:
+            para_text = para.text or ''
+            if not para_text.strip():
+                continue
+            # Allow multiple matches per paragraph in document order.
+            for idx, (seg, target, note) in enumerate(candidates):
+                if idx in matched_indices:
+                    continue
+                if target and target in para_text:
+                    if not para.runs:
+                        skipped_no_runs += 1
+                        matched_indices.add(idx)
+                        continue
+                    try:
+                        doc.add_comment(
+                            runs=para.runs,
+                            text=note,
+                            author=author,
+                            initials=initials,
+                        )
+                        matched_indices.add(idx)
+                        attached += 1
+                    except Exception as e:
+                        self.log(
+                            f"  ⚠ Comment-attach: failed for segment "
+                            f"#{getattr(seg, 'id', '?')}: {e}"
+                        )
+                        matched_indices.add(idx)  # don't retry endlessly
+
+        # Save back only if we actually added anything.
+        if attached > 0:
+            try:
+                doc.save(docx_path)
+                unmatched = len(candidates) - len(matched_indices)
+                msg = f"  ✓ Attached {attached} segment note(s) as Word comments"
+                if unmatched:
+                    msg += f" ({unmatched} unmatched — target text not found in any paragraph)"
+                if skipped_no_runs:
+                    msg += f" ({skipped_no_runs} skipped — empty paragraph)"
+                self.log(msg)
+            except Exception as e:
+                self.log(f"  ⚠ Comment-attach: failed to save DOCX with comments: {e}")
+        else:
+            unmatched = len(candidates) - len(matched_indices)
+            if unmatched:
+                self.log(
+                    f"  ⚠ Comment-attach: {unmatched} segment note(s) had no "
+                    f"matching paragraph in the exported DOCX"
+                )
 
     def _try_okapi_merge_export(self, segments, original_path, output_path):
         """Attempt to export via Okapi sidecar merge. Returns True on success, False to fall back."""
@@ -12443,6 +12562,12 @@ class SupervertalerQt(QMainWindow):
             )
 
             self.log(f"Okapi merge complete: {os.path.basename(result_path)}")
+
+            # Post-process: attach any segment notes as Word comments. Only
+            # makes sense for .docx output – Okapi can produce IDML/HTML/
+            # XLIFF/etc. too, and python-docx can't open those.
+            if result_path.lower().endswith('.docx'):
+                self._attach_segment_notes_as_docx_comments(result_path, segments)
 
             translated_count = sum(1 for seg in segments if seg.target and seg.target.strip())
             QMessageBox.information(

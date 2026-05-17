@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.53 (May 17, 2026)
+**Current Version:** v1.10.54 (May 17, 2026)
+
+
+## v1.10.54 – May 17, 2026
+
+### Added (Segment notes are now exported to the final DOCX as Word comments)
+
+- A user reported that they'd authored a few notes on individual segments in the right-panel "📝 Segment note" tab during a translation session, then exported the project to DOCX and was surprised the notes didn't appear in the Word file. They were right to be surprised: segment notes were stored on the segment object and exported as a column for bilingual-table formats (memoQ, CafeTran, etc.) but the monolingual DOCX export path (target-only / Okapi merge) had no awareness of them. The notes lived on in the `.svproj` but never reached the deliverable.
+- New helper method `_attach_segment_notes_as_docx_comments(docx_path, segments)` post-processes a saved DOCX: walks every paragraph in document order, finds the first unmatched segment whose target text is a substring of the paragraph's text, and attaches a Word comment to that paragraph using python-docx's `Document.add_comment(runs=..., text=..., author=..., initials=...)` API (added in python-docx 1.0.0; verified working on the installed 1.2.0). Comments are anchored to all runs in the paragraph so the comment range covers the full sentence in Word.
+- Wired into both DOCX export paths:
+  - `_try_okapi_merge_export` — after a successful Okapi merge, if the output is `.docx` (Okapi can also output IDML / HTML / XLIFF / PO / XLSX / PPTX, which python-docx can't open, so the post-process is skipped for those).
+  - `export_target_only_docx` — after the python-docx fallback path saves the file, for both the "copy original as template" sub-branch and the "no original document, build from scratch" sub-branch.
+- Matching strategy: by-substring against the target text, first unmatched paragraph in document order wins. This handles the common case correctly. Failures (segment target not found in any paragraph; paragraph has no runs to anchor to; add_comment throws for whatever reason) are logged but never abort the export — the underlying DOCX is already saved by the time the post-processor runs, so this is purely additive enhancement. Worst case the user gets the export they would have had before, plus a log line explaining why N comments couldn't be attached.
+- Author defaults to "Supervertaler" with initials "SV". Configurable from a setting is a possible future enhancement if anyone asks.
+- Notes-already-existing-in-the-source-DOCX (Word comment bubbles the original author put on the file) are independent of this and stay subject to whatever Okapi's merge does with them (usually preserved – they're outside the translatable text flow). This change only adds NEW comments derived from Supervertaler segment notes.
+- The previously-discussed `⟦TC: …⟧` Translator's-Comment markers continue to sit inline in target text. Extracting THOSE into Word comments (and stripping the markers from visible text) is a separate piece of work, currently parked – see the related GitHub issue on the Trados side. The current change ships the simpler segment-notes path; the TC pipeline can be added later as another call into the same helper.
 
 
 ## v1.10.53 – May 17, 2026
