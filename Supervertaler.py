@@ -14929,6 +14929,52 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"⚠️ Termbase DB auto-refresh failed: {e}")
 
+    def _force_termlens_display_redraw(self):
+        """Force a full TermLens redraw using the F5 path
+        (``force_refresh_matches``) when the lightweight refresh isn't
+        enough.
+
+        v1.10.71 background: a user reported that after clicking the
+        v1.10.68 ↻ refresh button, pills for some terms (specifically
+        ones added moments earlier) disappeared from TermLens for the
+        current segment — even though the cache and index both
+        contained them (the cell-select log line on the next segment
+        switch confirmed ``TB=13`` matches still cached, but the
+        widget only rendered 12 pills). Pressing F5 (which calls
+        ``force_refresh_matches``) immediately restored all pills.
+
+        The two paths look near-identical on paper but differ in
+        thoroughness: the light path
+        (``_refresh_termbase_display_for_current_segment``) clears
+        only the per-segment termbase cache; ``force_refresh_matches``
+        additionally clears the translation-matches cache, re-runs
+        the TM search, builds a richer ``tb_list`` that includes
+        ``target_synonyms``, and updates the Translation Results
+        panel — and somewhere in that broader chain the TermLens
+        widget rebuilds cleanly.
+
+        Rather than chase the exact divergence (race conditions in
+        the FlowLayoutPanel re-layout when controls are added/cleared
+        rapidly are notoriously hard to pin down without a
+        reproducer), this helper just calls into the F5 path. It's
+        slightly heavier work — including a TM re-search — but the
+        TM search is cached past the first hit and the user feedback
+        is unambiguous that F5 works where the lightweight refresh
+        doesn't. Correctness > a few hundred milliseconds.
+
+        Best-effort: wrapped in try/except so the helper can never
+        tear down whatever caller triggered it.
+        """
+        try:
+            if hasattr(self, 'force_refresh_matches'):
+                self.force_refresh_matches()
+            else:
+                # Defensive fallback if the F5 handler is somehow gone —
+                # call the light path instead so something still happens.
+                self._refresh_termbase_display_for_current_segment()
+        except Exception as e:
+            self.log(f"⚠️ Forced TermLens redraw failed: {e}")
+
     def _post_termbase_delete_refresh(self):
         """Run the full refresh chain after a term is deleted from any
         termbase, from any UI surface.
@@ -14971,8 +15017,17 @@ class SupervertalerQt(QMainWindow):
             self._build_termbase_index()
         except Exception as e:
             self.log(f"⚠️ post-delete refresh: index rebuild failed: {e}")
+        # v1.10.71: route the display update through the F5 path
+        # (force_refresh_matches) rather than the lightweight
+        # _refresh_termbase_display_for_current_segment. The light path
+        # left the TermLens widget under-refreshed in a reported case
+        # where some pills (specifically for terms just added before the
+        # 🔄 refresh button was clicked) didn't render until the user
+        # pressed F5 — even though the cache + index both contained the
+        # matches. See _force_termlens_display_redraw for the full
+        # rationale; tldr: F5 demonstrably works, so route through it.
         try:
-            self._refresh_termbase_display_for_current_segment()
+            self._force_termlens_display_redraw()
         except Exception as e:
             self.log(f"⚠️ post-delete refresh: segment refresh failed: {e}")
         try:

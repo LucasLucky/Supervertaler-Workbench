@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.70 (May 17, 2026)
+**Current Version:** v1.10.71 (May 17, 2026)
+
+
+## v1.10.71 – May 17, 2026
+
+### Fixed (🔄 TermLens refresh button + auto-refresh occasionally left pills missing for terms just added; routed through the F5 / force_refresh_matches code path which the user confirmed always works)
+
+A user reported that after clicking the v1.10.68 🔄 TermLens refresh button (or after a v1.10.69 auto-refresh fired), pills for some terms — specifically ones that had just been added to a termbase in the same session — disappeared from the TermLens display for the current segment. The cell-select cache-hit log line on the next segment switch confirmed all 13 matches were still in the cache (`TB=13`), and the v1.10.69 snapshot showed the in-memory index had the right term count post-rebuild. **The data was correct; only the rendered widget was missing pills.** Pressing F5 (which calls `force_refresh_matches`) immediately restored every pill.
+
+So the issue is in the display update path of `_refresh_termbase_display_for_current_segment` (called by `_post_termbase_delete_refresh`), not in the cache, the search, or the index. The lightweight refresh clears only the per-segment termbase cache and re-renders; F5's path additionally clears the translation-matches cache, re-runs the TM search, builds a richer `tb_list` that includes `target_synonyms`, and updates the Translation Results panel. Somewhere in that broader chain — most likely the FlowLayoutPanel re-layout when controls are added and cleared rapidly — the TermLens widget rebuilds cleanly where the lighter path leaves it under-refreshed.
+
+Rather than chase the exact divergence (FlowLayout race conditions in rapid clear/add cycles are notoriously hard to pin down without a reliable reproducer), this commit just routes the post-delete refresh through the F5 path:
+
+ - New `_force_termlens_display_redraw()` helper — calls `force_refresh_matches()` if available, falls back to the light path for defensive safety. Wrapped in try/except.
+ - `_post_termbase_delete_refresh()` now calls this helper instead of `_refresh_termbase_display_for_current_segment()` directly. Same callers, same trigger surface — just a more thorough redraw at the end of the chain.
+
+Cost: F5's path additionally re-runs the TM search (~ a few hundred ms, often instant on cached hits), so the 🔄 button now takes a hair longer. The user feedback is unambiguous that F5 works where the lightweight refresh didn't, so correctness > a few hundred milliseconds. Both manual button clicks and the auto-refresh file-watcher path go through the same helper, so cross-process edits from the Trados plugin (the v1.10.69 use case) now get the full F5 treatment too.
+
+The user's reported sequence — add term → click 🔄 → pills vanish → press F5 → pills come back — should now collapse to: add term → click 🔄 → pills stay visible (or get redrawn cleanly), no F5 needed.
 
 
 ## v1.10.70 – May 17, 2026
