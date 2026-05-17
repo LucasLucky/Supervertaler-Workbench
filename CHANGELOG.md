@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.81 (May 18, 2026)
+**Current Version:** v1.10.82 (May 18, 2026)
+
+
+## v1.10.82 – May 18, 2026
+
+### Changed (Amber metadata-dot indicator now carries a white "i" glyph inside it — the universal "info / more here" affordance)
+
+A user wondered if the v1.10.75 amber dot could be made even clearer — original suggestion was a tiny eye glyph inside the circle. Honest answer: at the previous 8 px dot size, a recognisable eye is below the legibility threshold — you'd have ~5×5 effective drawing pixels for an outline plus a pupil, and even with anti-aliasing the result reads more like "scribble in a circle" than "eye". The "i" character is structurally simpler (a 1×1 dot + a 1×3 vertical line) so it stays legible at small sizes, AND it's the universal "more info here" affordance — Wikipedia infoboxes, browser address bars, every OS settings dialog use the same pattern. So a user who sees the amber dot for the first time can immediately read it as "hover for details" without having to learn that the colour alone encodes that.
+
+This commit:
+
+ - Bumps the metadata dot from **8 → 10 px** to give the glyph enough room to render cleanly.
+ - Draws a **bold white "i"** centred inside via `QPainter.drawText` (Segoe UI, pixel-size 8). Cleaner than constructing the glyph from drawing primitives, and the system font's text-rendering hint produces a sharp anti-aliased result.
+ - Bumps the chip's top headroom (`target_layout.contentsMargins.top`) from **10 → 12 px** to accommodate the larger dot without it brushing against the chip text or the shortcut badge.
+
+The synonym indicator (indigo ≡ circle) is unchanged — three horizontal lines is already a recognisable "menu / list" affordance at 9 px.
+
+Net effect: the corner indicator now reads as "ℹ" at a glance, not just "amber dot means something". Colour-only signal is preserved (amber = metadata) as a fallback for colourblind users who might miss the glyph but see the colour.
 
 
 ## v1.10.81 – May 18, 2026

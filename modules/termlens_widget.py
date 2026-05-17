@@ -66,22 +66,44 @@ class _ChipContainer(QWidget):
             return
 
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
         # v1.10.80: indicators painted in the chip's top headroom
-        # strip (TermBlock sets a 10 px top margin on target_layout
+        # strip (TermBlock sets a 12 px top margin on target_layout
         # when indicators are present, so children sit safely below
-        # y=10). y=1 keeps a thin 1-px gap from the chip's top edge.
+        # y=12). y=1 keeps a thin 1-px gap from the chip's top edge.
+        # v1.10.82: top margin bumped 10→12 to accommodate the 10px
+        # metadata dot (was 8px); see the "i"-glyph note below.
         margin_right = 3
         right = self.width() - margin_right
         top = 1
 
         if self._has_metadata:
-            size = 8
+            # v1.10.82: dot grown 8→10 px so the white "i" glyph
+            # inside it is actually legible. The "i" is the universal
+            # "info / more here" affordance (Wikipedia infoboxes,
+            # browser address bars, every OS settings dialog), so a
+            # user who sees the amber dot for the first time can
+            # immediately read it as "there's info here, hover for
+            # details" without having to learn that the colour alone
+            # encodes that.
+            size = 10
             x = right - size
             y = top
             p.setBrush(QColor("#F59E0B"))     # amber
             p.setPen(QPen(QColor("white"), 1.0))
             p.drawEllipse(x, y, size, size)
+            # Draw white "i" centered inside the circle. Bold Segoe
+            # UI at pixel size 8 gives a roughly 6-px-tall glyph,
+            # which fits cleanly in the 10-px circle with a 1-2px
+            # margin on every side.
+            i_font = QFont("Segoe UI")
+            i_font.setPixelSize(8)
+            i_font.setBold(True)
+            p.setFont(i_font)
+            p.setPen(QPen(QColor("white"), 1.0))
+            i_rect = QRect(x, y, size, size)
+            p.drawText(i_rect, Qt.AlignmentFlag.AlignCenter, "i")
             right = x - 3  # synonym icon goes to the left of the dot
 
         if self._has_synonyms:
@@ -569,7 +591,14 @@ class TermBlock(QWidget):
             # chip the way Trados can with its WinForms paint; the
             # next-best thing is to reserve space inside the chip
             # for them.
-            top_margin = 10 if (has_metadata or has_synonyms) else 1
+            # v1.10.82: bumped 10 → 12 to accommodate the larger
+            # 10-px metadata dot (which carries a white "i" glyph
+            # inside it now). At 10 px, the dot extended to y=11 with
+            # the previous 10-px top margin — exactly at the content
+            # boundary, so close to clipping. 12 px gives clear
+            # separation between the indicators and the chip text /
+            # +N indicator / shortcut badge.
+            top_margin = 12 if (has_metadata or has_synonyms) else 1
             target_layout.setContentsMargins(3, top_margin, 3, 1)
             target_layout.setSpacing(3)
             
