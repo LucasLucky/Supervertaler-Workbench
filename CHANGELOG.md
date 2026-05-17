@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.52 (May 17, 2026)
+**Current Version:** v1.10.53 (May 17, 2026)
+
+
+## v1.10.53 – May 17, 2026
+
+### Changed (File → Import and File → Export each collapsed from two menu items to one)
+
+- The File → Import menu had two top-level items: "Monolingual Document (DOCX)…" (Ctrl+O) and "Other format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)…". The split implied the two paths used different engines – DOCX with python-docx, the rest with Okapi – but that hasn't been true since the engine-choice dialog was removed. Both menu items called code that delegated to the same `import_docx_from_path`, which in turn called `_ensure_okapi_sidecar` and then the Okapi extractor. A code comment at line 27669 of Supervertaler.py says it explicitly: *"DOCX import always goes through the Okapi sidecar – the old engine-choice dialog is gone."* The two-item split was a stale UX leftover that genuinely confused users.
+- Replaced both items with a single **Import Document…** entry (still on Ctrl+O). The file picker shows an "All supported formats" filter by default (DOCX + IDML + HTML + XLIFF + PO + XLSX + PPTX), with per-format filters available for users who want them. The language-pair dialog and the rest of the import pipeline are unchanged. New helper method `import_document` lives at modules/help-system-adjacent position in `Supervertaler.py`; the old `import_docx` and `import_okapi_format` methods are left in place but are no longer reachable from the menu (kept for any future programmatic use, harmless dead code otherwise – will get a separate cleanup commit later).
+- The File → Export menu had a similar two-item split at the top: "Target Only (DOCX)…" and "Original format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)…". This one was slightly less of a fiction – the two methods did genuinely use slightly different code paths – but on a project imported via Okapi (which is now every imported project) the "Target Only (DOCX)" path ALSO tries the Okapi merge first and only falls back to python-docx if the merge fails. So the user-visible behaviour was mostly the same; the labels just made it look like two unrelated operations.
+- Replaced both export items with a single **Export Translated Document…** entry. A small dispatcher (`export_document`) picks the right back-end: DOCX-origin projects (and projects with no known origin file) go through the DOCX exporter (Okapi merge primary, python-docx fallback); non-DOCX Okapi-origin projects (IDML, HTML, XLIFF, PO, XLSX, PPTX) go through the Okapi-merge-only exporter, which outputs in the original file's format. Output extension defaults to the original's. Same engine, same round-trip quality, fewer menu items.
+- The rest of the Import and Export menus (Text / Markdown, Folder multi-file, memoQ, CafeTran, Trados Studio, Phrase, Déjà Vu, Bilingual tables, TMX exports) are unchanged. Those are genuinely different operations and stay as separate entries.
+- The Help URL for Supported file formats (`HelpTopics.IMPORT_FORMATS`) continues to point at the help site, accessible from the "?" badge in the import dialog and from the "Supported file formats (online help)…" entry at the foot of the Import menu.
 
 
 ## v1.10.52 – May 17, 2026

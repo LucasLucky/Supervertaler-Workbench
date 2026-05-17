@@ -8753,19 +8753,22 @@ class SupervertalerQt(QMainWindow):
         # Import/Export submenu
         import_menu = file_menu.addMenu("&Import")
         
-        import_docx_action = QAction("&Monolingual Document (DOCX)...", self)
-        import_docx_action.triggered.connect(self.import_docx)
-        import_docx_action.setShortcut("Ctrl+O")
-        import_menu.addAction(import_docx_action)
-
-        import_okapi_action = QAction("&Other format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)...", self)
-        import_okapi_action.setToolTip(
-            "Import IDML, HTML, XLIFF, PO, XLSX, or PPTX through the Okapi sidecar. "
-            "Same round-trip pipeline as DOCX import – translate in Supervertaler, "
-            "export back to the original format."
+        # v1.10.53: collapsed the previous two-item split (DOCX vs "Other
+        # format via Okapi") into one. Every supported format goes through
+        # the Okapi sidecar regardless – the split was a stale UX leftover
+        # from when there used to be two engines. The file picker accepts
+        # DOCX, IDML, HTML, XLIFF, PO, XLSX, and PPTX with an "All
+        # supported formats" default filter.
+        import_document_action = QAction("&Import Document...", self)
+        import_document_action.setToolTip(
+            "Import a Word document (DOCX), Adobe InDesign markup (IDML), "
+            "HTML, XLIFF, PO, Excel (XLSX), or PowerPoint (PPTX). Extracted "
+            "via the Okapi sidecar; round-trips back to the original format "
+            "on export."
         )
-        import_okapi_action.triggered.connect(self.import_okapi_format)
-        import_menu.addAction(import_okapi_action)
+        import_document_action.triggered.connect(self.import_document)
+        import_document_action.setShortcut("Ctrl+O")
+        import_menu.addAction(import_document_action)
 
         import_txt_action = QAction("&Text / Markdown File (TXT, MD)...", self)
         import_txt_action.triggered.connect(self.import_simple_txt)
@@ -8845,19 +8848,21 @@ class SupervertalerQt(QMainWindow):
 
         export_menu = file_menu.addMenu("&Export")
 
-        # --- Monolingual (target-only) exports at top ---
-        export_target_docx_action = QAction("&Target Only (DOCX)...", self)
-        export_target_docx_action.triggered.connect(self.export_target_only_docx)
-        export_menu.addAction(export_target_docx_action)
-
-        export_okapi_action = QAction("Original format via Okapi (IDML, HTML, XLIFF, PO, XLSX, PPTX)...", self)
-        export_okapi_action.setToolTip(
-            "For projects imported via 'Other format via Okapi…': merge the "
-            "translation back into the original file format using the Okapi "
-            "sidecar."
+        # v1.10.53: collapsed the previous two-item split ("Target Only
+        # (DOCX)" vs "Original format via Okapi") into one. The dispatcher
+        # picks the right back-end based on the project's import format –
+        # DOCX/unknown-origin projects go through the DOCX exporter (which
+        # is itself Okapi-aware with a python-docx fallback); non-DOCX
+        # Okapi-origin projects (IDML, HTML, …) round-trip via the Okapi
+        # merge endpoint. Output file extension defaults to the original's.
+        export_document_action = QAction("&Export Translated Document...", self)
+        export_document_action.setToolTip(
+            "Export the translation back to a document. Output format is "
+            "the same as the original source (DOCX → DOCX, IDML → IDML, "
+            "etc.). Uses the Okapi sidecar to preserve formatting."
         )
-        export_okapi_action.triggered.connect(self.export_okapi_merge)
-        export_menu.addAction(export_okapi_action)
+        export_document_action.triggered.connect(self.export_document)
+        export_menu.addAction(export_document_action)
 
         export_txt_action = QAction("Simple &Text File - Translated (TXT)...", self)
         export_txt_action.triggered.connect(self.export_simple_txt)
@@ -11872,6 +11877,54 @@ class SupervertalerQt(QMainWindow):
         
         return 'cancel'
     
+    def export_document(self):
+        """Export the translated project back to a document.
+
+        Replaces the older ``export_target_only_docx`` and
+        ``export_okapi_merge`` menu handlers, which were two
+        cosmetically-different entry points for what is effectively the
+        same engine: Okapi merge primary, with a python-docx fallback
+        for DOCX projects in case the merge ever fails.
+
+        Routing:
+         - **DOCX-origin projects** (and projects with no known origin
+           file – e.g. older project formats from before Okapi-only
+           import landed) go through ``export_target_only_docx``, which
+           already tries Okapi merge first and falls back to python-docx
+           on failure.
+         - **Non-DOCX Okapi-origin projects** (IDML, HTML, XLIFF, PO,
+           XLSX, PPTX) go through ``export_okapi_merge``, which insists
+           on the Okapi round-trip and outputs in the original format.
+
+        The user only ever sees one menu item; this dispatcher picks
+        the right back-end.
+        """
+        if not self.current_project or not self.current_project.segments:
+            QMessageBox.warning(
+                self, "Nothing to Export", "Open a project first."
+            )
+            return
+
+        # Look up the original source file (if any) to decide the route.
+        original_path = (
+            getattr(self, 'original_docx', None)
+            or getattr(self, 'current_document_path', None)
+            or getattr(self.current_project, 'original_docx_path', None)
+        )
+        ext = Path(original_path).suffix.lower() if original_path else ''
+        is_okapi = (
+            getattr(self.current_project, 'import_engine', '') == 'okapi'
+        )
+
+        # Non-DOCX Okapi-origin projects (IDML, HTML, XLIFF, …) want the
+        # original-format round-trip. DOCX (Okapi-origin or otherwise)
+        # and unknown-origin projects go through the DOCX exporter, which
+        # is itself Okapi-aware when the project has the right metadata.
+        if is_okapi and ext and ext != '.docx':
+            self.export_okapi_merge()
+        else:
+            self.export_target_only_docx()
+
     def export_target_only_docx(self):
         """Export target text only as a monolingual DOCX document, preserving original formatting"""
         try:
@@ -27264,6 +27317,135 @@ class SupervertalerQt(QMainWindow):
         ("Microsoft Excel", "*.xlsx"),
         ("Microsoft PowerPoint", "*.pptx"),
     ]
+
+    # All formats import_document accepts. DOCX is listed first because it's
+    # the most common case; the rest come from OKAPI_OTHER_FORMATS so this
+    # list and the file filter stay in lockstep when new formats are added.
+    @property
+    def IMPORT_DOCUMENT_FORMATS(self):
+        return [("Word Document", "*.docx")] + self.OKAPI_OTHER_FORMATS
+
+    def import_document(self):
+        """Import any supported document format via the Okapi sidecar.
+
+        Replaces the older ``import_docx`` and ``import_okapi_format``
+        menu handlers, which were two cosmetically-different entry points
+        for the same underlying engine. Every supported format (DOCX,
+        IDML, HTML, XLIFF, PO, XLSX, PPTX) goes through the Okapi
+        sidecar — the DOCX/non-DOCX split in the old menu was a stale
+        leftover from when there used to be two engines.
+
+        File picker shows an "All supported formats" filter by default,
+        with per-format filters available for users who want them. The
+        language-pair dialog and the actual extraction are unchanged
+        from the previous ``import_okapi_format`` flow.
+        """
+        # Build file-filter list: All-supported bucket first, then per-format.
+        all_patterns = " ".join(p for _, p in self.IMPORT_DOCUMENT_FORMATS)
+        filter_parts = [f"All supported formats ({all_patterns})"]
+        filter_parts.extend(
+            f"{name} ({pattern})" for name, pattern in self.IMPORT_DOCUMENT_FORMATS
+        )
+        filter_parts.append("All Files (*.*)")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import document",
+            "",
+            ";;".join(filter_parts),
+        )
+        if not file_path:
+            return
+
+        # Language-pair dialog (same UI as the previous separate flows).
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Import document – Options")
+        dialog.setMinimumWidth(500)
+        set_help_topic(dialog, HelpTopics.IMPORT_FORMATS)
+        layout = QVBoxLayout(dialog)
+
+        info_label = QLabel(
+            f"Selected file: <b>{os.path.basename(file_path)}</b><br><br>"
+            "The file will be extracted via the Okapi sidecar – the same "
+            "round-trip pipeline used for every supported format. You can "
+            "later export back to the original format via "
+            "<i>File → Export → Export Translated Document…</i>."
+        )
+        info_label.setWordWrap(True)
+        info_label.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(info_label)
+        layout.addSpacing(15)
+
+        # Same language list / combo-init pattern as the legacy flows.
+        languages = [
+            ("English", "en"), ("Dutch", "nl"), ("German", "de"),
+            ("French", "fr"), ("Spanish", "es"), ("Italian", "it"),
+            ("Portuguese", "pt"), ("Polish", "pl"), ("Russian", "ru"),
+            ("Chinese", "zh"), ("Japanese", "ja"), ("Korean", "ko"),
+        ]
+        general_settings = self.load_general_settings()
+        last_source = general_settings.get(
+            'last_import_source_lang',
+            self.current_project.source_lang if self.current_project else 'en')
+        last_target = general_settings.get(
+            'last_import_target_lang',
+            self.current_project.target_lang if self.current_project else 'nl')
+
+        lang_group = QGroupBox("Language Pair")
+        lang_layout = QHBoxLayout(lang_group)
+        source_combo = QComboBox()
+        target_combo = QComboBox()
+        for name, code in languages:
+            source_combo.addItem(name, code)
+            target_combo.addItem(name, code)
+        for i in range(source_combo.count()):
+            if source_combo.itemData(i) == last_source:
+                source_combo.setCurrentIndex(i)
+                break
+        for i in range(target_combo.count()):
+            if target_combo.itemData(i) == last_target:
+                target_combo.setCurrentIndex(i)
+                break
+
+        arrow = QLabel(" → ")
+        arrow.setStyleSheet("font-weight: bold; font-size: 14px;")
+        lang_layout.addWidget(QLabel("Source:"))
+        lang_layout.addWidget(source_combo)
+        lang_layout.addWidget(arrow)
+        lang_layout.addWidget(QLabel("Target:"))
+        lang_layout.addWidget(target_combo)
+        lang_layout.addStretch()
+        layout.addWidget(lang_group)
+        layout.addSpacing(20)
+
+        button_layout = QHBoxLayout()
+        ok_btn = QPushButton("Import")
+        ok_btn.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-weight: bold; "
+            "border: none; outline: none;")
+        ok_btn.clicked.connect(dialog.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(ok_btn)
+        layout.addLayout(button_layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._import_source_lang = source_combo.currentData()
+        self._import_target_lang = target_combo.currentData()
+        general_settings['last_import_source_lang'] = self._import_source_lang
+        general_settings['last_import_target_lang'] = self._import_target_lang
+        self.save_general_settings(general_settings)
+
+        # import_docx_from_path is generic at the extract level – the
+        # "docx" in its name is historical. Once we hand it the path,
+        # the Okapi sidecar takes over and the format-specific bits
+        # (extraction, segmentation, project build) are handled by
+        # the existing pipeline.
+        self.import_docx_from_path(file_path)
 
     def import_okapi_format(self):
         """Import any format the Okapi sidecar can extract (IDML, HTML, XLIFF, PO, …).
