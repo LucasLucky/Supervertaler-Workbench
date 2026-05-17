@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.64 (May 17, 2026)
+**Current Version:** v1.10.65 (May 17, 2026)
+
+
+## v1.10.65 – May 17, 2026
+
+### Added (Termbases tab: new "Created" column + "Sort by" dropdown so you can flip the grid to "newest first" and triage terms you just added)
+
+A user noted there was no way to find recently-added terms in the Termbases tab grid: the grid was always sorted alphabetically by source term, with no created-timestamp visible — so a batch of incorrectly-added terms couldn't be located short of remembering them by spelling and filtering one at a time.
+
+The `termbase_terms` table has always stored a `created_date` column (populated automatically via `DEFAULT CURRENT_TIMESTAMP` since the schema was first laid down — see `database_manager.py` line 504); nothing surfaced it. This commit does:
+
+ - **New "Created" column** (read-only) between `Forbidden` and the Delete button, rendered as `YYYY-MM-DD HH:MM` (UTC, seconds trimmed for compactness; the full timestamp shows on hover). The cell is marked non-editable so the existing `cellChanged` save handler ignores edits there, and the Delete-button column moves from index 7 → 8 to make room.
+ - **New "Sort:" dropdown** next to the existing "Show:" page-size selector, with six options: Source term (A→Z, default), Source term (Z→A), **Created (newest first)**, Created (oldest first), Modified (newest first), Modified (oldest first). Changing the sort resets to page 1 so the newest rows jump straight into view.
+ - **SQL changes**: the four `SELECT` queries inside `load_terms_page` now also pull `created_date` and use a configurable `ORDER BY` clause driven by the dropdown. The clauses come from a fixed `_SORT_OPTIONS` whitelist (never user-supplied), so inlining them into the SQL is safe.
+ - **Tooltip on the dropdown** points at the use case directly: *"Tip: 'Created (newest first)' is the quickest way to find (and fix or delete) a batch of terms you just added."*
+
+Backward-compatible — older Workbench versions that opened the same SQLite database have always populated `created_date`, so existing termbases populate the column immediately without any migration.
 
 
 ## v1.10.64 – May 17, 2026

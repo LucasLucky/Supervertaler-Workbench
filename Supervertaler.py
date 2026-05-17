@@ -15496,10 +15496,17 @@ class SupervertalerQt(QMainWindow):
         terms_current_page = [0]  # Current page (0-indexed)
         terms_total_count = [0]  # Total terms in current termbase
         terms_filter_text = ['']  # Current filter text
-        
+        # v1.10.65: configurable ORDER BY clause for the terms query so
+        # users can flip the grid between "alphabetical" (default) and
+        # "newest first" — the latter is essential for finding/fixing
+        # a batch of terms you just added but realised were wrong.
+        # Whitelisted strings only (we inline them into the SQL); see
+        # _SORT_OPTIONS below.
+        terms_sort_order = ['source_term COLLATE NOCASE ASC']
+
         pagination_layout = QHBoxLayout()
         pagination_layout.setContentsMargins(0, 5, 0, 5)
-        
+
         # Page size selector
         page_size_label = QLabel("Show:")
         page_size_combo = QComboBox()
@@ -15508,7 +15515,43 @@ class SupervertalerQt(QMainWindow):
         page_size_combo.setFixedWidth(70)
         pagination_layout.addWidget(page_size_label)
         pagination_layout.addWidget(page_size_combo)
-        
+
+        pagination_layout.addSpacing(15)
+
+        # Sort selector (v1.10.65). Label → SQL ORDER BY clause.
+        # The order-by strings are NEVER user-supplied; they're keyed
+        # off a fixed dropdown, so inlining them into the SELECT is
+        # safe. (Parameterising ORDER BY would require sqlite3
+        # gymnastics for no real benefit here.)
+        _SORT_OPTIONS = [
+            ("Source term (A→Z)",      "source_term COLLATE NOCASE ASC"),
+            ("Source term (Z→A)",      "source_term COLLATE NOCASE DESC"),
+            ("Created (newest first)", "created_date DESC, id DESC"),
+            ("Created (oldest first)", "created_date ASC, id ASC"),
+            ("Modified (newest first)", "modified_date DESC, id DESC"),
+            ("Modified (oldest first)", "modified_date ASC, id ASC"),
+        ]
+        sort_label = QLabel("Sort:")
+        sort_combo = QComboBox()
+        for label, _clause in _SORT_OPTIONS:
+            sort_combo.addItem(label)
+        sort_combo.setFixedWidth(180)
+        sort_combo.setToolTip(
+            "Choose how terms are ordered in the grid.\n"
+            "Tip: 'Created (newest first)' is the quickest way to find\n"
+            "(and fix or delete) a batch of terms you just added."
+        )
+        pagination_layout.addWidget(sort_label)
+        pagination_layout.addWidget(sort_combo)
+
+        def on_sort_changed(idx):
+            if 0 <= idx < len(_SORT_OPTIONS):
+                terms_sort_order[0] = _SORT_OPTIONS[idx][1]
+                terms_current_page[0] = 0  # Reset to first page so newest jumps into view
+                if current_terms_tb_id[0]:
+                    load_terms_page()
+        sort_combo.currentIndexChanged.connect(on_sort_changed)
+
         pagination_layout.addSpacing(20)
         
         # Navigation buttons
@@ -15545,10 +15588,15 @@ class SupervertalerQt(QMainWindow):
         pagination_layout.addStretch()
         right_layout.addLayout(pagination_layout)
         
-        # Terms table - columns: Source, Target, Domain, Notes, Project, Client, Forbidden, Delete
+        # Terms table - columns: Source, Target, Domain, Notes, Project, Client, Forbidden, Created, Delete
+        # v1.10.65: added the **Created** column (read-only timestamp,
+        # rendered yyyy-mm-dd HH:MM) so users can flip the sort
+        # dropdown to "Created (newest first)" and immediately see —
+        # and triage — terms they just added but realised were wrong.
+        # The Delete button moved from col 7 → col 8.
         terms_table = QTableWidget()
-        terms_table.setColumnCount(8)
-        terms_table.setHorizontalHeaderLabels(["Source Term", "Target Term", "Domain", "Notes", "Project", "Client", "Forbidden", ""])
+        terms_table.setColumnCount(9)
+        terms_table.setHorizontalHeaderLabels(["Source Term", "Target Term", "Domain", "Notes", "Project", "Client", "Forbidden", "Created", ""])
         terms_table.horizontalHeader().setStretchLastSection(False)
         terms_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)      # Source – fills remaining space
         terms_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)      # Target – fills remaining space
@@ -15557,13 +15605,15 @@ class SupervertalerQt(QMainWindow):
         terms_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # Project
         terms_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # Client
         terms_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)  # Forbidden
-        terms_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)        # Delete button
+        terms_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)  # Created
+        terms_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)        # Delete button
         terms_table.setColumnWidth(2, 100)  # Domain
         terms_table.setColumnWidth(3, 120)  # Notes
         terms_table.setColumnWidth(4, 100)  # Project
         terms_table.setColumnWidth(5, 100)  # Client
         terms_table.setColumnWidth(6, 70)   # Forbidden
-        terms_table.setColumnWidth(7, 30)   # Delete button
+        terms_table.setColumnWidth(7, 130)  # Created (fits "2026-05-17 14:32" with a little slack)
+        terms_table.setColumnWidth(8, 30)   # Delete button
         terms_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         right_layout.addWidget(terms_table, stretch=1)
         
@@ -15615,34 +15665,42 @@ class SupervertalerQt(QMainWindow):
                 page_size = terms_page_size[0]
                 offset = terms_current_page[0] * page_size if page_size > 0 else 0
                 
-                # Build query with optional filter
+                # v1.10.65: ORDER BY is driven by the Sort dropdown
+                # (terms_sort_order). The clause is a whitelisted string
+                # from a fixed list (_SORT_OPTIONS), never user-supplied,
+                # so inlining it into the SQL is safe.
+                order_clause = terms_sort_order[0]
+
+                # Build query with optional filter. SELECT now also
+                # returns created_date so the v1.10.65 Created column
+                # can render the timestamp.
                 if filter_text:
                     # Count filtered results
                     self.db_manager.cursor.execute(
-                        """SELECT COUNT(*) FROM termbase_terms 
-                           WHERE termbase_id = CAST(? AS TEXT) 
+                        """SELECT COUNT(*) FROM termbase_terms
+                           WHERE termbase_id = CAST(? AS TEXT)
                            AND (LOWER(source_term) LIKE ? OR LOWER(target_term) LIKE ?)""",
                         (tb_id, f'%{filter_text}%', f'%{filter_text}%')
                     )
                     terms_total_count[0] = self.db_manager.cursor.fetchone()[0]
-                    
+
                     # Get filtered page
                     if page_size > 0:
                         self.db_manager.cursor.execute(
-                            """SELECT id, source_term, target_term, domain, notes, project, client, forbidden 
-                               FROM termbase_terms 
-                               WHERE termbase_id = CAST(? AS TEXT) 
+                            f"""SELECT id, source_term, target_term, domain, notes, project, client, forbidden, created_date
+                               FROM termbase_terms
+                               WHERE termbase_id = CAST(? AS TEXT)
                                AND (LOWER(source_term) LIKE ? OR LOWER(target_term) LIKE ?)
-                               ORDER BY source_term LIMIT ? OFFSET ?""",
+                               ORDER BY {order_clause} LIMIT ? OFFSET ?""",
                             (tb_id, f'%{filter_text}%', f'%{filter_text}%', page_size, offset)
                         )
                     else:  # All
                         self.db_manager.cursor.execute(
-                            """SELECT id, source_term, target_term, domain, notes, project, client, forbidden 
-                               FROM termbase_terms 
-                               WHERE termbase_id = CAST(? AS TEXT) 
+                            f"""SELECT id, source_term, target_term, domain, notes, project, client, forbidden, created_date
+                               FROM termbase_terms
+                               WHERE termbase_id = CAST(? AS TEXT)
                                AND (LOWER(source_term) LIKE ? OR LOWER(target_term) LIKE ?)
-                               ORDER BY source_term""",
+                               ORDER BY {order_clause}""",
                             (tb_id, f'%{filter_text}%', f'%{filter_text}%')
                         )
                 else:
@@ -15652,19 +15710,19 @@ class SupervertalerQt(QMainWindow):
                         (tb_id,)
                     )
                     terms_total_count[0] = self.db_manager.cursor.fetchone()[0]
-                    
+
                     # Get page
                     if page_size > 0:
                         self.db_manager.cursor.execute(
-                            """SELECT id, source_term, target_term, domain, notes, project, client, forbidden 
-                               FROM termbase_terms WHERE termbase_id = CAST(? AS TEXT) 
-                               ORDER BY source_term LIMIT ? OFFSET ?""",
+                            f"""SELECT id, source_term, target_term, domain, notes, project, client, forbidden, created_date
+                               FROM termbase_terms WHERE termbase_id = CAST(? AS TEXT)
+                               ORDER BY {order_clause} LIMIT ? OFFSET ?""",
                             (tb_id, page_size, offset)
                         )
                     else:  # All
                         self.db_manager.cursor.execute(
-                            """SELECT id, source_term, target_term, domain, notes, project, client, forbidden 
-                               FROM termbase_terms WHERE termbase_id = CAST(? AS TEXT) ORDER BY source_term""",
+                            f"""SELECT id, source_term, target_term, domain, notes, project, client, forbidden, created_date
+                               FROM termbase_terms WHERE termbase_id = CAST(? AS TEXT) ORDER BY {order_clause}""",
                             (tb_id,)
                         )
                 
@@ -15672,7 +15730,7 @@ class SupervertalerQt(QMainWindow):
                 terms_table.setRowCount(len(terms))
                 
                 for row, term in enumerate(terms):
-                    term_id, source, target, domain, notes, project, client, forbidden = term
+                    term_id, source, target, domain, notes, project, client, forbidden, created_raw = term
 
                     # Source term (editable)
                     source_item = QTableWidgetItem(source or "")
@@ -15706,13 +15764,28 @@ class SupervertalerQt(QMainWindow):
                     forbidden_checkbox.toggled.connect(lambda checked, tid=term_id: save_forbidden_state(tid, checked))
                     terms_table.setCellWidget(row, 6, forbidden_checkbox)
 
-                    # Delete button
+                    # Created timestamp (read-only). SQLite returns
+                    # CURRENT_TIMESTAMP values as "YYYY-MM-DD HH:MM:SS"
+                    # strings (UTC). Trim the seconds for compactness;
+                    # the full value goes into the tooltip for anyone
+                    # who needs the precise instant. Cell is marked
+                    # non-editable so the save_term_edit handler can
+                    # safely ignore changes here.
+                    created_str = str(created_raw) if created_raw else ""
+                    created_display = created_str[:16] if len(created_str) >= 16 else created_str
+                    created_item = QTableWidgetItem(created_display)
+                    if created_str:
+                        created_item.setToolTip(f"Created: {created_str} (UTC)")
+                    created_item.setFlags(created_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    terms_table.setItem(row, 7, created_item)
+
+                    # Delete button (moved from col 7 → col 8 in v1.10.65)
                     delete_btn = QPushButton("🗑")
                     delete_btn.setFixedSize(24, 24)
                     delete_btn.setToolTip("Delete this term")
                     delete_btn.setStyleSheet("QPushButton { border: none; } QPushButton:hover { background-color: #ffcccc; }")
                     delete_btn.clicked.connect(lambda checked, tid=term_id: delete_term(tid))
-                    terms_table.setCellWidget(row, 7, delete_btn)
+                    terms_table.setCellWidget(row, 8, delete_btn)
                 
                 update_pagination_ui()
                 
@@ -15742,7 +15815,7 @@ class SupervertalerQt(QMainWindow):
                     tgt_header = self._normalize_language_code(tgt_code) if tgt_code else "Target Term"
                     terms_table.setHorizontalHeaderLabels([
                         src_header, tgt_header, "Domain", "Notes",
-                        "Project", "Client", "Forbidden", ""
+                        "Project", "Client", "Forbidden", "Created", ""
                     ])
             except Exception:
                 pass
@@ -15836,9 +15909,12 @@ class SupervertalerQt(QMainWindow):
             """Save edited term to database"""
             if current_terms_tb_id[0] is None:
                 return
-            
-            # Skip columns that have widgets (Forbidden=6, Delete=7)
-            if column in (6, 7):
+
+            # Skip columns that have widgets or are read-only
+            # (Forbidden=6 checkbox, Created=7 read-only timestamp,
+            # Delete=8 button). v1.10.65: Created column inserted at 7;
+            # Delete pushed to 8.
+            if column in (6, 7, 8):
                 return
 
             source_item = terms_table.item(row, 0)
