@@ -8043,17 +8043,33 @@ class SupervertalerQt(QMainWindow):
         mt_quick_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
     def focus_segment_notes(self):
-        """Switch to Segment Note tab and focus the notes editor so user can start typing immediately"""
+        """Switch to the Comments tab → Segment sub-tab and focus the editor.
+
+        v1.10.56 collapsed the previous separate Segment-note and
+        Proofreading-note tabs into a single "💬 Comments" parent tab
+        with two sub-tabs. This handler now navigates that two-level
+        structure: parent first, then sub-tab, then focus the editor.
+        """
         if not hasattr(self, 'right_tabs'):
             return
-        
-        # Find the Segment Note tab in right_tabs by looking for the tab with "Segment note" in its text
-        for i in range(self.right_tabs.count()):
-            if "Segment note" in self.right_tabs.tabText(i):
-                self.right_tabs.setCurrentIndex(i)
-                break
-        
-        # Focus the notes editor so user can start typing
+
+        # Find the parent Comments tab — by stored index first (set in
+        # the tab-construction code), with a fallback label scan in case
+        # the tab order shifts later.
+        target_index = getattr(self, '_comments_tab_index', None)
+        if target_index is None or target_index >= self.right_tabs.count():
+            for i in range(self.right_tabs.count()):
+                if "Comments" in self.right_tabs.tabText(i):
+                    target_index = i
+                    break
+        if target_index is not None:
+            self.right_tabs.setCurrentIndex(target_index)
+
+        # Switch the inner tab widget to "📝 Segment" (sub-index 0).
+        if hasattr(self, 'comments_sub_tabs'):
+            self.comments_sub_tabs.setCurrentIndex(0)
+
+        # Focus the editor so the user can start typing immediately.
         if hasattr(self, 'bottom_notes_edit'):
             self.bottom_notes_edit.setFocus()
     
@@ -23759,16 +23775,62 @@ class SupervertalerQt(QMainWindow):
         self.session_log_text.setStyleSheet("font-family: 'Consolas', 'Courier New', monospace; font-size: 9pt;")
         session_log_layout.addWidget(self.session_log_text)
         
-        # Notes tab (for segment notes - copy from Translation Results panel)
+        # Segment-comments sub-tab. v1.10.56 restructured this into a
+        # split view:
+        #   • Top: scrollable list of every segment in the project with a
+        #     comment. Each entry has a clickable "Segment #N" header
+        #     that jumps to that segment in the grid (cross-page aware).
+        #   • Bottom: editor for the CURRENTLY SELECTED segment's
+        #     comment, identical to the pre-1.10.56 behaviour.
+        # The list rebuilds when a comment is edited (via
+        # _on_bottom_notes_changed) and when a project is loaded.
         notes_widget = QWidget()
         notes_layout = QVBoxLayout(notes_widget)
         notes_layout.setContentsMargins(5, 5, 5, 5)
-        
+        notes_layout.setSpacing(4)
+
+        from PyQt6.QtWidgets import QSplitter as _QSplitter, QScrollArea as _QScrollArea, QFrame as _QFrame
+        comments_splitter = _QSplitter(Qt.Orientation.Vertical)
+
+        # ── All-segment-comments list (top half) ──
+        self._segment_comments_list_container = QWidget()
+        self._segment_comments_list_layout = QVBoxLayout(self._segment_comments_list_container)
+        self._segment_comments_list_layout.setContentsMargins(0, 0, 0, 0)
+        self._segment_comments_list_layout.setSpacing(0)
+        # Initial placeholder; replaced by _refresh_segment_comments_list().
+        _initial_empty = QLabel("(No segment comments yet — add one in the editor below.)")
+        _initial_empty.setStyleSheet("color: #999; font-style: italic; padding: 8px;")
+        _initial_empty.setWordWrap(True)
+        self._segment_comments_list_layout.addWidget(_initial_empty)
+        self._segment_comments_list_layout.addStretch()
+
+        comments_list_scroll = _QScrollArea()
+        comments_list_scroll.setWidgetResizable(True)
+        comments_list_scroll.setFrameShape(_QFrame.Shape.NoFrame)
+        comments_list_scroll.setWidget(self._segment_comments_list_container)
+        comments_splitter.addWidget(comments_list_scroll)
+
+        # ── Editor for current segment's comment (bottom half) ──
+        edit_container = QWidget()
+        edit_layout = QVBoxLayout(edit_container)
+        edit_layout.setContentsMargins(0, 4, 0, 0)
+        edit_layout.setSpacing(2)
+        edit_header = QLabel("✏️ Comment on current segment")
+        edit_header.setStyleSheet("font-weight: bold; font-size: 9pt; color: #555;")
+        edit_layout.addWidget(edit_header)
+
         self.bottom_notes_edit = QPlainTextEdit()
-        self.bottom_notes_edit.setPlaceholderText("Add notes about this segment, context, or translation concerns...")
+        self.bottom_notes_edit.setPlaceholderText("Add a comment about this segment — context, translation concerns, anything worth flagging...")
         self.bottom_notes_edit.setStyleSheet("font-size: 10pt;")
         self.bottom_notes_edit.textChanged.connect(self._on_bottom_notes_changed)
-        notes_layout.addWidget(self.bottom_notes_edit)
+        edit_layout.addWidget(self.bottom_notes_edit)
+        comments_splitter.addWidget(edit_container)
+
+        # Default split: list takes ~60%, edit ~40%. The user can drag.
+        comments_splitter.setSizes([300, 200])
+        comments_splitter.setStretchFactor(0, 3)
+        comments_splitter.setStretchFactor(1, 2)
+        notes_layout.addWidget(comments_splitter)
         
         # Add only TermLens tab to bottom_tabs (Segment Note and Session Log will be in right panel)
         bottom_tabs.addTab(self.termlens_widget, "🔍 TermLens")
@@ -23789,7 +23851,7 @@ class SupervertalerQt(QMainWindow):
         self.bottom_proofreading_notes_display.setOpenExternalLinks(False)
         self.bottom_proofreading_notes_display.setStyleSheet("font-size: 10pt;")
         self.bottom_proofreading_notes_display.setHtml(
-            '<span style="color: #999; font-style: italic;">No proofreading notes for this segment.</span>'
+            '<span style="color: #999; font-style: italic;">No proofreading comments for this segment.</span>'
         )
         proofreading_notes_layout.addWidget(self.bottom_proofreading_notes_display)
 
@@ -23915,12 +23977,34 @@ class SupervertalerQt(QMainWindow):
         self._preview_tab_index = preview_tab_index  # Store for visibility checks
         tab_index += 1
 
-        # Tab 3: Segment Note
-        right_tabs.addTab(self._notes_widget_for_right_panel, "📝 Segment note")
-        tab_index += 1
+        # Tab 3: Comments — single parent tab containing two sub-tabs
+        # (Segment / Proofreading) so the related surfaces sit together
+        # in the right panel. The Segment sub-tab additionally shows an
+        # all-project list of every segment with a comment (built later
+        # by _attach_all_segment_comments_list).
+        from PyQt6.QtWidgets import QTabWidget as _QTabWidget
+        comments_tab = QWidget()
+        comments_tab_layout = QVBoxLayout(comments_tab)
+        comments_tab_layout.setContentsMargins(0, 0, 0, 0)
+        comments_tab_layout.setSpacing(0)
 
-        # Tab 4: Proofreading Note (AI-generated, read-only, keyed by LLM model)
-        right_tabs.addTab(self._proofreading_notes_widget_for_right_panel, "✅ Proofreading note")
+        self.comments_sub_tabs = _QTabWidget()
+        # Keep the sub-tab bar visually subordinate to the parent tab bar.
+        self.comments_sub_tabs.setDocumentMode(True)
+        self.comments_sub_tabs.addTab(
+            self._notes_widget_for_right_panel,
+            "📝 Segment",
+        )
+        self.comments_sub_tabs.addTab(
+            self._proofreading_notes_widget_for_right_panel,
+            "✅ Proofreading",
+        )
+        comments_tab_layout.addWidget(self.comments_sub_tabs)
+        right_tabs.addTab(comments_tab, "💬 Comments")
+        # Index of the parent Comments tab, exposed for keyboard shortcuts
+        # and any code that needs to switch to it programmatically (e.g.
+        # the Ctrl+N "focus comments editor" handler in _focus_notes_tab).
+        self._comments_tab_index = tab_index
         tab_index += 1
 
         # Tab 5: Session Log
@@ -25127,6 +25211,8 @@ class SupervertalerQt(QMainWindow):
         
         # Clear scratchpad for new project
         self._update_scratchpad_for_project()
+        # Rebuild the all-comments list (empty for a brand-new project)
+        self._refresh_segment_comments_list()
         
         self.log(f"Created new project: {project_name} ({source_lang} → {target_lang})")
         
@@ -25892,6 +25978,8 @@ class SupervertalerQt(QMainWindow):
             
             # Update scratchpad with project's private notes
             self._update_scratchpad_for_project()
+            # Rebuild the all-comments list from the loaded project
+            self._refresh_segment_comments_list()
             
             self.log(f"✓ Loaded project: {self.current_project.name} ({len(self.current_project.segments)} segments)")
 
@@ -34689,7 +34777,7 @@ class SupervertalerQt(QMainWindow):
                 self, "Import Complete",
                 f"Successfully applied {applied_count} change(s) from the bilingual table.\n\n"
                 f"Changed segments set to 'Not Started' for translator review.\n"
-                f"Notes from the review have been added to segment notes."
+                f"Comments from the review have been added to segment comments."
             )
             
         except ImportError:
@@ -37036,10 +37124,10 @@ class SupervertalerQt(QMainWindow):
         if has_any_notes:
             tooltip_parts = []
             if has_notes:
-                tooltip_parts.append(f"Segment note: {segment.notes.strip()}")
+                tooltip_parts.append(f"Segment comment: {segment.notes.strip()}")
             if has_proofreading:
                 model_count = len(segment.proofreading_notes)
-                tooltip_parts.append(f"Proofreading note: {model_count} LLM result{'s' if model_count != 1 else ''}")
+                tooltip_parts.append(f"Proofreading comment: {model_count} LLM result{'s' if model_count != 1 else ''}")
             widget.setToolTip("\n".join(tooltip_parts))
             
         status_def = get_status(segment.status)
@@ -37190,10 +37278,10 @@ class SupervertalerQt(QMainWindow):
                 if segment.match_percent is not None:
                     status_tooltip += f" | {segment.match_percent}% match"
                 if segment.notes and segment.notes.strip():
-                    status_tooltip += f"\nSegment note: {segment.notes.strip()}"
+                    status_tooltip += f"\nSegment comment: {segment.notes.strip()}"
                 if getattr(segment, 'proofreading_notes', None):
                     model_count = len(segment.proofreading_notes)
-                    status_tooltip += f"\nProofreading note: {model_count} LLM result{'s' if model_count != 1 else ''}"
+                    status_tooltip += f"\nProofreading comment: {model_count} LLM result{'s' if model_count != 1 else ''}"
                 item.setToolTip(2, status_tooltip)
                 item.setBackground(2, QColor(status_def.color))
 
@@ -40275,7 +40363,7 @@ class SupervertalerQt(QMainWindow):
         
         info_label = QLabel(
             "Use AI to verify translation accuracy, completeness, terminology, and style.\n"
-            "Results are stored in the Proofreading note tab, keyed by LLM model."
+            "Results are stored in the Proofreading comments tab, keyed by LLM model."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #666; padding: 10px 0;")
@@ -40577,7 +40665,7 @@ class SupervertalerQt(QMainWindow):
             QMessageBox.information(
                 self,
                 "No Proofreading Results",
-                "No segments have proofreading notes.\n\n"
+                "No segments have proofreading comments.\n\n"
                 "Run Edit → Bulk Operations → ✅ Proofread Translation to analyze your translation."
             )
             return
@@ -40591,7 +40679,7 @@ class SupervertalerQt(QMainWindow):
         layout = QVBoxLayout(dialog)
 
         # Header
-        header = QLabel(f"<h3>⚠️ {len(proofread_segments)} Segment{'s' if len(proofread_segments) != 1 else ''} with Proofreading Notes</h3>")
+        header = QLabel(f"<h3>⚠️ {len(proofread_segments)} Segment{'s' if len(proofread_segments) != 1 else ''} with Proofreading Comments</h3>")
         layout.addWidget(header)
 
         info_label = QLabel("Double-click any row to navigate to that segment in the grid.")
@@ -46120,6 +46208,173 @@ class SupervertalerQt(QMainWindow):
                 self._refresh_segment_status(seg)
                 break
     
+    def _refresh_segment_comments_list(self):
+        """Rebuild the all-comments list at the top of the Comments → Segment sub-tab.
+
+        Idempotent. Cheap to call on every textChanged from the editor —
+        the number of comments per project is typically small (a few
+        dozen at most), so a full rebuild is well within the budget.
+
+        Each entry is a clickable "Segment #N" header followed by the
+        comment body, with a horizontal rule between entries. Clicking
+        the header calls :py:meth:`_navigate_to_segment_by_id`, which is
+        pagination-aware (switches page first if the target segment is
+        on a different page).
+        """
+        if not hasattr(self, '_segment_comments_list_layout'):
+            return  # Sub-tab not built yet (early init)
+
+        from PyQt6.QtWidgets import QFrame as _QFrame
+
+        layout = self._segment_comments_list_layout
+
+        # Clear existing children. Walk takeAt(0) until the layout is
+        # empty so both widgets AND the trailing stretch get cleaned up.
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        # Collect segments that have a non-empty comment, preserving
+        # document order (which is the segment order in the project).
+        entries = []
+        if self.current_project and self.current_project.segments:
+            for seg in self.current_project.segments:
+                note = (getattr(seg, 'notes', '') or '').strip()
+                if note:
+                    entries.append((seg.id, note))
+
+        if not entries:
+            empty = QLabel(
+                "(No segment comments in this project yet — "
+                "add one in the editor below.)"
+            )
+            empty.setStyleSheet("color: #999; font-style: italic; padding: 8px;")
+            empty.setWordWrap(True)
+            layout.addWidget(empty)
+            layout.addStretch()
+            return
+
+        for idx, (seg_id, note) in enumerate(entries):
+            # Divider between entries (not above the first).
+            if idx > 0:
+                divider = _QFrame()
+                divider.setFrameShape(_QFrame.Shape.HLine)
+                divider.setStyleSheet("color: #e0e0e0; max-height: 1px;")
+                layout.addWidget(divider)
+
+            # Header — styled as a hyperlink-looking flat button so users
+            # know it's clickable. Default-argument trick captures seg_id
+            # at definition time (otherwise every lambda would reference
+            # the loop variable's final value).
+            header_btn = QPushButton(f"Segment #{seg_id}")
+            header_btn.setFlat(True)
+            header_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            header_btn.setStyleSheet(
+                "QPushButton { "
+                "  color: #2563eb; "
+                "  font-weight: bold; "
+                "  font-size: 10pt; "
+                "  text-align: left; "
+                "  padding: 6px 8px 2px 8px; "
+                "  border: none; "
+                "  background: transparent; "
+                "} "
+                "QPushButton:hover { "
+                "  background-color: rgba(37, 99, 235, 0.08); "
+                "  text-decoration: underline; "
+                "}"
+            )
+            header_btn.clicked.connect(
+                lambda _checked, sid=seg_id: self._navigate_to_segment_by_id(sid)
+            )
+            layout.addWidget(header_btn)
+
+            # Body — selectable so users can copy comment text out.
+            body = QLabel(note)
+            body.setWordWrap(True)
+            body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            body.setStyleSheet(
+                "padding: 0 12px 8px 12px; "
+                "font-size: 10pt; "
+                "color: #333;"
+            )
+            layout.addWidget(body)
+
+        layout.addStretch()
+
+    def _navigate_to_segment_by_id(self, segment_id: int):
+        """Navigate to a segment by ID, switching pages first if needed.
+
+        Unlike :py:meth:`_navigate_to_segment_in_grid` (which looks the
+        segment up by row index in the *currently visible* table), this
+        version finds the segment's index in the full project segment
+        list, computes which page it's on, switches to that page if
+        we're not already there, and only then selects the row. Works
+        correctly across pagination boundaries.
+        """
+        if not self.current_project or not self.current_project.segments:
+            return
+        if not hasattr(self, 'table') or not self.table:
+            return
+
+        # Locate the target segment in the full project list.
+        segments = self.current_project.segments
+        target_idx = None
+        for i, seg in enumerate(segments):
+            if seg.id == segment_id:
+                target_idx = i
+                break
+        if target_idx is None:
+            self.log(f"⚠ Segment #{segment_id} not found in project")
+            return
+
+        # If pagination is active and the segment is on a different page,
+        # switch to that page first. The grid rebuilds synchronously
+        # inside go_to_page, so by the time it returns the target row
+        # is visible.
+        if (hasattr(self, 'page_size_combo')
+                and self.page_size_combo.currentText() != "All"):
+            try:
+                page_size = int(self.page_size_combo.currentText())
+                target_page = (target_idx // page_size) + 1
+                current_page = getattr(self, 'grid_current_page', 0) + 1
+                if current_page != target_page and hasattr(self, 'page_number_input'):
+                    self.page_number_input.setText(str(target_page))
+                    self.go_to_page()
+            except (ValueError, AttributeError):
+                pass
+
+        # Switch to the Grid (Editor) tab if we're elsewhere.
+        if hasattr(self, 'main_tabs'):
+            self.main_tabs.setCurrentIndex(0)
+
+        # Find the row in the (possibly newly-rebuilt) table and select it.
+        for row in range(self.table.rowCount()):
+            id_item = self.table.item(row, 0)
+            if id_item:
+                try:
+                    if int(id_item.text()) == segment_id:
+                        self.table.setCurrentCell(row, 3)  # Column 3 = Target
+                        self.table.scrollToItem(
+                            self.table.item(row, 0),
+                            QTableWidget.ScrollHint.PositionAtCenter,
+                        )
+                        target_widget = self.table.cellWidget(row, 3)
+                        if target_widget:
+                            target_widget.setFocus()
+                        return
+                except (ValueError, AttributeError):
+                    continue
+
+        # Reaching here means the page-switch logic didn't put the
+        # segment on the current page — shouldn't happen but log it.
+        self.log(
+            f"⚠ Segment #{segment_id} not on current grid page after "
+            f"page-switch attempt (unexpected)"
+        )
+
     def _on_bottom_notes_changed(self):
         """Handle notes change in bottom Notes tab - saves to current segment and syncs with Translation Results panel"""
         if not self.current_project:
@@ -46153,6 +46408,10 @@ class SupervertalerQt(QMainWindow):
                         self.translation_results_panel.notes_edit.blockSignals(False)
                 # Refresh the status cell to update the notes indicator
                 self._refresh_segment_status(seg)
+                # v1.10.56: rebuild the all-comments list in the
+                # Comments → Segment sub-tab so the new/edited comment
+                # appears (or disappears, if cleared) immediately.
+                self._refresh_segment_comments_list()
                 break
     
     def _on_scratchpad_changed(self):
@@ -46199,7 +46458,7 @@ class SupervertalerQt(QMainWindow):
         proofread = getattr(segment, 'proofreading_notes', None) if segment else None
         if not proofread:
             self.bottom_proofreading_notes_display.setHtml(
-                '<span style="color: #999; font-style: italic;">No proofreading notes for this segment.</span>'
+                '<span style="color: #999; font-style: italic;">No proofreading comments for this segment.</span>'
             )
             return
 

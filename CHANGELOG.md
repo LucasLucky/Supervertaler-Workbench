@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.55 (May 17, 2026)
+**Current Version:** v1.10.56 (May 17, 2026)
+
+
+## v1.10.56 – May 17, 2026
+
+### Changed (Comments overhaul: "Notes" terminology retired, two tabs merged into one "💬 Comments" tab with sub-tabs, plus an all-project comments list with click-to-jump)
+
+Three coupled changes shipped together to fix three related UX paper cuts on the Comments side of the right panel.
+
+**Terminology: "Notes" → "Comments"** — every user-visible "note(s)" string referring to segment-level or proofreading-level annotations is now "comment(s)". Tab labels, tooltips, status-bar messages, dialog texts, placeholder text in the editor — all renamed. Two surfaces are deliberately *not* renamed: termbase columns (a "Notes" column on terminology is a different concept and stays "Notes"), and the Scratchpad tab (project-level private notes, distinct from segment comments). Internal Python data-field names (`segment.notes`, `segment.proofreading_notes`) are unchanged so existing `.svproj` files load without migration. The help site is being updated in a separate commit to use "comments" wording everywhere too.
+
+**Tab restructure: separate "📝 Segment note" and "✅ Proofreading note" tabs collapsed into one "💬 Comments" parent tab with two sub-tabs.** Previously the right panel had two adjacent tabs for related-but-different annotations (one user-authored, one AI-generated). Merging into a parent tab with sub-tabs keeps them visually grouped and frees up a top-level tab slot. The sub-tab widget uses `setDocumentMode(True)` so the inner tab bar reads as subordinate to the parent. The Ctrl+N keyboard shortcut (focus comments editor) navigates the new two-level structure: parent tab first, then sub-tab, then focus the editor.
+
+**Segment sub-tab: split view with all-project comments list on top, current-segment editor on bottom.** Previously the Segment-note tab only showed the editor for the currently-selected segment. The new layout shows every segment in the project that has a comment, in document order, with clickable "Segment #N" headers. Clicking a header jumps the grid to that segment (cross-page-aware — switches pagination first if the target segment is on a different page). The editor for the current segment is still there, just relocated to the bottom half of the sub-tab; users can drag the splitter to give more or less space to either half.
+
+New helper `_navigate_to_segment_by_id(segment_id)` implements the cross-page navigation: it looks up the segment's index in the *full* project segment list (not the visible-rows list), computes which page it's on, calls `go_to_page()` to switch, then selects the row in the now-rebuilt table. The existing `_navigate_to_segment_in_grid` was page-blind (iterated `self.table.rowCount()` which only sees the current page) and only worked when the target was already visible.
+
+The all-comments list rebuilds via `_refresh_segment_comments_list()`. Called from `_on_bottom_notes_changed` (so live edits appear/disappear in the list immediately) and from both project-load paths (new-project creation and existing-project open) alongside the scratchpad refresh. Cheap O(N) walk over `current_project.segments` where N is the number of segments; the rebuild is well within budget for typical projects (a few thousand segments at most, of which a few dozen typically have comments).
+
+Pattern is inspired by the AI Proofreader Reports tab in Supervertaler for Trados — same "list of findings with clickable navigation" UX.
 
 
 ## v1.10.55 – May 17, 2026
