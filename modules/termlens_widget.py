@@ -309,9 +309,35 @@ class TermBlock(QWidget):
             else:
                 shortcut_hint = ""
             
-            # Helper: extra metadata block (definition, abbreviations, URL, domain)
+            # Helper: extra metadata block (definition, abbreviations, URL,
+            # domain, synonyms). Renders in HTML for the QToolTip — the
+            # tooltip auto-renders Qt's rich-text subset so <i>, <b>, <br>
+            # all work without an explicit format hint.
+            #
+            # v1.10.73 (Tier 1 + Tier 2): added abbreviation/definition/
+            # domain/URL rows (data was always shaped this way; the index
+            # builder now actually fills them in via the v1.10.73 SELECT
+            # additions) plus a source-synonyms "Also: …" row matching
+            # the Trados TermBlock popup format. Target synonyms aren't
+            # shown here because update_with_matches splits each one off
+            # into its own additional-translation chip — they appear in
+            # the "Alternatives:" list further down the tooltip rather
+            # than as a metadata line.
             def _meta_lines(tr):
                 lines = []
+                src_syns = tr.get('source_synonyms', [])
+                if src_syns:
+                    # Plain-text join — synonyms are user-supplied
+                    # strings, no HTML escaping needed for ASCII Latin
+                    # script but defensive replace of < / > stops any
+                    # accidental angle brackets from breaking the
+                    # tooltip layout.
+                    safe = ", ".join(
+                        (s or '').replace('<', '&lt;').replace('>', '&gt;')
+                        for s in src_syns if s
+                    )
+                    if safe:
+                        lines.append(f"<i>Also: {safe}</i>")
                 src_abbr = tr.get('source_abbreviation', '')
                 tgt_abbr = tr.get('target_abbreviation', '')
                 if src_abbr or tgt_abbr:
@@ -1061,7 +1087,19 @@ class TermLensWidget(QWidget):
                 if key not in matches_dict:
                     matches_dict[key] = []
                 
-                # Add main target term (include term_id and termbase_id for edit/delete context menu)
+                # Add main target term (include term_id and termbase_id
+                # for the edit/delete context menu).
+                #
+                # v1.10.73 (Tier 1 + Tier 2): preserve the metadata
+                # fields (``definition``, ``domain``, ``url``,
+                # ``source_abbreviation``, ``target_abbreviation``)
+                # and ``source_synonyms`` from the upstream match so
+                # the TermBlock's _meta_lines tooltip helper sees
+                # them. Pre-v1.10.73 this append produced a thinner
+                # dict that dropped everything except the bare
+                # essentials, which is why the tooltip's metadata
+                # rendering — wired up since forever — never
+                # actually showed anything.
                 matches_dict[key].append({
                     'target_term': target_term,
                     'termbase_name': match.get('termbase_name', ''),
@@ -1069,17 +1107,40 @@ class TermLensWidget(QWidget):
                     'is_project_termbase': match.get('is_project_termbase', False),
                     'term_id': match.get('term_id'),
                     'termbase_id': match.get('termbase_id'),
-                    'notes': match.get('notes', '')
+                    'notes': match.get('notes', ''),
+                    'definition': match.get('definition', ''),
+                    'domain': match.get('domain', ''),
+                    'url': match.get('url', ''),
+                    'source_abbreviation': match.get('source_abbreviation', ''),
+                    'target_abbreviation': match.get('target_abbreviation', ''),
+                    'source_synonyms': match.get('source_synonyms', []),
                 })
-                
-                # Add synonyms as additional translations
+
+                # Add target synonyms as additional translation chips.
+                # Each synonym becomes its own row in the +N popup +
+                # gets its own shortcut number, so the user can pick
+                # the preferred alternative without leaving TermLens.
+                # Synonym chips inherit the main entry's metadata —
+                # the source synonyms tooltip line is the same; the
+                # abbreviation pair, definition, domain, URL are all
+                # properties of the term entry, not of the particular
+                # surface form, so they apply to the synonym too.
                 target_synonyms = match.get('target_synonyms', [])
                 for synonym in target_synonyms:
                     matches_dict[key].append({
                         'target_term': synonym,
                         'termbase_name': match.get('termbase_name', '') + ' (syn)',
-                        'ranking': match.get('ranking', 99) + 1,  # Slightly lower priority
-                        'is_project_termbase': match.get('is_project_termbase', False)
+                        'ranking': match.get('ranking', 99) + 1,
+                        'is_project_termbase': match.get('is_project_termbase', False),
+                        'term_id': match.get('term_id'),
+                        'termbase_id': match.get('termbase_id'),
+                        'notes': match.get('notes', ''),
+                        'definition': match.get('definition', ''),
+                        'domain': match.get('domain', ''),
+                        'url': match.get('url', ''),
+                        'source_abbreviation': match.get('source_abbreviation', ''),
+                        'target_abbreviation': match.get('target_abbreviation', ''),
+                        'source_synonyms': match.get('source_synonyms', []),
                     })
         
         # Convert NT matches to dict keyed by lowercase text. Each entry

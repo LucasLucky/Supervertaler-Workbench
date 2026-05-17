@@ -14359,18 +14359,38 @@ class SupervertalerQt(QMainWindow):
         # Update TermLens widget
         if (hasattr(self, 'termlens_widget') and self.termlens_widget) or (hasattr(self, 'termlens_widget_match') and self.termlens_widget_match):
             try:
-                # Convert termbase matches to list format for termlens
-                # Note: find_termbase_matches_in_source returns dict with 'source' and 'translation' keys
+                # Convert termbase matches to list format for termlens.
+                # Note: find_termbase_matches_in_source returns dict with
+                # 'source' and 'translation' keys (not 'source_term' /
+                # 'target_term') — translation_list normalises to the
+                # *_term shape TermLens expects.
+                #
+                # v1.10.73 (Tier 1 + Tier 2): forward the new metadata
+                # fields (``definition``, ``url``, ``source_abbreviation``,
+                # ``target_abbreviation``) and synonym lists
+                # (``source_synonyms``, ``target_synonyms``) that
+                # ``_search_termbase_in_memory`` now populates on every
+                # match dict. The TermBlock tooltip's _meta_lines helper
+                # immediately picks up the metadata fields, and the
+                # update_with_matches loop appends target synonyms as
+                # additional clickable translations.
                 termbase_list = [
                     {
-                        'source_term': match.get('source', ''),  # 'source' not 'source_term'
-                        'target_term': match.get('translation', ''),  # 'translation' not 'target_term'
+                        'source_term': match.get('source', ''),
+                        'target_term': match.get('translation', ''),
                         'termbase_name': match.get('termbase_name', ''),
                         'ranking': match.get('ranking', 0),
                         'is_project_termbase': match.get('is_project_termbase', False),
                         'term_id': match.get('term_id'),
                         'termbase_id': match.get('termbase_id'),
-                        'notes': match.get('notes', '')
+                        'notes': match.get('notes', ''),
+                        'definition': match.get('definition', ''),
+                        'domain': match.get('domain', ''),
+                        'url': match.get('url', ''),
+                        'source_abbreviation': match.get('source_abbreviation', ''),
+                        'target_abbreviation': match.get('target_abbreviation', ''),
+                        'source_synonyms': match.get('source_synonyms', []),
+                        'target_synonyms': match.get('target_synonyms', []),
                     }
                     for match in termbase_matches.values() if isinstance(match, dict)
                 ] if isinstance(termbase_matches, dict) else []
@@ -15308,6 +15328,15 @@ class SupervertalerQt(QMainWindow):
                                 except re.error:
                                     pattern = None
 
+                                # v1.10.73: include the new metadata + synonym
+                                # fields in the optimisation-path index entry
+                                # so it has the same shape as a full-rebuild
+                                # entry. Empty defaults for everything that
+                                # only gets populated by the dialog later —
+                                # quick-add never sets definition / URL /
+                                # abbreviations / synonyms, so they stay empty
+                                # until the user either edits the entry or the
+                                # next full rebuild picks them up from the DB.
                                 index_entry = {
                                     'term_id': term_id,
                                     'source_term': source_text,
@@ -15322,6 +15351,12 @@ class SupervertalerQt(QMainWindow):
                                     'is_project_termbase': is_project,
                                     'termbase_name': target_termbase['name'],
                                     'ranking': glossary_rank,
+                                    'definition': '',
+                                    'url': '',
+                                    'source_abbreviation': '',
+                                    'target_abbreviation': '',
+                                    'source_synonyms': [],
+                                    'target_synonyms': [],
                                     'pattern': pattern,
                                 }
                                 with self.termbase_index_lock:
@@ -15335,7 +15370,13 @@ class SupervertalerQt(QMainWindow):
                                     with self.termbase_cache_lock:
                                         cached_matches = self.termbase_cache.get(segment_id, {})
                                     
-                                    # Convert to list format for TermLens
+                                    # Convert to list format for TermLens.
+                                    # v1.10.73 (Tier 1 + Tier 2): forward the
+                                    # new metadata + synonym fields so the
+                                    # tooltip and alternative-translation
+                                    # rendering pick them up consistently
+                                    # with the other call sites that build
+                                    # termbase_list.
                                     termbase_list = [
                                         {
                                             'source_term': match.get('source', ''),
@@ -15345,7 +15386,14 @@ class SupervertalerQt(QMainWindow):
                                             'is_project_termbase': match.get('is_project_termbase', False),
                                             'term_id': match.get('term_id'),
                                             'termbase_id': match.get('termbase_id'),
-                                            'notes': match.get('notes', '')
+                                            'notes': match.get('notes', ''),
+                                            'definition': match.get('definition', ''),
+                                            'domain': match.get('domain', ''),
+                                            'url': match.get('url', ''),
+                                            'source_abbreviation': match.get('source_abbreviation', ''),
+                                            'target_abbreviation': match.get('target_abbreviation', ''),
+                                            'source_synonyms': match.get('source_synonyms', []),
+                                            'target_synonyms': match.get('target_synonyms', []),
                                         }
                                         for match in cached_matches.values() if isinstance(match, dict)
                                     ]
@@ -27339,6 +27387,68 @@ class SupervertalerQt(QMainWindow):
             except Exception:
                 pass
 
+    def _load_synonyms_bulk(self):
+        """Load every synonym from ``termbase_synonyms`` in one query,
+        return as ``{term_id: {'source': [text, …], 'target': [text, …]}}``.
+
+        v1.10.73 (Tier 2). Called by ``_build_termbase_index`` once per
+        rebuild so per-term synonym lookups during search are pure
+        dict access — no N+1 query storm. Synonyms are filtered to
+        non-forbidden entries (Trados does the same in
+        ``BulkLoadTargetSynonyms``) and ordered by ``display_order``
+        when present so the "preferred synonym first" convention
+        users set in the Edit Termbase Entry dialog is preserved
+        through to the TermLens display.
+
+        Defensive about schema variation: the ``forbidden`` and
+        ``display_order`` columns were added in later schema
+        migrations, so we check for their presence via
+        ``PRAGMA table_info`` (mirrors the pattern in
+        ``modules/termbase_entry_editor.load_synonyms``). Older
+        databases — or in-memory test fixtures that haven't run
+        every migration — still work, just without the
+        forbidden-filter or the display-order sort.
+
+        Returns ``{}`` on any error so the caller can carry on with
+        an empty synonym map instead of failing the whole index
+        build over a synonym query hiccup. The TermLens display just
+        won't show synonyms in that case — same as today.
+        """
+        result = {}
+        try:
+            if not hasattr(self, 'db_manager') or self.db_manager is None:
+                return result
+            cur = self.db_manager.cursor
+            cur.execute("PRAGMA table_info(termbase_synonyms)")
+            cols = [r[1] for r in cur.fetchall()]
+            has_forbidden = 'forbidden' in cols
+            has_display_order = 'display_order' in cols
+
+            where_clause = "WHERE COALESCE(forbidden, 0) = 0" if has_forbidden else ""
+            order_clause = ("ORDER BY term_id, COALESCE(display_order, 0), id"
+                            if has_display_order
+                            else "ORDER BY term_id, id")
+            cur.execute(
+                f"SELECT term_id, synonym_text, language "
+                f"FROM termbase_synonyms {where_clause} {order_clause}"
+            )
+            for term_id, syn_text, language in cur.fetchall():
+                if not term_id or not syn_text:
+                    continue
+                bucket = result.setdefault(term_id, {'source': [], 'target': []})
+                if language == 'source':
+                    bucket['source'].append(syn_text)
+                elif language == 'target':
+                    bucket['target'].append(syn_text)
+                # Anything else (legacy 'both', NULL, etc.) is silently
+                # ignored — schema only documents 'source' and 'target'.
+        except Exception as e:
+            try:
+                self.log(f"⚠️ Bulk synonym load failed: {e}")
+            except Exception:
+                pass
+        return result
+
     def _build_termbase_index(self):
         """
         Build in-memory index of ALL terms from activated termbases (v1.9.182).
@@ -27369,6 +27479,18 @@ class SupervertalerQt(QMainWindow):
         # reverse-direction termbases and orient them to the project,
         # and t.is_nontranslatable so NT highlighting can branch off
         # the same index without a second pass over the database.
+        #
+        # v1.10.73 (Tier 1): also pulls ``definition``, ``url``,
+        # ``source_abbreviation`` and ``target_abbreviation``. These
+        # columns have existed in the schema for ages but were never
+        # SELECTed here, so the TermBlock tooltip's pre-existing
+        # ``_meta_lines`` rendering helper got empty strings and
+        # silently suppressed the rows. Adding them to the SELECT
+        # makes the tooltip immediately show Abbr / Definition /
+        # Domain / URL with zero extra UI code. ``COALESCE(…, '')``
+        # so legacy databases without those columns (or with NULLs)
+        # come back as empty strings rather than blowing up the
+        # SELECT or feeding ``None`` downstream.
         query = """
             SELECT
                 t.id, t.source_term, t.target_term, t.termbase_id,
@@ -27376,13 +27498,28 @@ class SupervertalerQt(QMainWindow):
                 tb.is_project_termbase, tb.name as termbase_name,
                 tb.source_lang as tb_source_lang, tb.target_lang as tb_target_lang,
                 CASE WHEN COALESCE(ta.priority, 0) = 1 OR tb.is_project_termbase = 1 THEN 1 ELSE 0 END as ranking,
-                COALESCE(t.is_nontranslatable, 0) as is_nontranslatable
+                COALESCE(t.is_nontranslatable, 0) as is_nontranslatable,
+                COALESCE(t.definition, '') as definition,
+                COALESCE(t.url, '') as url,
+                COALESCE(t.source_abbreviation, '') as source_abbreviation,
+                COALESCE(t.target_abbreviation, '') as target_abbreviation
             FROM termbase_terms t
             LEFT JOIN termbases tb ON CAST(t.termbase_id AS INTEGER) = tb.id
             LEFT JOIN termbase_activation ta ON ta.termbase_id = tb.id
                 AND ta.project_id = ? AND ta.is_active = 1
             WHERE (ta.is_active = 1 OR tb.is_project_termbase = 1)
         """
+
+        # v1.10.73 (Tier 2): bulk-load every term's synonyms in ONE
+        # extra query, keyed by term_id, before iterating the main
+        # result set. Same single-query pattern Trados uses in
+        # ``BulkLoadTargetSynonyms`` — orders of magnitude faster than
+        # one query per term, and the synonym row count (typically a
+        # few hundred per termbase) stays manageable. Synonyms are
+        # then attached to each index entry below, so
+        # ``_search_termbase_in_memory`` can copy them into match
+        # results without re-querying the DB.
+        synonyms_by_term = self._load_synonyms_bulk()
 
         new_index = []
         try:
@@ -27394,6 +27531,11 @@ class SupervertalerQt(QMainWindow):
                 target_term = row[2]
                 tb_source_code = self._convert_language_to_code(row[11] or '') or ''
                 tb_target_code = self._convert_language_to_code(row[12] or '') or ''
+                # v1.10.73 (Tier 1) extra metadata columns.
+                row_definition = row[15] if len(row) > 15 else ''
+                row_url = row[16] if len(row) > 16 else ''
+                row_src_abbr = row[17] if len(row) > 17 else ''
+                row_tgt_abbr = row[18] if len(row) > 18 else ''
 
                 # If the termbase runs the opposite direction to the project
                 # (e.g. termbase en→nl in an nl→en project), swap source/target
@@ -27401,11 +27543,29 @@ class SupervertalerQt(QMainWindow):
                 # language. Without this swap, _search_termbase_in_memory
                 # would search Dutch segment text against English source_term
                 # values and find nothing.
+                #
+                # v1.10.73 (Tier 1): also swap source/target
+                # **abbreviations** in lockstep — they're per-language
+                # too, so they need the same flip when the termbase
+                # runs opposite the project direction. Otherwise the
+                # tooltip would show the abbreviation pair in the
+                # wrong order (English abbreviation labelled as
+                # Dutch and vice versa).
+                #
+                # v1.10.73 (Tier 2): also swap source/target
+                # **synonym lists**. Same reason — synonyms are
+                # per-language, so when source/target swap their
+                # synonym lists swap with them.
+                synonym_pair = synonyms_by_term.get(row[0], {'source': [], 'target': []})
+                source_synonyms = list(synonym_pair.get('source', []))
+                target_synonyms = list(synonym_pair.get('target', []))
                 if (project_source_code and project_target_code
                         and tb_source_code and tb_target_code
                         and tb_source_code == project_target_code
                         and tb_target_code == project_source_code):
                     source_term, target_term = target_term, source_term
+                    row_src_abbr, row_tgt_abbr = row_tgt_abbr, row_src_abbr
+                    source_synonyms, target_synonyms = target_synonyms, source_synonyms
 
                 if not source_term:
                     continue
@@ -27441,6 +27601,18 @@ class SupervertalerQt(QMainWindow):
                     'termbase_name': row[10],
                     'ranking': row[13],
                     'is_nontranslatable': bool(row[14]),
+                    # v1.10.73 (Tier 1): metadata fields that were
+                    # in the schema but never SELECTed before.
+                    'definition': row_definition,
+                    'url': row_url,
+                    'source_abbreviation': row_src_abbr,
+                    'target_abbreviation': row_tgt_abbr,
+                    # v1.10.73 (Tier 2): synonyms bulk-loaded from
+                    # termbase_synonyms, already direction-swapped
+                    # above so lists match the project's source/
+                    # target orientation.
+                    'source_synonyms': source_synonyms,
+                    'target_synonyms': target_synonyms,
                     'pattern': pattern,  # Pre-compiled regex
                 })
 
@@ -27521,6 +27693,23 @@ class SupervertalerQt(QMainWindow):
                 'notes': term['notes'],
                 'project': term['project'],
                 'client': term['client'],
+                # v1.10.73 (Tier 1): metadata fields surfaced for
+                # the TermBlock tooltip's ``_meta_lines`` renderer.
+                # Default to empty string for index entries that
+                # predate the new fields (defensive, shouldn't
+                # actually happen post-rebuild).
+                'definition': term.get('definition', ''),
+                'url': term.get('url', ''),
+                'source_abbreviation': term.get('source_abbreviation', ''),
+                'target_abbreviation': term.get('target_abbreviation', ''),
+                # v1.10.73 (Tier 2): synonyms — TermBlock uses
+                # ``target_synonyms`` as additional clickable
+                # alternatives (one chip per synonym in the popup,
+                # contributing to the +N count) and ``source_synonyms``
+                # as the tooltip "Also: …" line so the user can see
+                # alternative source forms at a glance.
+                'source_synonyms': term.get('source_synonyms', []),
+                'target_synonyms': term.get('target_synonyms', []),
             }
 
         return matches
@@ -45040,6 +45229,13 @@ class SupervertalerQt(QMainWindow):
         if (hasattr(self, 'termlens_widget') and self.termlens_widget) or (hasattr(self, 'termlens_widget_match') and self.termlens_widget_match):
             try:
                 # Convert termbase matches dict to list format for termlens
+                # v1.10.73 (Tier 1 + Tier 2): forward all metadata
+                # fields and source synonyms in addition to the
+                # target_synonyms field that was already here. Brings
+                # this builder into line with the two other call sites
+                # so the TermBlock tooltip + alternative-translation
+                # rendering have the same data regardless of which
+                # refresh path got us here.
                 tb_list = []
                 for term_id, match_info in termbase_matches.items():
                     tb_list.append({
@@ -45048,10 +45244,16 @@ class SupervertalerQt(QMainWindow):
                         'termbase_name': match_info.get('termbase_name', ''),
                         'ranking': match_info.get('ranking', 0),
                         'is_project_termbase': match_info.get('is_project_termbase', False),
+                        'source_synonyms': match_info.get('source_synonyms', []),
                         'target_synonyms': match_info.get('target_synonyms', []),
                         'term_id': term_id,
                         'termbase_id': match_info.get('termbase_id'),
-                        'notes': match_info.get('notes', '')
+                        'notes': match_info.get('notes', ''),
+                        'definition': match_info.get('definition', ''),
+                        'domain': match_info.get('domain', ''),
+                        'url': match_info.get('url', ''),
+                        'source_abbreviation': match_info.get('source_abbreviation', ''),
+                        'target_abbreviation': match_info.get('target_abbreviation', ''),
                     })
                 # Get status hint for termbase activation
                 status_hint = self._get_termbase_status_hint()

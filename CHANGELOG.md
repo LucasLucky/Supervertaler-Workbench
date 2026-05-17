@@ -2,7 +2,29 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.72 (May 17, 2026)
+**Current Version:** v1.10.73 (May 17, 2026)
+
+
+## v1.10.73 – May 17, 2026
+
+### Added (TermLens now shows synonyms, abbreviations, definitions, URLs in chip tooltips — porting Tiers 1 + 2 of the Trados TermLens feature parity audit)
+
+A user pointed out that the Workbench TermLens was missing display features the Trados TermLens has had for ages — most obviously synonyms. An audit of the Trados `TermBlock` and `BulkLoadTargetSynonyms` code confirmed the data has always been there (both products share the same SQLite schema; the user's PATENTS termbase alone has 421 synonyms, 63 source abbreviations, 59 target abbreviations, 26 URLs, 15 definitions on 306+ terms) — Workbench just wasn't loading or displaying it. This commit ports Tiers 1 + 2 of the audit's three-tier plan:
+
+**Tier 1: pull the metadata fields that were already in the schema but never SELECTed.** `_build_termbase_index`'s main query now includes `COALESCE(t.definition, '')`, `COALESCE(t.url, '')`, `COALESCE(t.source_abbreviation, '')`, and `COALESCE(t.target_abbreviation, '')`. These come back on every match dict from `_search_termbase_in_memory`. The TermBlock tooltip's pre-existing `_meta_lines` helper (which was wired up to render Abbreviations / Definition / Domain / URL but always got empty strings) immediately starts showing those rows.
+
+**Tier 2: bulk-load `termbase_synonyms` and surface them.** New `_load_synonyms_bulk()` helper does a single query for every row in `termbase_synonyms` (filtered to non-forbidden, ordered by `display_order` when present so the "preferred synonym first" convention from the Edit dialog flows through to the display). Returns `{term_id: {'source': [text, …], 'target': [text, …]}}` so per-term synonym lookup during index build is pure dict access — same single-query pattern Trados uses in `BulkLoadTargetSynonyms`, orders of magnitude faster than the per-term query alternative. `_build_termbase_index` calls it once per rebuild, attaches the synonyms to each index entry (and, crucially, **swaps source/target synonym lists** alongside source/target text and abbreviations when the termbase runs opposite to the project — same direction-swap logic the v1.10.62 fix introduced for the main term pair).
+
+**How synonyms surface in TermLens:**
+
+ - **Target synonyms** become additional clickable translation chips. Each one appears as its own row in the +N popup, gets its own shortcut number badge, and can be inserted directly. The chip carries an inherited "(syn)" suffix on the termbase-name field so the alternatives list shows users where each translation came from. This piggybacks on the pre-existing append-as-alternative logic in `update_with_matches` — no new UI surface, just the data flowing through.
+ - **Source synonyms** appear in the chip's hover tooltip as an `Also: hinge mechanism, alt-form-2` row, matching the Trados TermBlock popup format. Synonym text is defensively HTML-escaped (`<` / `>` → `&lt;` / `&gt;`) so a stray angle bracket can't break the tooltip layout.
+
+**Cost:** the bulk synonym load adds one extra SELECT to `_build_termbase_index` (sub-second on a 421-row synonym table; scales linearly), and the SELECT itself widens by four COALESCE columns (negligible). The in-memory index entry grows by ~6 fields per term — for a 5,400-term termbase that's tens of KB of additional memory, well within budget.
+
+**Tier 3 (corner-dot metadata indicator, ≡ synonym indicator, abbreviation-as-primary-display, forbidden / NT background colours, rich floating popup with Markdown rendering)** is the visual-polish lift and would need a Qt paint-event refactor on `TermBlock`. Deferred to a future session — the audit ETA was 4–6 hours and this commit's scope was already the "biggest visible improvement for least work" subset. Tooltip-level disclosure (this commit) gets you all the information that's in Trados; Tier 3 just makes some of it discoverable without hovering.
+
+End-user impact for the next restart: hover any term chip in TermLens that has a synonym, abbreviation, definition, or URL — the tooltip now shows that information. Target synonyms become clickable alternatives with their own shortcut numbers, identical to how multi-translation chips have always worked.
 
 
 ## v1.10.72 – May 17, 2026
