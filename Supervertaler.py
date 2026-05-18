@@ -2149,6 +2149,125 @@ class _LoneCtrlEventFilter(QObject):
             return False
 
 
+class _CtrlShiftTapEventFilter(QObject):
+    """App-level event filter: triggers the Term Picker dialog when
+    Ctrl and Shift are tapped together (both pressed, both released,
+    nothing else pressed in between).
+
+    Companion to ``_LoneCtrlEventFilter`` — both share the same
+    "modifier-chord, no other key" idiom. A user request from
+    v1.10.90: "could we change it to quickly pressing Ctrl and Shift?"
+    so the Term Picker has an ergonomic trigger that doesn't need a
+    third key. The configurable Ctrl+Shift+B QShortcut is preserved
+    in parallel so the shortcut manager still has something to remap;
+    this filter is purely additive.
+
+    Detection rules:
+      - Ctrl and Shift must both be pressed (order doesn't matter)
+      - No other key (modifier or otherwise) pressed in between
+      - Both released → fire on the LAST release
+      - Auto-repeat presses cancel the chord (user is holding to
+        repeat-type, not tapping)
+      - Wheel events, registered QShortcuts firing → cancel
+    """
+
+    def __init__(self, main_window):
+        super().__init__(main_window)
+        self._main_window = main_window
+        self._ctrl_held = False
+        self._shift_held = False
+        self._armed = False        # have BOTH Ctrl and Shift been pressed cleanly?
+        self._other_key = False    # has any non-Ctrl/Shift key been pressed in between?
+
+    def _reset(self):
+        self._ctrl_held = False
+        self._shift_held = False
+        self._armed = False
+        self._other_key = False
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtWidgets import QApplication
+        try:
+            if not self._main_window or not self._main_window.isActiveWindow():
+                return False
+
+            etype = event.type()
+
+            # Wheel + ShortcutOverride disarm — same reasoning as the
+            # lone-Ctrl filter: a wheel zoom or a registered QShortcut
+            # firing means this isn't a clean chord tap.
+            if etype in (QEvent.Type.Wheel, QEvent.Type.ShortcutOverride):
+                self._armed = False
+                self._other_key = True
+                return False
+
+            if etype == QEvent.Type.KeyPress:
+                if event.isAutoRepeat():
+                    # Holding any key disarms — taps are non-repeat.
+                    self._armed = False
+                    return False
+                key = event.key()
+                if key == Qt.Key.Key_Control:
+                    self._ctrl_held = True
+                    if self._shift_held and not self._other_key:
+                        self._armed = True
+                elif key == Qt.Key.Key_Shift:
+                    self._shift_held = True
+                    if self._ctrl_held and not self._other_key:
+                        self._armed = True
+                else:
+                    # Any other key press (including Alt, Meta, a letter,
+                    # an arrow) ruins the chord.
+                    self._other_key = True
+                    self._armed = False
+                return False
+
+            if etype == QEvent.Type.KeyRelease:
+                if event.isAutoRepeat():
+                    return False
+                key = event.key()
+                if key == Qt.Key.Key_Control:
+                    self._ctrl_held = False
+                elif key == Qt.Key.Key_Shift:
+                    self._shift_held = False
+                # When BOTH modifiers are released, decide whether to fire.
+                if not self._ctrl_held and not self._shift_held:
+                    fired = False
+                    if self._armed and not self._other_key:
+                        # Live OS check — catch any modifiers Qt missed.
+                        live = QApplication.queryKeyboardModifiers()
+                        # Mask out the two we expect; anything else
+                        # leftover means a third modifier was involved.
+                        leftover = live & ~(
+                            Qt.KeyboardModifier.ControlModifier
+                            | Qt.KeyboardModifier.ShiftModifier
+                        )
+                        if leftover == Qt.KeyboardModifier.NoModifier:
+                            try:
+                                self._main_window.show_term_picker_dialog()
+                            except Exception:
+                                pass
+                            fired = True
+                    self._reset()
+                    if fired:
+                        # Consume this release so a downstream handler
+                        # doesn't also act on it (e.g. another filter
+                        # treating Shift-release as cancel of some
+                        # composition).
+                        return True
+                return False
+
+            return False
+        except RuntimeError:
+            app = QApplication.instance()
+            if app:
+                app.removeEventFilter(self)
+            self._main_window = None
+            self._reset()
+            return False
+
+
 class GridTableEventFilter:
     """Mixin to pass keyboard shortcuts from editor to table"""
     pass
@@ -8223,6 +8342,15 @@ class SupervertalerQt(QMainWindow):
             self._lone_ctrl_event_filter = _LoneCtrlEventFilter(self)
             QApplication.instance().installEventFilter(self._lone_ctrl_event_filter)
 
+        # Ctrl+Shift tap – Term Picker dialog (v1.10.90, user request).
+        # Companion to the lone-Ctrl tap. Same modifier-only chord idiom,
+        # different action. The Ctrl+Shift+B QShortcut below is kept as a
+        # configurable parallel binding so the shortcut manager UI still
+        # has something to remap.
+        if not hasattr(self, '_ctrl_shift_tap_event_filter'):
+            self._ctrl_shift_tap_event_filter = _CtrlShiftTapEventFilter(self)
+            QApplication.instance().installEventFilter(self._ctrl_shift_tap_event_filter)
+
         # Ctrl+Shift+Q - MT Quick Lookup (GT4T-style popup)
         mt_quick_shortcut = create_shortcut("mt_quick_lookup", "Ctrl+Shift+Q", self.show_mt_quick_popup)
         # Use ApplicationShortcut context so it works even when focus is in QTextEdit widgets
@@ -8660,7 +8788,27 @@ class SupervertalerQt(QMainWindow):
         Auto-closes on mouse movement (>4 px), focus loss, or any other key
         that isn't a pure modifier. Single-NT shortcut behaviour preserved:
         a single NT with no termbase matches inserts directly without a popup.
+
+        v1.10.90: toggles. A second Ctrl tap while the popup is already
+        on-screen closes it instead of opening a duplicate. Cleaner UX
+        than the v1.10.87 behaviour, which silently dropped the second
+        tap because the still-active popup intercepted the keystroke.
         """
+        # ── Toggle if already visible ────────────────────────────────
+        existing = getattr(self, '_termlens_popup_instance', None)
+        if existing is not None:
+            try:
+                # The popup uses WA_DeleteOnClose — a live reference
+                # means it's actually on-screen. The closeEvent clears
+                # this attribute via the on_closed callback below.
+                if existing.isVisible():
+                    existing.close()
+                    return
+            except RuntimeError:
+                # Stale reference (the C++ object has already been
+                # destroyed); fall through and open a fresh popup.
+                self._termlens_popup_instance = None
+
         if not self.current_project:
             return
         current_row = self.table.currentRow()
@@ -8743,6 +8891,14 @@ class SupervertalerQt(QMainWindow):
         # Edit (E key) closes the popup itself first, then asks the
         # main window to open the existing TermLens editor dialog.
         popup.edit_requested.connect(self._on_termlens_edit_entry)
+        # Track the live popup so a second Ctrl tap can toggle it
+        # closed instead of stacking. Clear the reference on close
+        # so the next Ctrl tap opens a fresh one.
+        self._termlens_popup_instance = popup
+        def _on_popup_closed(*_):
+            if getattr(self, '_termlens_popup_instance', None) is popup:
+                self._termlens_popup_instance = None
+        popup.destroyed.connect(_on_popup_closed)
         popup.show()
         popup.setFocus()
 

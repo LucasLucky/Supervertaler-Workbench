@@ -2317,7 +2317,7 @@ class TermLensWidget(QWidget):
 
     # v1.10.87 — helpers used by the TermLensPopup (the floating Ctrl-tap
     # popup that mirrors the docked panel for keyboard-only insertion).
-    def get_term_blocks(self):
+    def get_term_blocks(self, only_with_matches: bool = False):
         """Return the ordered list of TermBlock / NTBlock children currently
         rendered in the flow layout.
 
@@ -2326,12 +2326,25 @@ class TermLensWidget(QWidget):
         and to know which match a given shortcut number maps to. The
         order is exactly the same as the visual flow (left-to-right,
         top-to-bottom) so Right-arrow / Tab advances in reading order.
+
+        Args:
+            only_with_matches: When True, skips TermBlocks that have no
+                translations (rendered as bare source words underneath
+                the segment text in the docked panel). The popup uses
+                this filter so keyboard cycling only visits chips the
+                user can actually insert. NTBlocks are always included
+                since every NTBlock represents a real non-translatable
+                match by construction.
         """
         blocks = []
         for i in range(self.terms_layout.count()):
             item = self.terms_layout.itemAt(i)
             widget = item.widget() if item is not None else None
-            if isinstance(widget, (TermBlock, NTBlock)):
+            if isinstance(widget, NTBlock):
+                blocks.append(widget)
+            elif isinstance(widget, TermBlock):
+                if only_with_matches and not getattr(widget, 'translations', None):
+                    continue
                 blocks.append(widget)
         return blocks
 

@@ -53,7 +53,7 @@ from __future__ import annotations
 from typing import Callable, List, Optional, Union
 
 from PyQt6.QtCore import Qt, QPoint, QTimer, pyqtSignal
-from PyQt6.QtGui import QCursor, QKeyEvent
+from PyQt6.QtGui import QCursor, QKeyEvent, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -143,6 +143,14 @@ class TermLensPopup(QFrame):
         # Auto-close cursor baseline.
         self._initial_cursor_pos: Optional[QPoint] = None
         self._auto_close_timer: Optional[QTimer] = None
+        # v1.10.90 — "second Ctrl tap closes" state. When the user
+        # presses Ctrl while the popup is open, mark it; if they then
+        # release Ctrl without pressing any other key, the popup
+        # closes. Mirrors the lone-Ctrl-tap opening flow so the same
+        # gesture toggles. The app-level _LoneCtrlEventFilter doesn't
+        # fire here because the popup is the active window, not the
+        # main one — so we handle it locally.
+        self._ctrl_tap_armed = False
 
         # ── Build UI ───────────────────────────────────────────────────
         self._build_ui(
@@ -257,10 +265,21 @@ class TermLensPopup(QFrame):
         self.resize(target_w, target_h)
 
         # ── Highlight the first chip ──────────────────────────────────
-        blocks = self._inner.get_term_blocks()
+        blocks = self._inner.get_term_blocks(only_with_matches=True)
         if blocks:
             self._current_index = 0
             blocks[0].set_current(True)
+
+        # v1.10.90 — belt-and-suspenders Esc binding. Our keyPressEvent
+        # also handles Esc, but in some focus configurations (e.g. when
+        # a chip's source QLabel inside the inner widget happens to
+        # have keyboard focus before the user presses anything) the
+        # parent-level event isn't reached. A WidgetWithChildren-scoped
+        # QShortcut catches the key regardless of which descendant is
+        # focused, so Esc closes the popup unconditionally.
+        esc_sc = QShortcut(QKeySequence("Esc"), self)
+        esc_sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        esc_sc.activated.connect(self.close)
 
     # ── Positioning ──────────────────────────────────────────────────────
 
@@ -285,7 +304,7 @@ class TermLensPopup(QFrame):
     # ── Cycling ──────────────────────────────────────────────────────────
 
     def _move_selection(self, delta: int):
-        blocks = self._inner.get_term_blocks()
+        blocks = self._inner.get_term_blocks(only_with_matches=True)
         n = len(blocks)
         if n == 0:
             return
@@ -312,7 +331,7 @@ class TermLensPopup(QFrame):
         self.close()  # triggers closeEvent → emits term_inserted
 
     def _insert_current(self):
-        blocks = self._inner.get_term_blocks()
+        blocks = self._inner.get_term_blocks(only_with_matches=True)
         if not (0 <= self._current_index < len(blocks)):
             return
         block = blocks[self._current_index]
@@ -355,7 +374,7 @@ class TermLensPopup(QFrame):
         self.close()
 
     def _edit_current(self):
-        blocks = self._inner.get_term_blocks()
+        blocks = self._inner.get_term_blocks(only_with_matches=True)
         if not (0 <= self._current_index < len(blocks)):
             return
         block = blocks[self._current_index]
@@ -371,7 +390,7 @@ class TermLensPopup(QFrame):
         the popup looks identical to what hovering produces. Pressing I
         again hides it.
         """
-        blocks = self._inner.get_term_blocks()
+        blocks = self._inner.get_term_blocks(only_with_matches=True)
         if not (0 <= self._current_index < len(blocks)):
             return
         block = blocks[self._current_index]
@@ -490,6 +509,23 @@ class TermLensPopup(QFrame):
         key = event.key()
         mods = event.modifiers()
 
+        # v1.10.90 — track Ctrl-tap-to-close state. Any non-Ctrl key
+        # press disarms the close (the user is doing something else
+        # with Ctrl held). The actual close fires in keyReleaseEvent.
+        if key == Qt.Key.Key_Control and not event.isAutoRepeat():
+            self._ctrl_tap_armed = True
+        elif key not in (
+            Qt.Key.Key_Control,
+            Qt.Key.Key_Shift,
+            Qt.Key.Key_Alt,
+            Qt.Key.Key_Meta,
+            Qt.Key.Key_AltGr,
+        ):
+            # A real keypress (not a pure modifier) → user wants to do
+            # something else, so Ctrl-tap-to-close is no longer
+            # eligible until the next clean Ctrl press.
+            self._ctrl_tap_armed = False
+
         # 1-9 inserts directly (bare or with Alt modifier — matches the
         # docked panel's Alt+N shortcut so muscle memory carries over).
         if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
@@ -549,3 +585,27 @@ class TermLensPopup(QFrame):
             return
 
         super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent):
+        # v1.10.90 — second-Ctrl-tap-to-close. If Ctrl is released
+        # cleanly (no other key pressed in between, no other modifier
+        # currently held) and the popup is fully shown, close it.
+        # Combined with the lone-Ctrl-tap opening the popup, the
+        # gesture toggles symmetrically.
+        try:
+            key = event.key()
+            if key == Qt.Key.Key_Control and not event.isAutoRepeat():
+                if self._ctrl_tap_armed:
+                    # Live OS modifier check: any other modifier still
+                    # held means this wasn't a clean Ctrl-only release.
+                    live = QApplication.queryKeyboardModifiers()
+                    other = live & ~Qt.KeyboardModifier.ControlModifier
+                    if other == Qt.KeyboardModifier.NoModifier:
+                        self._ctrl_tap_armed = False
+                        self.close()
+                        event.accept()
+                        return
+                self._ctrl_tap_armed = False
+        except Exception:
+            self._ctrl_tap_armed = False
+        super().keyReleaseEvent(event)

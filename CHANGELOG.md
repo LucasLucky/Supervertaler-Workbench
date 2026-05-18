@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.89 (May 18, 2026)
+**Current Version:** v1.10.90 (May 18, 2026)
+
+
+## v1.10.90 – May 18, 2026
+
+### Added (TermLens-popup ergonomics: Esc closes reliably, second Ctrl tap toggles closed, cycle skips no-hit chips, Ctrl+Shift tap opens Term Picker)
+
+Four follow-up tweaks from the v1.10.89 test session — all small, all UX wins:
+
+**1. Esc reliably closes the popup.** v1.10.89 fixed focus enough that arrow-key cycling worked, but in some configurations Esc still wasn't reaching the popup's `keyPressEvent` — apparently a focused descendant inside the inner widget (e.g. a chip's source QLabel) was eating the Esc and not propagating. Added a `WidgetWithChildrenShortcut`-scoped `QShortcut` for Esc on the popup itself, which catches the key regardless of which descendant is focused. The existing `keyPressEvent` Esc handler stays as a backup; both are idempotent (close is a no-op after the first call).
+
+**2. Second Ctrl tap toggles the popup closed.** A user request: "Can you also make pressing Control again close it?" The first Ctrl tap opens the popup via the app-level `_LoneCtrlEventFilter`; that filter is dormant while the popup is the active window, so we added a local in-popup detection — `keyPressEvent` arms `_ctrl_tap_armed` on Ctrl-down, any non-modifier key disarms it, and `keyReleaseEvent` closes the popup if Ctrl was released cleanly. Net effect: the Ctrl-tap gesture is fully symmetric — same key opens and closes. `show_term_insert_popup` also gained a toggle guard so a Ctrl-tap from outside the popup (main window active) toggles it closed via the existing path, not just opens a duplicate.
+
+**3. Cycling now skips chips without matches.** The docked TermLens panel renders a `TermBlock` for *every* word token in the segment, even ones with no termbase hit (they appear as bare source words underneath the segment). The popup's chip cycle (Right/Left/Tab) was visiting these no-hit blocks, leaving the user staring at a highlighted empty source word that did nothing on Enter. `get_term_blocks` gained an `only_with_matches=True` parameter that filters them out; all five call sites in `modules/termlens_popup.py` use it. NT blocks are always included since every NTBlock represents a real non-translatable match by construction.
+
+**4. Ctrl+Shift tap opens the Term Picker.** Another user request: "could we change it to quickly pressing Ctrl and Shift?" Added `_CtrlShiftTapEventFilter` modelled on `_LoneCtrlEventFilter` — fires when both modifiers are pressed cleanly with no other key in between, then both released. The conventional `Ctrl+Shift+B` QShortcut is kept in parallel so the in-app shortcut manager still has something to remap; the chord tap is purely additive. Edge cases: pressing `Ctrl+Shift+B` correctly does NOT trigger the picker chord (the `B` press disarms), and `Ctrl+Shift+Q` / `Ctrl+Shift+P` / other in-app shortcuts continue to work unchanged.
+
+Implementation notes: both event filters share the same idiom — track `_armed` set on clean modifier sequences, cleared on any other key / wheel / shortcut override. Both filters check `isActiveWindow()` on the main window so they go quiet when the popup itself is active. The popup's own in-class Ctrl-tap detection handles the "close while popup is active" case so the symmetry works regardless of which window has focus.
 
 
 ## v1.10.89 – May 18, 2026
