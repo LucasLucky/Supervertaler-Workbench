@@ -8726,6 +8726,25 @@ class SupervertalerQt(QMainWindow):
         with self.termbase_cache_lock:
             raw_tb = dict(self.termbase_cache.get(segment_id, {}))
 
+        # v1.10.98 — cache-staleness fallback. After certain operations
+        # (e.g. adding a synonym to a term that matches the current
+        # segment) the termbase_cache entry for this segment can be
+        # missing or stale even though the in-memory termbase_index
+        # already reflects the new state. Falling back to a fresh
+        # ``_search_termbase_in_memory`` call when the cache is empty
+        # ensures the popup never opens with a misleadingly empty
+        # chip set — and removes the previous "Ctrl tap auto-inserts
+        # an NT because termbase_matches is empty so the smart-NT
+        # path fires" footgun that prompted this fix. Reported by a
+        # user: "After adding a synonym, when I press Ctrl, TermLens
+        # popup is no longer shown, but a term is inserted at the
+        # cursor."
+        if not raw_tb:
+            try:
+                raw_tb = self._search_termbase_in_memory(segment.source) or {}
+            except Exception:
+                raw_tb = {}
+
         termbase_matches = []
         for match in raw_tb.values():
             if not isinstance(match, dict):
@@ -8755,10 +8774,16 @@ class SupervertalerQt(QMainWindow):
             self.statusBar().showMessage("No terms or NTs found for this segment", 2000)
             return
 
-        # Smart single-NT shortcut: skip the popup
-        if not termbase_matches and len(nt_matches) == 1:
-            self.insert_termlens_text(nt_matches[0]["text"])
-            return
+        # v1.10.98 — REMOVED: the "smart single-NT" shortcut that used
+        # to auto-insert the NT text when there were no termbase matches
+        # and exactly one NT match. With the new TermLens-mirror popup
+        # (v1.10.87+), the popup itself IS the affordance — auto-inserting
+        # bypasses the user's chance to see what's on offer. Also, when
+        # combined with the v1.10.x termbase cache going briefly stale
+        # after a synonym add, the smart-NT path was firing for segments
+        # the user actually had termbase matches on, inserting an
+        # unrelated NT at the cursor. Always show the popup now;
+        # single-item segments just show a popup with one chip.
 
         # ── Show TermLens-mirror popup ───────────────────────────────
         from modules.termlens_popup import TermLensPopup
@@ -8831,6 +8856,13 @@ class SupervertalerQt(QMainWindow):
 
         with self.termbase_cache_lock:
             raw_tb = dict(self.termbase_cache.get(segment_id, {}))
+
+        # v1.10.98 — same cache-staleness fallback as show_term_insert_popup.
+        if not raw_tb:
+            try:
+                raw_tb = self._search_termbase_in_memory(segment.source) or {}
+            except Exception:
+                raw_tb = {}
 
         termbase_matches = []
         for match in raw_tb.values():

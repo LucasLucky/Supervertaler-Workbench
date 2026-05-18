@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.97 (May 18, 2026)
+**Current Version:** v1.10.98 (May 18, 2026)
+
+
+## v1.10.98 – May 18, 2026
+
+### Fixed (Ctrl tap auto-inserted an NT instead of opening the popup after adding a synonym)
+
+Reported by a user: "After adding a synonym, when I press Ctrl, TermLens popup is no longer shown, but a term is inserted at the cursor."
+
+Two compounding bugs, both fixed:
+
+**1. Cache staleness after termbase edits.** Adding a synonym (and other termbase write operations) leaves the per-segment `termbase_cache` entry stale or empty for the segment the user is on, even though the in-memory `termbase_index` is already up to date. `show_term_insert_popup` and `show_term_picker_dialog` now fall back to a direct `_search_termbase_in_memory(segment.source)` call when the cache returns empty — the popup never opens with a misleadingly empty chip set again, regardless of whether the cache repopulation has caught up yet.
+
+**2. "Smart single-NT shortcut" removed.** The pre-v1.10.87 numbered-list popup had a behaviour where if a segment had no termbase matches and exactly one NT match, Ctrl-tap would skip the popup and auto-insert the NT text directly. That made sense in the old model (the popup was just a chooser), but the v1.10.87 TermLens-mirror popup IS the affordance — the user wants to see what's on offer before committing. Combined with bug #1, the auto-insert was firing on segments where the user *did* have termbase matches but the cache was momentarily empty, inserting an unrelated NT at the cursor and looking like the popup had silently spawned a term insertion. Removed the auto-insert path entirely; always show the popup now, even on single-item segments.
 
 
 ## v1.10.97 – May 18, 2026
