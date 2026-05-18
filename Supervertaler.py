@@ -2234,7 +2234,9 @@ class _CtrlShiftTapEventFilter(QObject):
                 # When BOTH modifiers are released, decide whether to fire.
                 if not self._ctrl_held and not self._shift_held:
                     fired = False
-                    if self._armed and not self._other_key:
+                    armed = self._armed
+                    other = self._other_key
+                    if armed and not other:
                         # Live OS check — catch any modifiers Qt missed.
                         live = QApplication.queryKeyboardModifiers()
                         # Mask out the two we expect; anything else
@@ -2244,11 +2246,43 @@ class _CtrlShiftTapEventFilter(QObject):
                             | Qt.KeyboardModifier.ShiftModifier
                         )
                         if leftover == Qt.KeyboardModifier.NoModifier:
+                            # v1.10.92 — diagnostic log so users can
+                            # confirm the chord was detected even when
+                            # show_term_picker_dialog silently bails
+                            # (no project loaded, no segment selected,
+                            # etc.). Routed through the host's log()
+                            # so it lands in the session-log tab.
                             try:
-                                self._main_window.show_term_picker_dialog()
+                                log = getattr(self._main_window, 'log', None)
+                                if callable(log):
+                                    log("[Ctrl+Shift tap] → opening Term Picker")
                             except Exception:
                                 pass
+                            try:
+                                self._main_window.show_term_picker_dialog()
+                            except Exception as exc:
+                                try:
+                                    log = getattr(self._main_window, 'log', None)
+                                    if callable(log):
+                                        log(f"[Ctrl+Shift tap] show_term_picker_dialog raised: {exc}")
+                                except Exception:
+                                    pass
                             fired = True
+                        else:
+                            try:
+                                log = getattr(self._main_window, 'log', None)
+                                if callable(log):
+                                    log(f"[Ctrl+Shift tap] aborted: other modifier still held (mask={int(leftover)})")
+                            except Exception:
+                                pass
+                    else:
+                        # Help diagnose state-machine misfires.
+                        try:
+                            log = getattr(self._main_window, 'log', None)
+                            if callable(log) and (armed or other):
+                                log(f"[Ctrl+Shift tap] not fired: armed={armed}, other_key={other}")
+                        except Exception:
+                            pass
                     self._reset()
                     if fired:
                         # Consume this release so a downstream handler
@@ -8914,10 +8948,25 @@ class SupervertalerQt(QMainWindow):
             inserts on digit press); otherwise digit selects + Enter
             inserts.
         """
+        # v1.10.92 — diagnostic log so users reporting "Term Picker
+        # does nothing" can see whether the call reached us at all.
+        try:
+            self.log("[Term Picker] show_term_picker_dialog invoked")
+        except Exception:
+            pass
+
         if not self.current_project:
+            try:
+                self.log("[Term Picker] no current_project — bailing")
+            except Exception:
+                pass
             return
         current_row = self.table.currentRow()
         if current_row < 0 or current_row >= len(self.current_project.segments):
+            try:
+                self.log(f"[Term Picker] invalid current_row={current_row} — bailing")
+            except Exception:
+                pass
             self.statusBar().showMessage("No segment selected", 2000)
             return
 
@@ -8939,6 +8988,11 @@ class SupervertalerQt(QMainWindow):
             key=lambda x: (-(x.get('ranking') or 0), (x.get('source_term') or '').lower())
         )
         nt_matches = self.find_nt_matches_in_source(segment.source)
+
+        try:
+            self.log(f"[Term Picker] {len(termbase_matches)} termbase matches, {len(nt_matches)} NT matches")
+        except Exception:
+            pass
 
         if not termbase_matches and not nt_matches:
             self.statusBar().showMessage("No terms or NTs found for this segment", 2000)

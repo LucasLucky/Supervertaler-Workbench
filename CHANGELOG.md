@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.91 (May 18, 2026)
+**Current Version:** v1.10.92 (May 18, 2026)
+
+
+## v1.10.92 – May 18, 2026
+
+### Fixed (current-chip ring now actually wraps the chip; Ctrl+Shift tap diagnostics)
+
+**Ring corners no longer look square — they're now genuinely rounded around the chip.** v1.10.91 moved the ring painting "inside the chip" but kept it in `TermBlock.paintEvent`. The problem: Qt paints children *after* their parent's `paintEvent`, so the chip's solid stylesheet background fill was drawn ON TOP of the ring, covering it everywhere except where the chip's rounded-corner cut-outs let the ring poke through. That's the "square corners" effect — really just the ring fragments outside the chip's rounded shape, visible because the chip's corners are transparent at the very edges. Reported by a user: "corners are not outlined in blue".
+
+Fix: move the ring-painting into `_ChipContainer.paintEvent` itself, layered on top of the QSS background via `super().paintEvent()` first. Same treatment for NT chips: promoted `nt_label` from a bare QLabel to a new `_NTChipLabel(QLabel)` subclass that does the same thing. `TermBlock.set_current` / `NTBlock.set_current` just forward to the chip-level `set_current` now. Ring corners use 3 px radius for term chips (matching the chip's `border-radius: 3px`) and 2 px for NT pills (matching `border-radius: 2px`), so the curve follows the chip's outline cleanly. Colour bumped to Material-blue 900 (`#0D47A1`) and deep amber (`#BF360C`) respectively for stronger contrast.
+
+**Ctrl+Shift tap diagnostics.** The user reported "Ctrl+Shift does nothing" even though `Ctrl+Shift+B` works. The state-machine analysis showed the chord *should* fire — so there's something subtle happening in the wild that the unit-test path didn't catch. Added structured logging to `_CtrlShiftTapEventFilter` and to `show_term_picker_dialog`: whenever both modifiers are released we log the armed-state + other-key-state, and whenever the dialog is invoked we log how many matches we found. If the chord is still silent after this version, the session log will reveal whether the filter is failing to detect it (no `[Ctrl+Shift tap]` line at all), detecting it but bailing on a third modifier (`aborted: other modifier still held`), firing but finding no segment selected (`invalid current_row`), or firing successfully but the dialog flashed past too fast to notice.
+
+In all cases the `Ctrl+Shift+B` QShortcut continues to work as the canonical Term Picker trigger.
 
 
 ## v1.10.91 – May 18, 2026

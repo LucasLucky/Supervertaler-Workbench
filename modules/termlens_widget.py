@@ -56,6 +56,89 @@ class _ChipContainer(QWidget):
         # the pink/blue/red/amber/purple chip colours. Reported by
         # a user: "the background colors are now gone".
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # v1.10.92 — "current chip" highlight state. The ring is
+        # painted INSIDE the chip on top of the QSS background. We
+        # have to draw inside _ChipContainer rather than on its
+        # TermBlock parent because Qt paints children AFTER the
+        # parent's paintEvent — anything we drew on the TermBlock
+        # would be covered by the chip's background fill. Reported
+        # by a user (v1.10.91): "the corners are not outlined in
+        # blue". That was the chip background overlaying the ring
+        # everywhere except where the rounded-corner cut-outs let
+        # the ring poke through.
+        self._is_current = False
+
+    def set_current(self, current: bool):
+        """Toggle the focus ring drawn around the chip's interior."""
+        if self._is_current == current:
+            return
+        self._is_current = current
+        self.update()
+
+    def paintEvent(self, event):
+        # Let Qt paint the QSS background first (because WA_StyledBackground
+        # is set), then layer the ring on top so it isn't covered up.
+        super().paintEvent(event)
+        if not self._is_current:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#0D47A1"))  # Material-blue 900 — strong contrast on every chip colour
+        pen.setWidth(2)
+        painter.setPen(pen)
+        # Draw 1 px inside the chip's bounds, matching the QSS
+        # border-radius of 3 px so the ring follows the chip's own
+        # corner curve instead of cutting through it.
+        from PyQt6.QtCore import QRectF
+        r = self.rect()
+        ring = QRectF(
+            r.x() + 1.0,
+            r.y() + 1.0,
+            r.width() - 2,
+            r.height() - 2,
+        )
+        painter.drawRoundedRect(ring, 3, 3)
+        painter.end()
+
+
+class _NTChipLabel(QLabel):
+    """QLabel for the NT "🚫 NT" pill that can paint a focus ring on
+    top of its QSS background — counterpart to ``_ChipContainer`` for
+    the term chips. Same rationale: parents paint before children, so
+    drawing the ring on the NTBlock would be covered by the QLabel's
+    own background fill.
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self._is_current = False
+
+    def set_current(self, current: bool):
+        if self._is_current == current:
+            return
+        self._is_current = current
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._is_current:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#BF360C"))  # deep amber — solid contrast against the pastel-yellow NT pill
+        pen.setWidth(2)
+        painter.setPen(pen)
+        from PyQt6.QtCore import QRectF
+        r = self.rect()
+        ring = QRectF(
+            r.x() + 1.0,
+            r.y() + 1.0,
+            r.width() - 2,
+            r.height() - 2,
+        )
+        # NT pill stylesheet uses border-radius: 2 px, so match.
+        painter.drawRoundedRect(ring, 2, 2)
+        painter.end()
 
 
 class _CornerIndicators(QWidget):
@@ -455,46 +538,19 @@ class TermBlock(QWidget):
         Used by the TermLensPopup keyboard cycle (Right/Left/Tab) to
         indicate which match Enter / E / I will act on. No-op in the
         docked TermLens panel where keyboard cycling isn't a thing.
+
+        v1.10.92: the ring is now painted by ``_ChipContainer`` itself
+        (so it draws on top of the chip's background — Qt paints
+        children AFTER the parent's paintEvent, so anything drawn on
+        TermBlock would be covered by the chip's QSS fill). TermBlock
+        just forwards the state to its chip container.
         """
         if self._is_current == current:
             return
         self._is_current = current
-        self.update()  # request a repaint so paintEvent re-draws (or removes) the ring
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self._is_current:
-            return
         chip = getattr(self, 'target_container', None)
-        if chip is None:
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(QColor("#1565C0"))  # Material-blue 800 — solid contrast on light chips
-        pen.setWidth(2)
-        painter.setPen(pen)
-        # v1.10.91 — draw the ring INSIDE the chip's bounds rather
-        # than outside. The TermBlock's layout uses 1-px contents
-        # margins (so chips sit tight in the flow grid), which meant
-        # a 2-px outset ring sat ON TOP OF the parent edge and got
-        # painter-clipped to the TermBlock bounds — the right and
-        # bottom strokes vanished, producing the "half-ring" that
-        # users on v1.10.87+ kept reporting. Drawing inside the chip
-        # with a 1-px inset keeps the full ring visible on every
-        # chip regardless of where it sits in the FlowLayout, and
-        # the pen's 2-px stroke still reads clearly against the chip
-        # background. Half-pixel offset (0.5) keeps the antialiased
-        # stroke crisp on common DPI scales.
-        rect = chip.geometry()
-        from PyQt6.QtCore import QRectF
-        inset = QRectF(
-            rect.x() + 0.5,
-            rect.y() + 0.5,
-            rect.width() - 1,
-            rect.height() - 1,
-        )
-        painter.drawRoundedRect(inset, 4, 4)
-        painter.end()
+        if chip is not None and hasattr(chip, 'set_current'):
+            chip.set_current(current)
 
     def init_ui(self):
         """Create the visual layout for this term block - COMPACT RYS-style"""
@@ -1168,33 +1224,17 @@ class NTBlock(QWidget):
         self.init_ui()
 
     def set_current(self, current: bool):
-        """Toggle the 'current selection' highlight ring (TermLensPopup nav)."""
+        """Toggle the 'current selection' highlight ring (TermLensPopup nav).
+
+        v1.10.92: ring is now painted by ``_NTChipLabel`` itself so it
+        draws on top of the pill's background; see the longer comment
+        on ``TermBlock.set_current`` for the rationale.
+        """
         if self._is_current == current:
             return
         self._is_current = current
-        self.update()
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self._is_current or self.nt_label is None:
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(QColor("#E65100"))  # deep amber — solid contrast against the pastel-yellow NT pill
-        pen.setWidth(2)
-        painter.setPen(pen)
-        # v1.10.91 — same inset-not-outset treatment as TermBlock; see
-        # the longer comment in TermBlock.paintEvent for the rationale.
-        rect = self.nt_label.geometry()
-        from PyQt6.QtCore import QRectF
-        inset = QRectF(
-            rect.x() + 0.5,
-            rect.y() + 0.5,
-            rect.width() - 1,
-            rect.height() - 1,
-        )
-        painter.drawRoundedRect(inset, 4, 4)
-        painter.end()
+        if self.nt_label is not None and hasattr(self.nt_label, 'set_current'):
+            self.nt_label.set_current(current)
 
     def init_ui(self):
         """Create the visual layout for this NT block - pastel yellow styling"""
@@ -1232,8 +1272,11 @@ class NTBlock(QWidget):
         """)
         layout.addWidget(self.source_label)
         
-        # "Do not translate" indicator with pastel yellow background
-        nt_label = QLabel("🚫 NT")
+        # "Do not translate" indicator with pastel yellow background.
+        # v1.10.92: use _NTChipLabel (custom QLabel subclass) so the
+        # focus ring can be painted on top of the QSS background when
+        # the popup keyboard cycle lands on this pill.
+        nt_label = _NTChipLabel("🚫 NT")
         nt_font = QFont()
         nt_font.setPointSize(7)
         nt_label.setFont(nt_font)
