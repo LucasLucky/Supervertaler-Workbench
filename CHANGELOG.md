@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.93 (May 18, 2026)
+**Current Version:** v1.10.94 (May 18, 2026)
+
+
+## v1.10.94 – May 18, 2026
+
+### Changed (TermLens popup current-chip ring: thinner stroke, 1 px instead of 2 px)
+
+User feedback after v1.10.93: "Reduce the thickness of the blue outline somewhat." The 2-px ring on a ~25-px-tall chip looked heavy next to the chip's own 1-px native border. Switched both the term-chip ring (`_ChipContainer.paintEvent`) and the NT-chip ring (`_NTChipLabel.paintEvent`) from a 2-px stroke to a 1-px stroke, with a 0.5-px half-pixel inset so the antialiased line lands crisply on a pixel boundary rather than straddling two. Reads as a delicate accent against the chip background instead of an outline marker.
 
 
 ## v1.10.93 – May 18, 2026

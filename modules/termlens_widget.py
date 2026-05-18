@@ -84,18 +84,24 @@ class _ChipContainer(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor("#0D47A1"))  # Material-blue 900 — strong contrast on every chip colour
-        pen.setWidth(2)
+        # v1.10.94 — 1-px stroke instead of 2 px. User feedback after
+        # v1.10.93: "Reduce the thickness of the blue outline somewhat."
+        # The 2-px ring on a ~25-px-tall chip looked heavy next to the
+        # chip's own 1-px native border. 1 px reads as a delicate accent
+        # that still wins against every chip background colour.
+        pen.setWidth(1)
         painter.setPen(pen)
-        # Draw 1 px inside the chip's bounds, matching the QSS
-        # border-radius of 3 px so the ring follows the chip's own
-        # corner curve instead of cutting through it.
+        # Inset by 0.5 px so the antialiased 1-px stroke sits crisply
+        # on a pixel boundary instead of straddling two; ring radius
+        # 3 matches the chip's QSS ``border-radius: 3px`` so the ring
+        # follows the chip's own corner curve cleanly.
         from PyQt6.QtCore import QRectF
         r = self.rect()
         ring = QRectF(
-            r.x() + 1.0,
-            r.y() + 1.0,
-            r.width() - 2,
-            r.height() - 2,
+            r.x() + 0.5,
+            r.y() + 0.5,
+            r.width() - 1,
+            r.height() - 1,
         )
         painter.drawRoundedRect(ring, 3, 3)
         painter.end()
@@ -126,15 +132,17 @@ class _NTChipLabel(QLabel):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(QColor("#BF360C"))  # deep amber — solid contrast against the pastel-yellow NT pill
-        pen.setWidth(2)
+        # v1.10.94 — 1-px stroke to match _ChipContainer; see the
+        # longer rationale comment there.
+        pen.setWidth(1)
         painter.setPen(pen)
         from PyQt6.QtCore import QRectF
         r = self.rect()
         ring = QRectF(
-            r.x() + 1.0,
-            r.y() + 1.0,
-            r.width() - 2,
-            r.height() - 2,
+            r.x() + 0.5,
+            r.y() + 0.5,
+            r.width() - 1,
+            r.height() - 1,
         )
         # NT pill stylesheet uses border-radius: 2 px, so match.
         painter.drawRoundedRect(ring, 2, 2)
