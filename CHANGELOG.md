@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.90 (May 18, 2026)
+**Current Version:** v1.10.91 (May 18, 2026)
+
+
+## v1.10.91 – May 18, 2026
+
+### Fixed (TermLens popup current-chip ring no longer half-clipped)
+
+The blue "currently-highlighted chip" ring that v1.10.87 added to the TermLens popup was being drawn 2 px *outside* the chip's geometry (`adjusted(-2, -2, 2, 2)`), then painter-clipped against the TermBlock's tight 1-px contents margins — the right and bottom strokes vanished, leaving a "half-ring" that wrapped the top-left of the chip and just disappeared elsewhere. Reported by a user with the "apparatuses" chip selected: "the blue selection indicator … doesn't go all the way around the term."
+
+Fix: draw the ring *inside* the chip's geometry with a 0.5-px half-pixel inset for crisp antialiasing, instead of outside. The 2-px stroke now sits flush along the chip's own rounded border with no risk of being clipped by the parent widget's bounds. Colour bumped from Material-blue 700 to 800 for slightly stronger contrast against the light-blue chip backgrounds; NT-chip ring bumped from amber 700 to deep amber (`#E65100`) for the same reason against the pastel-yellow NT pill. The ring now reads as a clean, fully-enclosing rectangle on every chip in the popup regardless of where the chip sits in the FlowLayout.
 
 
 ## v1.10.90 – May 18, 2026

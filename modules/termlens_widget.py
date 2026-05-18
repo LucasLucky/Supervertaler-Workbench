@@ -470,16 +470,30 @@ class TermBlock(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(QColor("#1976D2"))  # Material-blue 700 — matches the shortcut badge
+        pen = QPen(QColor("#1565C0"))  # Material-blue 800 — solid contrast on light chips
         pen.setWidth(2)
         painter.setPen(pen)
-        # Inset by 1 px so the 2-px stroke sits flush with the chip's
-        # rounded border instead of being clipped against the TermBlock
-        # edge. Add a small extra margin around the chip itself so the
-        # ring is clearly visible rather than blending into the chip
-        # background.
-        rect = chip.geometry().adjusted(-2, -2, 2, 2)
-        painter.drawRoundedRect(rect, 5, 5)
+        # v1.10.91 — draw the ring INSIDE the chip's bounds rather
+        # than outside. The TermBlock's layout uses 1-px contents
+        # margins (so chips sit tight in the flow grid), which meant
+        # a 2-px outset ring sat ON TOP OF the parent edge and got
+        # painter-clipped to the TermBlock bounds — the right and
+        # bottom strokes vanished, producing the "half-ring" that
+        # users on v1.10.87+ kept reporting. Drawing inside the chip
+        # with a 1-px inset keeps the full ring visible on every
+        # chip regardless of where it sits in the FlowLayout, and
+        # the pen's 2-px stroke still reads clearly against the chip
+        # background. Half-pixel offset (0.5) keeps the antialiased
+        # stroke crisp on common DPI scales.
+        rect = chip.geometry()
+        from PyQt6.QtCore import QRectF
+        inset = QRectF(
+            rect.x() + 0.5,
+            rect.y() + 0.5,
+            rect.width() - 1,
+            rect.height() - 1,
+        )
+        painter.drawRoundedRect(inset, 4, 4)
         painter.end()
 
     def init_ui(self):
@@ -1166,11 +1180,20 @@ class NTBlock(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(QColor("#F9A825"))  # amber 700 — matches the NT yellow palette
+        pen = QPen(QColor("#E65100"))  # deep amber — solid contrast against the pastel-yellow NT pill
         pen.setWidth(2)
         painter.setPen(pen)
-        rect = self.nt_label.geometry().adjusted(-2, -2, 2, 2)
-        painter.drawRoundedRect(rect, 5, 5)
+        # v1.10.91 — same inset-not-outset treatment as TermBlock; see
+        # the longer comment in TermBlock.paintEvent for the rationale.
+        rect = self.nt_label.geometry()
+        from PyQt6.QtCore import QRectF
+        inset = QRectF(
+            rect.x() + 0.5,
+            rect.y() + 0.5,
+            rect.width() - 1,
+            rect.height() - 1,
+        )
+        painter.drawRoundedRect(inset, 4, 4)
         painter.end()
 
     def init_ui(self):
