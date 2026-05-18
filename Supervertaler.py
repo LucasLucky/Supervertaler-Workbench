@@ -2194,12 +2194,28 @@ class _CtrlShiftTapEventFilter(QObject):
 
             etype = event.type()
 
-            # Wheel + ShortcutOverride disarm — same reasoning as the
-            # lone-Ctrl filter: a wheel zoom or a registered QShortcut
-            # firing means this isn't a clean chord tap.
-            if etype in (QEvent.Type.Wheel, QEvent.Type.ShortcutOverride):
+            # v1.10.93 — Wheel events disarm (Ctrl+Shift+scroll is a
+            # different gesture). ShortcutOverride NO LONGER sets
+            # _other_key — it fires too liberally for modifier-only
+            # chords. Logs from v1.10.92 showed _other_key=True even
+            # for clean Ctrl+Shift taps, which traces back to Qt
+            # firing ShortcutOverride for Shift-with-Ctrl-held while
+            # speculatively evaluating registered Ctrl+Shift+X
+            # shortcuts. Keep _armed=False on ShortcutOverride as a
+            # safety guard, but don't poison the chord state with
+            # _other_key=True.
+            if etype == QEvent.Type.Wheel:
                 self._armed = False
                 self._other_key = True
+                return False
+            if etype == QEvent.Type.ShortcutOverride:
+                # Don't blanket-disarm here — ShortcutOverride fires
+                # speculatively for any key combination that *might*
+                # match a registered shortcut, including the Shift
+                # press inside a Ctrl+Shift chord (Qt is checking
+                # whether Ctrl+Shift+<anything> is bound). The KeyPress
+                # handler below already handles the "real shortcut
+                # fired" case via its `else` branch on non-modifier keys.
                 return False
 
             if etype == QEvent.Type.KeyPress:
@@ -2212,13 +2228,32 @@ class _CtrlShiftTapEventFilter(QObject):
                     self._ctrl_held = True
                     if self._shift_held and not self._other_key:
                         self._armed = True
+                    try:
+                        log = getattr(self._main_window, 'log', None)
+                        if callable(log):
+                            log(f"[Ctrl+Shift tap] KeyPress Ctrl, _shift_held={self._shift_held}, _other_key={self._other_key}, _armed→{self._armed}")
+                    except Exception:
+                        pass
                 elif key == Qt.Key.Key_Shift:
                     self._shift_held = True
                     if self._ctrl_held and not self._other_key:
                         self._armed = True
+                    try:
+                        log = getattr(self._main_window, 'log', None)
+                        if callable(log):
+                            log(f"[Ctrl+Shift tap] KeyPress Shift, _ctrl_held={self._ctrl_held}, _other_key={self._other_key}, _armed→{self._armed}")
+                    except Exception:
+                        pass
                 else:
                     # Any other key press (including Alt, Meta, a letter,
                     # an arrow) ruins the chord.
+                    if self._ctrl_held or self._shift_held:
+                        try:
+                            log = getattr(self._main_window, 'log', None)
+                            if callable(log):
+                                log(f"[Ctrl+Shift tap] KeyPress other key={key} during chord → other_key=True")
+                        except Exception:
+                            pass
                     self._other_key = True
                     self._armed = False
                 return False

@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.92 (May 18, 2026)
+**Current Version:** v1.10.93 (May 18, 2026)
+
+
+## v1.10.93 – May 18, 2026
+
+### Fixed (Ctrl+Shift tap now actually fires — ShortcutOverride was poisoning the chord state)
+
+v1.10.92's diagnostic logs revealed the real bug behind "Ctrl+Shift does nothing": every chord attempt finished with `_other_key=True` even when the user pressed nothing but Ctrl and Shift. The cause was the `ShortcutOverride` branch in `_CtrlShiftTapEventFilter` — Qt fires `ShortcutOverride` speculatively whenever a key press *might* match a registered shortcut, including the Shift key press inside a Ctrl+Shift chord (because Qt is checking whether `Ctrl+Shift+<anything>` is bound to anything yet). My filter was treating that speculative override as "the user pressed some other key", which poisoned the chord state before it could complete.
+
+Fix: stop setting `_other_key=True` on `ShortcutOverride`. Keep the lighter `_armed=False` guard if I ever want to add it back, but the `KeyPress` branch already handles the "real other key was pressed" case via its `else` clause on non-modifier keys, so the `ShortcutOverride` interception was redundant *and* harmful.
+
+Added per-event diagnostic logs inside the chord-detection KeyPress branch (`KeyPress Ctrl`, `KeyPress Shift`, `KeyPress other key=…`) so that if the chord still misbehaves in some edge case, the next session log will pinpoint exactly which event broke it.
 
 
 ## v1.10.92 – May 18, 2026
