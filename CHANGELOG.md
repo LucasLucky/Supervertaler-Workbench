@@ -2,7 +2,28 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.96 (May 18, 2026)
+**Current Version:** v1.10.97 (May 18, 2026)
+
+
+## v1.10.97 – May 18, 2026
+
+### Removed (Ctrl+Shift tap event filter — Ctrl+Shift+B remains the canonical Term Picker shortcut)
+
+User feedback after three rounds of trying to make the Ctrl+Shift tap chord work reliably: "can we remove the Ctrl+Shift shortcut and just use Ctrl+Shift+B?" Pulled `_CtrlShiftTapEventFilter` and all its diagnostic plumbing in one go.
+
+Background: v1.10.90 introduced the modifier-only chord as a companion to the lone-Ctrl-tap, hoping to mirror the ergonomic feel of how the TermLens-popup opens. It turned out to be a constant source of trouble — AltGr on Dutch / German / other layouts emits Ctrl+Alt key events, which poisoned the chord state via the "other modifier pressed" path; the session log filled up with `[Ctrl+Shift tap]` chatter on every chord attempt; and the per-event logging itself was slowing down the lone-Ctrl tap enough that *that* started feeling broken too. Plus there was no obvious fix that wouldn't either keep firing falsely or fail to fire when intended.
+
+Removed:
+- The `_CtrlShiftTapEventFilter` class entirely (~200 lines)
+- The installation block in `setup_global_shortcuts`
+- The `[Term Picker]` diagnostic logs in `show_term_picker_dialog` (added in v1.10.92 to triage the chord)
+
+Kept:
+- The `Ctrl+Shift+B` `QShortcut` registered via `create_shortcut("term_picker", "Ctrl+Shift+B", …)` — that was always the canonical, configurable Term Picker trigger
+- The lone Ctrl tap (via `_LoneCtrlEventFilter`) for the TermLens popup, plus its second-Ctrl-tap-to-close behaviour
+- The `Term Picker` dialog itself (modules/term_picker_dialog.py) — unchanged
+
+Net effect: session log no longer floods on every modifier chord, the lone-Ctrl tap should feel responsive again, and there's one canonical Term Picker shortcut (`Ctrl+Shift+B`, fully remappable via the in-app shortcut manager).
 
 
 ## v1.10.96 – May 18, 2026

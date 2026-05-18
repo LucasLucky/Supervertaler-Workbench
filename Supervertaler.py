@@ -2149,207 +2149,6 @@ class _LoneCtrlEventFilter(QObject):
             return False
 
 
-class _CtrlShiftTapEventFilter(QObject):
-    """App-level event filter: triggers the Term Picker dialog when
-    Ctrl and Shift are tapped together (both pressed, both released,
-    nothing else pressed in between).
-
-    Companion to ``_LoneCtrlEventFilter`` — both share the same
-    "modifier-chord, no other key" idiom. A user request from
-    v1.10.90: "could we change it to quickly pressing Ctrl and Shift?"
-    so the Term Picker has an ergonomic trigger that doesn't need a
-    third key. The configurable Ctrl+Shift+B QShortcut is preserved
-    in parallel so the shortcut manager still has something to remap;
-    this filter is purely additive.
-
-    Detection rules:
-      - Ctrl and Shift must both be pressed (order doesn't matter)
-      - No other key (modifier or otherwise) pressed in between
-      - Both released → fire on the LAST release
-      - Auto-repeat presses cancel the chord (user is holding to
-        repeat-type, not tapping)
-      - Wheel events, registered QShortcuts firing → cancel
-    """
-
-    def __init__(self, main_window):
-        super().__init__(main_window)
-        self._main_window = main_window
-        self._ctrl_held = False
-        self._shift_held = False
-        self._armed = False        # have BOTH Ctrl and Shift been pressed cleanly?
-        self._other_key = False    # has any non-Ctrl/Shift key been pressed in between?
-
-    def _reset(self):
-        self._ctrl_held = False
-        self._shift_held = False
-        self._armed = False
-        self._other_key = False
-
-    def eventFilter(self, obj, event):
-        from PyQt6.QtCore import QEvent
-        from PyQt6.QtWidgets import QApplication
-        try:
-            if not self._main_window or not self._main_window.isActiveWindow():
-                return False
-
-            etype = event.type()
-
-            # v1.10.93 — Wheel events disarm (Ctrl+Shift+scroll is a
-            # different gesture). ShortcutOverride NO LONGER sets
-            # _other_key — it fires too liberally for modifier-only
-            # chords. Logs from v1.10.92 showed _other_key=True even
-            # for clean Ctrl+Shift taps, which traces back to Qt
-            # firing ShortcutOverride for Shift-with-Ctrl-held while
-            # speculatively evaluating registered Ctrl+Shift+X
-            # shortcuts. Keep _armed=False on ShortcutOverride as a
-            # safety guard, but don't poison the chord state with
-            # _other_key=True.
-            if etype == QEvent.Type.Wheel:
-                self._armed = False
-                self._other_key = True
-                return False
-            if etype == QEvent.Type.ShortcutOverride:
-                # Don't blanket-disarm here — ShortcutOverride fires
-                # speculatively for any key combination that *might*
-                # match a registered shortcut, including the Shift
-                # press inside a Ctrl+Shift chord (Qt is checking
-                # whether Ctrl+Shift+<anything> is bound). The KeyPress
-                # handler below already handles the "real shortcut
-                # fired" case via its `else` branch on non-modifier keys.
-                return False
-
-            if etype == QEvent.Type.KeyPress:
-                if event.isAutoRepeat():
-                    # Holding any key disarms — taps are non-repeat.
-                    self._armed = False
-                    return False
-                key = event.key()
-                if key == Qt.Key.Key_Control:
-                    self._ctrl_held = True
-                    if self._shift_held and not self._other_key:
-                        self._armed = True
-                    try:
-                        log = getattr(self._main_window, 'log', None)
-                        if callable(log):
-                            log(f"[Ctrl+Shift tap] KeyPress Ctrl, _shift_held={self._shift_held}, _other_key={self._other_key}, _armed→{self._armed}")
-                    except Exception:
-                        pass
-                elif key == Qt.Key.Key_Shift:
-                    self._shift_held = True
-                    if self._ctrl_held and not self._other_key:
-                        self._armed = True
-                    try:
-                        log = getattr(self._main_window, 'log', None)
-                        if callable(log):
-                            log(f"[Ctrl+Shift tap] KeyPress Shift, _ctrl_held={self._ctrl_held}, _other_key={self._other_key}, _armed→{self._armed}")
-                    except Exception:
-                        pass
-                else:
-                    # v1.10.96 — only poison the chord state if a chord
-                    # is actually in progress. Pre-v1.10.96 we set
-                    # _other_key=True on EVERY non-modifier press,
-                    # which meant typing literally any character between
-                    # two Ctrl+Shift tap attempts left _other_key=True
-                    # carrying over to the next chord (because _reset()
-                    # only fires when both modifiers go up, and pressing
-                    # a normal letter doesn't touch the modifier state).
-                    # Log from a user testing v1.10.93 confirmed this:
-                    # ``KeyPress Shift, _ctrl_held=True, _other_key=True``
-                    # — _other_key was already True at the moment of the
-                    # Shift press. Fix is to only set the flag during
-                    # an active chord-building phase.
-                    if self._ctrl_held or self._shift_held:
-                        try:
-                            log = getattr(self._main_window, 'log', None)
-                            if callable(log):
-                                log(f"[Ctrl+Shift tap] KeyPress other key={key} during chord → other_key=True")
-                        except Exception:
-                            pass
-                        self._other_key = True
-                        self._armed = False
-                    # else: idle; do nothing — a stray keystroke outside
-                    # a chord doesn't affect future chord detection.
-                return False
-
-            if etype == QEvent.Type.KeyRelease:
-                if event.isAutoRepeat():
-                    return False
-                key = event.key()
-                if key == Qt.Key.Key_Control:
-                    self._ctrl_held = False
-                elif key == Qt.Key.Key_Shift:
-                    self._shift_held = False
-                # When BOTH modifiers are released, decide whether to fire.
-                if not self._ctrl_held and not self._shift_held:
-                    fired = False
-                    armed = self._armed
-                    other = self._other_key
-                    if armed and not other:
-                        # Live OS check — catch any modifiers Qt missed.
-                        live = QApplication.queryKeyboardModifiers()
-                        # Mask out the two we expect; anything else
-                        # leftover means a third modifier was involved.
-                        leftover = live & ~(
-                            Qt.KeyboardModifier.ControlModifier
-                            | Qt.KeyboardModifier.ShiftModifier
-                        )
-                        if leftover == Qt.KeyboardModifier.NoModifier:
-                            # v1.10.92 — diagnostic log so users can
-                            # confirm the chord was detected even when
-                            # show_term_picker_dialog silently bails
-                            # (no project loaded, no segment selected,
-                            # etc.). Routed through the host's log()
-                            # so it lands in the session-log tab.
-                            try:
-                                log = getattr(self._main_window, 'log', None)
-                                if callable(log):
-                                    log("[Ctrl+Shift tap] → opening Term Picker")
-                            except Exception:
-                                pass
-                            try:
-                                self._main_window.show_term_picker_dialog()
-                            except Exception as exc:
-                                try:
-                                    log = getattr(self._main_window, 'log', None)
-                                    if callable(log):
-                                        log(f"[Ctrl+Shift tap] show_term_picker_dialog raised: {exc}")
-                                except Exception:
-                                    pass
-                            fired = True
-                        else:
-                            try:
-                                log = getattr(self._main_window, 'log', None)
-                                if callable(log):
-                                    log(f"[Ctrl+Shift tap] aborted: other modifier still held (mask={int(leftover)})")
-                            except Exception:
-                                pass
-                    else:
-                        # Help diagnose state-machine misfires.
-                        try:
-                            log = getattr(self._main_window, 'log', None)
-                            if callable(log) and (armed or other):
-                                log(f"[Ctrl+Shift tap] not fired: armed={armed}, other_key={other}")
-                        except Exception:
-                            pass
-                    self._reset()
-                    if fired:
-                        # Consume this release so a downstream handler
-                        # doesn't also act on it (e.g. another filter
-                        # treating Shift-release as cancel of some
-                        # composition).
-                        return True
-                return False
-
-            return False
-        except RuntimeError:
-            app = QApplication.instance()
-            if app:
-                app.removeEventFilter(self)
-            self._main_window = None
-            self._reset()
-            return False
-
-
 class GridTableEventFilter:
     """Mixin to pass keyboard shortcuts from editor to table"""
     pass
@@ -8444,14 +8243,16 @@ class SupervertalerQt(QMainWindow):
             self._lone_ctrl_event_filter = _LoneCtrlEventFilter(self)
             QApplication.instance().installEventFilter(self._lone_ctrl_event_filter)
 
-        # Ctrl+Shift tap – Term Picker dialog (v1.10.90, user request).
-        # Companion to the lone-Ctrl tap. Same modifier-only chord idiom,
-        # different action. The Ctrl+Shift+B QShortcut below is kept as a
-        # configurable parallel binding so the shortcut manager UI still
-        # has something to remap.
-        if not hasattr(self, '_ctrl_shift_tap_event_filter'):
-            self._ctrl_shift_tap_event_filter = _CtrlShiftTapEventFilter(self)
-            QApplication.instance().installEventFilter(self._ctrl_shift_tap_event_filter)
+        # v1.10.97 — Ctrl+Shift tap event filter removed. Originally
+        # added in v1.10.90 to give the Term Picker an ergonomic
+        # modifier-chord trigger; turned out to clash with AltGr (which
+        # emits Ctrl+Alt key events on Windows for users on Dutch /
+        # German / other layouts) and to flood the session log with
+        # diagnostic chatter for every chord attempt. User feedback:
+        # "can we remove the Ctrl+Shift shortcut and just use
+        # Ctrl+Shift+B?" The QShortcut below remains as the canonical
+        # Term Picker trigger; the lone-Ctrl tap above remains the
+        # canonical TermLens-popup trigger.
 
         # Ctrl+Shift+Q - MT Quick Lookup (GT4T-style popup)
         mt_quick_shortcut = create_shortcut("mt_quick_lookup", "Ctrl+Shift+Q", self.show_mt_quick_popup)
@@ -9016,25 +8817,12 @@ class SupervertalerQt(QMainWindow):
             inserts on digit press); otherwise digit selects + Enter
             inserts.
         """
-        # v1.10.92 — diagnostic log so users reporting "Term Picker
-        # does nothing" can see whether the call reached us at all.
-        try:
-            self.log("[Term Picker] show_term_picker_dialog invoked")
-        except Exception:
-            pass
-
+        # v1.10.97 — diagnostic [Term Picker] logs removed now that the
+        # Ctrl+Shift tap chord (which they were added to triage) is gone.
         if not self.current_project:
-            try:
-                self.log("[Term Picker] no current_project — bailing")
-            except Exception:
-                pass
             return
         current_row = self.table.currentRow()
         if current_row < 0 or current_row >= len(self.current_project.segments):
-            try:
-                self.log(f"[Term Picker] invalid current_row={current_row} — bailing")
-            except Exception:
-                pass
             self.statusBar().showMessage("No segment selected", 2000)
             return
 
@@ -9056,11 +8844,6 @@ class SupervertalerQt(QMainWindow):
             key=lambda x: (-(x.get('ranking') or 0), (x.get('source_term') or '').lower())
         )
         nt_matches = self.find_nt_matches_in_source(segment.source)
-
-        try:
-            self.log(f"[Term Picker] {len(termbase_matches)} termbase matches, {len(nt_matches)} NT matches")
-        except Exception:
-            pass
 
         if not termbase_matches and not nt_matches:
             self.statusBar().showMessage("No terms or NTs found for this segment", 2000)
