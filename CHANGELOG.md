@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.101 (May 18, 2026)
+**Current Version:** v1.10.102 (May 18, 2026)
+
+
+## v1.10.102 – May 18, 2026
+
+### Release (GitHub release rollup of v1.10.83 → v1.10.102)
+
+Published GitHub release tagging the v1.10.83 → v1.10.102 series — twenty patch versions shipped over a single marathon day rolling up the TermLens-mirror-popup parity work, the new Ctrl+Shift+B Term Picker dialog, all the popup ergonomics fixes (ring rendering, height shrink-to-fit, keyboard focus, Ctrl-tap-to-close), the always-on cell scrollbar fix, the synonym-aware Term Picker, the contextual ? help buttons, and the help-site updates (new TermLens popup + Term Picker pages, GitBook-style click-to-zoom, stronger sidebar indent guides). No new functional changes vs. v1.10.101 — this version exists purely to mark the release boundary.
 
 
 ## v1.10.101 – May 18, 2026
