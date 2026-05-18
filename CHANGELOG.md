@@ -2,7 +2,28 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.82 (May 18, 2026)
+**Current Version:** v1.10.83 (May 18, 2026)
+
+
+## v1.10.83 – May 18, 2026
+
+### Changed (TermLens chip indicators now overflow above the chip — Trados-style — so chips with indicators line up with chips without them)
+
+User flagged a UX issue with the v1.10.80–v1.10.82 corner indicators: chips with metadata/synonym indicators sat ~12 px lower than chips without them in a TermLens row, because the indicator headroom was reserved INSIDE the chip layout (the `target_layout` got a 12 px top margin, pushing the chip's content down). The result was that "bond", "device", and "end" chips were visibly out of vertical alignment with "complete with" and "wheels" in the same row. User posted a side-by-side Trados screenshot showing how Trados handles it: the indicators sit half-inside half-outside the chip's top-right corner, *overflowing above the chip's top edge*, so the chip itself stays at its compact height.
+
+Qt clips a widget's painting to its own bounds, so we can't replicate Trados's overflow by painting from inside the chip. The fix: move the indicator-painting out of `_ChipContainer` and onto a **separate sibling overlay widget** (`_CornerIndicators`) that's a child of the outer TermBlock. The overlay has its own bounds, so its paint isn't clipped to the chip's. It's positioned absolutely at the chip's top-right corner (overflowing above the chip's top edge) via `_position_corner_indicators()`, called from `TermBlock.resizeEvent` and `showEvent` so the overlay tracks the chip across layout passes.
+
+Implementation:
+
+ - **New `_CornerIndicators(QWidget)` class** — holds the indicator-drawing code that used to live in `_ChipContainer.paintEvent`. Translucent background (`WA_TranslucentBackground`) so only the painted circles are visible. Click-through (`WA_TransparentForMouseEvents`) so the chip's click-to-insert behaviour still works when the user clicks anywhere on the chip including the overlay area.
+ - **`_ChipContainer` simplified** — no longer holds the indicator flags or overrides `paintEvent`. The hover-state stylesheet still works via Qt's default QWidget paint path (no more `QStyle.drawPrimitive(PE_Widget)` workaround needed).
+ - **`TermBlock.target_layout.contentsMargins.top` back to 1 px unconditionally** — the v1.10.80 conditional bump to 12 px is gone, since the indicators no longer live inside the chip. Every chip in a TermLens row now aligns to the same vertical baseline regardless of whether it has indicators.
+ - **`resizeEvent` + `showEvent` on TermBlock** — call `_position_corner_indicators()` so the overlay's position updates as the chip resizes or first appears. `showEvent` specifically matters for the initial layout pass — without it the overlay would sit at (0,0) until the first resize.
+ - **`raise_()`** on the overlay so it paints above the chip in z-order when their bounds overlap (the bottom of the overlay sits inside the chip's top-right corner).
+
+Removed the now-unused `QStyleOption` import.
+
+Net effect: chips in a TermLens row are now perfectly aligned to the same vertical baseline. Indicators on chips that have them sit at the top-right corner, half-above half-inside, exactly matching the Trados TermLens. The whole panel feels visually quieter and more regular.
 
 
 ## v1.10.82 – May 18, 2026

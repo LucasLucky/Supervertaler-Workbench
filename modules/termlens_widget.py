@@ -13,7 +13,7 @@ Features:
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QFrame, QScrollArea,
                               QHBoxLayout, QPushButton, QToolTip, QLayout, QLayoutItem, QSizePolicy, QStyle,
-                              QStyleOption, QMenu, QMessageBox, QApplication)
+                              QMenu, QMessageBox, QApplication)
 from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRect, QSize, QTimer
 from PyQt6.QtGui import QFont, QCursor, QAction, QPainter, QColor, QPen
 from typing import Dict, List, Optional, Tuple
@@ -22,81 +22,121 @@ from modules.shortcut_display import format_shortcut_for_display
 
 
 class _ChipContainer(QWidget):
-    """v1.10.75 (Tier 3b) — QWidget subclass for the coloured target
-    chip background that ALSO paints metadata + synonym corner
-    indicators on top of the stylesheet background.
+    """QWidget subclass for the coloured target chip background.
 
-    Two indicators, in top-right corner of the chip (rightmost first):
+    v1.10.83: indicator-painting moved out of this class onto a
+    sibling overlay widget (_CornerIndicators below) so the
+    indicators can overflow above the chip's top edge — matching
+    the Trados TermLens visual where the amber dot sits half-inside
+    half-outside the chip's corner. The chip itself stays at its
+    original (compact) height regardless of whether indicators are
+    present, so every chip in a TermLens row aligns at the same
+    vertical baseline. Reported as a UX issue by a user comparing
+    the Workbench TermLens with the Trados TermLens side-by-side:
+    chips with indicators sat 10-12 px lower than chips without
+    them, because the indicator headroom was reserved INSIDE the
+    chip layout.
 
-      • **Amber dot** — entry has at least one of: definition, domain,
-        notes, URL. Tells the user "there's more here, hover for the
-        tooltip". Matches the colour Trados TermBlock uses (#F59E0B).
+    The class is kept (rather than reverted to plain QWidget)
+    because the v1.10.75 hover-state stylesheet still relies on
+    the QSS ``:hover`` pseudo-state, and there's no harm in the
+    extra type.
+    """
 
-      • **Indigo ≡ circle** — entry has at least one synonym (source
-        or target). Tells the user "alternative wordings exist".
-        Matches Trados (#6366F1).
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-    The standard Qt pattern for "stylesheet background + custom paint
-    on top" needs a manual QStyle.drawPrimitive(PE_Widget) call to
-    apply the stylesheet's background-color, otherwise overriding
-    paintEvent suppresses it. The QStyleOption boilerplate at the
-    top is exactly that.
+    # v1.10.83: paintEvent removed — the stylesheet background now
+    # renders via Qt's default QWidget paint path (since we no
+    # longer override paintEvent, we don't need the
+    # QStyle.drawPrimitive(PE_Widget) workaround that the old
+    # indicator-painting version needed). Indicator-drawing
+    # responsibility moves to the _CornerIndicators sibling widget
+    # below.
 
-    Indicators are drawn inside the widget bounds (top-right corner,
-    2 px margin) rather than half-outside the chip — Qt clips paint
-    to widget bounds, so half-outside indicators simply wouldn't
-    render.
+
+class _CornerIndicators(QWidget):
+    """v1.10.83 — overlay widget painted with metadata + synonym
+    indicators at the top-right corner of a TermBlock's chip.
+
+    **Why this is a separate widget rather than part of _ChipContainer:**
+
+    Qt clips painting to widget bounds. The Trados TermLens visual
+    has the indicators overflowing half-above the chip's top edge,
+    sitting in the gap between the source word label and the chip
+    itself. We can't replicate that by painting inside the chip
+    (clipped) or by reserving space inside the chip (pushes chip
+    content down, causing the chip-alignment problem the user
+    flagged in v1.10.82).
+
+    The solution is to make the indicators a separate small QWidget
+    that's a child of the **outer TermBlock**, positioned
+    absolutely at the chip's top-right corner. The indicator
+    widget has its own bounds so its paint isn't clipped to the
+    chip's; TermBlock sets its position via
+    ``_position_corner_indicators()`` in its resizeEvent so the
+    indicator follows the chip as the layout changes.
+
+    Translucent background + ``WA_TransparentForMouseEvents`` so
+    the user can still click through the indicator to the chip
+    underneath (the chip's mouseReleaseEvent fires on click-to-
+    insert).
     """
 
     def __init__(self, has_metadata: bool = False, has_synonyms: bool = False, parent=None):
         super().__init__(parent)
         self._has_metadata = bool(has_metadata)
         self._has_synonyms = bool(has_synonyms)
+        # Fixed size: room for both indicators side-by-side, or just
+        # one if the chip only has one type of metadata. Heights are
+        # whatever the bigger icon needs.
+        w = 0
+        if has_metadata:
+            w += 10
+        if has_metadata and has_synonyms:
+            w += 3  # gap between
+        if has_synonyms:
+            w += 9
+        if w == 0:
+            w = 1  # avoid 0-width
+        self.setFixedSize(w, 10)
+        # Transparent bg so only the painted circles are visible;
+        # the rest of the rect shows whatever's behind (the source
+        # label area of the TermBlock).
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Don't intercept mouse — click-through to chip below.
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
     def paintEvent(self, event):
-        # Standard stylesheet+custom-paint trick: drawPrimitive paints
-        # the QSS background-color (without this call, overriding
-        # paintEvent means the stylesheet bg never renders).
-        opt = QStyleOption()
-        opt.initFrom(self)
         p = QPainter(self)
-        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, p, self)
-
-        if not (self._has_metadata or self._has_synonyms):
-            return
-
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
-        # v1.10.80: indicators painted in the chip's top headroom
-        # strip (TermBlock sets a 12 px top margin on target_layout
-        # when indicators are present, so children sit safely below
-        # y=12). y=1 keeps a thin 1-px gap from the chip's top edge.
-        # v1.10.82: top margin bumped 10→12 to accommodate the 10px
-        # metadata dot (was 8px); see the "i"-glyph note below.
-        margin_right = 3
-        right = self.width() - margin_right
-        top = 1
+        x = 0
+        y = 0
+        if self._has_synonyms:
+            # Drawn LEFT of the metadata dot (so the order
+            # left-to-right is: ≡ synonym, ℹ metadata, just like
+            # the v1.10.82 version painted them at the chip corner).
+            size = 9
+            p.setBrush(QColor("#6366F1"))     # indigo
+            p.setPen(QPen(QColor("white"), 1.0))
+            p.drawEllipse(x, y, size, size)
+            cx = x + size / 2.0
+            cy = y + size / 2.0
+            p.setPen(QPen(QColor("white"), 1.0))
+            p.drawLine(int(cx - 2), int(cy - 2), int(cx + 2), int(cy - 2))
+            p.drawLine(int(cx - 2), int(cy),     int(cx + 2), int(cy))
+            p.drawLine(int(cx - 2), int(cy + 2), int(cx + 2), int(cy + 2))
+            x += size + 3  # gap before metadata dot
 
         if self._has_metadata:
-            # v1.10.82: dot grown 8→10 px so the white "i" glyph
-            # inside it is actually legible. The "i" is the universal
-            # "info / more here" affordance (Wikipedia infoboxes,
-            # browser address bars, every OS settings dialog), so a
-            # user who sees the amber dot for the first time can
-            # immediately read it as "there's info here, hover for
-            # details" without having to learn that the colour alone
-            # encodes that.
             size = 10
-            x = right - size
-            y = top
             p.setBrush(QColor("#F59E0B"))     # amber
             p.setPen(QPen(QColor("white"), 1.0))
             p.drawEllipse(x, y, size, size)
-            # Draw white "i" centered inside the circle. Bold Segoe
-            # UI at pixel size 8 gives a roughly 6-px-tall glyph,
-            # which fits cleanly in the 10-px circle with a 1-2px
-            # margin on every side.
+            # White bold "i" glyph centred in the circle (the
+            # universal "info / more here" affordance).
             i_font = QFont("Segoe UI")
             i_font.setPixelSize(8)
             i_font.setBold(True)
@@ -104,22 +144,6 @@ class _ChipContainer(QWidget):
             p.setPen(QPen(QColor("white"), 1.0))
             i_rect = QRect(x, y, size, size)
             p.drawText(i_rect, Qt.AlignmentFlag.AlignCenter, "i")
-            right = x - 3  # synonym icon goes to the left of the dot
-
-        if self._has_synonyms:
-            size = 9
-            x = right - size
-            y = top
-            p.setBrush(QColor("#6366F1"))     # indigo
-            p.setPen(QPen(QColor("white"), 1.0))
-            p.drawEllipse(x, y, size, size)
-            # Three horizontal lines (≡) inside the circle
-            cx = x + size / 2.0
-            cy = y + size / 2.0
-            p.setPen(QPen(QColor("white"), 1.0))
-            p.drawLine(int(cx - 2), int(cy - 2), int(cx + 2), int(cy - 2))
-            p.drawLine(int(cx - 2), int(cy),     int(cx + 2), int(cy))
-            p.drawLine(int(cx - 2), int(cy + 2), int(cx + 2), int(cy + 2))
 
 
 class TermPopup(QFrame):
@@ -558,10 +582,13 @@ class TermBlock(QWidget):
             # coloured background covering both text and badge.
             # _ChipContainer (custom QWidget subclass) paints the
             # stylesheet background + the corner indicators on top.
-            target_container = _ChipContainer(
-                has_metadata=has_metadata,
-                has_synonyms=has_synonyms,
-            )
+            # v1.10.83: _ChipContainer no longer holds the indicator
+            # flags — the indicators live in a sibling overlay widget
+            # (_CornerIndicators) created below, positioned at the
+            # chip's top-right corner so they can overflow above the
+            # chip's top edge (Trados-style) without requiring a
+            # top margin on the chip itself.
+            target_container = _ChipContainer()
             # v1.10.75 (Tier 3d): keep the chip reference on the
             # TermBlock so enterEvent below can anchor the floating
             # TermPopup beneath the chip itself (not under the source
@@ -577,29 +604,17 @@ class TermBlock(QWidget):
                 }}
             """)
             target_layout = QHBoxLayout(target_container)
-            # v1.10.80: top margin is enlarged when corner indicators
-            # are present so the chip text + shortcut badge sit BELOW
-            # the strip _ChipContainer.paintEvent uses to draw the
-            # amber dot / indigo ≡ icon. Previously the layout's 1 px
-            # top margin meant the badge occupied the same top-right
-            # area the indicators were drawn in — children paint
-            # AFTER the parent's paintEvent so the badge covered the
-            # indicators, making them effectively invisible (user
-            # report: "the little orange dot is underneath the
-            # number, not on the corner like in Trados"). Qt clips
-            # paint to widget bounds so we can't overflow above the
-            # chip the way Trados can with its WinForms paint; the
-            # next-best thing is to reserve space inside the chip
-            # for them.
-            # v1.10.82: bumped 10 → 12 to accommodate the larger
-            # 10-px metadata dot (which carries a white "i" glyph
-            # inside it now). At 10 px, the dot extended to y=11 with
-            # the previous 10-px top margin — exactly at the content
-            # boundary, so close to clipping. 12 px gives clear
-            # separation between the indicators and the chip text /
-            # +N indicator / shortcut badge.
-            top_margin = 12 if (has_metadata or has_synonyms) else 1
-            target_layout.setContentsMargins(3, top_margin, 3, 1)
+            # v1.10.83: top margin is back to 1 px unconditionally.
+            # In v1.10.80–v1.10.82 we conditionally bumped this to 12
+            # so painted indicators (inside the chip's top headroom)
+            # didn't get covered by the shortcut badge, but that made
+            # chips with indicators sit ~12 px lower than their
+            # neighbours — visibly out of alignment in a TermLens
+            # row. The v1.10.83 redesign moves the indicators to a
+            # sibling overlay widget that overflows above the chip,
+            # so the chip itself can stay at the compact 1-px margin
+            # and every chip in the row aligns to the same baseline.
+            target_layout.setContentsMargins(3, 1, 3, 1)
             target_layout.setSpacing(3)
             
             target_label = QLabel(target_text)
@@ -887,6 +902,28 @@ class TermBlock(QWidget):
             # indicator is rendered INLINE on the chip itself (added
             # to target_layout above) so it stays tight to the
             # translation it qualifies, matching Trados TermBlock.
+
+            # v1.10.83 — corner-indicators overlay widget. Created as
+            # a child of `self` (the TermBlock), positioned absolutely
+            # at the chip's top-right corner via
+            # ``_position_corner_indicators`` (called from resizeEvent
+            # + showEvent). The overlay overflows above the chip's
+            # top edge so the indicators sit half-inside half-outside
+            # the chip's corner — same visual as Trados, and crucially
+            # the chip itself stays at its compact 1-px-margin height
+            # so all chips in a TermLens row align to the same
+            # baseline regardless of whether they have indicators.
+            self._corner_indicators = None
+            if has_metadata or has_synonyms:
+                self._corner_indicators = _CornerIndicators(
+                    has_metadata=has_metadata,
+                    has_synonyms=has_synonyms,
+                    parent=self,
+                )
+                # raise_() ensures the overlay paints ABOVE its
+                # siblings in z-order (specifically above
+                # target_container) when their bounds overlap.
+                self._corner_indicators.raise_()
         else:
             # No translation found - very subtle (theme-aware)
             is_dark = self.theme_manager and self.theme_manager.current_theme.name == "Dark"
@@ -896,6 +933,43 @@ class TermBlock(QWidget):
             no_match_label.setStyleSheet(f"color: {no_match_dot_color}; font-size: 8px;")
             layout.addWidget(no_match_label)
     
+    # v1.10.83 — corner-indicators overlay positioning.
+    # ``_CornerIndicators`` is a small sibling QWidget anchored at the
+    # chip's top-right corner so it can overflow above the chip's top
+    # edge (matching the Trados TermLens visual). Qt only finalises
+    # the chip's geometry after layout, so positioning happens in
+    # resizeEvent + showEvent rather than in init_ui.
+    def _position_corner_indicators(self):
+        ci = getattr(self, '_corner_indicators', None)
+        chip = getattr(self, 'target_container', None)
+        if ci is None or chip is None:
+            return
+        # Top-right of the chip, with the overlay's right edge at the
+        # chip's right edge (so the rightmost indicator — the amber
+        # ℹ dot — sits flush with the chip's right edge) and the
+        # overlay's vertical centre at the chip's TOP edge. Net
+        # effect: the indicator straddles the chip's top, half above
+        # half inside, matching Trados.
+        x = chip.x() + chip.width() - ci.width()
+        y = chip.y() - ci.height() // 2
+        # Clamp y >= 0 so the overlay never gets clipped against the
+        # TermBlock's top edge on chips that happen to be near it.
+        if y < 0:
+            y = 0
+        ci.move(x, y)
+        ci.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_corner_indicators()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # showEvent fires after the first layout pass so chip
+        # geometry is final. Without this, the indicator would
+        # sit at (0,0) on first paint until a subsequent resize.
+        self._position_corner_indicators()
+
     # v1.10.75 (Tier 3d): TermBlock hover handlers drive the floating
     # TermPopup. The popup is a singleton — at most one ever visible
     # across the app — so moving from chip to chip just re-anchors
