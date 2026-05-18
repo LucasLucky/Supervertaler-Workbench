@@ -2474,7 +2474,12 @@ class TermLensWidget(QWidget):
         # Hide the zoom-row controls if they exist (they're created in
         # init_ui via attributes; the row layout itself can't easily be
         # hidden, so we hide the individual buttons instead).
-        for attr in ('_btn_refresh', '_btn_font_down', '_btn_font_up'):
+        # v1.10.101 — include _btn_help in the hidden set. Pre-v1.10.101
+        # the help button (added in v1.10.99) kept showing up inside
+        # the TermLens-popup wrapper because the popup-mode toggle's
+        # button list hadn't been updated. Reported by a user testing
+        # v1.10.100: "the lens pop-up still has the question mark".
+        for attr in ('_btn_refresh', '_btn_font_down', '_btn_font_up', '_btn_help'):
             btn = getattr(self, attr, None)
             if btn is not None:
                 btn.setVisible(not enabled)

@@ -284,11 +284,16 @@ class TermLensPopup(QFrame):
             target_w = 760
             initial_h = 320
             self._max_screen_h = 600
-        # Start at the placeholder height; QTimer.singleShot(0, …) below
-        # runs after the first layout pass so we can replace it with
-        # the actual content height.
+        # Start at the placeholder height. Run the shrink-to-content
+        # pass twice — once immediately (next tick) and once 80 ms later.
+        # v1.10.101: a single immediate pass was missing the last row of
+        # chips on multi-row segments because TermBlock children
+        # (corner-indicator overlays + chip auto-sizing) finish settling
+        # one layout pass after the FlowLayout's first heightForWidth
+        # call. The second pass at 80 ms catches up.
         self.resize(target_w, initial_h)
         QTimer.singleShot(0, self._fit_height_to_content)
+        QTimer.singleShot(80, self._fit_height_to_content)
 
         # ── Highlight the first chip ──────────────────────────────────
         blocks = self._inner.get_term_blocks(only_with_matches=True)
@@ -323,6 +328,16 @@ class TermLensPopup(QFrame):
             scroll = getattr(inner, 'scroll', None) if inner else None
             if terms_layout is None or scroll is None:
                 return
+
+            # v1.10.101 — flush pending events so the inner widget's
+            # layout has fully settled before we measure. Without this,
+            # the FlowLayout's heightForWidth returns a value based on
+            # whatever the chip widgets' preferred sizes were at the
+            # MOMENT the QTimer.singleShot(0, …) fired, which may
+            # precede the corner-indicator overlay positioning and
+            # chip auto-sizing finishing. Result on multi-row segments:
+            # one or two rows of chips clipped off at the bottom.
+            QApplication.processEvents()
 
             # The chip content lives inside scroll → terms_container →
             # terms_layout (a FlowLayout). FlowLayout.heightForWidth is
@@ -368,9 +383,16 @@ class TermLensPopup(QFrame):
                     inner_margin_v = 4
 
             # 4 + 2 = 6 from the card layout; 1 + 1 = 2 from the outer
-            # frame border. Add a small comfort buffer (4 px) so the
-            # vertical scrollbar doesn't appear on a clean fit.
-            chrome_v = margins_v + scroll_frame_v + inner_margin_v + hint_h + 6 + 2 + 4
+            # frame border. v1.10.101: bumped the comfort buffer from
+            # 4 px to 12 px after a user reported the bottom row of
+            # chips being clipped on long segments. The previous 4-px
+            # buffer was tight enough that small under-counts in the
+            # FlowLayout's heightForWidth result (when chip
+            # source-label heights vary by a pixel or two between
+            # rows) would clip the last row. 12 px gives enough
+            # headroom for any reasonable rendering drift without
+            # noticeably inflating short popups.
+            chrome_v = margins_v + scroll_frame_v + inner_margin_v + hint_h + 6 + 2 + 12
 
             target_h = chip_h + chrome_v
             # Clamp: never shorter than the hint label + chrome, never

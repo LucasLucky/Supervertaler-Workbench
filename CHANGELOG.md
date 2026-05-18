@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.100 (May 18, 2026)
+**Current Version:** v1.10.101 (May 18, 2026)
+
+
+## v1.10.101 – May 18, 2026
+
+### Fixed (TermLens popup: stray ? from docked panel; bottom row clipped on long segments)
+
+**1. Stray ? button inside the popup.** v1.10.100 removed the popup-level help button, but the popup embeds a `TermLensWidget` instance in popup mode, and `set_popup_mode(True)` was only hiding the refresh + font-zoom buttons in the docked widget's header — not the help button I added in v1.10.99. So the docked panel's `?` kept showing up inside the popup wrapper. Reported by a user: "the lens pop-up still has the question mark". Added `_btn_help` to the list of buttons `set_popup_mode` hides.
+
+**2. Bottom row of chips clipped on long segments.** `_fit_height_to_content` was running on a single `QTimer.singleShot(0, …)` tick, but on multi-row segments the FlowLayout's `heightForWidth` returned a slightly-under-estimated height because the chips' corner-indicator overlays + final auto-sized geometry hadn't settled by then. Result: the popup was sized to fit roughly N–1 rows out of N, with the last row clipped at the bottom.
+
+Three reinforcing fixes:
+
+- Call `QApplication.processEvents()` at the top of `_fit_height_to_content` to flush any pending layout passes before measuring.
+- Schedule a second fit pass 80 ms after the first, as a safety net for any remaining chip-sizing drift.
+- Bumped the bottom comfort buffer from 4 px to 12 px so any small under-counts in heightForWidth don't clip the last row.
 
 
 ## v1.10.100 – May 18, 2026
