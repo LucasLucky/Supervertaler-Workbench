@@ -245,24 +245,31 @@ class TermLensPopup(QFrame):
         card_layout.addWidget(self._hint_label)
 
         # ── Initial sizing ────────────────────────────────────────────
-        # v1.10.89: fixed default size instead of the broken
-        # _shrink_to_content from v1.10.87, which read
-        # ``inner.sizeHint()`` — a near-zero value for FlowLayout-based
-        # widgets — and ended up collapsing the popup to one chip wide
-        # by ~600 px tall. Picking a sensible default (≈ 60 % of screen
-        # width, capped) lets the FlowLayout wrap chips to 4–6 per row
-        # without us trying to second-guess its preferred dimensions.
-        # The inner scroll area handles any overflow on very long
-        # segments.
+        # v1.10.95: width fixed at a sensible default (~60 % of screen,
+        # capped), height shrinks to fit the FlowLayout's content
+        # courtesy of ``_fit_height_to_content`` (called on next tick
+        # so Qt has run a layout pass). v1.10.87 had a broken shrink
+        # that read ``inner.sizeHint()`` — a near-zero value for
+        # FlowLayout-based widgets — and collapsed the popup; v1.10.89
+        # dropped shrinking entirely, leaving the popup with up to
+        # 380 px of empty space below short segments. This version
+        # uses the FlowLayout's authoritative ``heightForWidth``
+        # method so the height matches what the chips actually need.
         screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
         if screen is not None:
             sg = screen.availableGeometry()
             target_w = max(560, min(int(sg.width() * 0.55), 980))
-            target_h = max(220, min(int(sg.height() * 0.40), 380))
+            initial_h = max(220, min(int(sg.height() * 0.40), 380))
+            self._max_screen_h = int(sg.height() * 0.65)
         else:
             target_w = 760
-            target_h = 320
-        self.resize(target_w, target_h)
+            initial_h = 320
+            self._max_screen_h = 600
+        # Start at the placeholder height; QTimer.singleShot(0, …) below
+        # runs after the first layout pass so we can replace it with
+        # the actual content height.
+        self.resize(target_w, initial_h)
+        QTimer.singleShot(0, self._fit_height_to_content)
 
         # ── Highlight the first chip ──────────────────────────────────
         blocks = self._inner.get_term_blocks(only_with_matches=True)
@@ -280,6 +287,93 @@ class TermLensPopup(QFrame):
         esc_sc = QShortcut(QKeySequence("Esc"), self)
         esc_sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         esc_sc.activated.connect(self.close)
+
+    def _fit_height_to_content(self):
+        """Resize the popup's height to match the FlowLayout's content
+        height, leaving the width unchanged.
+
+        Called once after construction via ``QTimer.singleShot(0, …)``
+        so Qt has finished the first layout pass and the inner
+        TermLensWidget's terms_container has real geometry. Falls back
+        to a no-op on any error — getting the popup height "approximately
+        right" is decorative; never crash for it.
+        """
+        try:
+            inner = getattr(self, '_inner', None)
+            terms_layout = getattr(inner, 'terms_layout', None) if inner else None
+            scroll = getattr(inner, 'scroll', None) if inner else None
+            if terms_layout is None or scroll is None:
+                return
+
+            # The chip content lives inside scroll → terms_container →
+            # terms_layout (a FlowLayout). FlowLayout.heightForWidth is
+            # an authoritative measurement of the wrapped chip area —
+            # call it at the width the chips actually have available
+            # inside the scroll viewport.
+            viewport_w = scroll.viewport().width()
+            # Account for FlowLayout's own contentsMargins.
+            try:
+                margins = terms_layout.contentsMargins()
+                content_w = max(50, viewport_w - margins.left() - margins.right())
+            except Exception:
+                content_w = max(50, viewport_w - 10)
+
+            chip_h = terms_layout.heightForWidth(content_w)
+            if chip_h <= 0:
+                return
+
+            # Wrap chip_h with all the surrounding chrome:
+            #   - FlowLayout vertical margins
+            #   - The terms_container's contribution (just chip_h)
+            #   - The scroll area's frame (often 2 × 1 px)
+            #   - The inner TermLensWidget's outer layout margins (popup
+            #     mode uses tight 2-px outer margins)
+            #   - Our card's vertical padding (top=4, bottom=2 = 6 px)
+            #   - The hint label height
+            #   - Our outer QFrame's 1-px border
+            try:
+                margins_v = terms_layout.contentsMargins().top() + terms_layout.contentsMargins().bottom()
+            except Exception:
+                margins_v = 10
+
+            scroll_frame_v = scroll.frameWidth() * 2  # top + bottom border
+            hint_h = self._hint_label.sizeHint().height() if self._hint_label else 16
+
+            inner_layout = inner.layout() if inner else None
+            inner_margin_v = 0
+            if inner_layout is not None:
+                try:
+                    m = inner_layout.contentsMargins()
+                    inner_margin_v = m.top() + m.bottom()
+                except Exception:
+                    inner_margin_v = 4
+
+            # 4 + 2 = 6 from the card layout; 1 + 1 = 2 from the outer
+            # frame border. Add a small comfort buffer (4 px) so the
+            # vertical scrollbar doesn't appear on a clean fit.
+            chrome_v = margins_v + scroll_frame_v + inner_margin_v + hint_h + 6 + 2 + 4
+
+            target_h = chip_h + chrome_v
+            # Clamp: never shorter than the hint label + chrome, never
+            # taller than 65 % of the screen (the scroll area handles
+            # overflow for very long segments).
+            min_h = hint_h + chrome_v + 20
+            target_h = max(min_h, min(target_h, getattr(self, '_max_screen_h', 600)))
+
+            if abs(target_h - self.height()) < 4:
+                # Already close enough; skip the resize to avoid
+                # cosmetic jitter.
+                return
+            self.resize(self.width(), target_h)
+            # Re-anchor to the cursor after the resize so the popup
+            # doesn't visibly snap to a new position; if the resize
+            # changed the bottom edge, _position_near_cursor will
+            # re-clamp to the screen edge.
+            self._position_near_cursor()
+        except Exception:
+            # Sizing is decorative — never let a measurement glitch
+            # tear down the popup.
+            pass
 
     # ── Positioning ──────────────────────────────────────────────────────
 

@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.94 (May 18, 2026)
+**Current Version:** v1.10.95 (May 18, 2026)
+
+
+## v1.10.95 – May 18, 2026
+
+### Changed (TermLens popup height now shrinks to fit the chips)
+
+User feedback: "Sometimes the TermLens pop-up window is bigger than it needs to be. Can we make it so that it's never much bigger than the amount of text it needs to show?" The v1.10.89 fixed-height fallback used a placeholder of 220–380 px regardless of segment length, leaving roughly a third of the popup as empty space below short segments.
+
+Replaced with `_fit_height_to_content`, which runs on the tick after construction (so Qt has finished its first layout pass) and asks the inner `FlowLayout` for its `heightForWidth(content_width)` — the authoritative measurement of the wrapped chip area. The popup height then = chip area height + outer chrome (FlowLayout margins, scroll-area frame, TermLensWidget outer layout, card padding, hint label, popup border) + a small 4-px comfort buffer so a tight fit doesn't trigger the vertical scrollbar.
+
+Width is unchanged from v1.10.89 (fixed at 60 % of screen, capped 560–980 px) — width-shrinking would force the chips to wrap into narrower / taller layouts, defeating the goal. Height is clamped at 65 % of screen for very long segments; the scroll area handles anything beyond that. Re-anchored to the cursor after resize so the bottom edge doesn't snap off-screen on short segments.
+
+v1.10.87's broken `_shrink_to_content` read `inner.sizeHint()` directly, which for a FlowLayout returns its `minimumSize()` (one chip wide) — that's why the popup collapsed to a one-column-tall column back then. The new path goes through `heightForWidth` instead, which actually wraps the chips at the popup's real width and reports the resulting total height.
 
 
 ## v1.10.94 – May 18, 2026
