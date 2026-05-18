@@ -45,14 +45,17 @@ class _ChipContainer(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
-    # v1.10.83: paintEvent removed — the stylesheet background now
-    # renders via Qt's default QWidget paint path (since we no
-    # longer override paintEvent, we don't need the
-    # QStyle.drawPrimitive(PE_Widget) workaround that the old
-    # indicator-painting version needed). Indicator-drawing
-    # responsibility moves to the _CornerIndicators sibling widget
-    # below.
+        # v1.10.84 fix: enable stylesheet background rendering for a
+        # custom QWidget subclass. Without this attribute, Qt's
+        # default paint path does NOT apply the QSS
+        # ``background-color`` rule on bare QWidget subclasses
+        # (only on "natively styled" widget classes like
+        # QPushButton). The v1.10.83 removal of the paintEvent
+        # override skipped this attribute, which is why all chips
+        # rendered with the panel's white background instead of
+        # the pink/blue/red/amber/purple chip colours. Reported by
+        # a user: "the background colors are now gone".
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
 
 class _CornerIndicators(QWidget):
@@ -897,6 +900,21 @@ class TermBlock(QWidget):
                 badge_label.mousePressEvent = lambda e: self.on_translation_clicked(target_text)
                 target_layout.addWidget(badge_label)
             
+            # v1.10.84 fix: small fixed gap between the source word
+            # label and the chip. The v1.10.83 corner indicators
+            # overlay overflows ~5 px above the chip's top edge;
+            # without this gap the overflow lands directly on the
+            # bottom of the source-word text above. User report:
+            # "the dots are painted over the text a little bit. If
+            # we could move the entire line down just a tad, that
+            # would no longer be a problem." A 4 px spacer adds
+            # exactly that "just a tad" of clearance.
+            #
+            # Added unconditionally (not just when indicators are
+            # present) because mixing spaced and unspaced chips
+            # within the same TermLens row would break the chip
+            # baseline alignment the v1.10.83 work just fixed.
+            layout.addSpacing(4)
             layout.addWidget(target_container)
             # v1.10.77 — count_label removed from here; the "+N"
             # indicator is rendered INLINE on the chip itself (added

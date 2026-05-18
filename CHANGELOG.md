@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.83 (May 18, 2026)
+**Current Version:** v1.10.84 (May 18, 2026)
+
+
+## v1.10.84 – May 18, 2026
+
+### Fixed (v1.10.83 regressions: chip background colours stopped rendering; corner indicators overlapped the source-word text above)
+
+Two regressions from the v1.10.83 corner-indicator-overflow rework, both caught in the next round of user testing:
+
+**1. Chip background colours disappeared.** All chips rendered with the panel's white background instead of pink (project termbase) / blue (regular) / amber (non-translatable) / red (forbidden) / purple (abbreviation match). Cause: the v1.10.83 removal of `_ChipContainer.paintEvent` skipped the corresponding `setAttribute(Qt.WA_StyledBackground, True)` call that custom QWidget subclasses need for Qt's stylesheet `background-color` rule to apply. Without the attribute, the QSS background is silently ignored — Qt only applies it to "natively styled" widget classes (QPushButton, QLineEdit, etc.) by default. Restored by adding the attribute in `_ChipContainer.__init__`.
+
+**2. Corner indicators overlapped the source-word text above the chip.** The v1.10.83 overlay sits ~5 px above the chip's top edge (the half-overflow that makes the Trados-style "indicator at the corner" visual work), but with the existing zero-spacing TermBlock layout the chip sat directly below the source-word label — meaning the overflow landed on the bottom of the source text. User report: "the dots are painted over the text a little bit. If we could move the entire line down just a tad, that would no longer be a problem." Fixed by inserting a 4 px spacer between the source word label and the chip via `layout.addSpacing(4)`. Added unconditionally for every translation chip (not just chips with indicators) because mixing spaced and unspaced chips within the same TermLens row would re-break the chip-baseline alignment that the v1.10.83 work specifically fixed.
+
+Net effect: chips render in their proper colour, the overlay indicators sit cleanly in the gap between the source word and the chip without touching either, and the per-chip baseline alignment from v1.10.83 is preserved.
 
 
 ## v1.10.83 – May 18, 2026
