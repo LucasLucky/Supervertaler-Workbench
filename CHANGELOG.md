@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.99 (May 18, 2026)
+**Current Version:** v1.10.100 (May 18, 2026)
+
+
+## v1.10.100 – May 18, 2026
+
+### Removed (TermLens popup ? button — wrong affordance for a transient surface)
+
+User feedback after testing v1.10.99: the `?` button in the TermLens popup's hint row was disturbing the popup's compact-floating-card feel and was a poor fit semantically. The popup auto-closes on mouse-move > 4 px, on focus loss, and on any non-modifier key press, by design — so any clickable affordance inside it is fundamentally awkward. Moving the mouse toward the button closes the popup before the click registers.
+
+Reverted to the v1.10.98 hint-only row, with one addition: the hint string now ends in `F1 help`, so the help affordance is still discoverable. F1 itself continues to work via the application-level `_HelpEventFilter` plus the `set_topic(self, Topics.GLOSSARY_TERMLENS_POPUP)` call I added in v1.10.99 — that part stays. Pressing F1 anywhere inside the popup opens `workbench/termbases/termlens-popup/` in the browser; the focus shift to the browser then closes the popup, which is exactly the desired UX (read the docs without an extra dismiss step).
+
+The `?` buttons on the docked TermLens panel and on the Term Picker dialog stay as-is — both are persistent surfaces where a clickable button makes sense.
 
 
 ## v1.10.99 – May 18, 2026

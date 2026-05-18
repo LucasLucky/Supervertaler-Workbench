@@ -57,9 +57,7 @@ from PyQt6.QtGui import QCursor, QKeyEvent, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
-    QHBoxLayout,
     QLabel,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -236,64 +234,29 @@ class TermLensPopup(QFrame):
 
         card_layout.addWidget(self._inner)
 
-        # ── Hint row (keyboard hint + contextual help button) ─────────
-        # v1.10.99 — wrapped the hint in a HBox with a balanced left
-        # spacer + right-aligned "?" button so clicking the question
-        # mark opens the popup's help page in the user's browser. The
-        # spacer matches the button's footprint, keeping the hint label
-        # geometrically centred so the keyboard reminder still reads as
-        # the primary content.
-        hint_row = QHBoxLayout()
-        hint_row.setContentsMargins(0, 0, 0, 0)
-        hint_row.setSpacing(2)
-
-        _spacer = QWidget()
-        _spacer.setFixedSize(20, 20)
-        hint_row.addWidget(_spacer)
-        hint_row.addStretch()
-
+        # ── Hint label (keyboard reminder; F1 → help) ─────────────────
+        # v1.10.100 — reverted the v1.10.99 ? button. The popup is a
+        # transient surface (auto-closes on mouse-move > 4 px, on focus
+        # loss, on any non-modifier key) so a clickable affordance is
+        # fundamentally awkward — moving the mouse toward it closes the
+        # popup before the click registers. F1 still opens the help
+        # page (via the application-level _HelpEventFilter; the popup
+        # is tagged with the help topic below) and is mentioned in the
+        # hint string for discoverability.
         self._hint_label = QLabel(
-            "← → cycle  ·  Enter insert  ·  1–9 insert  ·  E edit  ·  I info  ·  Esc close"
+            "← → cycle  ·  Enter insert  ·  1–9 insert  ·  E edit  ·  I info  ·  Esc close  ·  F1 help"
         )
         self._hint_label.setStyleSheet(
             "color: #888; font-size: 8pt; padding: 3px 6px; background: transparent;"
         )
         self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint_row.addWidget(self._hint_label)
+        card_layout.addWidget(self._hint_label)
 
-        hint_row.addStretch()
-
-        self._help_btn = QPushButton("?")
-        self._help_btn.setFixedSize(20, 20)
-        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._help_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._help_btn.setToolTip("Open help for the TermLens popup (F1)")
-        self._help_btn.setStyleSheet(
-            """
-            QPushButton {
-                border: 1px solid #BDBDBD;
-                border-radius: 10px;
-                background: #FAFAFA;
-                color: #555;
-                font-size: 9pt;
-                font-weight: bold;
-                padding: 0;
-            }
-            QPushButton:hover {
-                background: #E3F2FD;
-                border-color: #1976D2;
-                color: #1565C0;
-            }
-            """
-        )
-        self._help_btn.clicked.connect(self._open_help)
-        hint_row.addWidget(self._help_btn)
-
-        card_layout.addLayout(hint_row)
-
-        # Tag the whole popup with the help topic too so F1 anywhere in
-        # the popup falls through to the same page via the application's
-        # _HelpEventFilter.
+        # Tag the whole popup with the help topic so F1 anywhere in
+        # the popup walks up to here via the application's
+        # _HelpEventFilter, opening the popup's help page in the
+        # browser (the browser-launch focus shift closes the popup
+        # as a side effect — which is exactly the desired UX).
         try:
             from modules.help_system import set_topic, Topics
             set_topic(self, Topics.GLOSSARY_TERMLENS_POPUP)
@@ -509,30 +472,6 @@ class TermLensPopup(QFrame):
             self._inner.insert_term_by_number(n)
         except Exception:
             pass
-
-    # ── Help ─────────────────────────────────────────────────────────────
-
-    def _open_help(self):
-        """Open the TermLens popup's help page in the default browser.
-
-        Routed through the global ``help_system.open_help`` so the URL
-        resolution (Topics constant → full https://help.supervertaler.com
-        URL) stays consistent with F1 and every other in-app ? button.
-        The popup itself stays open — the help page opens in the
-        background. Suppress focus-close around the browser launch so
-        the popup doesn't tear itself down when focus shifts.
-        """
-        self._suppress_focus_close = True
-        try:
-            from modules.help_system import open_help, Topics
-            open_help(Topics.GLOSSARY_TERMLENS_POPUP)
-        except Exception:
-            pass
-        # Re-arm focus-close after the browser-launch event loop tick.
-        try:
-            QTimer.singleShot(250, lambda: setattr(self, '_suppress_focus_close', False))
-        except Exception:
-            self._suppress_focus_close = False
 
     # ── Edit / Info ──────────────────────────────────────────────────────
 
