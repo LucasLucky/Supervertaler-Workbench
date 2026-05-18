@@ -2245,8 +2245,19 @@ class _CtrlShiftTapEventFilter(QObject):
                     except Exception:
                         pass
                 else:
-                    # Any other key press (including Alt, Meta, a letter,
-                    # an arrow) ruins the chord.
+                    # v1.10.96 — only poison the chord state if a chord
+                    # is actually in progress. Pre-v1.10.96 we set
+                    # _other_key=True on EVERY non-modifier press,
+                    # which meant typing literally any character between
+                    # two Ctrl+Shift tap attempts left _other_key=True
+                    # carrying over to the next chord (because _reset()
+                    # only fires when both modifiers go up, and pressing
+                    # a normal letter doesn't touch the modifier state).
+                    # Log from a user testing v1.10.93 confirmed this:
+                    # ``KeyPress Shift, _ctrl_held=True, _other_key=True``
+                    # — _other_key was already True at the moment of the
+                    # Shift press. Fix is to only set the flag during
+                    # an active chord-building phase.
                     if self._ctrl_held or self._shift_held:
                         try:
                             log = getattr(self._main_window, 'log', None)
@@ -2254,8 +2265,10 @@ class _CtrlShiftTapEventFilter(QObject):
                                 log(f"[Ctrl+Shift tap] KeyPress other key={key} during chord → other_key=True")
                         except Exception:
                             pass
-                    self._other_key = True
-                    self._armed = False
+                        self._other_key = True
+                        self._armed = False
+                    # else: idle; do nothing — a stray keystroke outside
+                    # a chord doesn't affect future chord detection.
                 return False
 
             if etype == QEvent.Type.KeyRelease:
@@ -2588,7 +2601,11 @@ class ReadOnlyGridTextEditor(QTextEdit):
 
         self.setWordWrapMode(wrap_mode)
         self.setAcceptRichText(False)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # v1.10.96 — see EditableGridTextEditor for the rationale.
+        # Source cell uses the same row-auto-resize machinery so a
+        # spurious scrollbar from QTextEdit's AsNeeded heuristic was
+        # showing on the source side too.
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         text_option = QTextOption()
@@ -4192,17 +4209,33 @@ class EditableGridTextEditor(QTextEdit):
 
         self.setWordWrapMode(wrap_mode)
         self.setAcceptRichText(False)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # v1.10.96 — AlwaysOff instead of AsNeeded. Reported by a user
+        # on a laptop screen: "no matter what I do with the resizing
+        # of the text size, I always have a scroll bar in the target
+        # box." Cause: QTextEdit's AsNeeded policy compares document
+        # height (which includes sub-pixel line metrics + the
+        # DocumentMargin we set to 0 + any zero-width-space padding
+        # from the invisible-char machinery) against the viewport
+        # height; a 1-px off-by-one between those two on certain font
+        # rendering paths is enough to surface the scrollbar even when
+        # the text visually fits. The row auto-resize machinery
+        # (resizeRowToContents called after every confirm + on grid
+        # load) keeps the cell tall enough for the content, so
+        # AlwaysOff is safe — content never gets clipped in practice.
+        # The actively-being-edited delegate editor (at the createEditor
+        # site in the table delegate) keeps AsNeeded so very long
+        # in-progress edits still get a usable scrollbar.
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         text_option = QTextOption()
         text_option.setWrapMode(wrap_mode)
         doc.setDefaultTextOption(text_option)
-        
+
         # Set minimum height to 0 - let content determine size
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)  # Qt's max int
-    
+
     def mouseDoubleClickEvent(self, event):
         """Handle double-click to select words properly when invisibles are shown.
 

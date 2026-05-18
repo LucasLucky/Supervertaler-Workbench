@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.95 (May 18, 2026)
+**Current Version:** v1.10.96 (May 18, 2026)
+
+
+## v1.10.96 – May 18, 2026
+
+### Fixed (always-on scrollbar on source/target cells; Ctrl+Shift tap chord state poisoned by unrelated typing)
+
+**Two-in-one fix.**
+
+**1. Spurious scrollbar in source/target cells.** A user on a laptop screen reported: "no matter what I do with the resizing of the text size, I always have a scroll bar in the target box." Cause: the `EditableGridTextEditor` (target cell) and `ReadOnlyGridTextEditor` (source cell) used `Qt.ScrollBarPolicy.ScrollBarAsNeeded`. QTextEdit's AsNeeded heuristic compares document height (which includes sub-pixel line metrics + the `DocumentMargin` we set to 0 + any zero-width-space padding the invisible-character machinery adds) against viewport height — a 1-pixel off-by-one between those two on certain font rendering paths is enough to surface the scrollbar even when the text visually fits.
+
+Switched both cell editors to `ScrollBarAlwaysOff`. The row auto-resize machinery (`resizeRowToContents` called after every confirm and on grid load) keeps each cell tall enough for its content, so AlwaysOff is safe — content never gets clipped in practice. The actively-being-edited delegate editor (the QTextEdit that pops up when you double-click a cell) keeps AsNeeded so very long in-progress edits still get a usable scrollbar.
+
+**2. Ctrl+Shift tap chord poisoned by unrelated typing.** v1.10.93's diagnostic logs caught what the previous two fixes missed: `_other_key=True` was already set at the moment of the Shift press in a clean Ctrl+Shift chord. Root cause in `_CtrlShiftTapEventFilter`: the non-modifier KeyPress branch was setting `_other_key=True` **unconditionally** on every keystroke, even when no chord was in progress. So pressing a normal letter (or arrow key, or function key) between two Ctrl+Shift tap attempts left `_other_key=True` carrying over — because `_reset()` only fires when both modifiers come up, and typing a normal letter doesn't touch the modifier state at all.
+
+Fix: gate the `_other_key=True` set on `if self._ctrl_held or self._shift_held` — same condition that already gated the diagnostic log line. Idle keystrokes outside an active chord-building phase no longer affect future chord detection.
 
 
 ## v1.10.95 – May 18, 2026
