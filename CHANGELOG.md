@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.85 (May 18, 2026)
+**Current Version:** v1.10.86 (May 18, 2026)
+
+
+## v1.10.86 – May 18, 2026
+
+### Changed (TermLens +N badge now counts only cross-entry alternatives, not target synonyms — matches Trados)
+
+Clean three-way separation between the chip's status indicators:
+
+ - **+N badge** = "N more termbase entries hit this source word" (i.e. another termbase has its own competing translation)
+ - **≡ corner indicator** = "this chip has synonyms available in the popup"
+ - **ℹ corner indicator** = "this chip has metadata (definition / domain / notes / URL)"
+
+The pre-v1.10.86 `+N` calculation was `len(translations) - 1`, which counted target synonyms inlined from the primary entry the same as cross-termbase hits. Result: a chip like "complete with" — single termbase entry with 2 target synonyms — would render as `complete with +2` even though there was only one underlying entry. User compared the Workbench TermLens side-by-side with the Trados TermLens and confirmed Trados renders the same source word as just `complete with` (no badge) because Trados scopes `+N` to entries, not surface forms. "I think we should change it so that the little +N indicates only whether there are multiple alternative term-based entries."
+
+Fix: count only the entries in the translation stack that *don't* carry the `is_synonym=True` flag set by `build_matches_dict` when it inlines `target_synonyms`. Synonyms still appear in the +N popup with their own numbered shortcuts (Alt+8, Alt+9, …) so they're still insertable — they just don't bloat the on-chip badge any more. The ≡ corner indicator does the disclosure job on its own.
+
+Net effect: `complete with` now renders bare (no +N), matching Trados; `device +1` keeps its +1 because the two hits are from genuinely different termbases (BRANTS + PATENTS); chips with both extra entries *and* synonyms show a `+N` reflecting only the cross-entry count plus a ≡ for the synonyms.
 
 
 ## v1.10.85 – May 18, 2026

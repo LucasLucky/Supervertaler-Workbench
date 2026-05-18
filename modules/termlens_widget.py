@@ -846,9 +846,22 @@ class TermBlock(QWidget):
             # the chip surface keeps it tight to the translation it
             # qualifies + makes it large enough to register at
             # normal reading distance.
-            if len(self.translations) > 1:
-                plus_count = len(self.translations) - 1
-                plus_label = QLabel(f"+{plus_count}")
+            # v1.10.86 — +N counts ONLY additional cross-entry termbase
+            # matches, not target synonyms inlined from the primary
+            # entry. The earlier semantics (count everything in the
+            # translation stack including is_synonym=True entries)
+            # diverged from the Trados TermLens, where "complete with"
+            # has 2 target synonyms but renders without a +N badge
+            # because there's only one underlying termbase entry. The
+            # ≡ corner indicator already signals "synonyms available
+            # in the popup" — the +N is reserved for "another termbase
+            # has its own competing translation for this source word".
+            non_synonym_extras = sum(
+                1 for t in self.translations[1:]
+                if not (t or {}).get('is_synonym', False)
+            )
+            if non_synonym_extras > 0:
+                plus_label = QLabel(f"+{non_synonym_extras}")
                 plus_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 # Subtle but legible — slightly darker than the
                 # background, smaller than the target text, no
@@ -865,7 +878,8 @@ class TermBlock(QWidget):
                     }}
                 """)
                 plus_label.setToolTip(
-                    f"{plus_count} more translation{'s' if plus_count != 1 else ''} "
+                    f"{non_synonym_extras} more termbase entr"
+                    f"{'ies' if non_synonym_extras != 1 else 'y'} "
                     f"(hover the chip for details)"
                 )
                 target_layout.addWidget(plus_label)
