@@ -96,7 +96,7 @@ class TermPickerDialog(QDialog):
         self._settings = settings
         self.selected_target_term: Optional[str] = None
 
-        self.setWindowTitle("TermLens — Term Picker")
+        self.setWindowTitle("TermLens – Term Picker")
         self.setModal(True)
         self.setMinimumSize(420, 260)
         self.resize(620, 420)
