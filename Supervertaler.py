@@ -8228,11 +8228,14 @@ class SupervertalerQt(QMainWindow):
         # Use ApplicationShortcut context so it works even when focus is in QTextEdit widgets
         mt_quick_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
-        # Ctrl+Shift+P - TermLens Term Picker (v1.10.87 — Trados parity).
+        # Ctrl+Shift+B - TermLens Term Picker (v1.10.87 — Trados parity).
         # Modal tabular dialog listing all matches for the current segment
         # with synonym expand/collapse + digit quick-pick. Complements the
         # lone-Ctrl TermLens-mirror popup: same data, different ergonomics.
-        term_picker_shortcut = create_shortcut("term_picker", "Ctrl+Shift+P", self.show_term_picker_dialog)
+        # v1.10.89: switched from Ctrl+Shift+P to Ctrl+Shift+B because the
+        # Scratchpad menu action already binds Ctrl+Shift+P; the conflict
+        # silently dropped the term_picker shortcut. B = termBase picker.
+        term_picker_shortcut = create_shortcut("term_picker", "Ctrl+Shift+B", self.show_term_picker_dialog)
         term_picker_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
     def add_comment_from_selection(self):
@@ -8744,7 +8747,7 @@ class SupervertalerQt(QMainWindow):
         popup.setFocus()
 
     def show_term_picker_dialog(self):
-        """Show the TermLens Term Picker modal dialog (Ctrl+Shift+P).
+        """Show the TermLens Term Picker modal dialog (Ctrl+Shift+B).
 
         v1.10.87 — parity with the Trados TermPickerDialog. A tabular
         grid of all matches for the current segment with synonym

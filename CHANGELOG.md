@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.88 (May 18, 2026)
+**Current Version:** v1.10.89 (May 18, 2026)
+
+
+## v1.10.89 – May 18, 2026
+
+### Fixed (TermLens-mirror popup: keyboard navigation, Esc-to-close, sane width — and the missing Term Picker shortcut)
+
+Four issues caught the moment v1.10.87 went on-screen. All four come from foot-guns specific to frameless top-level Qt popups, which I underestimated on the first pass:
+
+**1. Arrow keys went to the segment grid, not the popup.** The v1.10.87 popup used `Qt.WindowType.Tool | FramelessWindowHint`. Tool windows on Windows don't auto-activate, so when the popup appeared, keyboard focus stayed on whichever widget had it before (almost always the segment-grid table). Result: Right / Left / Down / Up navigated the grid rows underneath the popup instead of cycling chips inside it. Fix: use `Qt.WindowType.Dialog | FramelessWindowHint` (Dialog activates on show) plus explicit `raise_() + activateWindow() + setFocus(PopupFocusReason)` in `showEvent`. Together those three calls guarantee the popup wins focus on Windows, including from inside a still-active QTableWidget.
+
+**2. Esc didn't close the popup.** Same root cause as #1 — Esc went to whatever had focus (the grid), not to our `keyPressEvent`. Same fix: once focus is on the popup, Esc lands in our handler and closes cleanly.
+
+**3. Popup rendered too narrow and too tall.** v1.10.87 had a `_shrink_to_content` pass that read `self._inner.sizeHint()` shortly after construction. For a `FlowLayout`-based widget that's near-zero — FlowLayout doesn't report a meaningful preferred size — so we shrunk the popup to ≈ 350 px wide × 600 px tall, with chips stacking one or two per row. Replaced the shrink with a fixed default size scaled to the screen the cursor is on (`560–980 px wide × 220–380 px tall`), letting the FlowLayout wrap chips to 4–6 per row, with the inner scroll area handling overflow on the rare ultra-long segment.
+
+**4. Ctrl+Shift+P did nothing.** The Scratchpad menu action already binds `Ctrl+Shift+P` (set at QAction level, not via the shortcut manager), and our new QShortcut on the same key combo lost the conflict silently. Switched the Term Picker default to `Ctrl+Shift+B` (termBase picker — clear mnemonic, previously unbound). Users who customised the default still have whatever they set via the shortcut manager; only the out-of-the-box default changed.
+
+**5. focusOutEvent was too aggressive.** While debugging, found that the v1.10.87 `focusOutEvent` close fired every time focus moved *inside* the popup (e.g. between the chip area and the hint label as a side effect of layout passes), not just when the popup itself lost top-level focus. Replaced with a `changeEvent`-based check on `QEvent.Type.ActivationChange` — that fires only when the popup window becomes inactive (focus moved to a different top-level window). Combined with the existing mouse-move auto-close, the popup now feels properly disposable without false closures.
+
+Net effect: pressing the popup shortcut now actually puts focus on the popup, arrow keys cycle chips, 1–9 inserts, E opens the editor, I toggles the metadata sticky popup, Esc closes. `Ctrl+Shift+B` opens the Term Picker. The popup renders at a comfortable 600-980 px wide so chips wrap horizontally like the docked panel.
 
 
 ## v1.10.88 – May 18, 2026

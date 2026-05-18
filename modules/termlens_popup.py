@@ -105,18 +105,25 @@ class TermLensPopup(QFrame):
         font_size: int = 10,
         font_bold: bool = False,
     ):
-        # No window flags + WA_DeleteOnClose + frameless: standard
-        # ephemeral-popup recipe. We deliberately don't use
-        # Qt.WindowType.Popup here because Popup would close as soon as
-        # ANY click happens elsewhere on the screen — we want focus loss
-        # to close, but we also want our own context menus + the sticky
-        # metadata popup to remain interactive while we're shown.
+        # Frameless Dialog: takes keyboard focus on show() (Tool doesn't
+        # activate on Windows, which is why v1.10.87 had broken arrow-key
+        # navigation — keystrokes went to the segment-grid behind the
+        # popup instead). Dialog auto-activates and accepts focus events.
+        # Popup window flag would auto-close on any outside click, which
+        # we DON'T want because clicking the metadata sticky popup would
+        # close us; the metadata popup uses ToolTip flags so it doesn't
+        # take focus, and we close ourselves on window-deactivate instead.
         super().__init__(
             host_widget,
-            Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint,
+            Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint,
         )
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # The popup itself MUST be the focus target — otherwise key
+        # events bubble to whichever child happens to be focusable
+        # first and our keyPressEvent never fires. StrongFocus on the
+        # popup + Click focus on the inner widget keeps the popup
+        # as the keyboard target while still letting chip clicks work.
 
         self._host_widget = host_widget
         self._theme_manager = theme_manager
@@ -230,49 +237,30 @@ class TermLensPopup(QFrame):
         card_layout.addWidget(self._hint_label)
 
         # ── Initial sizing ────────────────────────────────────────────
-        # Pick a reasonable starting size relative to the screen so long
-        # sentences don't overflow. The inner widget's scroll area
-        # handles anything beyond what fits.
-        screen = QApplication.primaryScreen()
+        # v1.10.89: fixed default size instead of the broken
+        # _shrink_to_content from v1.10.87, which read
+        # ``inner.sizeHint()`` — a near-zero value for FlowLayout-based
+        # widgets — and ended up collapsing the popup to one chip wide
+        # by ~600 px tall. Picking a sensible default (≈ 60 % of screen
+        # width, capped) lets the FlowLayout wrap chips to 4–6 per row
+        # without us trying to second-guess its preferred dimensions.
+        # The inner scroll area handles any overflow on very long
+        # segments.
+        screen = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
         if screen is not None:
             sg = screen.availableGeometry()
-            max_w = min(int(sg.width() * 0.6), 1200)
-            max_h = min(int(sg.height() * 0.6), 500)
+            target_w = max(560, min(int(sg.width() * 0.55), 980))
+            target_h = max(220, min(int(sg.height() * 0.40), 380))
         else:
-            max_w = 900
-            max_h = 400
-        self.resize(max_w, max_h)
-        # Defer the shrink-to-content pass until after Qt has run a
-        # layout pass on the inner widget. adjustSize() inside __init__
-        # measures the pre-layout placeholder which is wrong.
-        QTimer.singleShot(0, self._shrink_to_content)
+            target_w = 760
+            target_h = 320
+        self.resize(target_w, target_h)
 
         # ── Highlight the first chip ──────────────────────────────────
         blocks = self._inner.get_term_blocks()
         if blocks:
             self._current_index = 0
             blocks[0].set_current(True)
-
-    def _shrink_to_content(self):
-        """Resize to fit the contents (called once after the first layout).
-
-        The TermLensWidget has a scroll area inside; without a shrink
-        pass we'd have a huge empty popup for short segments.
-        """
-        try:
-            # Ask the inner widget for its preferred size, then add the
-            # card+frame padding and our hint label.
-            hint = self._inner.sizeHint()
-            extra_w = 18  # card + frame horizontal padding
-            extra_h = 18 + self._hint_label.sizeHint().height() + 8
-            target_w = min(max(hint.width() + extra_w, 320), self.width())
-            target_h = min(max(hint.height() + extra_h, 100), self.height())
-            self.resize(target_w, target_h)
-            self._position_near_cursor()
-        except Exception:
-            # Sizing is decorative — never let a measurement glitch
-            # tear down the popup.
-            pass
 
     # ── Positioning ──────────────────────────────────────────────────────
 
@@ -427,6 +415,13 @@ class TermLensPopup(QFrame):
             self._auto_close_timer.setInterval(75)
             self._auto_close_timer.timeout.connect(self._on_auto_close_tick)
         self._auto_close_timer.start()
+        # v1.10.89 — explicit activation. Without raise_/activateWindow,
+        # frameless top-level Dialog windows on Windows sometimes paint
+        # without becoming the active window, leaving keyboard focus on
+        # whatever was active before (typically the segment grid).
+        self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.FocusReason.PopupFocusReason)
 
     def _on_auto_close_tick(self):
         if not self.isVisible() or self._initial_cursor_pos is None:
@@ -441,14 +436,21 @@ class TermLensPopup(QFrame):
                 self._auto_close_timer.stop()
             self.close()
 
-    def focusOutEvent(self, event):
-        super().focusOutEvent(event)
-        if self._suppress_focus_close:
-            return
-        # Closing on focus loss is what makes the popup feel ephemeral.
-        # The TermPopup metadata popup uses Tool window flags + doesn't
-        # take focus, so hovering doesn't trigger this path.
-        QTimer.singleShot(0, self.close)
+    def changeEvent(self, event):
+        # v1.10.89 — close on WINDOW deactivate (focus moves to another
+        # top-level window) rather than on FOCUS out (which fires every
+        # time a child widget gains/loses focus inside the popup,
+        # closing us prematurely whenever the user pressed any key).
+        # The TermPopup metadata popup uses ToolTip window flags so
+        # showing it doesn't deactivate us — that path is safe.
+        super().changeEvent(event)
+        try:
+            from PyQt6.QtCore import QEvent
+            if event.type() == QEvent.Type.ActivationChange:
+                if not self.isActiveWindow() and not self._suppress_focus_close:
+                    QTimer.singleShot(0, self.close)
+        except Exception:
+            pass
 
     # ── Lifecycle ────────────────────────────────────────────────────────
 
