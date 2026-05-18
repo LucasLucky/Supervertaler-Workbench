@@ -2,7 +2,37 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.86 (May 18, 2026)
+**Current Version:** v1.10.87 (May 18, 2026)
+
+
+## v1.10.87 – May 18, 2026
+
+### Added (Trados-parity term-insertion shortcuts: TermLens-mirror popup on Ctrl, Term Picker grid on Ctrl+Shift+P)
+
+Two separate term-insertion paths now, matching the Trados plugin exactly. The user side-by-sided the Workbench Ctrl popup against Trados's and asked for parity: "I want to mirror this functionality in Supervertaler Workbench, so both different shortcuts with the two systems."
+
+**Ctrl (lone tap) — TermLens-mirror popup.** Replaces the v1.10.x numbered-list "Insert term or non-translatable" popup with a borderless floating mirror of the docked TermLens panel. Same chip rendering as the panel (same colours — pink for project, blue for regular, amber for NT, red for forbidden, purple for abbreviation matches — same +N badge, same ≡ / ℹ corner indicators, same hover sticky popups), positioned at the cursor.
+
+Keyboard inside the popup:
+
+  - Right / Down / Tab → next chip (wraps); Left / Up → previous chip
+  - Enter → insert the highlighted chip
+  - 1–9 → directly insert chip N (same numbering as the docked panel's Alt+N shortcut, so muscle memory carries over)
+  - E → open the editor for the highlighted chip (popup closes first, dialog opens on top)
+  - I → toggle the sticky metadata popup for the highlighted chip
+  - Esc → close
+
+Auto-closes on mouse movement >4 px, focus loss, or any unhandled key — with a pure-modifier carve-out so the Ctrl-release that opens the popup doesn't immediately close it. The numbered-list `modules/term_insert_popup.py` is removed. New `modules/termlens_popup.py` does the wrapping; it embeds a `TermLensWidget` in a new "popup mode" (zoom buttons + refresh + info label hidden, tighter margins) and layers cycling + auto-close + insertion-guard logic on top. Single-flight insert guard against click + Enter racing for the same chip.
+
+`TermBlock` and `NTBlock` gain a `set_current(bool)` method that draws a 2-px blue (or amber, for NT) rounded outline around the chip via a new `paintEvent` — the docked panel never calls it, so the docked rendering is unchanged. `TermLensWidget` gains `get_term_blocks()` (returns the ordered chip list — mirrors Trados's `BuildSegmentBlocks` factory in spirit) and `set_popup_mode(bool)` (toggles the chrome).
+
+**Ctrl+Shift+P — Term Picker modal dialog.** New tabular grid showing all matches for the current segment with columns `#`, source-lang, target-lang, Termbase. Synonyms collapse by default as a `▸` indicator in the `#` column; Right-arrow expands to `▾` with indented `└` sub-rows. Row backgrounds: pink for project termbase, blue for regular, amber for NT, grey for synonym sub-rows. Keyboard: ↑/↓ navigate (with wrap), ←/→ collapse/expand, Enter inserts, 0–9 selects + auto-inserts (auto-insert only fires when total matches ≤9, to avoid surprising the user when their digit was meant as the leading digit of a two-digit number).
+
+New `modules/term_picker_dialog.py` (~330 lines) holds `TermPickerDialog` + a `build_picker_matches()` helper that converts the raw segment match data into the dialog's row schema (groups multiple termbase entries on the same source word as primary + synonym sub-rows). Dialog size + column widths persist via the main settings dict — `Supervertaler._term_picker_settings` — so the user's preferred layout sticks across sessions.
+
+Wired up in `Supervertaler.py` via the existing `create_shortcut("term_picker", "Ctrl+Shift+P", …)` helper with `ApplicationShortcut` context so the binding survives focus being in any QTextEdit. The lone-Ctrl-tap event filter (`_LoneCtrlEventFilter`) is unchanged — it still calls `show_term_insert_popup` — only the popup body that method shows is new.
+
+Net effect: Workbench and Trados now offer the same two-shortcut, two-popup paradigm. Ctrl for fast "I know what I want, insert it" flow; Ctrl+Shift+P for "let me look at the full grid, including synonyms, before I commit".
 
 
 ## v1.10.86 – May 18, 2026

@@ -442,8 +442,46 @@ class TermBlock(QWidget):
             self.term_id = first_trans.get('term_id')
             self.termbase_id = first_trans.get('termbase_id')
             self.target_term = first_trans.get('target_term', first_trans.get('target', ''))
+        # v1.10.87 — "current chip" highlight for the TermLens popup's
+        # keyboard navigation. False by default (chips don't show the
+        # ring in the docked panel); set to True from the popup when
+        # the user arrows onto this chip. Drawn in paintEvent.
+        self._is_current = False
         self.init_ui()
-        
+
+    def set_current(self, current: bool):
+        """Toggle the 'current selection' highlight ring around the chip.
+
+        Used by the TermLensPopup keyboard cycle (Right/Left/Tab) to
+        indicate which match Enter / E / I will act on. No-op in the
+        docked TermLens panel where keyboard cycling isn't a thing.
+        """
+        if self._is_current == current:
+            return
+        self._is_current = current
+        self.update()  # request a repaint so paintEvent re-draws (or removes) the ring
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._is_current:
+            return
+        chip = getattr(self, 'target_container', None)
+        if chip is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#1976D2"))  # Material-blue 700 — matches the shortcut badge
+        pen.setWidth(2)
+        painter.setPen(pen)
+        # Inset by 1 px so the 2-px stroke sits flush with the chip's
+        # rounded border instead of being clipped against the TermBlock
+        # edge. Add a small extra margin around the chip itself so the
+        # ring is clearly visible rather than blending into the chip
+        # background.
+        rect = chip.geometry().adjusted(-2, -2, 2, 2)
+        painter.drawRoundedRect(rect, 5, 5)
+        painter.end()
+
     def init_ui(self):
         """Create the visual layout for this term block - COMPACT RYS-style"""
         layout = QVBoxLayout(self)
@@ -1110,8 +1148,31 @@ class NTBlock(QWidget):
         self.font_bold = font_bold
         self.term_id = term_id
         self.termbase_id = termbase_id
+        # v1.10.87 — current-chip highlight ring (TermLensPopup keyboard cycle).
+        self._is_current = False
+        self.nt_label = None
         self.init_ui()
-        
+
+    def set_current(self, current: bool):
+        """Toggle the 'current selection' highlight ring (TermLensPopup nav)."""
+        if self._is_current == current:
+            return
+        self._is_current = current
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self._is_current or self.nt_label is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#F9A825"))  # amber 700 — matches the NT yellow palette
+        pen.setWidth(2)
+        painter.setPen(pen)
+        rect = self.nt_label.geometry().adjusted(-2, -2, 2, 2)
+        painter.drawRoundedRect(rect, 5, 5)
+        painter.end()
+
     def init_ui(self):
         """Create the visual layout for this NT block - pastel yellow styling"""
         layout = QVBoxLayout(self)
@@ -1168,6 +1229,9 @@ class NTBlock(QWidget):
         """)
         nt_label.setCursor(Qt.CursorShape.PointingHandCursor)
         nt_label.mousePressEvent = lambda e: self.on_nt_clicked()
+        # v1.10.87 — stored as attribute so paintEvent's focus ring
+        # has a chip rect to draw around when set_current(True) is called.
+        self.nt_label = nt_label
 
         tooltip_extra = ""
         if self.term_id and self.termbase_id:
@@ -2250,6 +2314,61 @@ class TermLensWidget(QWidget):
             item = self.terms_layout.takeAt(0)
             if item and item.widget():
                 item.widget().deleteLater()
+
+    # v1.10.87 — helpers used by the TermLensPopup (the floating Ctrl-tap
+    # popup that mirrors the docked panel for keyboard-only insertion).
+    def get_term_blocks(self):
+        """Return the ordered list of TermBlock / NTBlock children currently
+        rendered in the flow layout.
+
+        Mirrors the Trados ``TermLensControl.BuildSegmentBlocks`` factory
+        in spirit: the popup walks this list to wire keyboard cycling
+        and to know which match a given shortcut number maps to. The
+        order is exactly the same as the visual flow (left-to-right,
+        top-to-bottom) so Right-arrow / Tab advances in reading order.
+        """
+        blocks = []
+        for i in range(self.terms_layout.count()):
+            item = self.terms_layout.itemAt(i)
+            widget = item.widget() if item is not None else None
+            if isinstance(widget, (TermBlock, NTBlock)):
+                blocks.append(widget)
+        return blocks
+
+    def set_popup_mode(self, enabled: bool):
+        """Slim the widget for use inside the TermLensPopup.
+
+        Hides the docked-panel chrome (font zoomer, refresh button, info
+        label) and reduces outer margins, so the popup feels like just
+        the chip grid floating at the cursor. The chips themselves are
+        unchanged — same colours, same indicators, same hover popups —
+        which is the whole point of reusing the docked widget rather
+        than reimplementing the renderer in parallel.
+
+        Idempotent; safe to call repeatedly.
+        """
+        # Hide the zoom-row controls if they exist (they're created in
+        # init_ui via attributes; the row layout itself can't easily be
+        # hidden, so we hide the individual buttons instead).
+        for attr in ('_btn_refresh', '_btn_font_down', '_btn_font_up'):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                btn.setVisible(not enabled)
+        if hasattr(self, 'info_label') and self.info_label is not None:
+            self.info_label.setVisible(not enabled)
+        # Tighter outer margins inside the popup card.
+        outer = self.layout()
+        if outer is not None:
+            if enabled:
+                outer.setContentsMargins(2, 2, 2, 2)
+                outer.setSpacing(0)
+            else:
+                outer.setContentsMargins(5, 5, 5, 5)
+                outer.setSpacing(5)
+        # Drop the scroll area's frame inside the popup so the only
+        # visible border is the popup's own outer border.
+        if hasattr(self, 'scroll') and self.scroll is not None:
+            self.scroll.setFrameShape(QFrame.Shape.NoFrame if enabled else QFrame.Shape.StyledPanel)
     
     def on_term_insert_requested(self, source_term: str, target_term: str):
         """Handle request to insert a translation"""

@@ -8228,6 +8228,13 @@ class SupervertalerQt(QMainWindow):
         # Use ApplicationShortcut context so it works even when focus is in QTextEdit widgets
         mt_quick_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
+        # Ctrl+Shift+P - TermLens Term Picker (v1.10.87 — Trados parity).
+        # Modal tabular dialog listing all matches for the current segment
+        # with synonym expand/collapse + digit quick-pick. Complements the
+        # lone-Ctrl TermLens-mirror popup: same data, different ergonomics.
+        term_picker_shortcut = create_shortcut("term_picker", "Ctrl+Shift+P", self.show_term_picker_dialog)
+        term_picker_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+
     def add_comment_from_selection(self):
         """Create a new Comment anchored to the text selected in the source
         or target cell of the focused row (Ctrl+M).
@@ -8629,20 +8636,27 @@ class SupervertalerQt(QMainWindow):
                 print(f"[Trados bridge] Error handling prompt: {e}")
 
     def show_term_insert_popup(self):
-        """Show memoQ-style popup listing glossary terms + NTs for the current segment.
+        """Show the TermLens-mirror popup for the current segment.
 
         Triggered by a lone Ctrl tap (press and release Ctrl with no other key).
-        Displays a numbered list (1–9) of all termbase matches
-        and non-translatables found in the current segment's source text. The user can:
-          - Press 1–9 to insert directly
-          - Use ↑↓ + Enter to navigate and insert
-          - Press Esc to dismiss
+        v1.10.87 replaced the previous memoQ-style numbered-list popup with a
+        floating mirror of the docked TermLens panel — same chip rendering,
+        same colours, same metadata indicators — adding keyboard cycling and
+        per-chip Edit / Info shortcuts so the popup matches the Trados
+        plugin's TermLensPopupForm behaviour.
 
-        Glossary terms appear with normal (white/blue) styling; NTs appear with a
-        yellow background and a 🚫 icon so they're immediately distinguishable.
+        Keyboard inside the popup:
+          - Right / Down / Tab  → next chip (wraps)
+          - Left / Up           → previous chip
+          - Enter               → insert current chip
+          - 1–9                 → insert chip N directly
+          - E                   → open editor for current chip
+          - I                   → toggle metadata sticky popup for current chip
+          - Esc                 → close
 
-        Smart single-item shortcut: if there is exactly one NT and no glossary terms,
-        the NT text is inserted directly without showing a popup.
+        Auto-closes on mouse movement (>4 px), focus loss, or any other key
+        that isn't a pure modifier. Single-NT shortcut behaviour preserved:
+        a single NT with no termbase matches inserts directly without a popup.
         """
         if not self.current_project:
             return
@@ -8654,46 +8668,144 @@ class SupervertalerQt(QMainWindow):
         segment = self.current_project.segments[current_row]
         segment_id = segment.id
 
-        # ── Gather glossary matches from cache ──────────────────────────
+        # ── Gather termbase matches from cache ────────────────────────
         with self.termbase_cache_lock:
             raw_tb = dict(self.termbase_cache.get(segment_id, {}))
 
-        glossary_matches = []
+        termbase_matches = []
         for match in raw_tb.values():
             if not isinstance(match, dict):
                 continue
-            glossary_matches.append({
-                "source_term":   match.get("source", ""),
-                "target_term":   match.get("translation", ""),
-                "termbase_name": match.get("termbase_name", ""),
-                "ranking":       match.get("ranking", 0),
-                "term_id":       match.get("term_id"),
-                "termbase_id":   match.get("termbase_id"),
-            })
-        # Sort: project glossary (1) first, then alphabetically
-        glossary_matches.sort(key=lambda x: (-x["ranking"], x["source_term"].lower()))
+            # Pass through ALL fields the chip renderer cares about
+            # (synonyms, abbreviations, metadata, forbidden/NT flags)
+            # — pre-v1.10.87 we projected to a thin 6-field dict and
+            # the popup chips silently lost all the metadata indicators
+            # the docked panel showed. The TermLensWidget normalises
+            # the field aliases (source vs source_term, translation
+            # vs target_term), so we can hand it the raw dict.
+            forward = dict(match)
+            forward.setdefault('source_term', match.get('source', ''))
+            forward.setdefault('target_term', match.get('translation', ''))
+            termbase_matches.append(forward)
+        # Sort: project termbase (ranking=1) first, then alphabetically
+        # — same ordering the docked panel uses so the popup chips
+        # appear in identical order.
+        termbase_matches.sort(
+            key=lambda x: (-(x.get('ranking') or 0), (x.get('source_term') or '').lower())
+        )
 
-        # ── Gather NT matches ────────────────────────────────────────────
+        # ── Gather NT matches ────────────────────────────────────────
         nt_matches = self.find_nt_matches_in_source(segment.source)
 
-        if not glossary_matches and not nt_matches:
+        if not termbase_matches and not nt_matches:
             self.statusBar().showMessage("No terms or NTs found for this segment", 2000)
             return
 
         # Smart single-NT shortcut: skip the popup
-        if not glossary_matches and len(nt_matches) == 1:
+        if not termbase_matches and len(nt_matches) == 1:
             self.insert_termlens_text(nt_matches[0]["text"])
             return
 
-        # ── Show popup ───────────────────────────────────────────────────
-        from modules.term_insert_popup import TermInsertPopup
-        popup = TermInsertPopup(glossary_matches, nt_matches, parent=self)
+        # ── Show TermLens-mirror popup ───────────────────────────────
+        from modules.termlens_popup import TermLensPopup
+        # Pull the user's TermLens font settings so the popup chips
+        # render at the same size the docked panel does. Read from the
+        # general-settings JSON via the helper that the General-tab
+        # config UI also uses, so the popup automatically stays in sync
+        # with whatever the user has set there.
+        font_family = 'Segoe UI'
+        font_size = 10
+        font_bold = False
+        try:
+            gen = self.load_general_settings() if hasattr(self, 'load_general_settings') else {}
+            if isinstance(gen, dict):
+                font_family = gen.get('termlens_font_family', font_family)
+                font_size = int(gen.get('termlens_font_size', font_size))
+                font_bold = bool(gen.get('termlens_font_bold', font_bold))
+        except Exception:
+            pass
+        popup = TermLensPopup(
+            source_text=segment.source,
+            termbase_matches=termbase_matches,
+            nt_matches=nt_matches,
+            host_widget=self,
+            theme_manager=getattr(self, 'theme_manager', None),
+            db_manager=getattr(self, 'db_manager', None),
+            log_callback=self.log if hasattr(self, 'log') else None,
+            font_family=font_family,
+            font_size=font_size,
+            font_bold=font_bold,
+        )
         popup.term_inserted.connect(self.insert_termlens_text)
-        # Edit (E key or right-click) closes the popup itself first, then
-        # asks the main window to open the existing TermLens editor dialog.
+        # Edit (E key) closes the popup itself first, then asks the
+        # main window to open the existing TermLens editor dialog.
         popup.edit_requested.connect(self._on_termlens_edit_entry)
         popup.show()
         popup.setFocus()
+
+    def show_term_picker_dialog(self):
+        """Show the TermLens Term Picker modal dialog (Ctrl+Shift+P).
+
+        v1.10.87 — parity with the Trados TermPickerDialog. A tabular
+        grid of all matches for the current segment with synonym
+        expand/collapse and number-key quick-pick. Use cases:
+          - Comparing many alternatives at once when several termbases
+            return overlapping hits and the chip grid feels crowded.
+          - Keyboard-only insertion via 0-9 when ≤9 matches (auto-
+            inserts on digit press); otherwise digit selects + Enter
+            inserts.
+        """
+        if not self.current_project:
+            return
+        current_row = self.table.currentRow()
+        if current_row < 0 or current_row >= len(self.current_project.segments):
+            self.statusBar().showMessage("No segment selected", 2000)
+            return
+
+        segment = self.current_project.segments[current_row]
+        segment_id = segment.id
+
+        with self.termbase_cache_lock:
+            raw_tb = dict(self.termbase_cache.get(segment_id, {}))
+
+        termbase_matches = []
+        for match in raw_tb.values():
+            if not isinstance(match, dict):
+                continue
+            forward = dict(match)
+            forward.setdefault('source_term', match.get('source', ''))
+            forward.setdefault('target_term', match.get('translation', ''))
+            termbase_matches.append(forward)
+        termbase_matches.sort(
+            key=lambda x: (-(x.get('ranking') or 0), (x.get('source_term') or '').lower())
+        )
+        nt_matches = self.find_nt_matches_in_source(segment.source)
+
+        if not termbase_matches and not nt_matches:
+            self.statusBar().showMessage("No terms or NTs found for this segment", 2000)
+            return
+
+        from modules.term_picker_dialog import TermPickerDialog, build_picker_matches
+        # Persist size + column widths via the main settings dict if
+        # we have one. Falls back to an in-process dict that resets
+        # on app restart.
+        if not hasattr(self, '_term_picker_settings'):
+            self._term_picker_settings = {}
+
+        rows = build_picker_matches(termbase_matches, nt_matches)
+        dlg = TermPickerDialog(
+            matches=rows,
+            settings=self._term_picker_settings,
+            parent=self,
+            source_lang_label=(
+                getattr(self.current_project, 'source_language', None) or 'Source'
+            ),
+            target_lang_label=(
+                getattr(self.current_project, 'target_language', None) or 'Target'
+            ),
+        )
+        if dlg.exec() == dlg.DialogCode.Accepted and dlg.selected_target_term:
+            self.insert_termlens_text(dlg.selected_target_term)
 
     def show_mt_quick_popup(self, text_override: str = None):
         """Show GT4T-style MT Quick Lookup popup with translations from all enabled MT engines.
