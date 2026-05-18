@@ -1519,6 +1519,27 @@ class TermLensWidget(QWidget):
         self._btn_font_up.clicked.connect(lambda: self._change_font_size(+1))
         zoom_row.addWidget(self._btn_font_up)
 
+        # v1.10.99 — contextual help button for the docked TermLens
+        # panel. Sits at the far right of the header row, alongside
+        # the refresh + font-zoom buttons. Routes through the global
+        # ``help_system.open_help`` helper so its behaviour matches
+        # F1 + every other in-app ? affordance.
+        zoom_row.addSpacing(6)
+        self._btn_help = QPushButton("?")
+        help_font = QFont("Segoe UI", 9)
+        help_font.setBold(True)
+        self._btn_help.setFont(help_font)
+        self._btn_help.setFixedSize(22, 20)
+        self._btn_help.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_help.setToolTip(
+            "Open help for TermLens (F1)\n\n"
+            "Opens https://help.supervertaler.com/workbench/termbases/termlens/\n"
+            "in your browser."
+        )
+        self._btn_help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_help.clicked.connect(self._on_help_clicked)
+        zoom_row.addWidget(self._btn_help)
+
         layout.addLayout(zoom_row)
 
         # Scroll area for term blocks
@@ -1643,6 +1664,22 @@ class TermLensWidget(QWidget):
                 except Exception:
                     pass
             QTimer.singleShot(500, _restore)
+
+    def _on_help_clicked(self):
+        """Open the TermLens help page in the user's default browser.
+
+        Routed through the global ``help_system.open_help`` helper so the
+        URL resolution (Topics constant → full help.supervertaler.com URL)
+        stays consistent with F1 and every other in-app ? button. Wrapped
+        in try/except because the help-system module is optional from
+        the widget's perspective — if it fails to import for any reason,
+        the click silently does nothing rather than crashing the widget.
+        """
+        try:
+            from modules.help_system import open_help, Topics
+            open_help(Topics.GLOSSARY_TERMLENS)
+        except Exception:
+            pass
 
     def _change_font_size(self, delta: int):
         """Bump the TermLens font size by ±delta points (clamped) and refresh.

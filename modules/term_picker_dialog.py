@@ -54,6 +54,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -146,7 +147,7 @@ class TermPickerDialog(QDialog):
         self._tree.installEventFilter(self)
         outer.addWidget(self._tree, stretch=1)
 
-        # ── Bottom row: hint + buttons ────────────────────────────────
+        # ── Bottom row: hint + help + buttons ──────────────────────────
         bottom = QHBoxLayout()
         bottom.setSpacing(6)
         self._hint_label = QLabel(
@@ -154,6 +155,34 @@ class TermPickerDialog(QDialog):
         )
         self._hint_label.setStyleSheet("color: #888; font-size: 8pt;")
         bottom.addWidget(self._hint_label, stretch=1)
+
+        # v1.10.99 — contextual help button. Routed through the global
+        # help_system so the URL resolution stays consistent with F1.
+        self._help_btn = QPushButton("?")
+        self._help_btn.setFixedSize(22, 22)
+        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._help_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._help_btn.setToolTip("Open help for the Term Picker (F1)")
+        self._help_btn.setStyleSheet(
+            """
+            QPushButton {
+                border: 1px solid #BDBDBD;
+                border-radius: 11px;
+                background: #FAFAFA;
+                color: #555;
+                font-size: 10pt;
+                font-weight: bold;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: #E3F2FD;
+                border-color: #1976D2;
+                color: #1565C0;
+            }
+            """
+        )
+        self._help_btn.clicked.connect(self._open_help)
+        bottom.addWidget(self._help_btn)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
@@ -166,6 +195,21 @@ class TermPickerDialog(QDialog):
         self._buttons.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(self.reject)
         bottom.addWidget(self._buttons)
         outer.addLayout(bottom)
+
+        # Tag the dialog itself so F1 anywhere inside it walks up to here.
+        try:
+            from modules.help_system import set_topic, Topics
+            set_topic(self, Topics.GLOSSARY_TERM_PICKER)
+        except Exception:
+            pass
+
+    def _open_help(self):
+        """Open the Term Picker help page in the default browser."""
+        try:
+            from modules.help_system import open_help, Topics
+            open_help(Topics.GLOSSARY_TERM_PICKER)
+        except Exception:
+            pass
 
     # ── Population ──────────────────────────────────────────────────────
 

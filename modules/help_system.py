@@ -119,12 +119,17 @@ class Topics:
     # call site across the GUI. The constants are pure data; only
     # their *values* (the URL slugs) need to change for the
     # in-app Help button to land on the right page.
-    GLOSSARY_BASICS     = "workbench/termbases/basics/"
-    GLOSSARY_CREATING   = "workbench/termbases/creating/"
-    GLOSSARY_IMPORTING  = "workbench/termbases/importing/"
-    GLOSSARY_HIGHLIGHT  = "workbench/termbases/highlighting/"
-    GLOSSARY_TERMLENS   = "workbench/termbases/termlens/"
-    GLOSSARY_EXTRACTION = "workbench/termbases/extraction/"
+    GLOSSARY_BASICS         = "workbench/termbases/basics/"
+    GLOSSARY_CREATING       = "workbench/termbases/creating/"
+    GLOSSARY_IMPORTING      = "workbench/termbases/importing/"
+    GLOSSARY_HIGHLIGHT      = "workbench/termbases/highlighting/"
+    GLOSSARY_TERMLENS       = "workbench/termbases/termlens/"
+    # v1.10.99 — sub-pages for the on-demand TermLens views, added to
+    # the help repo when the Workbench Ctrl-tap popup + Ctrl+Shift+B
+    # picker reached feature parity with the Trados side.
+    GLOSSARY_TERMLENS_POPUP = "workbench/termbases/termlens-popup/"
+    GLOSSARY_TERM_PICKER    = "workbench/termbases/term-picker/"
+    GLOSSARY_EXTRACTION     = "workbench/termbases/extraction/"
 
     # Import & Export (folder is workbench/import-export/ on disk)
     IMPORT_FORMATS      = "workbench/import-export/formats/"

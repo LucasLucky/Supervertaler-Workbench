@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.98 (May 18, 2026)
+**Current Version:** v1.10.99 (May 18, 2026)
+
+
+## v1.10.99 – May 18, 2026
+
+### Added (contextual ? help buttons on the TermLens popup, Term Picker dialog, and docked TermLens panel)
+
+User request: "Could we add contextual question marks that link to the relevant help pages on the Term Picker and TermLens pop-up, as well as on the TermLens window in Supervertaler Workbench?"
+
+Three small `?` buttons added, each routed through the existing `modules/help_system.open_help()` helper so the URL resolution stays consistent with F1 and every other in-app ? affordance:
+
+- **Docked TermLens panel** — `?` button at the far right of the header row, alongside the existing 🔄 refresh button and A-/A+ font-zoomers. Opens `workbench/termbases/termlens/`.
+- **TermLens popup (Ctrl tap)** — `?` button at the right edge of the keyboard-hint row at the bottom, balanced by a same-width spacer on the left so the centred hint label stays visually centred. Opens `workbench/termbases/termlens-popup/`.
+- **Term Picker dialog (Ctrl+Shift+B)** — `?` button between the hint label and the Insert / Cancel buttons in the dialog footer. Opens `workbench/termbases/term-picker/`.
+
+Two new `Topics` constants — `GLOSSARY_TERMLENS_POPUP` and `GLOSSARY_TERM_PICKER` — match the two new help pages added to the Supervertaler-Help repo earlier today. All three buttons also `set_topic` on their containing widget so F1 anywhere inside the popup / dialog / panel falls through to the same help page via the global `_HelpEventFilter`. The popup's button suppresses focus-close around the browser launch so the popup doesn't tear itself down when focus shifts to the new browser window.
 
 
 ## v1.10.98 – May 18, 2026
