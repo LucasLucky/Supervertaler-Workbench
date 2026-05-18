@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.84 (May 18, 2026)
+**Current Version:** v1.10.85 (May 18, 2026)
+
+
+## v1.10.85 – May 18, 2026
+
+### Fixed (TermLens synonym indicator no longer false-positives on chips that just have multiple termbase hits)
+
+The indigo ≡ corner indicator on a chip is supposed to mean "this entry has synonyms" — extra source spellings or extra target equivalents recorded in `termbase_synonyms` for that term. v1.10.83/v1.10.84 had a leftover fallback in the `has_synonyms` computation that *also* triggered the indicator whenever a chip had more than one translation in its stack, on the theory that the `+N` more-translations badge was "synonyms-ish". It's not. When BRANTS has "inrichting → device" and PATENTS has "apparatus → inrichting", that chip has `len(translations) == 2` — two unrelated termbase entries that happen to share a source word — but neither entry has any actual synonyms. The user got a misleading ≡ indicator promising synonyms they wouldn't find by right-clicking either entry.
+
+Reported by a user: "the word inrichting = device has a synonym indicator. However, when I right click on the term and look at it and both of its different term-base entries, none of them have a synonym. 'verbinding = bond' also has a synonym indicator, but when I opened it, one of its term-base entries does have a synonym, so this one's correct."
+
+Fix: removed the `or len(self.translations) > 1` fallback in `TermBlock.init_ui`'s `has_synonyms` calculation. The indicator now appears only when at least one translation in the stack carries actual synonym data — either an explicit `source_synonyms`/`target_synonyms` list on the primary entry, or the `is_synonym=True` marker on entries that `build_matches_dict` inlined from a parent's `target_synonyms`. The `+N` badge continues to signal "there are more options here" on its own — it never needed the ≡ icon to make that clear.
+
+Net effect: ≡ indicators only show up where they're truthful. Chips with multiple cross-termbase hits but no synonym records render with just the `+N` badge and (if applicable) the amber ℹ metadata dot, no false synonym promise.
 
 
 ## v1.10.84 – May 18, 2026

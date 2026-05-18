@@ -570,16 +570,27 @@ class TermBlock(QWidget):
                 bool((t or {}).get('url'))
                 for t in self.translations
             )
+            # v1.10.85 fix: only flag actual synonyms. target_synonyms
+            # are inlined into self.translations with ``is_synonym=True``
+            # by build_matches_dict, so we check for that flag in addition
+            # to explicit source/target synonym lists. The previous
+            # ``or len(self.translations) > 1`` fallback was wrong because
+            # alternative translations from *different* termbases (e.g.
+            # BRANTS "inrichting → device" + PATENTS "apparatus → inrichting")
+            # also produce ``len(translations) > 1`` without any of those
+            # entries being synonyms — the +N badge already signals
+            # "there are more options here", so the ≡ icon was redundant
+            # in that case and misleading when no real synonyms existed.
+            # Reported by a user: "inrichting = device has a synonym
+            # indicator. However, when I right click on the term and look
+            # at it and both of its different term base entries, none of
+            # them have a synonym."
             has_synonyms = any(
                 bool((t or {}).get('source_synonyms')) or
-                # target_synonyms are inlined as additional translations
-                # in matches_dict, so the primary entry's target_synonyms
-                # list is normally empty by the time we get here. Detect
-                # synonyms via the presence of *additional* translations
-                # OR explicit source_synonyms on any entry.
-                bool((t or {}).get('target_synonyms'))
+                bool((t or {}).get('target_synonyms')) or
+                bool((t or {}).get('is_synonym'))
                 for t in self.translations
-            ) or len(self.translations) > 1  # +N alternatives count as synonyms-ish
+            )
 
             # Create container for target + shortcut badge with the
             # coloured background covering both text and badge.
