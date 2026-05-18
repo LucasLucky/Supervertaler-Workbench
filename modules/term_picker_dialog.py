@@ -375,24 +375,54 @@ def build_picker_matches(
         if not source or not target:
             continue
         key = source.lower()
+        termbase_name = m.get('termbase_name', '') or ''
+        # v1.10.88 — unpack each entry's target_synonyms into synonym
+        # sub-rows so the Term Picker's ▸/▾ expansion shows them too.
+        # Pre-v1.10.88 the picker only treated "multiple termbase
+        # entries that share the same source word" as synonyms; actual
+        # ``target_synonyms`` on a single entry (the canonical "this
+        # entry has alternate target spellings" case) collapsed into
+        # the bare primary row with no way to see them, even though
+        # the docked TermLens chip showed a ≡ corner indicator
+        # promising they were there.
+        target_synonyms = m.get('target_synonyms') or []
         if key not in by_source:
             by_source[key] = {
                 'source_text': source,
                 'primary': {
                     'target_term': target,
-                    'termbase_name': m.get('termbase_name', ''),
+                    'termbase_name': termbase_name,
                     'is_project_termbase': bool(m.get('is_project_termbase', False)) or m.get('ranking') == 1,
                     'is_nontranslatable': bool(m.get('is_nontranslatable', False)),
                 },
                 'synonyms': [],
             }
             order.append(key)
+            # Add this entry's own target_synonyms as sub-rows. Each
+            # synonym shares the parent's termbase (synonyms are
+            # per-entry, not per-termbase) so we tag them with that
+            # name for the Termbase column.
+            for syn in target_synonyms:
+                if isinstance(syn, str) and syn.strip():
+                    by_source[key]['synonyms'].append({
+                        'target_term': syn.strip(),
+                        'termbase_name': termbase_name,
+                    })
         else:
-            # Subsequent hits become synonym rows on the existing entry.
+            # Subsequent hits on the same source word become synonym
+            # rows on the existing entry. The new entry's primary
+            # target is one sub-row; its own target_synonyms become
+            # additional sub-rows underneath the same parent.
             by_source[key]['synonyms'].append({
                 'target_term': target,
-                'termbase_name': m.get('termbase_name', ''),
+                'termbase_name': termbase_name,
             })
+            for syn in target_synonyms:
+                if isinstance(syn, str) and syn.strip():
+                    by_source[key]['synonyms'].append({
+                        'target_term': syn.strip(),
+                        'termbase_name': termbase_name,
+                    })
 
     rows: List[dict] = []
     idx = 1

@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.87 (May 18, 2026)
+**Current Version:** v1.10.88 (May 18, 2026)
+
+
+## v1.10.88 – May 18, 2026
+
+### Fixed (Term Picker now unpacks each entry's target_synonyms into expandable sub-rows)
+
+The v1.10.87 Term Picker (Ctrl+Shift+P) only treated *multiple termbase entries that share the same source word* as expandable synonyms. Actual `target_synonyms` recorded on a single entry — the canonical "this entry has alternative target spellings" case — collapsed into the bare primary row with no ▸ affordance and no way to see them, even though the docked TermLens chip showed a ≡ corner indicator promising they were there.
+
+`modules/term_picker_dialog.build_picker_matches` now also walks each match's `target_synonyms` list and adds them as synonym sub-rows under the same parent. When an entry both has its own synonyms AND shares its source word with another termbase's entry, all sources collapse under one parent (own-synonyms first, then the second entry's primary + its own synonyms) in the original first-seen order.
+
+Smoke-tested with a single PATENTS entry "met → complete with" carrying `target_synonyms=['comprising', 'including']` (produces 1 parent + 2 ▸-expandable sub-rows) and a mixed case where BRANTS "inrichting → device" with own-synonym "apparatus" is followed by PATENTS "inrichting → arrangement" (produces 1 parent + 2 sub-rows in source order).
 
 
 ## v1.10.87 – May 18, 2026
