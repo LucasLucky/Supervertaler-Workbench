@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.103 (May 20, 2026)
+**Current Version:** v1.10.104 (May 20, 2026)
+
+
+## v1.10.104 – May 20, 2026
+
+### Changed
+
+- **Pre-translated status icon** changed from the robot (🤖) to a lightning bolt (⚡), so it is no longer indistinguishable from MT (which keeps the robot). The lightning was already the status's internal match symbol, so the change is consistent.
 
 
 ## v1.10.103 – May 20, 2026

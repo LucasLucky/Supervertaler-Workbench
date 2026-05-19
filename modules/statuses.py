@@ -32,7 +32,7 @@ STATUSES: Dict[str, StatusDefinition] = {
     "pretranslated": StatusDefinition(
         key="pretranslated",
         label="Pre-translated",
-        icon="🤖",  # Robot - indicates automatic/machine pre-translation
+        icon="⚡",  # Lightning - automatic pre-fill (distinct from MT's robot)
         color="#e8f2ff",
         memoq_label="Pre-translated",
         memoQ_equivalents=("pre-translated", "pretranslated"),
