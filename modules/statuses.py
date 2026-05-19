@@ -15,6 +15,9 @@ class StatusDefinition:
     memoQ_equivalents: tuple[str, ...]
     match_symbol: str = ""
     short_label: str = ""  # Short abbreviation shown inline in the status column (e.g. "CM", "MT", "Rep")
+    badge_text: str = ""   # Trados-style coloured text badge shown in place of the icon (e.g. "PM", "CM")
+    badge_bg: str = ""     # Badge background colour
+    badge_fg: str = "#ffffff"  # Badge text colour
 
 
 STATUSES: Dict[str, StatusDefinition] = {
@@ -93,6 +96,8 @@ STATUSES: Dict[str, StatusDefinition] = {
         memoQ_equivalents=("pre-translated (102%)", "xlt", "double context", "perfect match", "pm"),
         match_symbol="⭐",
         short_label="PM",
+        badge_text="PM",
+        badge_bg="#546E7A",  # Blue-grey, Trados-like
     ),
     "cm": StatusDefinition(
         key="cm",
@@ -103,6 +108,8 @@ STATUSES: Dict[str, StatusDefinition] = {
         memoQ_equivalents=("pre-translated (101%)", "context match", "cm"),
         match_symbol="💎",
         short_label="CM",
+        badge_text="CM",
+        badge_bg="#2E7D32",  # Green, distinct from PM
     ),
     "tm_100": StatusDefinition(
         key="tm_100",

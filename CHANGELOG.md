@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.102 (May 18, 2026)
+**Current Version:** v1.10.103 (May 20, 2026)
+
+
+## v1.10.103 – May 20, 2026
+
+### Added
+
+- **PM / CM status badges.** Perfect Match and Context Match segments now show small coloured text badges (PM in blue-grey, CM in green) in the Status column, mirroring how Trados Studio labels them, instead of the ⭐ and 💎 emoji. The redundant 101%/102% figure is dropped because the badge already conveys it.
+- **QuickLauncher → Copy to clipboard.** The grid right-click QuickLauncher menu (and the Ctrl+Q popup) gains a third action per prompt: Copy to clipboard. It expands the selected prompt against the current segment (source, target, languages) and copies the result, ready to paste into an online LLM such as Claude.ai or ChatGPT. No API call is made and no API key is needed.
+- **Live TermLens placement.** Two View-menu items — Show TermLens above grid / Show TermLens below grid — dock the under-grid TermLens panel above or below the grid immediately, with no project reopen. Clicking the active item hides the panel again. Replaces the old "tabs above grid" settings checkbox, which only took effect after a restart.
+
+### Fixed
+
+- **Ctrl+Q opened the wrong panel.** Ctrl+Q (and Alt+K) were jumping to the SuperLookup tab — a leftover from the Sidekick retirement — despite being labelled "Open QuickLauncher". They now pop up the QuickLauncher prompt menu for the current segment.
+
+### Changed
+
+- Type-column paragraph marks (¶) render a point smaller, so the heavier glyph sits better alongside the heading and list labels.
 
 
 ## v1.10.102 – May 18, 2026

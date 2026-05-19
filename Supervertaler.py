@@ -3525,6 +3525,12 @@ class ReadOnlyGridTextEditor(QTextEdit):
                     )
                     prompt_menu.addAction(run_replace)
 
+                    copy_clip = QAction("📋 Copy to clipboard", self)
+                    copy_clip.triggered.connect(
+                        lambda checked=False, p=rel_path: main_window.run_grid_quicklauncher_prompt(p, origin_widget=self, behavior="clipboard")
+                    )
+                    prompt_menu.addAction(copy_clip)
+
                 menu.addSeparator()
         except Exception:
             # Never break the normal context menu due to QuickLauncher errors
@@ -4361,6 +4367,12 @@ class EditableGridTextEditor(QTextEdit):
                         lambda checked=False, p=rel_path: main_window.run_grid_quicklauncher_prompt(p, origin_widget=self, behavior="replace")
                     )
                     prompt_menu.addAction(run_replace)
+
+                    copy_clip = QAction("📋 Copy to clipboard", self)
+                    copy_clip.triggered.connect(
+                        lambda checked=False, p=rel_path: main_window.run_grid_quicklauncher_prompt(p, origin_widget=self, behavior="clipboard")
+                    )
+                    prompt_menu.addAction(copy_clip)
 
                 menu.addSeparator()
         except Exception:
@@ -7483,12 +7495,15 @@ class SupervertalerQt(QMainWindow):
         QApplication.instance().processEvents()  # Allow UI to finish initializing
         self.load_font_sizes_from_preferences()
         
-        # Restore TermLens under grid visibility state
+        # Restore TermLens under-grid visibility and position
         if hasattr(self, 'bottom_tabs'):
             termlens_visible = general_settings.get('termlens_under_grid_visible', False)
-            self.bottom_tabs.setVisible(termlens_visible)
-            if hasattr(self, 'termlens_visible_action'):
-                self.termlens_visible_action.setChecked(termlens_visible)
+            above = general_settings.get('tabs_above_grid', False)
+            self.tabs_above_grid = above
+            if termlens_visible:
+                self.set_termlens_position('above' if above else 'below', save=False)
+            else:
+                self.set_termlens_position(None, save=False)
 
         # First-run check - show unified setup wizard
         if self._needs_data_location_dialog or not general_settings.get('first_run_completed', False):
@@ -8511,30 +8526,60 @@ class SupervertalerQt(QMainWindow):
             self.log(f"❌ Error opening Clipboard tab: {e}")
 
     def open_quicklauncher(self):
-        """In-app Alt+K: jump to Workbench's SuperLookup top tab with
-        the current selection seeded into the search field.
+        """Ctrl+Q / Alt+K: pop up the QuickLauncher prompt menu for the
+        current segment, the same menu available from the grid right-click.
 
-        Pre-v1.10.4 this toggled the Sidekick floating window with
-        the captured text. With Sidekick retired (v1.10.4) and the
-        QuickLauncher concept merged into the Clipboard tab's
-        action menu (v1.10.0 Phase 3) plus SuperLookup, the
-        closest equivalent for a selection-driven lookup is the
-        SuperLookup top tab.
+        Each configured QuickLauncher prompt is listed as a submenu offering
+        Run (show response), Run and replace selection, and Copy to clipboard.
+        The menu acts on the focused source/target editor, falling back to the
+        current row's target editor.
         """
-        try:
-            # Capture selected text before focus changes
-            focus_widget = QApplication.focusWidget()
-            selected_text = None
-            try:
-                if focus_widget and hasattr(focus_widget, 'textCursor') and focus_widget.textCursor().hasSelection():
-                    selected_text = focus_widget.textCursor().selectedText()
-            except Exception:
-                pass
+        from PyQt6.QtWidgets import QMenu, QMessageBox
+        from PyQt6.QtGui import QCursor
 
-            if hasattr(self, 'open_workbench_to_superlookup'):
-                self.open_workbench_to_superlookup(selected_text or "")
+        try:
+            # Decide which editor the prompt should act on
+            origin = QApplication.focusWidget()
+            if not isinstance(origin, QTextEdit):
+                origin = None
+            if origin is None and hasattr(self, 'table') and self.table:
+                row = self.table.currentRow()
+                if row is not None and row >= 0:
+                    cell = self.table.cellWidget(row, 3)  # target column
+                    if isinstance(cell, QTextEdit):
+                        origin = cell
+            if not isinstance(origin, QTextEdit):
+                QMessageBox.information(self, "QuickLauncher", "Select a segment in the grid first.")
+                return
+
+            # Gather configured QuickLauncher prompts
+            quicklauncher_items = []
+            if hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
+                lib = getattr(self.prompt_manager_qt, 'library', None)
+                if lib and hasattr(lib, 'get_quicklauncher_grid_prompts'):
+                    quicklauncher_items = lib.get_quicklauncher_grid_prompts() or []
+
+            menu = QMenu(self)
+            if not quicklauncher_items:
+                act = menu.addAction("No QuickLauncher prompts configured")
+                act.setEnabled(False)
             else:
-                self.log("⚠ SuperLookup tab not available")
+                for rel_path, label in sorted(quicklauncher_items, key=lambda x: (x[1] or x[0]).lower()):
+                    prompt_menu = menu.addMenu(label or rel_path)
+                    run_show = prompt_menu.addAction("▶ Run (show response)…")
+                    run_show.triggered.connect(
+                        lambda checked=False, p=rel_path: self.run_grid_quicklauncher_prompt(p, origin_widget=origin, behavior="show")
+                    )
+                    run_replace = prompt_menu.addAction("↺ Run and replace target selection")
+                    run_replace.triggered.connect(
+                        lambda checked=False, p=rel_path: self.run_grid_quicklauncher_prompt(p, origin_widget=origin, behavior="replace")
+                    )
+                    copy_clip = prompt_menu.addAction("📋 Copy to clipboard")
+                    copy_clip.triggered.connect(
+                        lambda checked=False, p=rel_path: self.run_grid_quicklauncher_prompt(p, origin_widget=origin, behavior="clipboard")
+                    )
+
+            menu.exec(QCursor.pos())
 
         except Exception as e:
             self.log(f"❌ Error opening QuickLauncher: {e}")
@@ -9844,13 +9889,20 @@ class SupervertalerQt(QMainWindow):
 
         view_menu.addSeparator()
         
-        # TermLens visibility toggle
-        self.termlens_visible_action = QAction("🔍 &TermLens Under Grid", self)
-        self.termlens_visible_action.setCheckable(True)
-        self.termlens_visible_action.setChecked(False)  # Default: hidden (restored from settings if enabled)
-        self.termlens_visible_action.triggered.connect(self.toggle_termlens_under_grid)
-        self.termlens_visible_action.setToolTip("Show/hide the TermLens panel under the grid")
-        view_menu.addAction(self.termlens_visible_action)
+        # TermLens under-grid placement (live; click the active one again to hide)
+        self.termlens_above_action = QAction("🔍 Show TermLens &above grid", self)
+        self.termlens_above_action.setCheckable(True)
+        self.termlens_above_action.setChecked(False)
+        self.termlens_above_action.triggered.connect(lambda checked: self._on_termlens_action('above', checked))
+        self.termlens_above_action.setToolTip("Show the TermLens panel above the grid (click again to hide)")
+        view_menu.addAction(self.termlens_above_action)
+
+        self.termlens_below_action = QAction("🔍 Show TermLens &below grid", self)
+        self.termlens_below_action.setCheckable(True)
+        self.termlens_below_action.setChecked(False)
+        self.termlens_below_action.triggered.connect(lambda checked: self._on_termlens_action('below', checked))
+        self.termlens_below_action.setToolTip("Show the TermLens panel below the grid (click again to hide)")
+        view_menu.addAction(self.termlens_below_action)
 
         view_menu.addSeparator()
 
@@ -21879,26 +21931,10 @@ class SupervertalerQt(QMainWindow):
         focus_border_group.setLayout(focus_border_layout)
         layout.addWidget(focus_border_group)
         
-        # Tab Position Settings section
-        tab_position_group = QGroupBox("📐 Tab Layout")
-        tab_position_layout = QVBoxLayout()
-        
-        tab_position_info = QLabel(
-            "Control the position of TermLens and Session Log tabs relative to the grid."
-        )
-        tab_position_info.setStyleSheet("font-size: 8pt; padding: 8px; border-radius: 2px;")
-        tab_position_info.setWordWrap(True)
-        tab_position_layout.addWidget(tab_position_info)
-        
-        # Show TermLens/Session Log tabs above grid checkbox
-        tabs_above_check = CheckmarkCheckBox("Show TermLens/Session Log tabs above grid")
-        tabs_above_check.setChecked(font_settings.get('tabs_above_grid', False))
-        tabs_above_check.setToolTip("When enabled, TermLens and Session Log tabs appear above the grid instead of below.\nRequires closing and reopening the project tab to take effect.")
-        tab_position_layout.addWidget(tabs_above_check)
-        
-        tab_position_group.setLayout(tab_position_layout)
-        layout.addWidget(tab_position_group)
-        
+        # TermLens placement is now controlled live from the View menu
+        # ("Show TermLens above grid" / "Show TermLens below grid"), so there is
+        # no longer a settings checkbox for it here.
+
         # Glossary Highlight Style section
         tb_highlight_group = QGroupBox("🏷️ Termbase Highlight Style")
         tb_highlight_layout = QVBoxLayout()
@@ -22229,7 +22265,7 @@ class SupervertalerQt(QMainWindow):
                 grid_font_spin, match_font_spin, compare_font_spin, show_tags_check, tag_color_btn,
                 alt_colors_check, even_color_btn, odd_color_btn, invisible_char_color_btn, grid_font_family_combo,
                 termlens_font_family_combo, termlens_font_spin, termlens_bold_check,
-                border_color_btn, border_thickness_spin, badge_text_color_btn, tabs_above_check,
+                border_color_btn, border_thickness_spin, badge_text_color_btn, None,
                 hide_wrapping_tags_check, status_before_target_check,
                 mp_font_family_combo=mp_font_family_combo, mp_font_spin=mp_font_spin, mp_bold_check=mp_bold_check
             )
@@ -25512,6 +25548,10 @@ class SupervertalerQt(QMainWindow):
         left_container_layout.addWidget(left_vertical_splitter)
         left_vertical_splitter.setHandleWidth(8)
         left_vertical_splitter.setChildrenCollapsible(False)
+
+        # Keep references so the View-menu items can reposition TermLens live
+        self.grid_container = grid_container
+        self.left_vertical_splitter = left_vertical_splitter
         
         # Allow left panel to shrink smaller so right panel can expand
         left_container.setMinimumWidth(400)  # Allow grid to shrink to 400px minimum
@@ -36953,8 +36993,11 @@ class SupervertalerQt(QMainWindow):
                 elif type_display.startswith("#") or type_display in ("•", "li"):
                     type_item.setForeground(QColor("#388E3C"))  # Green for list items (works in both themes)
 
-                # Slightly smaller font for type symbols (kept in sync with apply_font_to_grid)
-                type_font = QFont(self.default_font_family, max(7, self.default_font_size - 1))
+                # Slightly smaller font for type symbols (kept in sync with apply_font_to_grid).
+                # The ¶ paragraph mark renders heavier than the text labels, so shave an
+                # extra point off it specifically.
+                _type_delta = 2 if type_display == "¶" else 1
+                type_font = QFont(self.default_font_family, max(6, self.default_font_size - _type_delta))
                 type_item.setFont(type_font)
 
                 self.table.setItem(row, 1, type_item)
@@ -38988,6 +39031,33 @@ class SupervertalerQt(QMainWindow):
         # IMPORTANT: On single-line rows, vertical space is very tight (~20-24px).
         # The icon + container margins + QLabel internal padding must fit within that.
         is_locked = getattr(segment, 'locked', False)
+
+        # Trados-style coloured text badge (PM / CM) in place of the emoji icon.
+        # The badge already conveys the match level, so we don't repeat the 101/102%.
+        if status_def.badge_text:
+            badge = QLabel(status_def.badge_text)
+            badge.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter)
+            badge.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+            badge.setStyleSheet(
+                f"background-color:{status_def.badge_bg}; color:{status_def.badge_fg};"
+                " border-radius:3px; padding:0px 4px; font-size:10px; font-weight:bold;"
+            )
+            badge.setProperty("status_tooltip", status_def.label)
+            badge.installEventFilter(self)
+            layout.addWidget(badge)
+            if is_locked:
+                lock_lbl = QLabel('<span style="font-size:14px; line-height:1;">🔒</span>')
+                lock_lbl.setTextFormat(Qt.TextFormat.RichText)
+                lock_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                lock_lbl.setContentsMargins(0, 0, 0, 0)
+                lock_lbl.setProperty("status_tooltip", "Locked")
+                lock_lbl.installEventFilter(self)
+                layout.addWidget(lock_lbl)
+            if has_any_notes:
+                widget.setStyleSheet("background-color: rgba(255, 152, 0, 0.35);")
+            layout.addStretch(1)
+            return widget
+
         icon_text = "🔒" if is_locked else status_def.icon
         if segment.status == "confirmed" and not is_locked:
             icon_html = f'<span style="color:#2e7d32; font-size:14px; line-height:1;">{icon_text}</span>'
@@ -39158,23 +39228,56 @@ class SupervertalerQt(QMainWindow):
         """Clear all rows from grid"""
         self.table.setRowCount(0)
     
-    def toggle_termlens_under_grid(self):
-        """Show/hide the TermLens panel under the grid for maximum vertical space"""
-        if not hasattr(self, 'bottom_tabs'):
+    def set_termlens_position(self, position, save=True):
+        """Position the under-grid TermLens panel live.
+
+        position: 'above' or 'below' to show it in that spot, or None to hide it.
+        Reorders the vertical splitter so no project reopen is needed, and keeps
+        the View-menu checkmarks in sync.
+        """
+        if not hasattr(self, 'bottom_tabs') or not hasattr(self, 'left_vertical_splitter'):
             return
-        
-        # Toggle visibility
-        is_visible = self.bottom_tabs.isVisible()
-        self.bottom_tabs.setVisible(not is_visible)
-        
-        # Update menu action checkmark
-        if hasattr(self, 'termlens_visible_action'):
-            self.termlens_visible_action.setChecked(not is_visible)
-        
-        # Save state to settings
-        settings = self.load_general_settings()
-        settings['termlens_under_grid_visible'] = not is_visible
-        self.save_general_settings(settings)
+
+        splitter = self.left_vertical_splitter
+        tabs = self.bottom_tabs
+
+        if position == 'above':
+            if splitter.indexOf(tabs) != 0:
+                splitter.insertWidget(0, tabs)  # moves it; grid drops to index 1
+            tabs.setVisible(True)
+            splitter.setSizes([200, 600])
+            self.tabs_above_grid = True
+            visible = True
+        elif position == 'below':
+            if splitter.indexOf(tabs) != 1:
+                splitter.insertWidget(1, tabs)
+            tabs.setVisible(True)
+            splitter.setSizes([600, 200])
+            self.tabs_above_grid = False
+            visible = True
+        else:  # hide; keep last-known position so re-showing returns there
+            tabs.setVisible(False)
+            visible = False
+
+        if hasattr(self, 'termlens_above_action'):
+            self.termlens_above_action.setChecked(position == 'above')
+        if hasattr(self, 'termlens_below_action'):
+            self.termlens_below_action.setChecked(position == 'below')
+
+        if save:
+            settings = self.load_general_settings()
+            settings['termlens_under_grid_visible'] = visible
+            settings['tabs_above_grid'] = self.tabs_above_grid
+            self.save_general_settings(settings)
+
+    def _on_termlens_action(self, position, checked):
+        """View-menu handler. The actions are checkable, so clicking the active
+        item unchecks it (checked=False) -> hide; clicking an unchecked item
+        (checked=True) -> show in that position."""
+        if checked:
+            self.set_termlens_position(position)
+        else:
+            self.set_termlens_position(None)
     
     def _update_file_boundary_labels(self):
         """Create/reposition floating filename banner labels at file boundaries in multi-file projects.
@@ -39355,7 +39458,9 @@ class SupervertalerQt(QMainWindow):
 
         # Type column (1) uses its own slightly smaller font – must match the
         # formula used at grid-creation time so zoom scales ¶ along with the text.
-        type_font = QFont(self.default_font_family, max(7, self.default_font_size - 1))
+        # The ¶ paragraph mark gets an extra point shaved off (heavier glyph).
+        type_font_para = QFont(self.default_font_family, max(6, self.default_font_size - 2))
+        type_font_label = QFont(self.default_font_family, max(6, self.default_font_size - 1))
 
         # Update fonts in QTextEdit widgets (source and target columns)
         if hasattr(self, 'table') and self.table:
@@ -39367,7 +39472,7 @@ class SupervertalerQt(QMainWindow):
                 # Type column (1) - QTableWidgetItem with paragraph mark / heading label
                 type_item = self.table.item(row, 1)
                 if type_item is not None:
-                    type_item.setFont(type_font)
+                    type_item.setFont(type_font_para if type_item.text() == "¶" else type_font_label)
 
                 # Source column (2) - ReadOnlyGridTextEditor.
                 # Use apply_grid_font_size (sets the size in the widget's own
@@ -53269,6 +53374,28 @@ class SupervertalerQt(QMainWindow):
         if hasattr(self, 'current_project') and self.current_project:
             source_lang = getattr(self.current_project, 'source_lang', source_lang) or source_lang
             target_lang = getattr(self.current_project, 'target_lang', target_lang) or target_lang
+
+        # Copy-to-clipboard: expand the prompt against the current segment and
+        # copy it, ready to paste into an online LLM (Claude.ai, ChatGPT, etc.).
+        # No API call is made and no API key is needed.
+        if behavior == "clipboard":
+            try:
+                expanded = self._quicklauncher_build_custom_prompt(
+                    prompt_relative_path=prompt_relative_path,
+                    source_text=input_text,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    target_text=current_target_text,
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "QuickLauncher", f"Could not build prompt:\n\n{e}")
+                return
+            QApplication.clipboard().setText(expanded)
+            try:
+                self.status_bar.showMessage("⚡ QuickLauncher: prompt copied to clipboard", 4000)
+            except Exception:
+                pass
+            return
 
         # Determine provider/model
         settings = self.load_llm_settings()
