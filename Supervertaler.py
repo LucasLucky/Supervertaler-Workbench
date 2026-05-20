@@ -2154,6 +2154,130 @@ class GridTableEventFilter:
     pass
 
 
+def _anchored_comments_at(main_window, row, field, char_pos):
+    """Return a list of (segment, comment) for anchored comments whose character
+    range covers ``char_pos`` in the given ``field`` ('source'/'target') of the
+    segment shown at grid ``row``.
+
+    Used by the source/target cell editors to power the hover tooltip and the
+    "Open comment" right-click item over the yellow anchored-comment highlight.
+    Returns an empty list on any miss (no project, bad row, no covering comment).
+    """
+    result = []
+    try:
+        if not main_window or not getattr(main_window, 'current_project', None):
+            return result
+        table = getattr(main_window, 'table', None)
+        if table is None or row is None or row < 0:
+            return result
+        id_item = table.item(row, 0)
+        if not id_item:
+            return result
+        seg_id = int(id_item.text())
+        segment = next(
+            (s for s in main_window.current_project.segments if s.id == seg_id),
+            None,
+        )
+        if not segment:
+            return result
+        for c in getattr(segment, 'comments', []) or []:
+            if (getattr(c, 'anchor_field', '') == field and c.is_anchored
+                    and c.anchor_start <= char_pos < c.anchor_end):
+                result.append((segment, c))
+    except Exception:
+        pass
+    return result
+
+
+def _segment_comments_for_row(main_window, row):
+    """Return [(segment, comment), ...] for every comment on the segment shown
+    at grid ``row`` — anchored AND segment-level — in stored order. Empty on miss.
+
+    Used for the "Open comment(s)" cell/status right-click actions so
+    segment-level comments (which have no highlighted range to click on) are
+    still reachable from the grid.
+    """
+    result = []
+    try:
+        if not main_window or not getattr(main_window, 'current_project', None):
+            return result
+        table = getattr(main_window, 'table', None)
+        if table is None or row is None or row < 0:
+            return result
+        id_item = table.item(row, 0)
+        if not id_item:
+            return result
+        seg_id = int(id_item.text())
+        segment = next(
+            (s for s in main_window.current_project.segments if s.id == seg_id),
+            None,
+        )
+        if not segment:
+            return result
+        for c in getattr(segment, 'comments', []) or []:
+            if c.text and c.text.strip():
+                result.append((segment, c))
+    except Exception:
+        pass
+    return result
+
+
+def _format_comment_tooltip(pairs):
+    """Build the hover-tooltip HTML for the anchored comment(s) under the cursor."""
+    import html as _html
+    blocks = []
+    for _seg, c in pairs:
+        author = _html.escape(c.author) if getattr(c, 'author', '') else ''
+        text = _html.escape(c.text or '').replace('\n', '<br>')
+        head = f"<b>💬 {author}</b><br>" if author else "<b>💬 Comment</b><br>"
+        blocks.append(head + text)
+    body = "<hr>".join(blocks)
+    return (body +
+            "<br><span style='color:#888;'><i>Right-click → Open comment</i></span>")
+
+
+def _add_open_comment_actions(editor, menu, field, click_qpoint):
+    """Add "Open comment(s)" items to a grid cell editor's context menu.
+
+    If the click lands on an anchored range, add one "Open comment" per covering
+    comment (each opens that specific comment). Otherwise, if the segment has any
+    comments, add a single "Open comment(s)" that opens the segment's first one —
+    this is how segment-level comments (no highlighted range) are reached.
+
+    Returns True if any action was added (so the caller can add a separator).
+    """
+    from PyQt6.QtGui import QAction
+    mw = editor._get_main_window()
+    row = getattr(editor, 'row', -1)
+    try:
+        click_pos = editor.cursorForPosition(click_qpoint).position()
+    except Exception:
+        click_pos = -1
+
+    def _open(cid):
+        if mw and hasattr(mw, '_open_comment_in_panel'):
+            mw._open_comment_in_panel(cid)
+
+    anchored = _anchored_comments_at(mw, row, field, click_pos) if click_pos >= 0 else []
+    if anchored:
+        for _seg, c in anchored:
+            act = QAction("💬 Open comment", editor)
+            act.triggered.connect(lambda _checked=False, cid=c.id: _open(cid))
+            menu.addAction(act)
+        return True
+
+    all_pairs = _segment_comments_for_row(mw, row)
+    if all_pairs:
+        label = ("💬 Open comment" if len(all_pairs) == 1
+                 else f"💬 Open comments ({len(all_pairs)})")
+        first_cid = all_pairs[0][1].id
+        act = QAction(label, editor)
+        act.triggered.connect(lambda _checked=False, cid=first_cid: _open(cid))
+        menu.addAction(act)
+        return True
+    return False
+
+
 class GridTextEditor(QTextEdit):
     """Custom QTextEdit for grid cells that passes special shortcuts to parent"""
     
@@ -3149,11 +3273,19 @@ class ReadOnlyGridTextEditor(QTextEdit):
     def mouseMoveEvent(self, event):
         """Show tooltip when hovering over highlighted termbase matches"""
         super().mouseMoveEvent(event)
-        
+
         # Get cursor position
         cursor = self.cursorForPosition(event.pos())
         cursor_pos = cursor.position()
-        
+
+        # Anchored-comment highlight takes priority: if the cursor is over the
+        # yellow range of an anchored comment, show the comment as the tooltip.
+        comment_pairs = _anchored_comments_at(
+            self._get_main_window(), getattr(self, 'row', -1), 'source', cursor_pos)
+        if comment_pairs:
+            self.setToolTip(_format_comment_tooltip(comment_pairs))
+            return
+
         # Check if cursor is over a termbase match
         for term_id, match_info in self.termbase_matches.items():
             # Extract source term from match_info
@@ -3376,16 +3508,24 @@ class ReadOnlyGridTextEditor(QTextEdit):
         """Show context menu with Add to Glossary and Add to Non-Translatables options"""
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QAction
-        
+
         menu = QMenu(self)
-        
+
+        # "Open comment(s)" – jump to the relevant comment in the Comments tab.
+        # Right-clicking a yellow anchored range opens that specific comment;
+        # right-clicking anywhere else on a segment that has comments opens the
+        # segment's first comment (this is how segment-level comments — which
+        # have no highlighted range — are reached from the grid).
+        if _add_open_comment_actions(self, menu, 'source', event.pos()):
+            menu.addSeparator()
+
         # Add standard actions
         if self.textCursor().hasSelection():
             copy_action = QAction("Copy", self)
             copy_action.triggered.connect(self.copy)
             menu.addAction(copy_action)
             menu.addSeparator()
-        
+
         # Superlookup search action
         if self.textCursor().hasSelection():
             superlookup_action = QAction(f"🔍 Search in SuperLookup ({format_shortcut_for_display('Ctrl+K')})", self)
@@ -4125,13 +4265,33 @@ class EditableGridTextEditor(QTextEdit):
             target_lang=target_lang,
         )
 
+    def mouseMoveEvent(self, event):
+        """Show the anchored comment as a tooltip when hovering its yellow range."""
+        super().mouseMoveEvent(event)
+        try:
+            cursor_pos = self.cursorForPosition(event.pos()).position()
+            comment_pairs = _anchored_comments_at(
+                self._get_main_window(), getattr(self, 'row', -1), 'target', cursor_pos)
+            if comment_pairs:
+                self.setToolTip(_format_comment_tooltip(comment_pairs))
+            else:
+                self.setToolTip("")
+        except Exception:
+            pass
+
     def contextMenuEvent(self, event):
         """Show context menu with Add to Glossary, Non-Translatables, and Spellcheck options"""
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QAction
-        
+
         menu = QMenu(self)
-        
+
+        # "Open comment(s)" – anchored range opens that specific comment;
+        # otherwise, a segment with comments offers its first (covers
+        # segment-level comments, which have no highlighted range).
+        if _add_open_comment_actions(self, menu, 'target', event.pos()):
+            menu.addSeparator()
+
         # Check if cursor is on a misspelled word for spellcheck suggestions
         cursor_pos = self.cursorForPosition(event.pos())
         misspelled_word, word_start, word_end = self._get_misspelled_word_at_cursor(cursor_pos)
@@ -25387,6 +25547,9 @@ class SupervertalerQt(QMainWindow):
         comments_list_scroll.setFrameShape(_QFrame.Shape.NoFrame)
         comments_list_scroll.setWidget(self._segment_comments_list_container)
         comments_splitter.addWidget(comments_list_scroll)
+        # Stored so _open_comment_in_panel() can scroll a specific comment
+        # (reached via "Open comment" on a cell's anchored highlight) into view.
+        self._segment_comments_list_scroll = comments_list_scroll
 
         # ── Editor for current segment's comment (bottom half) ──
         edit_container = QWidget()
@@ -39020,7 +39183,30 @@ class SupervertalerQt(QMainWindow):
                 model_count = len(segment.proofreading_notes)
                 tooltip_parts.append(f"Proofreading comment: {model_count} LLM result{'s' if model_count != 1 else ''}")
             widget.setToolTip("\n".join(tooltip_parts))
-            
+
+        # Comment access from the Status column (Trados-parity). Build a
+        # tooltip from the segment's actual comments (anchored + segment-level)
+        # and, when there are any, wire a right-click "Open comment(s)" menu so
+        # segment-level comments — which have no highlighted range in the cells
+        # — are reachable straight from the status indicator. The eventFilter
+        # appends ``comment_tooltip`` to the hovered status glyph's tooltip.
+        seg_comments = [c for c in (getattr(segment, 'comments', None) or [])
+                        if c.text and c.text.strip()]
+        if seg_comments:
+            tip_lines = []
+            for c in seg_comments[:4]:
+                prefix = f"⚓{c.anchor_field} " if c.is_anchored else ""
+                tip_lines.append(f"💬 {prefix}{c.text.strip()}")
+            if len(seg_comments) > 4:
+                tip_lines.append(f"…(+{len(seg_comments) - 4} more)")
+            widget.setProperty("comment_tooltip", "\n".join(tip_lines))
+            first_cid = seg_comments[0].id
+            widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            widget.customContextMenuRequested.connect(
+                lambda pos, w=widget, cid=first_cid, n=len(seg_comments):
+                    self._status_cell_comment_menu(w, pos, cid, n)
+            )
+
         status_def = get_status(segment.status)
 
         # Status icons: ✔ (green text glyph) and ❌ (native emoji, ~16px on Windows)
@@ -39111,6 +39297,21 @@ class SupervertalerQt(QMainWindow):
 
         return widget
 
+    def _status_cell_comment_menu(self, widget, pos, comment_id, count):
+        """Right-click menu on the Status column for a segment that has comments.
+
+        Lets segment-level comments (no highlighted range in the cells) be
+        opened straight from the status indicator.
+        """
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QAction
+        menu = QMenu(widget)
+        label = "💬 Open comment" if count <= 1 else f"💬 Open comments ({count})"
+        act = QAction(label, menu)
+        act.triggered.connect(lambda: self._open_comment_in_panel(comment_id))
+        menu.addAction(act)
+        menu.exec(widget.mapToGlobal(pos))
+
     def _get_custom_tooltip(self):
         """Get or create the custom tooltip label widget."""
         if not hasattr(self, '_custom_tooltip') or self._custom_tooltip is None:
@@ -39138,9 +39339,20 @@ class SupervertalerQt(QMainWindow):
 
         if tooltip_text:
             if event.type() == QEvent.Type.ToolTip:
+                # Append the segment's comment summary (stored on the parent
+                # status widget) so hovering the Status column reveals comments,
+                # including segment-level ones that have no highlighted range.
+                display_text = tooltip_text
+                try:
+                    parent = obj.parentWidget()
+                    ctip = parent.property("comment_tooltip") if parent is not None else None
+                    if ctip:
+                        display_text = f"{tooltip_text}\n{ctip}"
+                except Exception:
+                    pass
                 # Show our custom tooltip instead of Qt's
                 tooltip = self._get_custom_tooltip()
-                tooltip.setText(tooltip_text)
+                tooltip.setText(display_text)
                 tooltip.adjustSize()
                 # Position near the cursor
                 pos = event.globalPos()
@@ -48383,6 +48595,11 @@ class SupervertalerQt(QMainWindow):
 
         layout = self._segment_comments_list_layout
 
+        # Map of comment id → its header button, so _open_comment_in_panel()
+        # can scroll a specific comment into view and flash it. Rebuilt here
+        # since the widgets are recreated on every refresh.
+        self._comment_list_header_btns = {}
+
         # Clear existing children. Walk takeAt(0) until the layout is
         # empty so both widgets AND the trailing stretch get cleaned up.
         while layout.count() > 0:
@@ -48446,6 +48663,7 @@ class SupervertalerQt(QMainWindow):
             header_btn.clicked.connect(
                 lambda _checked, sid=seg_id: self._navigate_to_segment_by_id(sid)
             )
+            self._comment_list_header_btns[comment.id] = header_btn
             # Right-click context menu for edit/delete.
             header_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             header_btn.customContextMenuRequested.connect(
@@ -48785,6 +49003,70 @@ class SupervertalerQt(QMainWindow):
             f"⚠ Segment #{segment_id} not on current grid page after "
             f"page-switch attempt (unexpected)"
         )
+
+    def _open_comment_in_panel(self, comment_id: str):
+        """Reveal a specific comment in the Comments ▸ Segment sub-tab.
+
+        Invoked by the "💬 Open comment" item on a cell's anchored-comment
+        highlight. Switches the right panel to the Comments tab, scrolls the
+        all-comments list to the matching entry, and briefly flashes it. Handy
+        when the Match Panel (or any other tab) is showing and you want to jump
+        straight from a yellow-highlighted range to its comment.
+        """
+        # Ensure the list (and the comment→button map) is current.
+        try:
+            self._refresh_segment_comments_list()
+        except Exception:
+            pass
+
+        # Switch the right panel to Comments → Segment sub-tab. Resolve the
+        # Comments tab by its LABEL, not the stored _comments_tab_index — the
+        # Chat/AI tab is inserted into the row after build time, shifting the
+        # Comments tab down, so the cached index goes stale (it pointed at
+        # Preview).
+        if hasattr(self, 'right_tabs'):
+            target_index = None
+            for i in range(self.right_tabs.count()):
+                if "Comments" in self.right_tabs.tabText(i):
+                    target_index = i
+                    break
+            if target_index is not None:
+                self.right_tabs.setCurrentIndex(target_index)
+        if hasattr(self, 'comments_sub_tabs'):
+            self.comments_sub_tabs.setCurrentIndex(0)
+
+        btn = getattr(self, '_comment_list_header_btns', {}).get(comment_id)
+        if btn is None:
+            return
+        scroll = getattr(self, '_segment_comments_list_scroll', None)
+
+        def _reveal_and_flash():
+            try:
+                if scroll is not None and self._widget_is_alive(scroll):
+                    scroll.ensureWidgetVisible(btn)
+                self._flash_comment_header(btn)
+            except Exception:
+                pass
+
+        # Defer so the tab switch / layout settles before we scroll.
+        QTimer.singleShot(0, _reveal_and_flash)
+
+    def _flash_comment_header(self, btn):
+        """Briefly tint a comments-list header button so the eye lands on it."""
+        if not self._widget_is_alive(btn):
+            return
+        original = btn.styleSheet()
+        btn.setStyleSheet(
+            original +
+            "\nQPushButton { background-color: rgba(255, 213, 79, 0.55); "
+            "border-radius: 3px; }"
+        )
+
+        def _restore():
+            if self._widget_is_alive(btn):
+                btn.setStyleSheet(original)
+
+        QTimer.singleShot(1400, _restore)
 
     def _on_bottom_notes_changed(self):
         """Handle notes change in bottom Notes tab - saves to current segment and syncs with Translation Results panel"""

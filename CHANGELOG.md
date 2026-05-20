@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.112 (May 20, 2026)
+**Current Version:** v1.10.113 (May 20, 2026)
+
+
+## v1.10.113 – May 20, 2026
+
+### Added
+
+- **Reach comments straight from the grid.** Hovering an anchored comment's yellow highlight in a source or target cell now shows the comment as a tooltip. Right-clicking it adds a **💬 Open comment** item that switches to the Comments tab and flashes the relevant entry. Segment-level comments (no highlighted range) are reachable too: right-clicking anywhere in a commented segment's cell — or the segment's Status cell — offers **💬 Open comment(s)**, and the Status cell's tooltip now lists the segment's comments.
 
 
 ## v1.10.112 – May 20, 2026
