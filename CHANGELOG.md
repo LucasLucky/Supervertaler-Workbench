@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.109 (May 20, 2026)
+**Current Version:** v1.10.110 (May 20, 2026)
+
+
+## v1.10.110 – May 20, 2026
+
+### Changed
+
+- **Keyboard Shortcuts list hides unusable entries.** Settings ▸ Keyboard Shortcuts no longer shows actions you can't actually invoke or rebind: the two legacy "Cycle to Next/Previous Match (from grid)" slots (never wired to a key) and the redundant duplicate "Clear filter" row (same Ctrl+Shift+F as "Filter on selected text", which is the real one). Added a `hidden` flag in the shortcut registry; hidden entries are also excluded from the exported cheatsheet and conflict checks.
 
 
 ## v1.10.109 – May 20, 2026

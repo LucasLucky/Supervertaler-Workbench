@@ -372,14 +372,18 @@ class ShortcutManager:
             "description": "Cycle to Next Match (from grid) [legacy]",
             "default": "",
             "action": "select_next_match",
-            "context": "grid"
+            "context": "grid",
+            # Hidden: legacy slot with no key binding path — select_next_match
+            # is never wired to a shortcut, so this can't be invoked or rebound.
+            "hidden": True,
         },
         "match_cycle_previous": {
             "category": "Match Navigation",
             "description": "Cycle to Previous Match (from grid) [legacy]",
             "default": "",
             "action": "select_previous_match",
-            "context": "grid"
+            "context": "grid",
+            "hidden": True,  # see match_cycle_next
         },
         "match_insert_selected": {
             "category": "Match Navigation",
@@ -608,7 +612,10 @@ class ShortcutManager:
             "category": "Filter",
             "description": "Clear filter (same as above - toggle behavior)",
             "default": "Ctrl+Shift+F",
-            "action": "filter_on_selected_text"
+            "action": "filter_on_selected_text",
+            # Hidden: exact duplicate of filter_selected_text (same key + action,
+            # which is the entry actually wired up). Shown twice was confusing.
+            "hidden": True,
         },
 
         # QuickTrans (GT4T-style instant translation popup)
@@ -877,15 +884,25 @@ class ShortcutManager:
         """Reset all shortcuts to defaults"""
         self.custom_shortcuts = {}
     
-    def get_all_shortcuts(self) -> Dict:
+    def get_all_shortcuts(self, include_hidden: bool = False) -> Dict:
         """
         Get all shortcuts with their current values
-        
+
+        Args:
+            include_hidden: when False (default), entries flagged
+                ``"hidden": True`` in DEFAULT_SHORTCUTS are omitted. Hidden
+                entries are actions that the user cannot actually invoke or
+                rebind (dead legacy slots, redundant duplicates), so they are
+                kept out of the settings list, the cheatsheet, and conflict
+                checks. Pass True to get the raw set including them.
+
         Returns:
             Dictionary of all shortcuts with metadata
         """
         result = {}
         for shortcut_id, data in self.DEFAULT_SHORTCUTS.items():
+            if data.get("hidden") and not include_hidden:
+                continue
             result[shortcut_id] = {
                 **data,
                 "current": self.get_shortcut(shortcut_id),
