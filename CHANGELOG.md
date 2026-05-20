@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.114 (May 20, 2026)
+**Current Version:** v1.10.115 (May 20, 2026)
+
+
+## v1.10.115 – May 20, 2026
+
+### Changed
+
+- **Status column now sits between Source and Target by default.** The "Show Status column between Source and Target" option (Settings ▸ View) is on by default; uncheck it to move the Status column back to the far right. (Existing projects keep whatever you had set.) The option's label/tooltip were reworded to make the two positions clear.
 
 
 ## v1.10.114 – May 20, 2026

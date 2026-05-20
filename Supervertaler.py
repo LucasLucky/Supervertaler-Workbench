@@ -21688,11 +21688,12 @@ class SupervertalerQt(QMainWindow):
 
         # Status column position checkbox
         status_col_layout = QHBoxLayout()
-        status_before_target_check = CheckmarkCheckBox("Show Status column before Target column")
-        status_before_target_check.setChecked(font_settings.get('status_column_before_target', False))
+        status_before_target_check = CheckmarkCheckBox("Show Status column between Source and Target (uncheck to move it to the far right)")
+        status_before_target_check.setChecked(font_settings.get('status_column_before_target', True))
         status_before_target_check.setToolTip(
-            "When enabled, the Status column appears between Source and Target.\n"
-            "When disabled (default), Status appears after Target."
+            "When enabled (default), the Status column sits between the Source and\n"
+            "Target columns.\n"
+            "When disabled, the Status column moves to the far right (after Target)."
         )
         status_col_layout.addWidget(status_before_target_check)
         status_col_layout.addStretch()
@@ -26301,7 +26302,7 @@ class SupervertalerQt(QMainWindow):
         # moveSection reorders the display without changing logical indices,
         # so all code referencing column 3 (Target) and 4 (Status) still works.
         settings = self.load_general_settings()
-        self.status_column_before_target = settings.get('status_column_before_target', False)
+        self.status_column_before_target = settings.get('status_column_before_target', True)
         if self.status_column_before_target:
             header.moveSection(4, 3)  # Move Status (logical 4) to visual position 3
 
