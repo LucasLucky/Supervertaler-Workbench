@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.111 (May 20, 2026)
+**Current Version:** v1.10.112 (May 20, 2026)
+
+
+## v1.10.112 – May 20, 2026
+
+### Removed
+
+- **Dead `_last_selected_termbase_ids` storage.** The Add-to-Termbase dialog stored the last-used termbase IDs purely for the old Alt+Left quick-add, which was removed in v1.10.111. With no consumer left, the assignment (and its log line) are gone.
 
 
 ## v1.10.111 – May 20, 2026

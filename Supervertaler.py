@@ -14885,10 +14885,6 @@ class SupervertalerQt(QMainWindow):
             )
             return
 
-        # Store the selected termbase IDs for quick add (Ctrl+Q)
-        self._last_selected_termbase_ids = selected_termbase_ids
-        self.log(f"💾 Stored writable termbase IDs for Ctrl+Q: {selected_termbase_ids}")
-        
         # v1.10.62: orient + write is now per-termbase, since each
         # destination termbase may declare a different direction.
         # Synonym lists ride along unchanged — orientation only
