@@ -22,12 +22,6 @@ class ShortcutManager:
             "default": "",
             "action": "new_project"
         },
-        "editor_focus_notes": {
-            "category": "Edit",
-            "description": "Focus Segment Note Tab (Ctrl+N)",
-            "default": "Ctrl+N",
-            "action": "focus_segment_notes"
-        },
         "file_open": {
             "category": "File",
             "description": "Open Project",

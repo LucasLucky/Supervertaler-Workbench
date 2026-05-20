@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.104 (May 20, 2026)
+**Current Version:** v1.10.105 (May 20, 2026)
+
+
+## v1.10.105 – May 20, 2026
+
+### Changed
+
+- **Session Log moved out of the right-panel tabs.** The "📋 Session Log" tab is gone from the panel beside the grid. The log now opens in its own movable window via a new **📋 Log** button on the segment editor toolbar (beside Always-On) or **Tools ▸ Log Window**. The detached window shows the full backlog and updates live, and the button works even before Settings has been opened.
+
+### Removed
+
+- **Ctrl+N (Focus Segment Note Tab) shortcut.** Removed the binding and its entry in the Keyboard Shortcuts list. Commenting on segments is unaffected — Ctrl+M still opens the comment dialog (anchored to the selected source/target text, or segment-level when nothing is selected).
 
 
 ## v1.10.104 – May 20, 2026

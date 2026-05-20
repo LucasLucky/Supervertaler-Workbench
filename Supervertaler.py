@@ -5883,9 +5883,15 @@ class DetachedLogWindow(QWidget):
         """)
         layout.addWidget(self.log_display)
 
-        # Copy existing log content
-        if hasattr(parent, 'session_log') and parent.session_log:
-            self.log_display.setPlainText(parent.session_log.toPlainText())
+        # Copy existing log content. Prefer the always-built session_log_text
+        # buffer; fall back to the Settings ▸ Log widget if that path ran first.
+        source_widget = None
+        if hasattr(parent, 'session_log_text') and parent.session_log_text:
+            source_widget = parent.session_log_text
+        elif hasattr(parent, 'session_log') and parent.session_log:
+            source_widget = parent.session_log
+        if source_widget is not None:
+            self.log_display.setPlainText(source_widget.toPlainText())
             # Scroll to bottom
             scrollbar = self.log_display.verticalScrollBar()
             if scrollbar:
@@ -8213,9 +8219,6 @@ class SupervertalerQt(QMainWindow):
         
         # Alt+D - Add word at cursor to dictionary
         create_shortcut("editor_add_to_dictionary", "Alt+D", self.add_word_to_dictionary_shortcut)
-        
-        # Ctrl+N - Focus Comments → Segment sub-tab and start editing
-        create_shortcut("editor_focus_notes", "Ctrl+N", self.focus_segment_notes)
 
         # Ctrl+M — Create a comment anchored to the currently-selected
         # text in the source or target cell. If there's no selection,
@@ -9955,7 +9958,12 @@ class SupervertalerQt(QMainWindow):
         scratchpad_action.triggered.connect(self.show_scratchpad)
         scratchpad_action.setToolTip("Private notes for this project (never exported to CAT tools)")
         tools_menu.addAction(scratchpad_action)
-        
+
+        log_window_action = QAction("📋 &Log Window...", self)
+        log_window_action.triggered.connect(self.detach_log_window)
+        log_window_action.setToolTip("Open the session log in a separate window that can be moved to another screen")
+        tools_menu.addAction(log_window_action)
+
         tools_menu.addSeparator()
 
         settings_action = QAction("&Settings...", self)
@@ -11456,8 +11464,15 @@ class SupervertalerQt(QMainWindow):
 
     def detach_log_window(self):
         """Create a detached log window"""
+        # The list is normally created in create_log_tab() (Settings ▸ Log),
+        # but this entry point can fire before Settings has been built, so
+        # initialise on demand.
+        if not hasattr(self, 'detached_log_windows'):
+            self.detached_log_windows = []
         detached_window = DetachedLogWindow(self)
         detached_window.show()
+        detached_window.raise_()
+        detached_window.activateWindow()
         self.detached_log_windows.append(detached_window)
         self.log("🪟 Log window detached")
 
@@ -25348,7 +25363,17 @@ class SupervertalerQt(QMainWindow):
         alwayson_btn.clicked.connect(lambda checked: self._toggle_alwayson_from_grid_btn(checked, alwayson_btn))
         toolbar_layout.addWidget(alwayson_btn)
         self.grid_alwayson_btn = alwayson_btn  # Store reference
-        
+
+        toolbar_layout.addWidget(QLabel("|"))  # Separator
+
+        # Log button – opens the session log in its own movable window.
+        # Replaces the old right-panel "Session Log" tab; the same action is
+        # also available via Tools ▸ Log Window.
+        log_window_btn = QPushButton("📋 Log")
+        log_window_btn.setToolTip("Open the session log in a separate window that can be moved to another screen")
+        log_window_btn.clicked.connect(self.detach_log_window)
+        toolbar_layout.addWidget(log_window_btn)
+
         toolbar_layout.addStretch()
         
         save_next_btn = QPushButton("✓ Confirm && Next")
@@ -25644,9 +25669,10 @@ class SupervertalerQt(QMainWindow):
         self._comments_tab_index = tab_index
         tab_index += 1
 
-        # Tab 5: Session Log
-        right_tabs.addTab(self._session_log_widget_for_right_panel, "📋 Session Log")
-        tab_index += 1
+        # Session Log no longer has its own right-panel tab (v1.10.x). The
+        # session_log_text widget below is still built and still receives every
+        # log line, so it serves as the live buffer that the detached Log
+        # window (toolbar "📋 Log" button / Tools ▸ Log Window) copies from.
 
         # Tab 6: Scratchpad (private translator notes for the whole project)
         right_tabs.addTab(self._scratchpad_widget_for_right_panel, "📝 Scratchpad")
