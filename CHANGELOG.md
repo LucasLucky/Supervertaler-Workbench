@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.115 (May 20, 2026)
+**Current Version:** v1.10.116 (May 20, 2026)
+
+
+## v1.10.116 – May 20, 2026
+
+### Changed
+
+- **Edit Termbase Entry dialog — clearer synonym handling.** The source and target synonym sections are now always visible side-by-side (no more collapse triangles to expand), matching the Supervertaler for Trados term editor. The dialog opens fully expanded so the whole form is visible without scrolling, the wasted vertical space above the "… synonyms:" labels is gone (the surrounding group boxes were dropped), and the synonym list boxes are now white like the other fields.
 
 
 ## v1.10.115 – May 20, 2026

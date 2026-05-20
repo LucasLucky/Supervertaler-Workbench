@@ -457,57 +457,33 @@ class TermbaseEntryEditor(QDialog):
         meta_group.setLayout(meta_layout)
         layout.addWidget(meta_group)
 
-        # Source Synonyms section (collapsible)
-        source_syn_group = QGroupBox()
-        source_syn_main_layout = QVBoxLayout()
-
-        # Header with collapse button
-        source_syn_header = QHBoxLayout()
-        self.source_syn_toggle = QToolButton()
-        self.source_syn_toggle.setText("▼")
-        self.source_syn_toggle.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
-        self.source_syn_toggle.setFixedSize(20, 20)
-        self.source_syn_toggle.setCheckable(True)
-        self.source_syn_toggle.setChecked(False)
-        source_syn_header.addWidget(self.source_syn_toggle)
-
-        # v1.10.63: synonym section labels use the same direction-aware
-        # caption ("Dutch synonyms" / "English synonyms") as the term
-        # columns above, so left-vs-right semantics stay consistent
-        # whether the termbase is aligned or reversed relative to the
-        # project.
-        # v1.10.78: stored as attribute so the related-entry switcher
-        # can update the language label when the user picks an entry
-        # from a differently-oriented termbase.
-        self._source_syn_label = QLabel(f"{getattr(self, '_src_caption', 'Source')} Synonyms (Optional)")
+        # Source synonyms — always visible, added directly under the source
+        # term column (no group box, tight spacing) to mirror the Trados term
+        # editor and avoid wasted vertical space above the label.
+        # v1.10.63: direction-aware caption; v1.10.78: stored as attribute for
+        # the related-entry switcher.
+        self._source_col_layout.addSpacing(6)
+        self._source_syn_label = QLabel(f"{getattr(self, '_src_caption', 'Source')} synonyms:")
         self._source_syn_label.setStyleSheet("font-weight: bold;")
-        source_syn_header.addWidget(self._source_syn_label)
-        source_syn_header.addStretch()
-        source_syn_main_layout.addLayout(source_syn_header)
+        self._source_col_layout.addWidget(self._source_syn_label)
 
-        # Collapsible content
         self.source_syn_content = QWidget()
         source_syn_layout = QVBoxLayout(self.source_syn_content)
         source_syn_layout.setContentsMargins(0, 0, 0, 0)
-        self.source_syn_content.setVisible(False)
-
-        # Instructions
-        source_syn_info = QLabel("Add alternative source terms. First item = preferred term:")
-        source_syn_info.setStyleSheet("color: #666; font-size: 10px;")
-        source_syn_layout.addWidget(source_syn_info)
 
         # Input field + Add button + Forbidden checkbox
         source_add_layout = QHBoxLayout()
         self.source_synonym_edit = QLineEdit()
-        self.source_synonym_edit.setPlaceholderText("Enter source synonym and press Add or Enter...")
+        self.source_synonym_edit.setPlaceholderText("Type synonym, press Enter or +")
         source_add_layout.addWidget(self.source_synonym_edit)
 
         self.source_synonym_forbidden_check = CheckmarkCheckBox("Forbidden")
         self.source_synonym_forbidden_check.setToolTip("Mark this source synonym as forbidden")
         source_add_layout.addWidget(self.source_synonym_forbidden_check)
 
-        source_add_syn_btn = QPushButton("Add")
-        source_add_syn_btn.setMaximumWidth(60)
+        source_add_syn_btn = QPushButton("+")
+        source_add_syn_btn.setMaximumWidth(30)
+        source_add_syn_btn.setToolTip("Add synonym")
         source_add_syn_btn.clicked.connect(self.add_source_synonym)
         source_add_layout.addWidget(source_add_syn_btn)
         source_syn_layout.addLayout(source_add_layout)
@@ -520,6 +496,7 @@ class TermbaseEntryEditor(QDialog):
 
         self.source_synonym_list = QListWidget()
         self.source_synonym_list.setMaximumHeight(100)
+        self.source_synonym_list.setStyleSheet("QListWidget { background-color: #ffffff; }")
         self.source_synonym_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.source_synonym_list.customContextMenuRequested.connect(self.show_source_synonym_context_menu)
         source_list_layout.addWidget(self.source_synonym_list)
@@ -549,62 +526,37 @@ class TermbaseEntryEditor(QDialog):
         source_list_layout.addLayout(source_button_col)
         source_syn_layout.addLayout(source_list_layout)
 
-        # Add collapsible content to main layout
-        source_syn_main_layout.addWidget(self.source_syn_content)
-        source_syn_group.setLayout(source_syn_main_layout)
+        self._source_col_layout.addWidget(self.source_syn_content)
 
-        # Connect toggle button
-        self.source_syn_toggle.clicked.connect(lambda: self.toggle_section(self.source_syn_toggle, self.source_syn_content))
-
-        # Drop the synonym group into the source-language column rather
-        # than the main vertical layout – mirrors the Trados plugin's
-        # "everything for this language stacks under its term" layout.
-        self._source_col_layout.addWidget(source_syn_group)
-
-        # Target Synonyms section (collapsible)
-        target_syn_group = QGroupBox()
-        target_syn_main_layout = QVBoxLayout()
-
-        # Header with collapse button
-        target_syn_header = QHBoxLayout()
-        self.target_syn_toggle = QToolButton()
-        self.target_syn_toggle.setText("▼")
-        self.target_syn_toggle.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
-        self.target_syn_toggle.setFixedSize(20, 20)
-        self.target_syn_toggle.setCheckable(True)
-        self.target_syn_toggle.setChecked(False)
-        target_syn_header.addWidget(self.target_syn_toggle)
-
-        # v1.10.78: stored as attribute (see source counterpart above).
-        self._target_syn_label = QLabel(f"{getattr(self, '_tgt_caption', 'Target')} Synonyms (Optional)")
+        # Target synonyms — always visible, added directly under the target
+        # term column (no group box). See source counterpart above.
+        self._target_col_layout.addSpacing(6)
+        self._target_syn_label = QLabel(f"{getattr(self, '_tgt_caption', 'Target')} synonyms:")
         self._target_syn_label.setStyleSheet("font-weight: bold;")
-        target_syn_header.addWidget(self._target_syn_label)
-        target_syn_header.addStretch()
-        target_syn_main_layout.addLayout(target_syn_header)
+        self._target_col_layout.addWidget(self._target_syn_label)
 
-        # Collapsible content
         self.target_syn_content = QWidget()
         target_syn_layout = QVBoxLayout(self.target_syn_content)
         target_syn_layout.setContentsMargins(0, 0, 0, 0)
-        self.target_syn_content.setVisible(False)
 
         # Instructions
-        target_syn_info = QLabel("Add alternative translations (synonyms). First item = preferred term:")
+        target_syn_info = QLabel("Alternative translations. First item = preferred term.")
         target_syn_info.setStyleSheet("color: #666; font-size: 10px;")
         target_syn_layout.addWidget(target_syn_info)
 
         # Input field + Add button + Forbidden checkbox
         target_add_layout = QHBoxLayout()
         self.target_synonym_edit = QLineEdit()
-        self.target_synonym_edit.setPlaceholderText("Enter synonym and press Add or Enter...")
+        self.target_synonym_edit.setPlaceholderText("Type synonym, press Enter or +")
         target_add_layout.addWidget(self.target_synonym_edit)
 
         self.target_synonym_forbidden_check = CheckmarkCheckBox("Forbidden")
         self.target_synonym_forbidden_check.setToolTip("Mark this synonym as forbidden (warning when used)")
         target_add_layout.addWidget(self.target_synonym_forbidden_check)
 
-        target_add_syn_btn = QPushButton("Add")
-        target_add_syn_btn.setMaximumWidth(60)
+        target_add_syn_btn = QPushButton("+")
+        target_add_syn_btn.setMaximumWidth(30)
+        target_add_syn_btn.setToolTip("Add synonym")
         target_add_syn_btn.clicked.connect(self.add_target_synonym)
         target_add_layout.addWidget(target_add_syn_btn)
         target_syn_layout.addLayout(target_add_layout)
@@ -617,6 +569,7 @@ class TermbaseEntryEditor(QDialog):
 
         self.target_synonym_list = QListWidget()
         self.target_synonym_list.setMaximumHeight(100)
+        self.target_synonym_list.setStyleSheet("QListWidget { background-color: #ffffff; }")
         self.target_synonym_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.target_synonym_list.customContextMenuRequested.connect(self.show_target_synonym_context_menu)
         target_list_layout.addWidget(self.target_synonym_list)
@@ -646,15 +599,7 @@ class TermbaseEntryEditor(QDialog):
         target_list_layout.addLayout(target_button_col)
         target_syn_layout.addLayout(target_list_layout)
 
-        # Add collapsible content to main layout
-        target_syn_main_layout.addWidget(self.target_syn_content)
-        target_syn_group.setLayout(target_syn_main_layout)
-
-        # Connect toggle button
-        self.target_syn_toggle.clicked.connect(lambda: self.toggle_section(self.target_syn_toggle, self.target_syn_content))
-
-        # Drop the synonym group into the target-language column.
-        self._target_col_layout.addWidget(target_syn_group)
+        self._target_col_layout.addWidget(self.target_syn_content)
 
         # Buttons row
         button_layout = QHBoxLayout()
@@ -708,11 +653,15 @@ class TermbaseEntryEditor(QDialog):
         scroll.setWidget(content_widget)
         main_layout.addWidget(scroll)
 
-    def toggle_section(self, toggle_btn, content_widget):
-        """Toggle visibility of a collapsible section."""
-        is_visible = content_widget.isVisible()
-        content_widget.setVisible(not is_visible)
-        toggle_btn.setText("▼" if is_visible else "▲")
+        # Open at a size that shows the whole form without scrolling, capped at
+        # the 85%-of-screen maximum set in __init__. (The synonym panels are now
+        # always expanded, so the old fixed compact height forced scrolling.)
+        content_widget.adjustSize()
+        hint = content_widget.sizeHint()
+        self.resize(
+            max(self.width(), hint.width() + 24),
+            min(hint.height() + 24, self.maximumHeight()),
+        )
 
     # ========================================================================
     # NON-TRANSLATABLE MIRROR
