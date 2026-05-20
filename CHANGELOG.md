@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.113 (May 20, 2026)
+**Current Version:** v1.10.114 (May 20, 2026)
+
+
+## v1.10.114 – May 20, 2026
+
+### Fixed
+
+- **Dark theme: unreadable text on highlighted backgrounds.** The selected segment's source/target text now renders black on the pale-blue selection tint (it was light-on-light in dark themes), and anchored-comment text now renders black on its amber highlight. Both highlights are always light, so black is readable in every theme.
 
 
 ## v1.10.113 – May 20, 2026

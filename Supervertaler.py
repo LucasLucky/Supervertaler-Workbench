@@ -3673,9 +3673,16 @@ class ReadOnlyGridTextEditor(QTextEdit):
         """Mark this row as a file boundary. Kept for API compatibility; visual handled by banner overlay."""
         self._file_boundary = is_boundary
 
-    def set_background_color(self, color: str):
-        """Set the background color for this text editor (for alternating row colors)"""
+    def set_background_color(self, color: str, text_color: str = None):
+        """Set the background color (and optional forced text color) for this cell.
+
+        text_color is passed for the selection tint so the editor's text stays
+        readable on the pale-blue selection background — without it, dark themes
+        render light text on light blue (unreadable). Alternating-row callers
+        pass no text_color, leaving the theme's default editor colour in place.
+        """
         self._grid_bg_color = color
+        self._grid_text_color = text_color
         self._rebuild_grid_stylesheet()
 
     def apply_grid_font_size(self, size_pt: float):
@@ -3693,12 +3700,15 @@ class ReadOnlyGridTextEditor(QTextEdit):
         """Compose this cell's stylesheet from current bg colour + font size."""
         bg_rule = f"background-color: {self._grid_bg_color};" if self._grid_bg_color else ""
         font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
+        _tc = getattr(self, '_grid_text_color', None)
+        color_rule = f"color: {_tc};" if _tc else ""
         self.setStyleSheet(f"""
             QTextEdit {{
                 border: none;
                 padding: 0px 4px 0px 0px;
                 {bg_rule}
                 {font_rule}
+                {color_rule}
             }}
             QTextEdit:focus {{
                 border: 1px solid #2196F3;
@@ -5191,9 +5201,16 @@ class EditableGridTextEditor(QTextEdit):
         """Mark this row as a file boundary (shows a top separator line)."""
         self._file_boundary = is_boundary
 
-    def set_background_color(self, color: str):
-        """Set the background color for this text editor (for alternating row colors)"""
+    def set_background_color(self, color: str, text_color: str = None):
+        """Set the background color (and optional forced text color) for this cell.
+
+        text_color is passed for the selection tint so the editor's text stays
+        readable on the pale-blue selection background — without it, dark themes
+        render light text on light blue (unreadable). Alternating-row callers
+        pass no text_color, leaving the theme's default editor colour in place.
+        """
         self._grid_bg_color = color
+        self._grid_text_color = text_color
         self._rebuild_grid_stylesheet()
 
     def apply_grid_font_size(self, size_pt: float):
@@ -5213,12 +5230,15 @@ class EditableGridTextEditor(QTextEdit):
         border_thickness = EditableGridTextEditor.focus_border_thickness
         bg_rule = f"background-color: {self._grid_bg_color};" if self._grid_bg_color else ""
         font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
+        _tc = getattr(self, '_grid_text_color', None)
+        color_rule = f"color: {_tc};" if _tc else ""
         self.setStyleSheet(f"""
             QTextEdit {{
                 border: none;
                 padding: 0px 4px 0px 0px;
                 {bg_rule}
                 {font_rule}
+                {color_rule}
             }}
             QTextEdit:focus {{
                 border: {border_thickness}px solid {border_color};
@@ -39821,7 +39841,7 @@ class SupervertalerQt(QMainWindow):
             # Normal: determine color based on row index (even/odd)
             color = settings['even_color'] if row % 2 == 0 else settings['odd_color']
             row_color = QColor(color)
-        
+
         # Apply to ID column (column 0)
         id_item = self.table.item(row, 0)
         if id_item:
@@ -39895,7 +39915,10 @@ class SupervertalerQt(QMainWindow):
                         # API. Other cell widgets are left alone – they have
                         # their own opinions about how to render selection.
                         if hasattr(widget, 'set_background_color'):
-                            widget.set_background_color(self.SELECTION_TINT)
+                            # Force dark text so the cell stays readable on the
+                            # pale-blue selection tint (light editor text on light
+                            # blue is unreadable in dark themes).
+                            widget.set_background_color(self.SELECTION_TINT, text_color='#000000')
                     else:
                         item = self.table.item(current_row, col)
                         if item is not None:
@@ -48489,6 +48512,10 @@ class SupervertalerQt(QMainWindow):
         bg_color = self._comment_anchor_bg_color()
         fmt = _QTextCharFormat()
         fmt.setBackground(bg_color)
+        # Force black text on the amber highlight so it stays readable in dark
+        # themes (light theme text on light amber is unreadable). The amber is
+        # always light, so black works in every theme.
+        fmt.setForeground(QColor('#000000'))
 
         for col, field_name in [(2, 'source'), (3, 'target')]:
             editor = self.table.cellWidget(row, col)
