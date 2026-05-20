@@ -2603,12 +2603,6 @@ class ReadOnlyGridTextEditor(QTextEdit):
             event.accept()
             return
 
-        # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
-        if event.key() == Qt.Key.Key_Left and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
-            self._handle_quick_add_to_termbase()
-            event.accept()
-            return
-
         # Alt+Up: Quick add selected terms to Project glossary (no dialog)
         if event.key() == Qt.Key.Key_Up and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
             self._handle_quick_add_to_glossary_priority(1)
@@ -2663,32 +2657,6 @@ class ReadOnlyGridTextEditor(QTextEdit):
             return
 
         super().mouseDoubleClickEvent(event)
-
-    def _handle_quick_add_to_termbase(self):
-        """Handle Alt+Left: Quick add selected source and target terms to last-used glossary (no dialog)"""
-        # Strip invisible markers before saving to glossary
-        source_text = strip_invisible_markers(self.textCursor().selectedText()).strip()
-
-        table = self.table_ref if hasattr(self, 'table_ref') and self.table_ref else self.parent()
-        target_text = ""
-        if table and self.row >= 0:
-            target_widget = table.cellWidget(self.row, 3)
-            if target_widget and hasattr(target_widget, 'textCursor'):
-                target_text = strip_invisible_markers(target_widget.textCursor().selectedText()).strip()
-
-        if not source_text or not target_text:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self,
-                "Selection Required",
-                "Please select text in both Source and Target cells before quick-adding to termbase.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
-            )
-            return
-
-        main_window = self._get_main_window()
-        if main_window and hasattr(main_window, 'quick_add_term_pair_to_termbase'):
-            main_window.quick_add_term_pair_to_termbase(source_text, target_text)
 
     def _handle_quick_add_to_glossary_priority(self, priority: int):
         """Handle Alt+Up/Down: Quick add selected terms to the Project/Background glossary (no dialog)"""
@@ -3006,11 +2974,6 @@ class ReadOnlyGridTextEditor(QTextEdit):
                     self._handle_add_to_termbase()
                     return True  # Event handled
             
-            # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
-            if key_event.key() == Qt.Key.Key_Left and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.AltModifier:
-                self._handle_quick_add_to_termbase()
-                return True  # Event handled
-
             # Alt+Up: Quick add selected terms to Project glossary (no dialog)
             if key_event.key() == Qt.Key.Key_Up and _cleaned_modifiers(key_event) == Qt.KeyboardModifier.AltModifier:
                 self._handle_quick_add_to_glossary_priority(1)
@@ -3127,39 +3090,6 @@ class ReadOnlyGridTextEditor(QTextEdit):
         if main_window and hasattr(main_window, 'add_term_pair_to_termbase'):
             main_window.add_term_pair_to_termbase(source_text, target_text)
     
-    def _handle_quick_add_to_termbase(self):
-        """Handle Alt+Left: Quick add selected source and target terms to last-used glossary (no dialog)"""
-        if not self.table_ref or self.row < 0:
-            return
-
-        # Get source selection (from this widget) – strip invisible markers before saving
-        source_text = strip_invisible_markers(self.textCursor().selectedText()).strip()
-
-        # Get target cell widget and its selection – strip invisible markers before saving
-        target_widget = self.table_ref.cellWidget(self.row, 3)
-        target_text = ""
-        if target_widget and hasattr(target_widget, 'textCursor'):
-            target_text = strip_invisible_markers(target_widget.textCursor().selectedText()).strip()
-
-        # Validate we have both selections
-        if not source_text or not target_text:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self,
-                "Selection Required",
-                "Please select text in both Source and Target cells before quick-adding to termbase.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
-            )
-            return
-
-        # Find main window and call quick_add_to_termbase method
-        main_window = self.table_ref.parent()
-        while main_window and not hasattr(main_window, 'quick_add_term_pair_to_termbase'):
-            main_window = main_window.parent()
-
-        if main_window and hasattr(main_window, 'quick_add_term_pair_to_termbase'):
-            main_window.quick_add_term_pair_to_termbase(source_text, target_text)
-
     def _handle_quick_add_to_glossary_priority(self, priority: int):
         """Handle Alt+Up/Down: Quick add selected terms to the Project/Background glossary (no dialog)"""
         if not self.table_ref or self.row < 0:
@@ -3540,11 +3470,6 @@ class ReadOnlyGridTextEditor(QTextEdit):
         add_to_tb_action = QAction(f"📖 Add to Termbase ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
         add_to_tb_action.triggered.connect(self._handle_add_to_termbase)
         menu.addAction(add_to_tb_action)
-
-        # Quick add to glossary action (no dialog) - uses last-selected glossary from Ctrl+E
-        quick_add_action = QAction(f"⚡ Quick Add to Termbase ({format_shortcut_for_display('Alt+Left')})", self)
-        quick_add_action.triggered.connect(self._handle_quick_add_to_termbase)
-        menu.addAction(quick_add_action)
 
         # Quick add to Project glossary (no dialog)
         quick_add_p1_action = QAction(f"⚡ Quick Add to Project Termbase ({format_shortcut_for_display('Alt+Up')})", self)
@@ -4142,39 +4067,6 @@ class EditableGridTextEditor(QTextEdit):
         if main_window and hasattr(main_window, 'add_term_pair_to_termbase'):
             main_window.add_term_pair_to_termbase(source_text, target_text)
     
-    def _handle_quick_add_to_termbase(self):
-        """Handle Alt+Left: Quick add selected source and target terms to last-used glossary (no dialog)"""
-        if not self.table or self.row < 0:
-            return
-
-        # Get target selection (from this widget)
-        target_text = self.textCursor().selectedText().strip()
-
-        # Get source cell widget and its selection
-        source_widget = self.table.cellWidget(self.row, 2)
-        source_text = ""
-        if source_widget and hasattr(source_widget, 'textCursor'):
-            source_text = source_widget.textCursor().selectedText().strip()
-
-        # Validate we have both selections
-        if not source_text or not target_text:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self,
-                "Selection Required",
-                "Please select text in both Source and Target cells before quick-adding to termbase.\n\n"
-                f"Tip: Use {format_shortcut_for_display('Ctrl+Alt+T')} to add with a dialogue where you can choose a termbase and add metadata."
-            )
-            return
-
-        # Find main window and call quick_add_to_termbase method
-        main_window = self.table.parent()
-        while main_window and not hasattr(main_window, 'quick_add_term_pair_to_termbase'):
-            main_window = main_window.parent()
-
-        if main_window and hasattr(main_window, 'quick_add_term_pair_to_termbase'):
-            main_window.quick_add_term_pair_to_termbase(source_text, target_text)
-
     def _handle_quick_add_to_glossary_priority(self, priority: int):
         """Handle Alt+Up/Down: Quick add selected terms to the Project/Background glossary (no dialog)"""
         if not self.table or self.row < 0:
@@ -4383,11 +4275,6 @@ class EditableGridTextEditor(QTextEdit):
         add_to_tb_action = QAction(f"📖 Add to Termbase ({format_shortcut_for_display('Ctrl+Alt+T')})", self)
         add_to_tb_action.triggered.connect(self._handle_add_to_termbase)
         menu.addAction(add_to_tb_action)
-
-        # Quick add to glossary action (no dialog) - uses last-selected glossary from Ctrl+E
-        quick_add_action = QAction(f"⚡ Quick Add to Termbase ({format_shortcut_for_display('Alt+Left')})", self)
-        quick_add_action.triggered.connect(self._handle_quick_add_to_termbase)
-        menu.addAction(quick_add_action)
 
         # Quick add to Project glossary (no dialog)
         quick_add_p1_action = QAction(f"⚡ Quick Add to Project Termbase ({format_shortcut_for_display('Alt+Up')})", self)
@@ -4702,12 +4589,6 @@ class EditableGridTextEditor(QTextEdit):
             main_window = self._get_main_window()
             if main_window and hasattr(main_window, 'go_to_next_segment'):
                 main_window.go_to_next_segment()
-            event.accept()
-            return
-
-        # Alt+Left: Quick add selected terms to last-used glossary (no dialog)
-        if event.key() == Qt.Key.Key_Left and _cleaned_modifiers(event) == Qt.KeyboardModifier.AltModifier:
-            self._handle_quick_add_to_termbase()
             event.accept()
             return
 
@@ -15456,136 +15337,6 @@ class SupervertalerQt(QMainWindow):
                 self.termbase_tab_refresh_callback()
         except Exception as e:
             self.log(f"⚠️ post-delete refresh: tab refresh failed: {e}")
-
-    def quick_add_term_pair_to_termbase(self, source_text: str, target_text: str):
-        """Quick add a term pair to the last-used termbase without showing any dialogs (Ctrl+Q)
-
-        Uses the termbase(s) selected in the last Ctrl+E dialog. If none selected yet,
-        prompts the user to use Ctrl+E first.
-        """
-        # Check if we have a current project
-        if not hasattr(self, 'current_project') or not self.current_project:
-            QMessageBox.warning(self, "No Active Project", "Please open or create a project before adding terms to termbase.")
-            return
-        
-        # Get termbase manager
-        if not hasattr(self, 'termbase_mgr') or not self.termbase_mgr:
-            QMessageBox.critical(self, "Error", "Termbase manager not initialized")
-            return
-        
-        # Check if we have a last-selected termbase from Ctrl+E
-        if not hasattr(self, '_last_selected_termbase_ids') or not self._last_selected_termbase_ids:
-            QMessageBox.information(self, "No Termbase Selected",
-                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} first to select which termbase to save terms to.\n\n"
-                f"After that, {format_shortcut_for_display('Ctrl+Q')} will quick-save to the same termbase(s).")
-            return
-        
-        # Get all termbases to find the ones matching the saved IDs
-        all_termbases = self.termbase_mgr.get_all_termbases()
-        
-        if not all_termbases:
-            QMessageBox.warning(self, "No Termbase",
-                "Please create at least one termbase in Resources → Termbases tab.")
-            return
-        
-        # Find the termbases that match the saved IDs
-        target_termbases = [tb for tb in all_termbases if tb['id'] in self._last_selected_termbase_ids]
-        
-        if not target_termbases:
-            QMessageBox.warning(self, "Termbase Not Found",
-                "The previously selected termbase(s) could not be found.\n\n"
-                f"Please use {format_shortcut_for_display('Ctrl+Alt+T')} to select a termbase again.")
-            self._last_selected_termbase_ids = None
-            return
-        
-        termbase_names = [tb['name'] for tb in target_termbases]
-        self.log(f"⚡ Quick-adding term: {source_text} → {target_text}")
-        self.log(f"   To termbase(s): {', '.join(termbase_names)}")
-
-        # "Similar Term Found" check (Trados parity) – only interrupts when a
-        # same-source/same-target conflict exists; otherwise stays silent.
-        decision, merged_ids = self._detect_and_merge_synonyms(
-            source_text, target_text, target_termbases)
-        if decision == 'cancel':
-            return
-
-        success_count = 0
-        duplicate_count = 0
-        error_count = 0
-        for target_termbase in target_termbases:
-            if target_termbase['id'] in merged_ids:
-                continue  # Already folded into an existing entry as a synonym
-            # v1.10.62: orient per termbase. Each termbase in the
-            # batch may declare a different direction; per-termbase
-            # orientation lets a single Ctrl+Q correctly populate a
-            # mix of forward and reverse termbases without corrupting
-            # any of them. (Trados v4.19.22 cf8d70b fixed the same
-            # bug on its side.)
-            src_term, tgt_term, src_lang, tgt_lang = (
-                self._orient_term_for_termbase(
-                    source_text, target_text, target_termbase
-                )
-            )
-            try:
-                term_id = self.termbase_mgr.add_term(
-                    termbase_id=target_termbase['id'],
-                    source_term=src_term,
-                    target_term=tgt_term,
-                    source_lang=src_lang,
-                    target_lang=tgt_lang,
-                    notes="",
-                    domain="",
-                    project="",
-                    client="",
-                    forbidden=False
-                )
-                
-                if term_id:
-                    success_count += 1
-                    self.log(f"✓ Quick-added term to '{target_termbase['name']}': {source_text} → {target_text}")
-                else:
-                    duplicate_count += 1
-            except Exception as e:
-                error_count += 1
-                self.log(f"✗ Error quick-adding term to '{target_termbase['name']}': {e}")
-
-        # Count synonym-merges as successful adds (Trados parity).
-        success_count += len(merged_ids)
-
-        if success_count > 0:
-            self._play_sound_effect('glossary_term_added')
-            # Show brief success notification in statusbar instead of dialog
-            if hasattr(self, 'statusBar') and self.statusBar():
-                if success_count == 1:
-                    self.statusBar().showMessage(f"✓ Added: {source_text} → {target_text} (to {termbase_names[0]})", 3000)
-                else:
-                    self.statusBar().showMessage(f"✓ Added: {source_text} → {target_text} (to {success_count} termbases)", 3000)
-            
-            # Keep in-memory termbase search/index in sync with DB so new term appears immediately
-            try:
-                with self.termbase_cache_lock:
-                    self.termbase_cache.clear()
-                self._build_termbase_index()
-            except Exception as e:
-                self.log(f"WARNING: Failed to rebuild termbase index after quick add: {e}")
-
-            # Refresh termbase display (NOT TM - that would be wasteful)
-            self._refresh_termbase_display_for_current_segment()
-            
-            # Refresh termbase list UI if open
-            if hasattr(self, 'termbase_tab_refresh_callback') and self.termbase_tab_refresh_callback:
-                self.termbase_tab_refresh_callback()
-        else:
-            if duplicate_count > 0 and error_count == 0:
-                self._play_sound_effect('glossary_term_duplicate')
-                if hasattr(self, 'statusBar') and self.statusBar():
-                    self.statusBar().showMessage("⚠ Duplicate termbase entry (not added)", 3500)
-                QMessageBox.warning(self, "Duplicate Term", "This term already exists in the termbase. Duplicate terms are not allowed.")
-            else:
-                self._play_sound_effect('glossary_term_error')
-                if hasattr(self, 'statusBar') and self.statusBar():
-                    self.statusBar().showMessage("❌ Error adding termbase entry (see log)", 3500)
-                QMessageBox.warning(self, "Error", "Failed to add term. Check the log for details.")
 
     def _quick_add_term_with_priority(self, target: str = "project"):
         """Quick add selected term pair to the Project or first Background glossary.

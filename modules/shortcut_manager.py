@@ -493,13 +493,6 @@ class ShortcutManager:
             "action": "add_to_termbase",
             "context": "grid_editor"
         },
-        "editor_quick_add_to_termbase": {
-            "category": "Editor",
-            "description": "Quick add term pair to the last used termbase",
-            "default": "Alt+Left",
-            "action": "quick_add_to_termbase",
-            "context": "grid_editor"
-        },
         "editor_quick_add_priority_1": {
             "category": "Editor",
             "description": "Quick add term pair with Priority 1",

@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.110 (May 20, 2026)
+**Current Version:** v1.10.111 (May 20, 2026)
+
+
+## v1.10.111 – May 20, 2026
+
+### Removed
+
+- **"Quick Add to Termbase" (Alt+Left).** Removed the redundant last-used-termbase quick-add. The project termbase (Alt+Up) and background termbase (Alt+Down) quick-adds cover the useful cases; Ctrl+Alt+T still opens the full add dialog. Gone from the shortcut list, the editor right-click menu, and the keyboard handlers, along with the now-dead backing code.
 
 
 ## v1.10.110 – May 20, 2026
