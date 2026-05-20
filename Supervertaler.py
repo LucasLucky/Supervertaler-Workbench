@@ -8033,12 +8033,15 @@ class SupervertalerQt(QMainWindow):
             self.global_shortcuts[shortcut_id] = shortcut
             return shortcut
 
-        # F9 - Voice dictation
-        # Disable autorepeat: holding F9 (hold-to-talk mode) must NOT
+        # Voice dictation (default Ctrl+Shift+Space; configurable in
+        # Settings → Keyboard Shortcuts). The fallback below only applies if
+        # voice_dictate is somehow absent from the registry — keep it in sync
+        # with the registry default rather than the long-dead "F9".
+        # Disable autorepeat: holding the chord (hold-to-talk mode) must NOT
         # re-fire start_voice_dictation, otherwise toggle semantics keep
         # stopping and restarting the recording while the key is held –
         # producing fragmented audio that Whisper hallucinates over.
-        _voice_dictate_sc = create_shortcut("voice_dictate", "F9", self.start_voice_dictation)
+        _voice_dictate_sc = create_shortcut("voice_dictate", "Ctrl+Shift+Space", self.start_voice_dictation)
         if _voice_dictate_sc is not None:
             try:
                 _voice_dictate_sc.setAutoRepeat(False)

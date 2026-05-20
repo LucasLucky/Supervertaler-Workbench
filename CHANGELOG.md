@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.108 (May 20, 2026)
+**Current Version:** v1.10.109 (May 20, 2026)
+
+
+## v1.10.109 – May 20, 2026
+
+### Removed
+
+- **Dead "Switch to Grid/List/Document View" shortcuts.** These three entries (Ctrl+1/2/3) showed in Settings ▸ Keyboard Shortcuts but did nothing — Workbench has a single grid view and the backing methods no longer exist. Removed from the shortcut registry. (The memoQ-style "insert match #1…#9" slots are unaffected and remain available to bind.)
+
+### Fixed
+
+- **Stale "F9" voice-dictation fallback.** The in-code fallback default for the dictation shortcut now matches the real default (Ctrl+Shift+Space) instead of the long-dead F9.
 
 
 ## v1.10.108 – May 20, 2026

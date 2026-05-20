@@ -95,24 +95,10 @@ class ShortcutManager:
         },
         
         # View Operations
-        "view_grid": {
-            "category": "View",
-            "description": "Switch to Grid View",
-            "default": "Ctrl+1",
-            "action": "switch_to_grid_view"
-        },
-        "view_list": {
-            "category": "View",
-            "description": "Switch to List View",
-            "default": "Ctrl+2",
-            "action": "switch_to_list_view"
-        },
-        "view_document": {
-            "category": "View",
-            "description": "Switch to Document View",
-            "default": "Ctrl+3",
-            "action": "switch_to_document_view"
-        },
+        # NB: the old "Switch to Grid/List/Document View" entries (Ctrl+1/2/3,
+        # actions switch_to_*_view) were removed in v1.10.109 — those methods
+        # no longer exist (Workbench has a single grid view), so the entries
+        # were dead: they showed in the shortcut list but did nothing.
         "view_toggle_tags": {
             # Default moved Ctrl+Alt+T → Ctrl+Shift+H in v1.9.476 to free
             # Ctrl+Alt+T for "Add term to glossary" (which matches the
