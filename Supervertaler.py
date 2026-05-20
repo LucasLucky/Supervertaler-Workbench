@@ -9229,13 +9229,32 @@ class SupervertalerQt(QMainWindow):
         self.ollama_keepwarm_timer = None
         self._setup_ollama_keepwarm()
     
+    def _resolve_provider_model(self, settings, provider, default='gpt-5.5'):
+        """Resolve the model name for a provider.
+
+        For ``custom_openai`` the active profile's model is the single source
+        of truth (it drives the API call's base_url too). The flat
+        ``custom_openai_model`` field is legacy and goes stale as soon as a
+        user keeps several named profiles or switches the active one without
+        re-saving AI Settings – which is exactly what produced the
+        "status bar says X, QuickTrans says Y, and the model can't be
+        changed" inconsistency. Always prefer the active profile's model so
+        every surface (status bar, QuickTrans panel, the actual request)
+        agrees.
+        """
+        model = settings.get(f'{provider}_model', default)
+        if provider == 'custom_openai':
+            profile = self._get_active_custom_profile(settings)
+            if profile and (profile.get('model') or '').strip():
+                model = profile.get('model').strip()
+        return model
+
     def _update_llm_indicator(self):
         """Update the LLM provider/model indicator in the status bar"""
         try:
             settings = self.load_llm_settings()
             provider = settings.get('provider', 'openai')
-            model_key = f'{provider}_model'
-            model = settings.get(model_key, 'gpt-5.5')
+            model = self._resolve_provider_model(settings, provider, 'gpt-5.5')
             
             # Format nicely
             if provider == 'ollama':
@@ -51887,7 +51906,9 @@ class SupervertalerQt(QMainWindow):
             profile = self._get_active_custom_profile(settings)
             if profile:
                 base_url = profile.get('endpoint') or None
-                model = model or profile.get('model') or 'custom-model'
+                # Active profile's model is the source of truth; only fall
+                # back to a passed-in model if the profile has none set.
+                model = (profile.get('model') or '').strip() or model or 'custom-model'
                 # Profile API key takes priority, then api_keys.txt fallback
                 profile_key = (profile.get('api_key') or '').strip()
                 api_key = profile_key or api_keys.get('custom_openai', '') or 'not-needed'
@@ -53130,10 +53151,9 @@ class SupervertalerQt(QMainWindow):
         settings = self.load_llm_settings()
         provider = settings.get('provider', 'openai')
         
-        # Get model based on provider
-        model_key = f'{provider}_model'
-        model = settings.get(model_key, 'gpt-5.5')
-        
+        # Get model based on provider (active profile wins for custom_openai)
+        model = self._resolve_provider_model(settings, provider, 'gpt-5.5')
+
         # Ollama and custom_openai don't strictly need API keys
         if provider == 'ollama':
             api_keys = {'ollama': 'not-needed'}  # Placeholder - Ollama doesn't use API keys
@@ -53742,11 +53762,10 @@ class SupervertalerQt(QMainWindow):
                 pass
             return
 
-        # Determine provider/model
+        # Determine provider/model (active profile wins for custom_openai)
         settings = self.load_llm_settings()
         provider = settings.get('provider', 'openai')
-        model_key = f'{provider}_model'
-        model = settings.get(model_key)
+        model = self._resolve_provider_model(settings, provider, None)
 
         # Load API keys
         api_keys = self.load_api_keys()
@@ -55546,9 +55565,8 @@ class SupervertalerQt(QMainWindow):
             profile_key = (_custom_profile.get('api_key') or '').strip() if _custom_profile else ''
             api_key_value = profile_key or api_key_value or 'not-needed'
 
-        # Get model based on provider
-        model_key = f'{provider}_model'
-        model = settings.get(model_key, 'gpt-5.5')
+        # Get model based on provider (active profile wins for custom_openai)
+        model = self._resolve_provider_model(settings, provider, 'gpt-5.5')
 
         # Get languages
         source_lang = getattr(self.current_project, 'source_lang', 'en')

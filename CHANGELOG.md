@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.118 (May 21, 2026)
+**Current Version:** v1.10.119 (May 21, 2026)
+
+
+## v1.10.119 – May 21, 2026
+
+### Fixed
+
+- **Custom (OpenAI-compatible) endpoints now always use the active profile's model.** When you kept more than one custom-endpoint profile – or switched the active one without re-saving AI Settings – the status bar and the actual API request fell back to a stale legacy `custom_openai_model` value, while the QuickTrans panel showed the correct one. The result was a confusing mismatch (e.g. the panel said `Pro/deepseek-ai/DeepSeek-V3` but requests went out as `deepseekv4`), and the endpoint would reject the call. All surfaces – status-bar indicator, QuickTrans panel, and every translation request – now resolve the model from the active profile, so they always agree.
 
 
 ## v1.10.118 – May 21, 2026
