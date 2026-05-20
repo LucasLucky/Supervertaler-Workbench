@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.116 (May 20, 2026)
+**Current Version:** v1.10.117 (May 20, 2026)
+
+
+## v1.10.117 – May 20, 2026
+
+### Fixed
+
+- **Edit Termbase Entry dialog — removed stray label under target synonyms.** A leftover "Alternative translations. First item = preferred term." instruction line under the target ("… synonyms:") column was making the two synonym columns lopsided. It has been removed so the source and target sections line up evenly.
 
 
 ## v1.10.116 – May 20, 2026

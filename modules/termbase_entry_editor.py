@@ -539,11 +539,6 @@ class TermbaseEntryEditor(QDialog):
         target_syn_layout = QVBoxLayout(self.target_syn_content)
         target_syn_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Instructions
-        target_syn_info = QLabel("Alternative translations. First item = preferred term.")
-        target_syn_info.setStyleSheet("color: #666; font-size: 10px;")
-        target_syn_layout.addWidget(target_syn_info)
-
         # Input field + Add button + Forbidden checkbox
         target_add_layout = QHBoxLayout()
         self.target_synonym_edit = QLineEdit()
