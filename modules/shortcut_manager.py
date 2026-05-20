@@ -73,7 +73,13 @@ class ShortcutManager:
             "default": "Ctrl+G",
             "action": "show_goto_dialog"
         },
-        
+        "editor_add_comment": {
+            "category": "Editor",
+            "description": "Add Comment from Selection",
+            "default": "Ctrl+M",
+            "action": "add_comment_from_selection"
+        },
+
         # Translation Operations
         "translate_current": {
             "category": "Translation",
@@ -149,12 +155,6 @@ class ShortcutManager:
         },
         
         # Resources & Tools
-        "tools_tm_manager_tab": {
-            "category": "Resources",
-            "description": "TM Manager (Launch in tab)",
-            "default": "Ctrl+M",
-            "action": "show_tm_manager_in_tab"
-        },
         "tools_tm_manager_window": {
             "category": "Resources",
             "description": "TM Manager (Separate window)",

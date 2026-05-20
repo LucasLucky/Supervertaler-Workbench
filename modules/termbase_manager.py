@@ -866,6 +866,64 @@ class TermbaseManager:
             self.log(f"✗ Error adding term: {e}")
             return None
 
+    def find_merge_matches(self, termbase_id: int, source_term: str,
+                           target_term: str) -> List[Dict]:
+        """Find existing entries in a termbase that PARTIALLY overlap a new pair.
+
+        A partial overlap is an entry that shares the same source term but a
+        different target (the new target is a target-synonym candidate), or
+        the same target but a different source (a source-synonym candidate).
+        Exact duplicates (both columns equal) are NOT returned — add_term's own
+        duplicate check handles those.
+
+        Inputs are expected in the termbase's own storage direction (callers
+        orient via _orient_term_for_termbase first), exactly like add_term.
+
+        Mirrors the Trados plugin's TermMergeChecker.FindMergeMatches so the two
+        products offer the same "merge as synonym" prompt against the shared
+        SQLite schema.
+
+        Returns a list of dicts:
+            {'term_id': int, 'source_term': str, 'target_term': str,
+             'match_type': 'source'|'target'}
+        where 'source' means the existing source_term matched and 'target' means
+        the existing target_term matched. Empty list when there are no candidates.
+        """
+        matches: List[Dict] = []
+        if (not source_term or not source_term.strip()
+                or not target_term or not target_term.strip()):
+            return matches
+        try:
+            cursor = self.db_manager.cursor
+            cursor.execute("""
+                SELECT id, source_term, target_term
+                FROM termbase_terms
+                WHERE termbase_id = ?
+                  AND (
+                    (LOWER(TRIM(source_term)) = LOWER(?)
+                     AND LOWER(TRIM(target_term)) != LOWER(?))
+                    OR
+                    (LOWER(TRIM(target_term)) = LOWER(?)
+                     AND LOWER(TRIM(source_term)) != LOWER(?))
+                  )
+            """, (termbase_id,
+                  source_term.strip(), target_term.strip(),
+                  target_term.strip(), source_term.strip()))
+            for row in cursor.fetchall():
+                existing_source = row[1] or ""
+                existing_target = row[2] or ""
+                source_matched = (existing_source.strip().lower()
+                                  == source_term.strip().lower())
+                matches.append({
+                    'term_id': row[0],
+                    'source_term': existing_source,
+                    'target_term': existing_target,
+                    'match_type': 'source' if source_matched else 'target',
+                })
+        except Exception as e:
+            self.log(f"✗ Error checking for merge matches: {e}")
+        return matches
+
     def set_nontranslatable(self, term_id: int, is_nontranslatable: bool) -> bool:
         """Toggle the non-translatable flag on an existing term.
 

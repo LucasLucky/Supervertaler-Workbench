@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.105 (May 20, 2026)
+**Current Version:** v1.10.106 (May 20, 2026)
+
+
+## v1.10.106 – May 20, 2026
+
+### Added
+
+- **"Similar Term Found" merge prompt.** When you add a term whose source already exists with a different target (or whose target exists with a different source), a dialog now offers to fold the new term into the existing entry as a synonym — **Add as Synonym**, **Add & Edit…** (merge then open the entry editor), **Keep Both**, or **Cancel** — instead of silently creating a near-duplicate. Works on all term-add paths (Ctrl+Alt+T dialog, Alt+Left quick-add, Alt+Up project, Alt+Down background) and only interrupts when there is an actual conflict, so quick-adds stay silent and fast otherwise. Brings the Workbench to parity with the Supervertaler for Trados plugin against the shared termbase schema. Exact duplicates still behave as before.
+
+### Fixed
+
+- **Keyboard Shortcuts list.** The "Add Comment from Selection" (Ctrl+M) shortcut is now listed and editable in Settings ▸ Keyboard Shortcuts — it was bound in code but missing from the list. Removed the phantom "TM Manager (Launch in tab)" entry, which squatted on Ctrl+M in the list but was never wired to anything. ("TM Manager (Separate window)" / Ctrl+Shift+M is unchanged.)
 
 
 ## v1.10.105 – May 20, 2026

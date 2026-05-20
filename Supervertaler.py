@@ -14810,6 +14810,120 @@ class SupervertalerQt(QMainWindow):
         # match the termbase's declared direction by definition.
         return source_text, target_text, project_source, project_target
 
+    def _detect_and_merge_synonyms(self, source_text: str, target_text: str,
+                                   target_termbases: list,
+                                   source_synonyms: list = None,
+                                   target_synonyms: list = None):
+        """Trados-parity "Similar Term Found" check across the given termbases.
+
+        Detects entries that share the new term's source (but a different
+        target) or its target (but a different source) and, if any are found,
+        prompts the user to fold the new term into the existing entry as a
+        synonym rather than create a near-duplicate.
+
+        Returns ``(decision, merged_tb_ids)``:
+          * ``'cancel'``     – user aborted; caller must add nothing.
+          * ``'keep_both'``  – no conflict, or user chose to keep both; caller
+                               inserts normally into every termbase.
+          * ``'merged'``     – the new term (and any supplied synonyms) were
+                               added as synonyms to the matched entries in
+                               ``merged_tb_ids``; caller must skip those
+                               termbases and insert only into the rest.
+
+        When there are no conflicts the method returns ``('keep_both', set())``
+        WITHOUT showing any dialog, so the quick-add paths stay silent and fast
+        in the common case.
+        """
+        if not target_termbases or not getattr(self, 'termbase_mgr', None):
+            return ('keep_both', set())
+
+        # Gather matches across all destination termbases, orienting each
+        # term to its termbase's storage direction first (same as add_term).
+        all_matches = []
+        for tb in target_termbases:
+            src_term, tgt_term, _sl, _tl = self._orient_term_for_termbase(
+                source_text, target_text, tb)
+            tb_was_swapped = (src_term != source_text)
+            for row in self.termbase_mgr.find_merge_matches(
+                    tb['id'], src_term, tgt_term):
+                all_matches.append({
+                    'term_id': row['term_id'],
+                    'source_term': row['source_term'],
+                    'target_term': row['target_term'],
+                    'match_type': row['match_type'],
+                    'termbase_id': tb['id'],
+                    'termbase_name': tb.get('name', ''),
+                    'tb_was_swapped': tb_was_swapped,
+                    'oriented_src': src_term,
+                    'oriented_tgt': tgt_term,
+                })
+
+        if not all_matches:
+            return ('keep_both', set())
+
+        from modules.merge_prompt_dialog import MergePromptDialog
+        dlg = MergePromptDialog(self, all_matches, source_text, target_text)
+        dlg.exec()
+        choice = dlg.choice
+
+        if choice == MergePromptDialog.CANCEL:
+            return ('cancel', set())
+        if choice == MergePromptDialog.KEEP_BOTH:
+            return ('keep_both', set())
+
+        # SYNONYM or EDIT: fold the new term into each matched entry. The
+        # language tag passed to add_synonym is relative to termbase storage,
+        # so when the termbase is reverse of the project the project-source
+        # text belongs in the target column and vice versa.
+        merged_ids = set()
+        for m in all_matches:
+            try:
+                if m['match_type'] == 'source':
+                    ok = self.termbase_mgr.add_synonym(
+                        m['term_id'], m['oriented_tgt'], language='target')
+                else:
+                    ok = self.termbase_mgr.add_synonym(
+                        m['term_id'], m['oriented_src'], language='source')
+                if ok:
+                    self.log(
+                        f"  ✓ Merged as synonym into '{m['termbase_name']}' "
+                        f"(entry #{m['term_id']})")
+                # Also fold in any synonyms the user typed in the add dialog.
+                syn_source_lang = 'target' if m['tb_was_swapped'] else 'source'
+                syn_target_lang = 'source' if m['tb_was_swapped'] else 'target'
+                for syn in (source_synonyms or []):
+                    self.termbase_mgr.add_synonym(
+                        m['term_id'], syn['text'], language=syn_source_lang,
+                        display_order=syn.get('order', 0),
+                        forbidden=syn.get('forbidden', False))
+                for syn in (target_synonyms or []):
+                    self.termbase_mgr.add_synonym(
+                        m['term_id'], syn['text'], language=syn_target_lang,
+                        display_order=syn.get('order', 0),
+                        forbidden=syn.get('forbidden', False))
+                merged_ids.add(m['termbase_id'])
+            except Exception as e:
+                self.log(
+                    f"  ✗ Failed to merge synonym into "
+                    f"'{m['termbase_name']}': {e}")
+
+        # "Add & Edit" – open the term entry editor on the first matched entry.
+        if choice == MergePromptDialog.EDIT and all_matches:
+            first = all_matches[0]
+            try:
+                from modules.termbase_entry_editor import TermbaseEntryEditor
+                editor = TermbaseEntryEditor(
+                    self,
+                    db_manager=self.db_manager,
+                    termbase_id=first['termbase_id'],
+                    term_id=first['term_id'],
+                )
+                editor.exec()
+            except Exception as e:
+                self.log(f"✗ Could not open term entry editor for review: {e}")
+
+        return ('merged', merged_ids)
+
     def add_term_pair_to_termbase(self, source_text: str, target_text: str):
         """Add a term pair to active termbase(s) with metadata dialog"""
         # Check if we have a current project
@@ -14902,6 +15016,17 @@ class SupervertalerQt(QMainWindow):
         if target_synonyms:
             self.log(f"   With {len(target_synonyms)} target synonym(s): {', '.join([s['text'] for s in target_synonyms])}")
 
+        # "Similar Term Found" check (Trados parity). If the new pair partially
+        # overlaps an existing entry, offer to merge as a synonym instead of
+        # creating a near-duplicate. Merged termbases are skipped in the loop.
+        target_tbs = [tb for tb in active_termbases
+                      if tb['id'] in selected_termbase_ids]
+        decision, merged_ids = self._detect_and_merge_synonyms(
+            source_text, target_text, target_tbs,
+            source_synonyms, target_synonyms)
+        if decision == 'cancel':
+            return
+
         # Add term to selected termbases only
         success_count = 0
         duplicate_count = 0
@@ -14909,6 +15034,8 @@ class SupervertalerQt(QMainWindow):
         for tb in active_termbases:
             if tb['id'] not in selected_termbase_ids:
                 continue  # Skip unselected termbases
+            if tb['id'] in merged_ids:
+                continue  # Already folded into an existing entry as a synonym
 
             # v1.10.62 per-termbase orientation (see _orient_term_for_termbase).
             src_term, tgt_term, src_lang, tgt_lang = (
@@ -14985,7 +15112,11 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 error_count += 1
                 self.log(f"✗ Error adding term to termbase '{tb['name']}': {e}")
-        
+
+        # Count synonym-merges (Trados parity) as successful adds so the
+        # messaging below reports them and the index/display refresh runs.
+        success_count += len(merged_ids)
+
         # Show result
         if success_count > 0:
             self._play_sound_effect('glossary_term_added')
@@ -15368,10 +15499,19 @@ class SupervertalerQt(QMainWindow):
         self.log(f"⚡ Quick-adding term: {source_text} → {target_text}")
         self.log(f"   To termbase(s): {', '.join(termbase_names)}")
 
+        # "Similar Term Found" check (Trados parity) – only interrupts when a
+        # same-source/same-target conflict exists; otherwise stays silent.
+        decision, merged_ids = self._detect_and_merge_synonyms(
+            source_text, target_text, target_termbases)
+        if decision == 'cancel':
+            return
+
         success_count = 0
         duplicate_count = 0
         error_count = 0
         for target_termbase in target_termbases:
+            if target_termbase['id'] in merged_ids:
+                continue  # Already folded into an existing entry as a synonym
             # v1.10.62: orient per termbase. Each termbase in the
             # batch may declare a different direction; per-termbase
             # orientation lets a single Ctrl+Q correctly populate a
@@ -15405,7 +15545,10 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 error_count += 1
                 self.log(f"✗ Error quick-adding term to '{target_termbase['name']}': {e}")
-        
+
+        # Count synonym-merges as successful adds (Trados parity).
+        success_count += len(merged_ids)
+
         if success_count > 0:
             self._play_sound_effect('glossary_term_added')
             # Show brief success notification in statusbar instead of dialog
@@ -15518,6 +15661,31 @@ class SupervertalerQt(QMainWindow):
             return
         
         self.log(f"⚡ Quick-adding term to {label} '{target_termbase['name']}': {source_text} → {target_text}")
+
+        # "Similar Term Found" check (Trados parity). Only interrupts on a
+        # same-source/same-target conflict; otherwise stays silent. When the
+        # user merges, the new term is folded into the existing entry as a
+        # synonym and we refresh and return without a fresh insert.
+        decision, merged_ids = self._detect_and_merge_synonyms(
+            source_text, target_text, [target_termbase])
+        if decision == 'cancel':
+            return
+        if decision == 'merged':
+            self._play_sound_effect('glossary_term_added')
+            self.statusBar().showMessage(
+                f"✓ Merged as synonym into '{target_termbase['name']}': "
+                f"{source_text} → {target_text}", 3000)
+            try:
+                with self.termbase_cache_lock:
+                    self.termbase_cache.clear()
+                self._build_termbase_index()
+            except Exception as e:
+                self.log(f"WARNING: Failed to rebuild termbase index after merge: {e}")
+            self._refresh_termbase_display_for_current_segment()
+            if (hasattr(self, 'termbase_tab_refresh_callback')
+                    and self.termbase_tab_refresh_callback):
+                self.termbase_tab_refresh_callback()
+            return
 
         # v1.10.62: orient for termbase direction. Project termbases
         # are usually aligned with the project, but background
