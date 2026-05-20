@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.106 (May 20, 2026)
+**Current Version:** v1.10.107 (May 20, 2026)
+
+
+## v1.10.107 – May 20, 2026
+
+### Changed
+
+- **Grid shows all segments by default.** The editor grid now opens with every segment on one page instead of 50 per page. Projects with more than 2000 segments automatically fall back to 500 per page on open to keep the initial layout snappy; you can still switch to any size (or "All") via the Per-page selector. Added a "500" option to that selector.
+
+### Fixed
+
+- **Shift+PgUp / Shift+PgDn range selection under "All".** These extended the selection to the very top/bottom of the document when the grid was in "All" mode (the page-worth guard only checked for the old string value, not the current sentinel). They now select a screenful as intended.
 
 
 ## v1.10.106 – May 20, 2026

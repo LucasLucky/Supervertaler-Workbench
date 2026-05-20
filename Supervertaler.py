@@ -25354,9 +25354,11 @@ class SupervertalerQt(QMainWindow):
         
         if not hasattr(self, 'page_size_combo') or not self._widget_is_alive(self.page_size_combo):
             self.page_size_combo = QComboBox()
-            self.page_size_combo.addItems(["5", "10", "25", "50", "100", "200", "All"])
+            self.page_size_combo.addItems(["5", "10", "25", "50", "100", "200", "500", "All"])
+            # Default to showing every segment ("All"). _maybe_auto_set_page_size()
+            # drops large projects (>2000 segments) back to a paged size on load.
             if not hasattr(self, 'grid_page_size'):
-                self.grid_page_size = 50
+                self.grid_page_size = 999999
             self.page_size_combo.setCurrentText(str(self.grid_page_size) if self.grid_page_size != 999999 else "All")
             if hasattr(self, 'on_page_size_changed'):
                 self.page_size_combo.currentTextChanged.connect(self.on_page_size_changed)
@@ -25886,6 +25888,50 @@ class SupervertalerQt(QMainWindow):
         return widget
     
     # Pagination methods
+    # Documents at or below this segment count open with every segment shown
+    # ("All"); larger ones fall back to PAGE_FALLBACK_SIZE per page so the
+    # initial visible-row layout stays snappy. Grid widgets are always built
+    # for the whole document, so this only bounds how many rows are visible.
+    PAGE_AUTO_ALL_THRESHOLD = 2000
+    PAGE_FALLBACK_SIZE = 500
+
+    def _maybe_auto_set_page_size(self):
+        """Pick the grid page size once per freshly-opened project.
+
+        Defaults to "All" (show every segment); for very large documents
+        (> PAGE_AUTO_ALL_THRESHOLD segments) it falls back to
+        PAGE_FALLBACK_SIZE per page. Runs once per project object — keyed on
+        the project's identity — so re-renders (sort, filter, page change) and
+        any manual "Per page" choice the user makes during the session are not
+        overridden.
+        """
+        if not self.current_project or not self.current_project.segments:
+            return
+        key = id(self.current_project)
+        if getattr(self, '_page_size_decided_for', None) == key:
+            return
+        self._page_size_decided_for = key
+
+        total = len(self.current_project.segments)
+        if total > self.PAGE_AUTO_ALL_THRESHOLD:
+            self.grid_page_size = self.PAGE_FALLBACK_SIZE
+            self.log(
+                f"📄 Large project ({total} segments) — paginating at "
+                f"{self.PAGE_FALLBACK_SIZE}/page. Switch to 'All' via the "
+                f"Per-page selector if you prefer one page.")
+        else:
+            self.grid_page_size = 999999  # All
+        self.grid_current_page = 0
+
+        # Reflect the decision in the combo without retriggering the handler.
+        if (hasattr(self, 'page_size_combo')
+                and self._widget_is_alive(self.page_size_combo)):
+            self.page_size_combo.blockSignals(True)
+            self.page_size_combo.setCurrentText(
+                "All" if self.grid_page_size >= 999999
+                else str(self.grid_page_size))
+            self.page_size_combo.blockSignals(False)
+
     def _get_total_pages(self) -> int:
         """Calculate total number of pages based on segment count and page size"""
         if not self.current_project or not self.current_project.segments:
@@ -26062,15 +26108,17 @@ class SupervertalerQt(QMainWindow):
         if current_row < 0:
             return
         
-        # Calculate page size (number of segments to select)
+        # Calculate page size (number of segments to select). When "All" is
+        # active (sentinel 999999) fall back to a screenful so Shift+PgUp
+        # doesn't select to the top of the document.
         page_size = getattr(self, 'grid_page_size', 50)
-        if page_size == "All" or page_size is None:
-            page_size = 50  # Default to 50 if "All" is selected
-        
+        if not isinstance(page_size, int) or page_size >= 999999 or page_size <= 0:
+            page_size = 50
+
         # Get or set the selection anchor (starting point for range selection)
         if not hasattr(self, '_selection_anchor_row'):
             self._selection_anchor_row = current_row
-        
+
         # Calculate target row (one page up from current, but not below 0)
         target_row = max(0, current_row - page_size)
         
@@ -26094,15 +26142,17 @@ class SupervertalerQt(QMainWindow):
         if current_row < 0:
             return
         
-        # Calculate page size (number of segments to select)
+        # Calculate page size (number of segments to select). When "All" is
+        # active (sentinel 999999) fall back to a screenful so Shift+PgDn
+        # doesn't select to the bottom of the document.
         page_size = getattr(self, 'grid_page_size', 50)
-        if page_size == "All" or page_size is None:
-            page_size = 50  # Default to 50 if "All" is selected
-        
+        if not isinstance(page_size, int) or page_size >= 999999 or page_size <= 0:
+            page_size = 50
+
         # Get or set the selection anchor (starting point for range selection)
         if not hasattr(self, '_selection_anchor_row'):
             self._selection_anchor_row = current_row
-        
+
         # Calculate target row (one page down from current, but not beyond last segment)
         max_row = len(self.current_project.segments) - 1
         target_row = min(max_row, current_row + page_size)
@@ -37024,7 +37074,11 @@ class SupervertalerQt(QMainWindow):
         if not self.current_project or not self.current_project.segments:
             self.clear_grid()
             return
-        
+
+        # Decide the page size for a newly-opened project (All, or paged for
+        # very large docs). Runs once per project; no-op on re-renders.
+        self._maybe_auto_set_page_size()
+
         self.table.setRowCount(len(self.current_project.segments))
 
         previous_suppression = self._suppress_target_change_handlers
