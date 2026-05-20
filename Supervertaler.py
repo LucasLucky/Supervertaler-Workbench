@@ -25504,10 +25504,10 @@ class SupervertalerQt(QMainWindow):
         preview_prompt_btn.clicked.connect(self._preview_combined_prompt_from_grid)
         toolbar_layout.addWidget(preview_prompt_btn)
         
-        dictate_btn = QPushButton("🎤 Dictate (F9)")
+        dictate_btn = QPushButton(f"🎤 Dictate{self._dictation_shortcut_label()}")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 3px 5px; border: none; outline: none;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
-        dictate_btn.setToolTip("Push-to-talk dictation – press F9 (or click) to record, transcribe, and insert text")
+        dictate_btn.setToolTip("Push-to-talk dictation – press your dictation shortcut (or click) to record, transcribe, and insert text. Set the key in Settings → Keyboard Shortcuts.")
         toolbar_layout.addWidget(dictate_btn)
         
         # Always-On Voice toggle button
@@ -25529,7 +25529,7 @@ class SupervertalerQt(QMainWindow):
                 outline: none;
             }
         """)
-        alwayson_btn.setToolTip("Always-On listening – continuously monitors the mic and transcribes automatically\nNo need to press F9")
+        alwayson_btn.setToolTip("Always-On listening – continuously monitors the mic and transcribes automatically\nNo need to press the dictation shortcut")
         alwayson_btn.clicked.connect(lambda checked: self._toggle_alwayson_from_grid_btn(checked, alwayson_btn))
         toolbar_layout.addWidget(alwayson_btn)
         self.grid_alwayson_btn = alwayson_btn  # Store reference
@@ -26721,10 +26721,10 @@ class SupervertalerQt(QMainWindow):
         clear_btn.clicked.connect(self.clear_tab_target)
 
         # Voice dictation button
-        dictate_btn = QPushButton("🎤 Dictate (F9)")
+        dictate_btn = QPushButton(f"🎤 Dictate{self._dictation_shortcut_label()}")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
-        dictate_btn.setToolTip("Push-to-talk dictation – press F9 (or click) to record, transcribe, and insert text")
+        dictate_btn.setToolTip("Push-to-talk dictation – press your dictation shortcut (or click) to record, transcribe, and insert text. Set the key in Settings → Keyboard Shortcuts.")
 
         # Store reference to dictate button for state updates
         editor_widget.dictate_btn = dictate_btn
@@ -49732,18 +49732,42 @@ class SupervertalerQt(QMainWindow):
         self.status_bar.showMessage(f"🎤 Voice: '{model_name}' model ready", 3000)
         self.log(f"✅ Model '{model_name}' loaded successfully")
 
+    def _dictation_shortcut_label(self) -> str:
+        """Return the current voice-dictation shortcut as a display suffix,
+        e.g. " (Ctrl+Shift+Space)", or "" when the shortcut is unbound.
+
+        The dictation key is user-configurable (Settings → Keyboard Shortcuts,
+        ``voice_dictate``), so the Dictate/Stop buttons read it live rather than
+        hardcoding a key that goes stale on rebind. (The old "(F9)" label was
+        wrong — the default is Ctrl+Shift+Space.)
+        """
+        sm = getattr(self, 'shortcut_manager', None)
+        if sm is None:
+            return ""
+        try:
+            key = sm.get_shortcut('voice_dictate')
+        except Exception:
+            return ""
+        if not key:
+            return ""
+        try:
+            return f" ({format_shortcut_for_display(key)})"
+        except Exception:
+            return f" ({key})"
+
     def _set_dictation_button_recording(self, is_recording):
         """Change dictate button appearance based on recording state"""
+        suffix = self._dictation_shortcut_label()
         # Update grid view dictate button
         if hasattr(self, 'tab_dictate_btn'):
             button = self.tab_dictate_btn
             if is_recording:
-                button.setText("⏹️ Stop (F9)")
+                button.setText(f"⏹️ Stop{suffix}")
                 button.setStyleSheet("background-color: #D32F2F; color: white; font-weight: bold;")
             else:
-                button.setText("🎤 Dictate (F9)")
+                button.setText(f"🎤 Dictate{suffix}")
                 button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
-        
+
         # Update list view dictate button (legacy, for backwards compatibility)
         if hasattr(self, 'tabbed_panels'):
             for panel in self.tabbed_panels:
@@ -49752,10 +49776,10 @@ class SupervertalerQt(QMainWindow):
                     if hasattr(panel, 'editor_widget') and hasattr(panel.editor_widget, 'dictate_btn'):
                         button = panel.editor_widget.dictate_btn
                         if is_recording:
-                            button.setText("⏹️ Stop (F9)")
+                            button.setText(f"⏹️ Stop{suffix}")
                             button.setStyleSheet("background-color: #D32F2F; color: white; font-weight: bold;")
                         else:
-                            button.setText("🎤 Dictate (F9)")
+                            button.setText(f"🎤 Dictate{suffix}")
                             button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
                 except:
                     pass

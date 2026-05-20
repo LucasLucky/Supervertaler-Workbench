@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.107 (May 20, 2026)
+**Current Version:** v1.10.108 (May 20, 2026)
+
+
+## v1.10.108 – May 20, 2026
+
+### Fixed
+
+- **Dictate button showed the wrong shortcut.** The grid's voice button was hard-labelled "🎤 Dictate (F9)", but the dictation key has long defaulted to Ctrl+Shift+Space (and is configurable). The button now reads the live `voice_dictate` binding — e.g. "🎤 Dictate (Ctrl+Shift+Space)" — and updates if you rebind it. Tooltips no longer reference F9.
 
 
 ## v1.10.107 – May 20, 2026
