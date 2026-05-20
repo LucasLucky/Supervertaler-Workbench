@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.117 (May 20, 2026)
+**Current Version:** v1.10.118 (May 21, 2026)
+
+
+## v1.10.118 – May 21, 2026
+
+### Fixed
+
+- **Double-tap Shift now actually opens the context menu.** Tapping Shift twice quickly (within 350 ms, while the Workbench window is active) is meant to open the context menu of the focused widget, but it never worked: the handler sent a synthetic `Shift+F10` key press, which Qt only translates into a context-menu event at the windowing layer – so it never reached the cell editor or the grid. It now sends a real context-menu event directly, anchored at the text cursor.
 
 
 ## v1.10.117 – May 20, 2026

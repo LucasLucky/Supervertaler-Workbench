@@ -1984,8 +1984,8 @@ class _DoubleTapShiftEventFilter(QObject):
 
     Replaces the AutoHotkey double-shift detection that was previously in
     supervertaler_hotkeys.ahk.  Only fires when the Supervertaler window
-    is active.  Two Shift releases within 350 ms triggers Shift+F10
-    (Qt's standard context-menu shortcut).
+    is active.  Two Shift releases within 350 ms opens the context menu of
+    whatever widget currently has focus.
     """
 
     THRESHOLD_MS = 350
@@ -2020,17 +2020,30 @@ class _DoubleTapShiftEventFilter(QObject):
         if 0 < elapsed <= self.THRESHOLD_MS:
             # Reset to prevent triple-tap
             self._last_shift_release = 0
-            # Trigger context menu via Shift+F10
+            # Open the focus widget's context menu. We send a real
+            # QContextMenuEvent rather than a synthetic Shift+F10 key press:
+            # Qt only translates the Shift+F10/Menu key into a context-menu
+            # event at the windowing layer (QWidgetWindow), so a fake key
+            # event delivered via sendEvent never reaches contextMenuEvent()
+            # or customContextMenuRequested and the menu never appears.
             from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtGui import QContextMenuEvent
             focus = QApplication.focusWidget()
             if focus:
-                from PyQt6.QtGui import QKeyEvent
-                fake_event = QKeyEvent(
-                    QEvent.Type.KeyPress,
-                    Qt.Key.Key_F10,
-                    Qt.KeyboardModifier.ShiftModifier
+                # Anchor the menu at the text cursor where available,
+                # otherwise the centre of the widget.
+                pos = None
+                try:
+                    pos = focus.cursorRect().center()
+                except Exception:
+                    pos = None
+                if pos is None:
+                    pos = focus.rect().center()
+                global_pos = focus.mapToGlobal(pos)
+                ctx_event = QContextMenuEvent(
+                    QContextMenuEvent.Reason.Keyboard, pos, global_pos
                 )
-                QApplication.sendEvent(focus, fake_event)
+                QApplication.sendEvent(focus, ctx_event)
             return True
 
         return False
