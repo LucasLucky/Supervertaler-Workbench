@@ -346,6 +346,7 @@ class LLMClient:
         ],
         "gemini": [
             "gemini-3.1-flash-lite",
+            "gemini-3.5-flash",
             "gemini-2.5-pro",
             "gemini-3.1-pro-preview"
         ]
@@ -1327,6 +1328,19 @@ class LLMClient:
 
     def _call_gemini(self, prompt: str, max_tokens: Optional[int] = None, images: Optional[List] = None, system_prompt: Optional[str] = None) -> str:
         """Call Google Gemini API with vision support."""
+        # gemini-3.5+ forces "thinking" (default level=medium), which bills
+        # hundreds of reasoning tokens at the output rate even for tiny
+        # translation segments (~65x the cost of flash-lite for no quality
+        # gain on short text). The thinking level can only be lowered via
+        # thinkingConfig, which the legacy google-generativeai 0.8.5 SDK
+        # cannot pass. Route 3.5+ models through REST with thinking pinned
+        # to "minimal"; all other models stay on the proven SDK path below.
+        if self.model.startswith("gemini-3.5"):
+            return self._call_gemini_rest(
+                prompt, max_tokens=max_tokens, images=images,
+                system_prompt=system_prompt, thinking_level="minimal",
+            )
+
         # v1.10.34: preserve the original exception text in the
         # ImportError. The old "Google AI library not installed"
         # blanket message was misleading – it fired even when the
@@ -1404,6 +1418,75 @@ class LLMClient:
             raise RuntimeError(f"Gemini returned no usable text ({reason})") from e
 
         return translation
+
+    def _call_gemini_rest(self, prompt: str, max_tokens: Optional[int] = None,
+                          images: Optional[List] = None, system_prompt: Optional[str] = None,
+                          thinking_level: str = "minimal") -> str:
+        """Call Gemini via REST so thinkingConfig can be set (legacy SDK can't).
+
+        Used for gemini-3.5+ to pin the thinking level to "minimal" and avoid
+        the large hidden reasoning-token cost on short translation segments.
+        """
+        import base64
+        import io
+        import json as json_module
+        import requests
+
+        parts = [{"text": prompt}]
+        if images:
+            from PIL import Image  # noqa: F401  (validates Pillow is present)
+            for img_ref, pil_image in images:
+                buf = io.BytesIO()
+                pil_image.save(buf, format="PNG")
+                parts.append({
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": base64.b64encode(buf.getvalue()).decode("ascii"),
+                    }
+                })
+            print(f"🟢 Gemini vision mode (REST): {len(images)} images added to message")
+
+        gen_config: Dict = {"thinkingConfig": {"thinkingLevel": thinking_level}}
+        if max_tokens:
+            gen_config["maxOutputTokens"] = max_tokens
+
+        body: Dict = {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": gen_config,
+        }
+        if system_prompt:
+            body["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key},
+            data=json_module.dumps(body),
+            timeout=120,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gemini REST error {resp.status_code}: {resp.text[:500]}")
+
+        data = resp.json()
+        try:
+            cand = data["candidates"][0]
+            text = "".join(
+                p.get("text", "") for p in cand["content"]["parts"]
+            ).strip()
+        except (KeyError, IndexError, TypeError) as e:
+            details = []
+            fb = data.get("promptFeedback", {})
+            if fb.get("blockReason"):
+                details.append(f"prompt blocked: {fb['blockReason']}")
+            for i, c in enumerate(data.get("candidates", []) or []):
+                if c.get("finishReason"):
+                    details.append(f"candidate {i} finish_reason={c['finishReason']}")
+            reason = "; ".join(details) if details else f"{type(e).__name__}: {e}"
+            raise RuntimeError(f"Gemini returned no usable text ({reason})") from e
+
+        if not text:
+            raise RuntimeError("Gemini returned an empty response")
+        return text
 
     def _call_ollama(self, prompt: str, max_tokens: Optional[int] = None, system_prompt: Optional[str] = None) -> str:
         """

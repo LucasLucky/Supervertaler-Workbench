@@ -2481,6 +2481,74 @@ class GridTextEditor(QTextEdit):
                 main_window.log("✓ All tags from source already in target")
 
 
+# Characters that may sit *inside* a word and must never be trimmed from the
+# edges of a double-click selection (apostrophes, hyphens – incl. their Unicode
+# variants). Decimal separators (. ,) are handled by the trim logic only
+# trimming at the edges, so "7,5" / "55.5" keep their internal separators.
+_WORD_INTERNAL_PUNCT = {"'", "’", "ʼ", "-", "‐", "‑"}
+
+
+def _is_edge_trim_char(ch: str) -> bool:
+    """True if `ch` is punctuation (or a zero-width marker) that should be
+    trimmed from the start/end of a double-clicked word selection."""
+    import unicodedata
+    if ch in _WORD_INTERNAL_PUNCT:
+        return False
+    if ch == '​':  # zero-width space (part of '·​' space markers)
+        return True
+    return unicodedata.category(ch).startswith('P')
+
+
+def select_word_under_cursor(widget, event) -> bool:
+    """Select the word under the double-click position, excluding adjacent
+    punctuation (e.g. a trailing period) and invisible-character markers.
+
+    Used by both source and target grid cells so selection behaves identically
+    whether or not invisible characters are displayed. Word-internal apostrophes
+    and hyphens are preserved (don't, well-known); decimal separators inside a
+    number are kept because only the *edges* of the selection are trimmed.
+
+    Returns True if a selection was made, False if the caller should fall back
+    to the default handler (e.g. empty cell).
+    """
+    from PyQt6.QtGui import QTextCursor
+
+    # Regular/non-breaking space + the visible invisible-character markers.
+    # ​ is deliberately NOT a delimiter (it lives inside '·​' pairs);
+    # any leading/trailing ​ is removed by the edge-trim step below.
+    DELIMITERS = {' ', ' ', '·', '→', '°', '↵', '\n', '\t'}
+
+    text = widget.toPlainText()
+    n = len(text)
+    if n == 0:
+        return False
+
+    cursor = widget.cursorForPosition(event.pos())
+    pos = min(cursor.position(), n)
+
+    start = pos
+    while start > 0 and text[start - 1] not in DELIMITERS:
+        start -= 1
+    end = pos
+    while end < n and text[end] not in DELIMITERS:
+        end += 1
+
+    # Trim punctuation / zero-width markers from both edges, but never trim away
+    # the entire token (e.g. a double-click directly on a standalone "(").
+    ts, te = start, end
+    while ts < te and _is_edge_trim_char(text[ts]):
+        ts += 1
+    while te > ts and _is_edge_trim_char(text[te - 1]):
+        te -= 1
+    if ts < te:
+        start, end = ts, te
+
+    cursor.setPosition(start)
+    cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+    widget.setTextCursor(cursor)
+    return True
+
+
 class ReadOnlyGridTextEditor(QTextEdit):
     """Read-only QTextEdit for source cells - allows easy text selection"""
     
@@ -2762,37 +2830,8 @@ class ReadOnlyGridTextEditor(QTextEdit):
         We use the visible markers plus regular space as word delimiters.
         \u200B is intentionally excluded – it is a word-wrap hint, not a delimiter.
         """
-        from PyQt6.QtGui import QTextCursor
-
-        main_window = self._get_main_window()
-        any_invisibles = False
-        if main_window and hasattr(main_window, 'invisible_display_settings'):
-            any_invisibles = any(main_window.invisible_display_settings.values())
-
-        if any_invisibles:
-            DELIMITERS = {' ', '·', '→', '°', '↵', '\n', '\t'}
-
-            cursor = self.cursorForPosition(event.pos())
-            pos = cursor.position()
-            text = self.toPlainText()
-
-            start = pos
-            while start > 0 and text[start - 1] not in DELIMITERS:
-                start -= 1
-
-            end = pos
-            while end < len(text) and text[end] not in DELIMITERS:
-                end += 1
-
-            # Trim leading \u200B (part of '·\u200B' marker pairs)
-            while start < end and text[start] == '\u200B':
-                start += 1
-
-            cursor.setPosition(start)
-            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-            self.setTextCursor(cursor)
+        if select_word_under_cursor(self, event):
             return
-
         super().mouseDoubleClickEvent(event)
 
     def _handle_quick_add_to_glossary_priority(self, priority: int):
@@ -4142,46 +4181,8 @@ class EditableGridTextEditor(QTextEdit):
         (·, →, °, ↵, \n, \t) as word delimiters.  \u200B is intentionally
         excluded – it is a transparent word-wrap hint, not a delimiter.
         """
-        from PyQt6.QtGui import QTextCursor
-
-        main_window = self._get_main_window()
-        any_invisibles = False
-        if main_window and hasattr(main_window, 'invisible_display_settings'):
-            any_invisibles = any(main_window.invisible_display_settings.values())
-
-        if any_invisibles:
-            # Word delimiters: regular space + visible invisible-character markers.
-            # NOTE: \u200B (zero-width space) is deliberately NOT in this set –
-            # it lives inside '·\u200B' pairs and must not split word selection.
-            DELIMITERS = {' ', '·', '→', '°', '↵', '\n', '\t'}
-
-            cursor = self.cursorForPosition(event.pos())
-            pos = cursor.position()
-            text = self.toPlainText()
-
-            # Search backwards for a delimiter (or start of text)
-            start = pos
-            while start > 0 and text[start - 1] not in DELIMITERS:
-                start -= 1
-
-            # Search forwards for a delimiter (or end of text)
-            end = pos
-            while end < len(text) and text[end] not in DELIMITERS:
-                end += 1
-
-            # Trim any trailing \u200B from the selection (it's always at the
-            # start of a '·\u200B' pair and would be the first char after 'end')
-            # – nothing to do since we stop before delimiters.
-            # But trim leading \u200B if the word starts right after a '·\u200B':
-            while start < end and text[start] == '\u200B':
-                start += 1
-
-            cursor.setPosition(start)
-            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-            self.setTextCursor(cursor)
+        if select_word_under_cursor(self, event):
             return
-
-        # Default Qt word-selection behaviour when no invisibles are shown
         super().mouseDoubleClickEvent(event)
     
     def _get_main_window(self):
@@ -19696,12 +19697,14 @@ class SupervertalerQt(QMainWindow):
         gemini_combo = QComboBox()
         gemini_combo.addItems([
             "gemini-3.1-flash-lite (Recommended - Fast & Economical)",
+            "gemini-3.5-flash (Premium Flash - Higher Cost)",
             "gemini-2.5-pro (Premium - Complex Reasoning)",
             "gemini-3.1-pro-preview (Latest - Smartest Gemini)",
             "gemma-4-26b-a4b-it (Open Model - Lightweight)"
         ])
         gemini_combo.setToolTip(
             "Gemini 3.1 Flash-Lite: Fast and economical – great for routine translation.\n"
+            "Gemini 3.5 Flash: Highest-quality Flash – ~6x the cost of Flash-Lite; for hard segments.\n"
             "Gemini 2.5 Pro: Premium for complex problems.\n"
             "Gemini 3.1 Pro Preview: Latest, smartest Gemini for complex tasks.\n"
             "Gemma 4 26B MoE: Google's open model, lightweight and capable."
@@ -20001,7 +20004,8 @@ class SupervertalerQt(QMainWindow):
                 "gpt-5.5": "GPT-5.5", "gpt-5.4-mini": "GPT-5.4 Mini",
                 "claude-sonnet-4-6": "Claude Sonnet 4.6", "claude-opus-4-7": "Claude Opus 4.7",
                 "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
-                "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite", "gemini-2.5-pro": "Gemini 2.5 Pro",
+                "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite", "gemini-3.5-flash": "Gemini 3.5 Flash",
+                "gemini-2.5-pro": "Gemini 2.5 Pro",
                 "gemini-3.1-pro-preview": "Gemini 3.1 Pro", "gemma-4-26b-a4b-it": "Gemma 4 26B MoE",
                 "mistral-large-latest": "Mistral Large", "mistral-small-latest": "Mistral Small",
                 "deepseek-v4-pro": "DeepSeek V4 Pro", "deepseek-v4-flash": "DeepSeek V4 Flash",

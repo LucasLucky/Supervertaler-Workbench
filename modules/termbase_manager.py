@@ -17,6 +17,22 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
 
+# Trailing sentence punctuation removed from terms on save (Scope 1).
+# Deliberately excludes quotes and brackets/parens so wrapping characters
+# like "term" or (25) are preserved. Matches the trailing-punctuation set the
+# term-matching layer already strips at lookup time, keeping storage and
+# matching consistent.
+_TERM_TRAILING_PUNCT = '.,;:!?'
+
+
+def normalize_term_for_save(text: str) -> str:
+    """Strip surrounding whitespace and trailing sentence punctuation from a
+    term before it is stored (e.g. 'circumference.' -> 'circumference')."""
+    if not text:
+        return text
+    return text.strip().rstrip(_TERM_TRAILING_PUNCT).strip()
+
+
 class TermbaseManager:
     """Manages termbase operations and term storage"""
     
@@ -828,6 +844,14 @@ class TermbaseManager:
             import uuid
             cursor = self.db_manager.cursor
 
+            # Strip trailing sentence punctuation from translatable terms so
+            # entries like "circumference." are stored as "circumference".
+            # Non-translatables are left as-is (a trailing "." may be meaningful,
+            # e.g. an abbreviation like "Inc.").
+            if not is_nontranslatable:
+                source_term = normalize_term_for_save(source_term)
+                target_term = normalize_term_for_save(target_term)
+
             # Check for duplicate (case-insensitive check)
             cursor.execute("""
                 SELECT id FROM termbase_terms
@@ -1220,10 +1244,13 @@ class TermbaseManager:
         try:
             cursor = self.db_manager.cursor
             now = datetime.now().isoformat()
-            
+
+            # Synonyms are terms too: strip trailing sentence punctuation on save.
+            synonym_text = normalize_term_for_save(synonym_text)
+
             # Check if synonym already exists
             cursor.execute("""
-                SELECT id FROM termbase_synonyms 
+                SELECT id FROM termbase_synonyms
                 WHERE term_id = ? AND synonym_text = ? AND language = ?
             """, (term_id, synonym_text, language))
             

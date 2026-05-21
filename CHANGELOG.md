@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.120 (May 21, 2026)
+**Current Version:** v1.10.122 (May 21, 2026)
+
+
+## v1.10.122 – May 21, 2026
+
+### Fixed
+
+- **Double-clicking a word no longer selects adjacent punctuation.** Double-clicking a word in a source or target cell (e.g. "circumference.") now selects just the word, without a trailing full stop, comma, semicolon, etc. Word-internal apostrophes and hyphens (don't, funnel-shaped) and decimal separators (7,5) are kept, and selection now behaves the same whether or not invisible characters are displayed (previously the behaviour diverged between the two modes).
+- **Trailing sentence punctuation is stripped when adding terms to a termbase.** Saving a term pair such as "circumference." now stores "circumference". Wrapping quotes and parentheses are preserved ("term", (25)), and non-translatables keep a meaningful trailing full stop (e.g. "Inc."). Applies to source terms, target terms and synonyms across every add and edit route.
+
+
+## v1.10.121 – May 21, 2026
+
+### Added
+
+- **Gemini 3.5 Flash is now available as a Gemini model option.** Google's newest Flash model joins the Gemini list as a premium, higher-quality option. It is *not* the default – Gemini 3.1 Flash-Lite remains the recommended, economical choice – because 3.5 Flash costs roughly six times as much per segment. Pick it from AI Settings when a difficult segment justifies the extra spend.
+  - Under the hood, 3.5 Flash always runs Google's "thinking" step, which would otherwise bill several hundred hidden reasoning tokens (at the output rate) on even a one-line translation. Supervertaler pins the thinking level to *minimal* for this model, so short translation jobs stay affordable without any loss of quality on normal text.
 
 
 ## v1.10.120 – May 21, 2026

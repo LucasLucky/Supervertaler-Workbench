@@ -1559,6 +1559,14 @@ class TermbaseEntryEditor(QDialog):
             source_abbr = self.source_abbr_edit.text().strip() if hasattr(self, 'source_abbr_edit') else ""
             target_abbr = self.target_abbr_edit.text().strip() if hasattr(self, 'target_abbr_edit') else ""
 
+            # Strip trailing sentence punctuation from translatable terms on save
+            # (e.g. "circumference." -> "circumference"), matching the add path.
+            # Non-translatables keep a meaningful trailing "." (e.g. "Inc.").
+            if not is_nt:
+                from modules.termbase_manager import normalize_term_for_save
+                source_term = normalize_term_for_save(source_term)
+                target_term = normalize_term_for_save(target_term)
+
             if self.term_id:
                 # v1.10.64 diagnostic: log what the dialog is about to
                 # write so the LOAD ... SAVE round-trip can be audited

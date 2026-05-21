@@ -22,6 +22,7 @@ PRICING = {
     },
     "gemini": {
         "gemini-3.1-flash-lite": (0.25, 1.50),
+        "gemini-3.5-flash": (1.50, 9.0),
         "gemini-2.5-pro": (1.25, 10.0),
         "gemini-3.1-pro-preview": (1.25, 10.0),
     },
