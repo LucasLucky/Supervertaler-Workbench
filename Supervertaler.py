@@ -20913,6 +20913,19 @@ class SupervertalerQt(QMainWindow):
         llm_info.setStyleSheet("font-size: 8pt; color: #666; padding-bottom: 8px;")
         llm_layout.addWidget(llm_info)
 
+        # Popup AI mode: auto-fetch the enabled AI providers when the QuickTrans
+        # popup opens (Ctrl+Shift+Q in-app and Ctrl+Alt+Q system-wide), or show
+        # them as on-demand "Fetch" buttons so no billable AI call fires until
+        # you ask. (The docked QuickTrans panel always uses Fetch buttons.)
+        popup_ai_cb = CheckmarkCheckBox("Auto-fetch AI providers in the popup (otherwise show 'Fetch' buttons)")
+        popup_ai_cb.setChecked(mt_quick_settings.get("mtql_popup_ai_autofetch", True))
+        popup_ai_cb.setToolTip(
+            "On: the QuickTrans popup queries the enabled AI/LLM providers automatically\n"
+            "    (costs apply) – including the system-wide Ctrl+Alt+Q popup.\n"
+            "Off: AI providers appear as 'Fetch' buttons in the popup; click to call one.")
+        self._mtql_checkboxes["mtql_popup_ai_autofetch"] = popup_ai_cb
+        llm_layout.addWidget(popup_ai_cb)
+
         # LLM provider checkboxes with model selection
         self._mtql_llm_combos = {}
 

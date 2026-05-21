@@ -717,35 +717,126 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         return lbl
 
     def start_fetching(self):
-        """Start fetching translations from all enabled providers"""
+        """Start fetching translations from all enabled providers.
+
+        MT engines always auto-fetch. AI/LLM providers either auto-fetch too or
+        appear as on-demand 'Fetch' buttons, controlled by the
+        'mtql_popup_ai_autofetch' setting (default on) so the popup doesn't make
+        billable AI calls automatically when the user doesn't want it to.
+        """
         providers = self._get_enabled_providers()
 
         if not providers:
             self.loading_label.setText("⚠️ No MT providers configured. Check Settings → MT Settings.")
             return
 
+        mt_providers = [p for p in providers if not _is_ai_code(p[1])]
+        ai_providers = [p for p in providers if _is_ai_code(p[1])]
+
+        autofetch_ai = True
+        try:
+            autofetch_ai = bool(self._load_mt_quick_settings().get('mtql_popup_ai_autofetch', True))
+        except Exception:
+            pass
+
         # Pre-create group headers: Machine translation (top), AI / LLM (below).
         # Results stream in arrival order but are routed into the right section in
         # _on_result_ready; _on_all_complete then renumbers top-to-bottom.
         self._mt_header = None
         self._ai_header = None
-        if any(not _is_ai_code(c) for _, c, _ in providers):
+        if mt_providers:
             self._mt_header = self._make_section_header("⚡  Machine translation")
             self.suggestions_layout.insertWidget(self.suggestions_layout.count() - 1, self._mt_header)
-        if any(_is_ai_code(c) for _, c, _ in providers):
-            self._ai_header = self._make_section_header("\U0001F916  AI / LLM")
+        if ai_providers:
+            ai_label = "\U0001F916  AI / LLM" if autofetch_ai else "\U0001F916  AI / LLM  ·  click to fetch"
+            self._ai_header = self._make_section_header(ai_label)
             self.suggestions_layout.insertWidget(self.suggestions_layout.count() - 1, self._ai_header)
+
+        # AI as on-demand fetch rows (below the AI header) when not auto-fetching.
+        if ai_providers and not autofetch_ai:
+            for name, code, call_func in ai_providers:
+                self._make_fetch_row(name, code, call_func)
+
+        auto_providers = mt_providers + (ai_providers if autofetch_ai else [])
+        if not auto_providers:
+            # Only AI providers and they're in fetch mode – nothing to auto-fetch.
+            self.loading_label.hide()
+            return
 
         self.worker = MTFetchWorker(
             self.source_text,
             self.source_lang,
             self.target_lang,
-            providers,
+            auto_providers,
             self
         )
         self.worker.result_ready.connect(self._on_result_ready)
         self.worker.all_complete.connect(self._on_all_complete)
         self.worker.start()
+
+    def _make_fetch_row(self, name, code, call_func):
+        """Add an on-demand 'Fetch' row for an AI provider in the popup. Clicking
+        it fetches that one provider and replaces the row with the result."""
+        from PyQt6.QtWidgets import QPushButton
+        row = QFrame()
+        row.setStyleSheet("QFrame { background: #fafafa; border: 1px dashed #cfcfcf; border-radius: 4px; }")
+        h = QHBoxLayout(row)
+        h.setContentsMargins(8, 4, 8, 4)
+        h.setSpacing(8)
+
+        chip = QLabel(name)
+        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
+        bg = PROVIDER_COLORS.get(code, "#666")
+        chip.setStyleSheet(f"QLabel {{ background-color: {bg}; color: white; font-weight: 600; "
+                           f"font-size: 9px; border-radius: 9px; padding: 1px 8px; }}")
+        h.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        hint = QLabel("AI – click to fetch")
+        hint.setStyleSheet("color: #999; font-size: 9pt; border: none;")
+        h.addWidget(hint)
+        h.addStretch()
+
+        btn = QPushButton("Fetch")
+        btn.setFixedHeight(22)
+        btn.setToolTip(f"Fetch an AI translation from {name} (makes one API call)")
+        h.addWidget(btn)
+
+        self.suggestions_layout.insertWidget(self.suggestions_layout.count() - 1, row)
+
+        if not hasattr(self, '_fetch_workers'):
+            self._fetch_workers = []
+
+        def on_click():
+            btn.setEnabled(False)
+            btn.setText("…")
+            worker = MTFetchWorker(self.source_text, self.source_lang, self.target_lang,
+                                   [(name, code, call_func)])
+            self._fetch_workers.append(worker)
+
+            def on_ready(pn, pc, tr, err):
+                if self.loading_label.isVisible():
+                    self.loading_label.hide()
+                idx = self.suggestions_layout.indexOf(row)
+                if idx < 0:
+                    idx = self.suggestions_layout.count() - 1
+                suggestion = MTSuggestion(pn, pc, tr, err)
+                item = MTSuggestionItem(0, suggestion)  # number assigned by renumber
+                item.clicked.connect(self._on_item_clicked)
+                self.suggestions_layout.insertWidget(idx, item)
+                row.setParent(None)
+                row.deleteLater()
+                self._renumber_grouped()
+
+            def on_done(_w=worker):
+                if _w in self._fetch_workers:
+                    self._fetch_workers.remove(_w)
+
+            worker.result_ready.connect(on_ready)
+            worker.all_complete.connect(on_done)
+            worker.start()
+
+        btn.clicked.connect(on_click)
 
     def _send_to_superlookup(self):
         """Close the popup and open Workbench's SuperLookup tab with

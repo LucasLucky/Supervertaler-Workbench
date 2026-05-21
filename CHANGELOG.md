@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.138 (May 21, 2026)
+**Current Version:** v1.10.139 (May 21, 2026)
+
+
+## v1.10.139 – May 21, 2026
+
+### Added
+
+- **Choose whether the QuickTrans popup auto-fetches AI providers.** A new "Auto-fetch AI providers in the popup" setting (QuickTrans settings, default on) controls the QuickTrans popup – both the in-app Ctrl+Shift+Q and the system-wide Ctrl+Alt+Q. When on, enabled AI/LLM providers are queried automatically as before. When off, they appear as on-demand "Fetch" buttons in the popup (like the docked panel), so no billable AI call is made until you click. Machine-translation engines always auto-fetch either way.
 
 
 ## v1.10.138 – May 21, 2026
