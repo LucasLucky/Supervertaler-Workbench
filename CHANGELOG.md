@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.130 (May 21, 2026)
+**Current Version:** v1.10.131 (May 21, 2026)
+
+
+## v1.10.131 – May 21, 2026
+
+### Added
+
+- **The global QuickTrans popup (Ctrl+Alt+Q) now groups results too.** Like the docked panel, the always-on-top popup now splits results into a "Machine translation" section (top) and an "AI / LLM" section below it. Results still stream in as each provider responds, then once all are in they are renumbered top-to-bottom so the 1–9 pick-number keys match the grouped order.
 
 
 ## v1.10.130 – May 21, 2026

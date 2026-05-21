@@ -49,6 +49,16 @@ _PANEL_ICON_BTN_STYLE = """
 """
 
 
+# Provider codes that are AI/LLM rather than machine-translation engines, used
+# to group QuickTrans results. Everything not listed here (GT, DL, MS, AT, MMT,
+# MM, and CMT custom-MT) is treated as a machine-translation engine.
+_AI_PROVIDER_CODES = {"CL", "GPT", "GEM", "OLL", "CUS"}
+
+
+def _is_ai_code(code: str) -> bool:
+    return code in _AI_PROVIDER_CODES
+
+
 @dataclass
 class MTSuggestion:
     """A single MT suggestion from a provider"""
@@ -115,8 +125,10 @@ class MTSuggestionItem(QFrame):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(10)
 
-        # Number badge
+        # Number badge (stored so the pick-number can be updated when results
+        # are regrouped into MT / AI sections after all fetches complete).
         num_label = QLabel(str(number))
+        self.num_label = num_label
         num_label.setFixedSize(24, 24)
         num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         num_label.setStyleSheet("""
@@ -194,6 +206,12 @@ class MTSuggestionItem(QFrame):
         """Deselect this item"""
         self.is_selected = False
         self._update_style()
+
+    def set_number(self, number: int):
+        """Update the displayed pick-number (used when results are regrouped)."""
+        self.number = number
+        if getattr(self, 'num_label', None) is not None:
+            self.num_label.setText(str(number))
 
     def mousePressEvent(self, event):
         """Handle click to select this translation"""
@@ -683,6 +701,15 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         QShortcut(QKeySequence(Qt.Key.Key_Enter), self).activated.connect(self._insert_selected)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.close)
 
+    def _make_section_header(self, text: str) -> QLabel:
+        """A lightweight group-header label ('Machine translation' / 'AI / LLM')."""
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            "QLabel { color: #888; font-size: 8pt; font-weight: bold; "
+            "border: none; padding: 6px 2px 1px 2px; }"
+        )
+        return lbl
+
     def start_fetching(self):
         """Start fetching translations from all enabled providers"""
         providers = self._get_enabled_providers()
@@ -690,6 +717,18 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         if not providers:
             self.loading_label.setText("⚠️ No MT providers configured. Check Settings → MT Settings.")
             return
+
+        # Pre-create group headers: Machine translation (top), AI / LLM (below).
+        # Results stream in arrival order but are routed into the right section in
+        # _on_result_ready; _on_all_complete then renumbers top-to-bottom.
+        self._mt_header = None
+        self._ai_header = None
+        if any(not _is_ai_code(c) for _, c, _ in providers):
+            self._mt_header = self._make_section_header("⚡  Machine translation")
+            self.suggestions_layout.insertWidget(self.suggestions_layout.count() - 1, self._mt_header)
+        if any(_is_ai_code(c) for _, c, _ in providers):
+            self._ai_header = self._make_section_header("\U0001F916  AI / LLM")
+            self.suggestions_layout.insertWidget(self.suggestions_layout.count() - 1, self._ai_header)
 
         self.worker = MTFetchWorker(
             self.source_text,
@@ -783,10 +822,19 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         item.clicked.connect(self._on_item_clicked)
         self.suggestion_items.append(item)
 
-        # Insert before the stretch
-        self.suggestions_layout.insertWidget(self.suggestions_layout.count() - 1, item)
+        # Route into the right group: MT rows go above the AI / LLM header so MT
+        # stays grouped at the top; AI rows (and the no-grouping case) go before
+        # the trailing stretch.
+        ai_header = getattr(self, '_ai_header', None)
+        if (not _is_ai_code(provider_code)
+                and ai_header is not None
+                and self.suggestions_layout.indexOf(ai_header) >= 0):
+            idx = self.suggestions_layout.indexOf(ai_header)
+        else:
+            idx = self.suggestions_layout.count() - 1
+        self.suggestions_layout.insertWidget(idx, item)
 
-        # Auto-select first non-error result
+        # Auto-select first non-error result (corrected after regrouping).
         if self.selected_index == -1 and not is_error:
             self._select_index(len(self.suggestion_items) - 1)
 
@@ -795,7 +843,35 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         if not self.suggestions:
             self.loading_label.setText("⚠️ No translations available.")
             self.loading_label.show()
+            return
+        # Results streamed in arrival order; renumber them top-to-bottom so the
+        # pick-numbers (1-9) match the grouped MT-then-AI visual order.
+        self._renumber_grouped()
         # Don't call adjustSize() - it shrinks the window and loses user's preferred size
+
+    def _renumber_grouped(self):
+        """Walk the (already grouped) layout top to bottom, assign sequential
+        pick-numbers, and rebuild the parallel lists so number-key selection and
+        index-based selection stay correct."""
+        new_suggestions = []
+        new_items = []
+        n = 0
+        for i in range(self.suggestions_layout.count()):
+            w = self.suggestions_layout.itemAt(i).widget()
+            if isinstance(w, MTSuggestionItem):
+                n += 1
+                w.set_number(n)
+                w.deselect()
+                new_items.append(w)
+                new_suggestions.append(w.suggestion)
+        self.suggestions = new_suggestions
+        self.suggestion_items = new_items
+        # Re-select the first non-error row in the new order.
+        self.selected_index = -1
+        for idx, it in enumerate(new_items):
+            if not it.suggestion.is_error:
+                self._select_index(idx)
+                break
 
     def _on_item_clicked(self, translation: str):
         """Handle click on a suggestion item"""
