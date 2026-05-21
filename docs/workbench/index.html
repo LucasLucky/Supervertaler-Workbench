@@ -22,6 +22,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
+    <style>
+        /* Give the hero screenshot more room on the Workbench page. Desktop
+           only — the hero visual is hidden below 768px. */
+        @media (min-width: 769px) {
+            .hero .container { grid-template-columns: 1fr 1.5fr; }
+            .hero-visual .feature-card-preview { max-width: 900px; }
+        }
+    </style>
 </head>
 
 <body>
