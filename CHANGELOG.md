@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.123 (May 21, 2026)
+**Current Version:** v1.10.124 (May 21, 2026)
+
+
+## v1.10.124 – May 21, 2026
+
+### Fixed
+
+- **Hovering a green-highlighted source term shows its tooltip again.** The termbase-match tooltip would appear for a moment and then immediately vanish on the next mouse move. The hover handler reads the matches stored on the source cell, but only one render path saved them there – background/prefetch and other re-highlight paths applied the green highlight without recording the matches, so the tooltip found nothing at the cursor and cleared itself. The matches are now stored at the single point where highlighting is applied, so the tooltip stays in sync with the highlight on every path.
 
 
 ## v1.10.123 – May 21, 2026

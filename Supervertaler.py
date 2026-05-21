@@ -2903,6 +2903,14 @@ class ReadOnlyGridTextEditor(QTextEdit):
         """
         from PyQt6.QtGui import QTextCursor, QTextCharFormat, QColor, QFont
 
+        # Remember what we highlighted so the hover tooltip (mouseMoveEvent)
+        # always reflects the *currently highlighted* terms. Previously only one
+        # render path stored this separately, so background/prefetch and other
+        # re-highlight paths left self.termbase_matches stale or empty: the green
+        # highlight showed but the tooltip found no match at the cursor and
+        # cleared itself, so it appeared once then vanished on the next move.
+        self.termbase_matches = matches_dict if matches_dict else {}
+
         # Get the document and create a cursor
         doc = self.document()
         display_text = self.toPlainText()
