@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.131 (May 21, 2026)
+**Current Version:** v1.10.132 (May 21, 2026)
+
+
+## v1.10.132 – May 21, 2026
+
+### Added
+
+- **Ctrl+1…9 now inserts QuickTrans results into the target.** When a QuickTrans docked panel is visible (under the grid or in the Match Panel), pressing Ctrl+1, Ctrl+2, … inserts that numbered result straight into the current target cell while you translate. The match-number shortcut takes QuickTrans first when its panel is showing, and otherwise falls back to its existing Compare Panel / Translation Results behaviour.
 
 
 ## v1.10.131 – May 21, 2026

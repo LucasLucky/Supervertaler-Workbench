@@ -1250,6 +1250,21 @@ class QuickTransPanel(QuickTransProviderMixin, QWidget):
     def _on_item_clicked(self, translation: str):
         self.translation_selected.emit(translation)
 
+    def insert_match_by_number(self, number: int) -> bool:
+        """Insert the Nth currently-displayed QuickTrans result into the target.
+
+        N is 1-based and matches the pick-number shown on each row. Returns True
+        if a (non-error) result existed and was emitted for insertion, else False
+        so the caller can fall back to another panel.
+        """
+        idx = number - 1
+        if 0 <= idx < len(self.suggestions):
+            s = self.suggestions[idx]
+            if not s.is_error and s.translation:
+                self.translation_selected.emit(s.translation)
+                return True
+        return False
+
     def closeEvent(self, event):
         # Let any in-flight workers finish so QThreads aren't destroyed while
         # running. They're short (one HTTP round-trip) and stale results are

@@ -50419,10 +50419,21 @@ class SupervertalerQt(QMainWindow):
         """Insert match by number (Ctrl+1-9)
 
         Context-aware behavior:
+        - If a QuickTrans panel is visible and has a result N: insert it
         - If Compare Panel tab is active: insert from Compare Panel MT/TM list depending on focused box
         - If Translation Results tab is active: delegate to visible results panel
         - Otherwise: do nothing (avoid acting on hidden panels)
         """
+        # QuickTrans takes priority when one of its docked panels is visible, so
+        # Ctrl+1..9 inserts the numbered QuickTrans result while you translate.
+        qt_panel = self._active_quicktrans_panel()
+        if qt_panel is not None:
+            try:
+                if qt_panel.insert_match_by_number(match_number):
+                    return
+            except Exception as e:
+                self.log(f"Error inserting QuickTrans result #{match_number}: {e}")
+
         mode = self._get_active_match_shortcut_mode()
         if mode == 'compare':
             try:
@@ -50540,6 +50551,20 @@ class SupervertalerQt(QMainWindow):
                 if hasattr(self, 'translation_results_panel') and self.translation_results_panel and current is self.translation_results_panel:
                     return 'results'
         return ''
+
+    def _active_quicktrans_panel(self):
+        """Return the QuickTrans docked panel currently visible to the user
+        (its tab is selected and the dock is shown), or None. Checked first by
+        the Ctrl+1..9 match shortcuts so they insert QuickTrans results while
+        translating. There are up to two panels (under-grid and Match Panel)."""
+        for p in (getattr(self, 'quicktrans_panel', None),
+                  getattr(self, 'quicktrans_panel_match', None)):
+            try:
+                if p is not None and p.isVisible():
+                    return p
+            except Exception:
+                continue
+        return None
 
     def _iter_visible_results_panels(self):
         """Yield results panels that are visible to the user (tab-selected)."""
