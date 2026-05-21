@@ -122,21 +122,23 @@ class MTSuggestionItem(QFrame):
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(8)
 
         # Number badge (stored so the pick-number can be updated when results
         # are regrouped into MT / AI sections after all fetches complete).
+        # Kept small and light so it visually matches the compact provider pill
+        # rather than dominating the row.
         num_label = QLabel(str(number))
         self.num_label = num_label
-        num_label.setFixedSize(24, 24)
+        num_label.setFixedSize(18, 18)
         num_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         num_label.setStyleSheet("""
             QLabel {
                 background-color: #ff9800;
-                color: #333;
+                color: white;
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 10px;
                 border-radius: 4px;
             }
         """)

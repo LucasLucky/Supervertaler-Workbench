@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.136 (May 21, 2026)
+**Current Version:** v1.10.137 (May 21, 2026)
+
+
+## v1.10.137 – May 21, 2026
+
+### Changed
+
+- **QuickTrans number badges are smaller, to match the compact provider pills.** After the provider chips were slimmed down, the large 24px number squares looked out of proportion; they're now smaller (18px) and lighter so the number and provider label read as a matched pair.
 
 
 ## v1.10.136 – May 21, 2026
