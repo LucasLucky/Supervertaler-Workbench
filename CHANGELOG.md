@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.139 (May 21, 2026)
+**Current Version:** v1.10.140 (May 21, 2026)
+
+
+## v1.10.140 – May 21, 2026
+
+### Changed
+
+- **QuickTrans translations now line up.** The provider pill sits in a fixed-width column, so the translation text starts at the same position in every row instead of shifting left/right with each provider's chip width.
 
 
 ## v1.10.139 – May 21, 2026

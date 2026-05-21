@@ -41,6 +41,12 @@ PROVIDER_COLORS = {
     "CUS": "#9C27B0",   # Custom purple
 }
 
+# Fixed width (px) reserved for the provider pill column in QuickTrans rows, so
+# the translation text starts at the same x-position in every row regardless of
+# how wide each provider's pill is. Wide enough for the longest provider names
+# ("Google Translate", "Microsoft (free)", …).
+PROVIDER_CHIP_COLUMN_WIDTH = 116
+
 # Shared style for the small icon-only header buttons in the docked panel.
 _PANEL_ICON_BTN_STYLE = """
     QPushButton { border: none; background: transparent; font-size: 13px; }
@@ -164,7 +170,17 @@ class MTSuggestionItem(QFrame):
                 padding: 1px 8px;
             }}
         """)
-        layout.addWidget(provider_label, 0, Qt.AlignmentFlag.AlignTop)
+        # Place the pill in a fixed-width column so the translation text starts at
+        # the same x-position in every row (the pills themselves vary in width).
+        chip_cell = QWidget()
+        chip_cell.setFixedWidth(PROVIDER_CHIP_COLUMN_WIDTH)
+        chip_cell_layout = QHBoxLayout(chip_cell)
+        chip_cell_layout.setContentsMargins(0, 0, 0, 0)
+        chip_cell_layout.setSpacing(0)
+        chip_cell_layout.addWidget(
+            provider_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        chip_cell_layout.addStretch()
+        layout.addWidget(chip_cell, 0, Qt.AlignmentFlag.AlignTop)
 
         # Translation text
         text_label = QLabel(suggestion.translation)
