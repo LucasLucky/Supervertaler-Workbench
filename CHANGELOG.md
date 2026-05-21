@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.141 (May 21, 2026)
+**Current Version:** v1.10.142 (May 21, 2026)
+
+
+## v1.10.142 – May 21, 2026
+
+### Changed
+
+- **Comments tab simplified — one system for all comments.** The bottom "✏️ Comment on current segment" box has been removed. It only handled a single, unanchored note and destructively overwrote the whole comment list when edited. All comments now live in the single scrollable list, which fills the tab. To add a comment, select text in a source or target cell and press **Ctrl+M**, or **right-click in the editor → 💬 Add comment**. With no text selected, Ctrl+M (and the right-click entry) attaches a segment-level comment to the whole segment.
+
+### Added
+
+- **Right-click "Add comment" in the editor.** Both the source and target cell context menus now offer a 💬 Add comment entry (mirroring the Ctrl+M shortcut), anchored to the selected text or, with no selection, attached to the whole segment.
 
 
 ## v1.10.141 – May 21, 2026

@@ -3583,6 +3583,28 @@ class ReadOnlyGridTextEditor(QTextEdit):
             superlookup_action.triggered.connect(self._handle_superlookup_search)
             menu.addAction(superlookup_action)
 
+        # Add comment (v1.10.142) – mirrors the Ctrl+M shortcut. Anchors the
+        # comment to the selected source text, or attaches a segment-level
+        # comment if nothing is selected. add_comment_from_selection() reads
+        # QApplication.focusWidget(), so re-focus this editor before calling
+        # (the QMenu may otherwise hold focus when the action fires).
+        _mw_for_comment = self._get_main_window()
+        if _mw_for_comment and hasattr(_mw_for_comment, 'add_comment_from_selection'):
+            _sel = self.textCursor().hasSelection()
+            add_comment_action = QAction(
+                f"💬 Add comment ({format_shortcut_for_display('Ctrl+M')})"
+                if _sel else
+                f"💬 Add segment comment ({format_shortcut_for_display('Ctrl+M')})",
+                self,
+            )
+            add_comment_action.triggered.connect(
+                lambda checked=False, w=self, mw=_mw_for_comment: (
+                    w.setFocus(),
+                    QTimer.singleShot(0, mw.add_comment_from_selection),
+                )
+            )
+            menu.addAction(add_comment_action)
+
         # QuickLauncher (prompt-based actions + QuickTrans)
         try:
             main_window = self._get_main_window()
@@ -4376,6 +4398,30 @@ class EditableGridTextEditor(QTextEdit):
             superlookup_action = QAction(f"🔍 Search in SuperLookup ({format_shortcut_for_display('Ctrl+K')})", self)
             superlookup_action.triggered.connect(self._handle_superlookup_search)
             menu.addAction(superlookup_action)
+
+        # Add comment (v1.10.142) – mirrors the Ctrl+M shortcut. Anchors the
+        # comment to the selected target text, or attaches a segment-level
+        # comment if nothing is selected. add_comment_from_selection() reads
+        # QApplication.focusWidget(), so re-focus this editor before calling
+        # (the QMenu may otherwise hold focus when the action fires).
+        _mw_for_comment = self.table.parent() if self.table else None
+        while _mw_for_comment and not hasattr(_mw_for_comment, 'add_comment_from_selection'):
+            _mw_for_comment = _mw_for_comment.parent()
+        if _mw_for_comment:
+            _sel = self.textCursor().hasSelection()
+            add_comment_action = QAction(
+                f"💬 Add comment ({format_shortcut_for_display('Ctrl+M')})"
+                if _sel else
+                f"💬 Add segment comment ({format_shortcut_for_display('Ctrl+M')})",
+                self,
+            )
+            add_comment_action.triggered.connect(
+                lambda checked=False, w=self, mw=_mw_for_comment: (
+                    w.setFocus(),
+                    QTimer.singleShot(0, mw.add_comment_from_selection),
+                )
+            )
+            menu.addAction(add_comment_action)
 
         # QuickLauncher (prompt-based actions + QuickTrans)
         try:
@@ -25824,16 +25870,22 @@ class SupervertalerQt(QMainWindow):
         notes_layout.setContentsMargins(5, 5, 5, 5)
         notes_layout.setSpacing(4)
 
-        from PyQt6.QtWidgets import QSplitter as _QSplitter, QScrollArea as _QScrollArea, QFrame as _QFrame
-        comments_splitter = _QSplitter(Qt.Orientation.Vertical)
+        from PyQt6.QtWidgets import QScrollArea as _QScrollArea, QFrame as _QFrame
 
-        # ── All-segment-comments list (top half) ──
+        # ── All-segment-comments list (fills the tab) ──
+        # Comments are added from the editor (select text and press Ctrl+M, or
+        # right-click → Add comment) and edited/deleted here via right-click on a
+        # Segment #N header. The old "Comment on current segment" editor box was
+        # removed (v1.10.142): it could only hold one unanchored comment and
+        # destructively replaced the whole list.
         self._segment_comments_list_container = QWidget()
         self._segment_comments_list_layout = QVBoxLayout(self._segment_comments_list_container)
         self._segment_comments_list_layout.setContentsMargins(0, 0, 0, 0)
         self._segment_comments_list_layout.setSpacing(0)
         # Initial placeholder; replaced by _refresh_segment_comments_list().
-        _initial_empty = QLabel("(No segment comments yet — add one in the editor below.)")
+        _initial_empty = QLabel(
+            "(No segment comments yet — add one from the editor: select text and "
+            "press Ctrl+M, or right-click → Add comment.)")
         _initial_empty.setStyleSheet("color: #999; font-style: italic; padding: 8px;")
         _initial_empty.setWordWrap(True)
         self._segment_comments_list_layout.addWidget(_initial_empty)
@@ -25843,32 +25895,10 @@ class SupervertalerQt(QMainWindow):
         comments_list_scroll.setWidgetResizable(True)
         comments_list_scroll.setFrameShape(_QFrame.Shape.NoFrame)
         comments_list_scroll.setWidget(self._segment_comments_list_container)
-        comments_splitter.addWidget(comments_list_scroll)
         # Stored so _open_comment_in_panel() can scroll a specific comment
         # (reached via "Open comment" on a cell's anchored highlight) into view.
         self._segment_comments_list_scroll = comments_list_scroll
-
-        # ── Editor for current segment's comment (bottom half) ──
-        edit_container = QWidget()
-        edit_layout = QVBoxLayout(edit_container)
-        edit_layout.setContentsMargins(0, 4, 0, 0)
-        edit_layout.setSpacing(2)
-        edit_header = QLabel("✏️ Comment on current segment")
-        edit_header.setStyleSheet("font-weight: bold; font-size: 9pt; color: #555;")
-        edit_layout.addWidget(edit_header)
-
-        self.bottom_notes_edit = QPlainTextEdit()
-        self.bottom_notes_edit.setPlaceholderText("Add a comment about this segment — context, translation concerns, anything worth flagging...")
-        self.bottom_notes_edit.setStyleSheet("font-size: 10pt;")
-        self.bottom_notes_edit.textChanged.connect(self._on_bottom_notes_changed)
-        edit_layout.addWidget(self.bottom_notes_edit)
-        comments_splitter.addWidget(edit_container)
-
-        # Default split: list takes ~60%, edit ~40%. The user can drag.
-        comments_splitter.setSizes([300, 200])
-        comments_splitter.setStretchFactor(0, 3)
-        comments_splitter.setStretchFactor(1, 2)
-        notes_layout.addWidget(comments_splitter)
+        notes_layout.addWidget(comments_list_scroll)
         
         # Add only TermLens tab to bottom_tabs (Segment Note and Session Log will be in right panel)
         bottom_tabs.addTab(self.termlens_widget, "🔍 TermLens")
