@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.135 (May 21, 2026)
+**Current Version:** v1.10.136 (May 21, 2026)
+
+
+## v1.10.136 – May 21, 2026
+
+### Changed
+
+- **Clearer Custom MT error when a local proxy isn't running.** Instead of "[Custom MT error: Connection error.]", a refused connection to a local (127.0.0.1 / localhost) custom MT endpoint now shows "[MT proxy not running. Start it.]"; a refused connection to a remote endpoint shows "[Custom MT: endpoint unreachable.]". Other errors keep their detailed message.
 
 
 ## v1.10.135 – May 21, 2026

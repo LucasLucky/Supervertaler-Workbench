@@ -52355,7 +52355,17 @@ class SupervertalerQt(QMainWindow):
                     result = result[1:-1]
             return result or "[Custom MT: no translation returned]"
         except Exception as e:
-            return f"[Custom MT error: {str(e)}]"
+            msg = str(e)
+            low = msg.lower()
+            is_conn = ('connection' in low or 'refused' in low
+                       or 'max retries' in low or 'failed to establish' in low
+                       or 'connection' in type(e).__name__.lower())
+            if is_conn:
+                host = locals().get('endpoint', '') or ''
+                if any(h in host for h in ('127.0.0.1', 'localhost', '0.0.0.0')):
+                    return "[MT proxy not running. Start it.]"
+                return "[Custom MT: endpoint unreachable.]"
+            return f"[Custom MT error: {msg}]"
 
     def create_llm_client(self, provider, model, api_keys, settings=None):
         """Create an LLMClient with proper base_url and proxy handling."""
