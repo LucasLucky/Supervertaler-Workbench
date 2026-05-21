@@ -20732,6 +20732,119 @@ class SupervertalerQt(QMainWindow):
             self._mtql_checkboxes[f"mtql_{code}"] = checkbox
             mt_layout.addWidget(checkbox)
 
+        # ----- Custom MT endpoint(s) -----
+        # A dedicated OpenAI-compatible MT endpoint (e.g. a local MT proxy),
+        # independent of the AI custom endpoint, so MT and AI can point at
+        # different services at once. Each profile becomes its own QuickTrans
+        # result. self._custom_mt_profiles is the source of truth so the save
+        # handler can persist without closure/reload mismatches.
+        from PyQt6.QtWidgets import QComboBox, QPushButton, QLineEdit, QHBoxLayout
+
+        _mt_settings = self.load_llm_settings()
+        self._custom_mt_profiles = [dict(p) for p in (_mt_settings.get('custom_mt_profiles') or [])]
+        _active_mt_name = _mt_settings.get('custom_mt_active_profile', '')
+
+        _cmt_header = QLabel("Custom MT endpoint")
+        _cmt_header.setStyleSheet("font-weight: bold; padding-top: 8px;")
+        mt_layout.addWidget(_cmt_header)
+
+        cmt_enable = CheckmarkCheckBox("Custom MT endpoint (OpenAI-compatible)")
+        cmt_enable.setChecked(mt_quick_settings.get("mtql_custom_mt", False))
+        cmt_enable.setToolTip(
+            "Query a custom OpenAI-compatible MT endpoint (e.g. a local MT proxy).\n"
+            "Each profile below appears as its own QuickTrans result.")
+        self._mtql_checkboxes["mtql_custom_mt"] = cmt_enable
+        mt_layout.addWidget(cmt_enable)
+
+        _prof_row = QHBoxLayout()
+        _prof_lbl = QLabel("Profile:"); _prof_lbl.setMinimumWidth(90)
+        _prof_row.addWidget(_prof_lbl)
+        self._custom_mt_profile_combo = QComboBox()
+        self._custom_mt_profile_combo.setMinimumWidth(180)
+        for _p in self._custom_mt_profiles:
+            self._custom_mt_profile_combo.addItem(_p.get('name', 'Unnamed'))
+        if _active_mt_name:
+            _ai = self._custom_mt_profile_combo.findText(_active_mt_name)
+            if _ai >= 0:
+                self._custom_mt_profile_combo.setCurrentIndex(_ai)
+        _prof_row.addWidget(self._custom_mt_profile_combo)
+        _cmt_add_btn = QPushButton("+"); _cmt_add_btn.setFixedWidth(30)
+        _cmt_add_btn.setToolTip("Add a new Custom MT endpoint profile")
+        _cmt_del_btn = QPushButton("−"); _cmt_del_btn.setFixedWidth(30)
+        _cmt_del_btn.setToolTip("Remove the selected profile")
+        _prof_row.addWidget(_cmt_add_btn); _prof_row.addWidget(_cmt_del_btn)
+        _prof_row.addStretch()
+        mt_layout.addLayout(_prof_row)
+
+        self._custom_mt_endpoint_input = QLineEdit()
+        self._custom_mt_endpoint_input.setPlaceholderText("http://127.0.0.1:1234/v1")
+        self._custom_mt_model_input = QLineEdit()
+        self._custom_mt_model_input.setPlaceholderText("model / engine name (e.g. google, sogou, cnpat)")
+        self._custom_mt_key_input = QLineEdit()
+        self._custom_mt_key_input.setPlaceholderText("API key for this endpoint (optional)")
+        self._custom_mt_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        for _lbl_text, _w in (("Endpoint URL:", self._custom_mt_endpoint_input),
+                              ("Model / engine:", self._custom_mt_model_input),
+                              ("API key:", self._custom_mt_key_input)):
+            _r = QHBoxLayout()
+            _rl = QLabel(_lbl_text); _rl.setMinimumWidth(90)
+            _r.addWidget(_rl); _r.addWidget(_w)
+            mt_layout.addLayout(_r)
+
+        def _cmt_populate(index):
+            if 0 <= index < len(self._custom_mt_profiles):
+                _pp = self._custom_mt_profiles[index]
+                self._custom_mt_endpoint_input.setText(_pp.get('endpoint', ''))
+                self._custom_mt_model_input.setText(_pp.get('model', ''))
+                self._custom_mt_key_input.setText(_pp.get('api_key', ''))
+            else:
+                self._custom_mt_endpoint_input.clear()
+                self._custom_mt_model_input.clear()
+                self._custom_mt_key_input.clear()
+
+        def _cmt_sync():
+            _i = self._custom_mt_profile_combo.currentIndex()
+            if 0 <= _i < len(self._custom_mt_profiles):
+                self._custom_mt_profiles[_i]['endpoint'] = self._custom_mt_endpoint_input.text().strip()
+                self._custom_mt_profiles[_i]['model'] = self._custom_mt_model_input.text().strip()
+                self._custom_mt_profiles[_i]['api_key'] = self._custom_mt_key_input.text().strip()
+
+        def _cmt_add():
+            from PyQt6.QtWidgets import QInputDialog, QMessageBox
+            name, ok = QInputDialog.getText(
+                self, "New Custom MT Profile",
+                "Profile name (e.g. 'Local proxy', 'CNPAT patent'):")
+            if ok and name.strip():
+                name = name.strip()
+                if any(p.get('name') == name for p in self._custom_mt_profiles):
+                    QMessageBox.warning(self, "Duplicate Name", f"A profile named '{name}' already exists.")
+                    return
+                self._custom_mt_profiles.append({'name': name, 'endpoint': '', 'model': '', 'api_key': ''})
+                self._custom_mt_profile_combo.addItem(name)
+                self._custom_mt_profile_combo.setCurrentIndex(self._custom_mt_profile_combo.count() - 1)
+
+        def _cmt_del():
+            from PyQt6.QtWidgets import QMessageBox
+            _i = self._custom_mt_profile_combo.currentIndex()
+            if _i < 0 or _i >= len(self._custom_mt_profiles):
+                return
+            name = self._custom_mt_profile_combo.currentText()
+            if QMessageBox.question(
+                    self, "Remove Profile", f"Remove profile '{name}'?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            ) == QMessageBox.StandardButton.Yes:
+                self._custom_mt_profiles.pop(_i)
+                self._custom_mt_profile_combo.removeItem(_i)
+
+        self._custom_mt_profile_combo.currentIndexChanged.connect(_cmt_populate)
+        self._custom_mt_endpoint_input.editingFinished.connect(_cmt_sync)
+        self._custom_mt_model_input.editingFinished.connect(_cmt_sync)
+        self._custom_mt_key_input.editingFinished.connect(_cmt_sync)
+        _cmt_add_btn.clicked.connect(_cmt_add)
+        _cmt_del_btn.clicked.connect(_cmt_del)
+        if self._custom_mt_profile_combo.count() > 0:
+            _cmt_populate(self._custom_mt_profile_combo.currentIndex())
+
         mt_group.setLayout(mt_layout)
         layout.addWidget(mt_group)
 
@@ -20899,6 +21012,20 @@ class SupervertalerQt(QMainWindow):
 
         general_settings['mt_quick_lookup'] = mt_quick_settings
         self.save_general_settings(general_settings)
+
+        # Persist Custom MT endpoint profiles to llm_settings (kept separate from
+        # the AI custom endpoint). The enable flag itself rides in mt_quick_settings
+        # via self._mtql_checkboxes['mtql_custom_mt'] above.
+        if getattr(self, '_custom_mt_profile_combo', None) is not None:
+            idx = self._custom_mt_profile_combo.currentIndex()
+            if 0 <= idx < len(self._custom_mt_profiles):
+                self._custom_mt_profiles[idx]['endpoint'] = self._custom_mt_endpoint_input.text().strip()
+                self._custom_mt_profiles[idx]['model'] = self._custom_mt_model_input.text().strip()
+                self._custom_mt_profiles[idx]['api_key'] = self._custom_mt_key_input.text().strip()
+            llm_settings = self.load_llm_settings()
+            llm_settings['custom_mt_profiles'] = self._custom_mt_profiles
+            llm_settings['custom_mt_active_profile'] = self._custom_mt_profile_combo.currentText()
+            self.save_llm_settings(llm_settings)
 
         self.log("✓ QuickTrans settings saved")
         QMessageBox.information(self, "Settings Saved", "QuickTrans settings have been saved.")
@@ -51899,7 +52026,13 @@ class SupervertalerQt(QMainWindow):
             'custom_openai_model': '',
             'custom_openai_endpoint': '',
             'custom_openai_profiles': [],
-            'custom_openai_active_profile': ''
+            'custom_openai_active_profile': '',
+            # Custom MT endpoint(s): a dedicated, separate set of OpenAI-compatible
+            # endpoints used as MT engines (e.g. a local MT proxy), independent of
+            # the AI custom endpoint above so MT and AI can point at different
+            # services at the same time.
+            'custom_mt_profiles': [],
+            'custom_mt_active_profile': ''
         }
 
         try:
@@ -52040,6 +52173,89 @@ class SupervertalerQt(QMainWindow):
             return {'name': 'Custom Endpoint', 'endpoint': endpoint, 'model': model, 'api_key': ''}
 
         return None
+
+    def _get_custom_mt_profiles(self, settings=None):
+        """Return the list of configured Custom MT endpoint profiles."""
+        if settings is None:
+            settings = self.load_llm_settings()
+        return settings.get('custom_mt_profiles', []) or []
+
+    def _get_active_custom_mt_profile(self, settings=None):
+        """Get the active Custom MT endpoint profile dict (name, endpoint, model, api_key).
+
+        Mirrors _get_active_custom_profile but for the dedicated MT endpoint set,
+        which is independent of the AI custom endpoint. Returns None if none set.
+        """
+        if settings is None:
+            settings = self.load_llm_settings()
+        profiles = self._get_custom_mt_profiles(settings)
+        active_name = settings.get('custom_mt_active_profile', '')
+        for p in profiles:
+            if p.get('name') == active_name:
+                return p
+        return profiles[0] if profiles else None
+
+    def call_custom_mt(self, text: str, source_lang: str, target_lang: str, profile=None) -> str:
+        """Translate via a Custom MT endpoint (OpenAI-compatible, e.g. a local MT
+        proxy). `profile` is a {name, endpoint, model, api_key} dict; when omitted
+        the active Custom MT profile is used. Returns the translated string, or a
+        bracketed error message on failure (the QuickTrans convention)."""
+        try:
+            from modules.llm_clients import LLMClient
+
+            if profile is None:
+                profile = self._get_active_custom_mt_profile()
+            if not profile:
+                return "[Custom MT: no endpoint configured]"
+
+            endpoint = (profile.get('endpoint') or '').strip()
+            if not endpoint:
+                return "[Custom MT: no endpoint configured]"
+
+            model = (profile.get('model') or '').strip() or 'custom-model'
+            api_keys = self.load_api_keys()
+            api_key = ((profile.get('api_key') or '').strip()
+                       or api_keys.get('custom_mt', '')
+                       or api_keys.get('custom_openai', '')
+                       or 'not-needed')
+            http_proxy = self._get_proxy_url() if hasattr(self, '_get_proxy_url') else None
+
+            client = LLMClient(
+                api_key=api_key,
+                provider='custom_openai',
+                model=model,
+                base_url=endpoint,
+                http_proxy=http_proxy,
+            )
+
+            prompt = (
+                f"Translate the following text from {source_lang} to {target_lang}.\n"
+                f"Output ONLY the translation, nothing else. "
+                f"No explanations, no alternatives, no notes, no quotation marks.\n\n"
+                f"{text}"
+            )
+            system_prompt = (
+                "You are a translation engine. Output only the translated text. "
+                "Never add explanations, alternatives, notes, or commentary. "
+                "Never wrap the output in quotes. "
+                "If the text is already in the target language, output it unchanged."
+            )
+
+            result = client.translate(
+                text="",
+                source_lang=source_lang,
+                target_lang=target_lang,
+                custom_prompt=prompt,
+                system_prompt=system_prompt,
+            )
+            if result:
+                result = result.strip()
+                if ((result.startswith('"') and result.endswith('"'))
+                        or (result.startswith("'") and result.endswith("'"))):
+                    result = result[1:-1]
+            return result or "[Custom MT: no translation returned]"
+        except Exception as e:
+            return f"[Custom MT error: {str(e)}]"
 
     def create_llm_client(self, provider, model, api_keys, settings=None):
         """Create an LLMClient with proper base_url and proxy handling."""

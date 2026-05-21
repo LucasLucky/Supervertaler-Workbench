@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.125 (May 21, 2026)
+**Current Version:** v1.10.126 (May 21, 2026)
+
+
+## v1.10.126 – May 21, 2026
+
+### Added
+
+- **Custom MT endpoint (QuickTrans).** You can now add one or more dedicated OpenAI-compatible *MT* endpoints – separate from the AI custom endpoint – under QuickTrans settings ▸ MT engines. This is ideal for a local MT proxy that exposes several free engines as "models": point the endpoint at it (e.g. `http://127.0.0.1:1234/v1`), set the model/engine name, and each profile appears as its own QuickTrans result. Because it is independent of the AI custom endpoint, you can run an MT proxy for quick lookups **and** a custom LLM for AI chat at the same time. Manage multiple profiles (e.g. a general proxy and a patent-specific one) via the Profile dropdown with + / − buttons; enable them all with the "Custom MT endpoint" checkbox.
 
 
 ## v1.10.125 – May 21, 2026

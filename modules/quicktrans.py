@@ -275,6 +275,24 @@ class QuickTransProviderMixin:
 
                     providers.append((name, code, make_caller(call_method, api_key)))
 
+            # Custom MT endpoint(s): when the master 'mtql_custom_mt' toggle is on,
+            # each configured profile (with an endpoint) becomes its own MT chip.
+            # Independent of the AI custom endpoint, so MT and AI can point at
+            # different OpenAI-compatible services at the same time.
+            if (mt_quick_settings.get('mtql_custom_mt', False)
+                    and hasattr(self.parent_app, 'call_custom_mt')):
+                llm_settings = (self.parent_app.load_llm_settings()
+                                if hasattr(self.parent_app, 'load_llm_settings') else {})
+                for profile in (llm_settings.get('custom_mt_profiles') or []):
+                    if not (profile.get('endpoint') or '').strip():
+                        continue
+                    p_name = profile.get('name') or 'Custom MT'
+
+                    def make_custom_mt_caller(prof):
+                        return lambda text, src, tgt: self.parent_app.call_custom_mt(text, src, tgt, prof)
+
+                    providers.append((p_name, "CMT", make_custom_mt_caller(profile)))
+
         # Add LLM providers if enabled
         if include_llms:
             self._add_llm_providers(providers, api_keys, mt_quick_settings)
