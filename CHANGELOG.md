@@ -2,10 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.122 (May 21, 2026)
+**Current Version:** v1.10.123 (May 21, 2026)
 
 
-## v1.10.122 – May 21, 2026
+## v1.10.123 – May 21, 2026
+
+### Fixed
+
+- **Custom (OpenAI-compatible) endpoints now work in the AI chat.** Selecting a custom endpoint for the chat previously showed "No model" and could not send, even though the same endpoint worked in QuickTrans and in the Trados plugin. The chat built its LLM client without the endpoint URL (`base_url`) and without resolving the active custom profile's model and key, so the client failed to construct. Both chat client-initialisation paths (startup and the in-chat model picker) now go through the same app factory QuickTrans uses, which resolves the profile's endpoint, model and key. Standard providers are unaffected.
 
 ### Fixed
 

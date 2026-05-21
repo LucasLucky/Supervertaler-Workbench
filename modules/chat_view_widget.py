@@ -714,30 +714,43 @@ class ChatViewWidget(QWidget):
                 )
                 return
 
-            # Get proxy and base_url
-            http_proxy = None
-            if provider_key != 'gemini' and hasattr(parent_app, '_get_proxy_url'):
-                http_proxy = parent_app._get_proxy_url()
+            factory = getattr(parent_app, 'create_llm_client', None)
+            if provider_key == 'custom_openai' and factory is not None:
+                # Custom endpoints need base_url plus the active profile's model
+                # and key, which only the app factory resolves. The manual path
+                # below never set base_url for custom_openai, so the picker built
+                # a broken client (chat showed "No model" and could not send),
+                # even though QuickTrans – which uses this factory – worked.
+                settings = (parent_app.load_llm_settings()
+                            if hasattr(parent_app, 'load_llm_settings') else None)
+                self._backend.llm_client = factory(
+                    provider_key, model_id, api_keys, settings=settings)
+            else:
+                # Get proxy and base_url
+                http_proxy = None
+                if provider_key != 'gemini' and hasattr(parent_app, '_get_proxy_url'):
+                    http_proxy = parent_app._get_proxy_url()
 
-            base_url = None
-            if provider_key == 'mistral':
-                base_url = 'https://api.mistral.ai/v1'
-            elif provider_key == 'openrouter':
-                base_url = 'https://openrouter.ai/api/v1'
+                base_url = None
+                if provider_key == 'mistral':
+                    base_url = 'https://api.mistral.ai/v1'
+                elif provider_key == 'openrouter':
+                    base_url = 'https://openrouter.ai/api/v1'
 
-            self._backend.llm_client = LLMClient(
-                api_key=api_key,
-                provider=provider_key,
-                model=model_id,
-                max_tokens=16384,
-                base_url=base_url,
-                http_proxy=http_proxy,
-            )
+                self._backend.llm_client = LLMClient(
+                    api_key=api_key,
+                    provider=provider_key,
+                    model=model_id,
+                    max_tokens=16384,
+                    base_url=base_url,
+                    http_proxy=http_proxy,
+                )
 
             self._refresh_model_label()
+            resolved_model = getattr(self._backend.llm_client, 'model', model_id) or model_id
             self._backend.add_message(
                 "system",
-                f"Switched to {provider_key} / {model_id}",
+                f"Switched to {provider_key} / {resolved_model}",
             )
 
         except Exception as e:

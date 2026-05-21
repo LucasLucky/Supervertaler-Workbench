@@ -122,7 +122,28 @@ class ChatBackend(QObject):
                 api_key = (api_keys.get(key_name) or api_keys.get("gemini")
                            or api_keys.get("openai") or api_keys.get("claude")
                            or api_keys.get("google"))
-                if api_key:
+
+                # custom_openai / ollama don't require a key in api_keys.txt:
+                # the key (if any) lives on the active custom profile, and the
+                # factory supplies a 'not-needed' placeholder otherwise.
+                keyless_ok = provider in ('custom_openai', 'ollama')
+
+                # Prefer the main app's factory: it resolves base_url, the active
+                # custom-endpoint profile (endpoint + per-profile model + key),
+                # OpenRouter's base_url, and proxy handling. The old hand-rolled
+                # LLMClient here never passed base_url, so custom_openai endpoints
+                # silently failed to construct and the chat showed "No model"
+                # even though QuickTrans (which uses this factory) worked.
+                if hasattr(self._parent_app, 'create_llm_client') and (api_key or keyless_ok):
+                    settings = (self._parent_app.load_llm_settings()
+                                if hasattr(self._parent_app, 'load_llm_settings') else None)
+                    self.llm_client = self._parent_app.create_llm_client(
+                        provider, model, api_keys, settings=settings)
+                    resolved = getattr(self.llm_client, 'model', model) or 'default'
+                    self._log(f"[ChatBackend] LLM client: {provider}/{resolved}")
+                elif api_key:
+                    # Legacy direct path (factory unavailable). Standard providers
+                    # only – custom_openai needs the factory for its base_url.
                     http_proxy = None
                     if provider != 'gemini' and hasattr(self._parent_app, '_get_proxy_url'):
                         http_proxy = self._parent_app._get_proxy_url()
