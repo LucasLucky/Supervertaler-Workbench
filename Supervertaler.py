@@ -2822,18 +2822,6 @@ class ReadOnlyGridTextEditor(QTextEdit):
 
         super().keyPressEvent(event)
     
-    def mouseDoubleClickEvent(self, event):
-        """Handle double-click to select words properly when invisibles are shown.
-
-        When any invisible-character substitutions are active the text contains
-        marker characters (·, →, °, ↵) and zero-width spaces (\u200B).
-        We use the visible markers plus regular space as word delimiters.
-        \u200B is intentionally excluded – it is a word-wrap hint, not a delimiter.
-        """
-        if select_word_under_cursor(self, event):
-            return
-        super().mouseDoubleClickEvent(event)
-
     def _handle_quick_add_to_glossary_priority(self, priority: int):
         """Handle Alt+Up/Down: Quick add selected terms to the Project/Background glossary (no dialog)"""
         main_window = self._get_main_window()
@@ -3428,7 +3416,10 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 
                 start = end_idx
         
-        # If not on a termbase match, allow normal double-click selection
+        # Not on a termbase match: select the word under the cursor, excluding
+        # adjacent punctuation (same word-selection behaviour as the target cell).
+        if select_word_under_cursor(self, event):
+            return
         super().mouseDoubleClickEvent(event)
     
     def mousePressEvent(self, event):

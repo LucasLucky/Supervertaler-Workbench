@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.124 (May 21, 2026)
+**Current Version:** v1.10.125 (May 21, 2026)
+
+
+## v1.10.125 – May 21, 2026
+
+### Fixed
+
+- **Source-cell double-click now selects words without trailing punctuation.** The source cell had a duplicate, shadowed double-click handler – the dead copy held the punctuation-aware word-selection logic, so it never ran. Removed the duplicate; the active handler still inserts a termbase translation when you double-click a highlighted term, and now strips adjacent punctuation when selecting an ordinary word, matching the target cell.
 
 
 ## v1.10.124 – May 21, 2026
