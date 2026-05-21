@@ -1204,12 +1204,14 @@ class QuickTransPanel(QuickTransProviderMixin, QWidget):
 
         chip = QLabel(name)
         chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Compact pill, matching the result chips (see MTSuggestionItem).
+        chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         bg = PROVIDER_COLORS.get(code, "#666")
         chip.setStyleSheet(
-            f"QLabel {{ background-color: {bg}; color: white; font-weight: bold; "
-            f"font-size: 9px; border-radius: 3px; padding: 2px 8px; }}"
+            f"QLabel {{ background-color: {bg}; color: white; font-weight: 600; "
+            f"font-size: 9px; border-radius: 9px; padding: 1px 8px; }}"
         )
-        h.addWidget(chip)
+        h.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
         hint = QLabel("AI – click to fetch")
         hint.setStyleSheet("color: #999; font-size: 9pt; border: none;")

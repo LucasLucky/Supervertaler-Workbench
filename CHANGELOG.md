@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.134 (May 21, 2026)
+**Current Version:** v1.10.135 (May 21, 2026)
+
+
+## v1.10.135 – May 21, 2026
+
+### Changed
+
+- **The AI "Fetch" rows in the QuickTrans panel now use the same compact pill** as the result chips, so the provider labels look consistent across machine-translation results and the on-demand AI rows.
 
 
 ## v1.10.134 – May 21, 2026
