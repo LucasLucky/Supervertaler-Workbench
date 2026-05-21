@@ -24,6 +24,31 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+# Provider chip colours, keyed by internal provider code. Shared by the popup
+# rows (MTSuggestionItem) and the docked panel (QuickTransPanel) so the colour
+# coding stays consistent everywhere.
+PROVIDER_COLORS = {
+    "GT":  "#4285F4",   # Google blue
+    "DL":  "#042B48",   # DeepL dark blue
+    "MS":  "#00A4EF",   # Microsoft blue
+    "AT":  "#FF9900",   # Amazon orange
+    "MMT": "#6B4EE6",   # ModernMT purple
+    "MM":  "#2ECC71",   # MyMemory green
+    "CL":  "#D97706",   # Claude amber
+    "GPT": "#10A37F",   # OpenAI green
+    "GEM": "#4285F4",   # Gemini blue
+    "OLL": "#555555",   # Ollama dark gray
+    "CUS": "#9C27B0",   # Custom purple
+}
+
+# Shared style for the small icon-only header buttons in the docked panel.
+_PANEL_ICON_BTN_STYLE = """
+    QPushButton { border: none; background: transparent; font-size: 13px; }
+    QPushButton:hover { background-color: #e0e0e0; border-radius: 4px; }
+    QPushButton:focus { outline: none; }
+"""
+
+
 @dataclass
 class MTSuggestion:
     """A single MT suggestion from a provider"""
@@ -110,20 +135,7 @@ class MTSuggestionItem(QFrame):
         provider_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Color-code by provider code (internal key, not displayed)
-        provider_colors = {
-            "GT":  "#4285F4",   # Google blue
-            "DL":  "#042B48",   # DeepL dark blue
-            "MS":  "#00A4EF",   # Microsoft blue
-            "AT":  "#FF9900",   # Amazon orange
-            "MMT": "#6B4EE6",   # ModernMT purple
-            "MM":  "#2ECC71",   # MyMemory green
-            "CL":  "#D97706",   # Claude amber
-            "GPT": "#10A37F",   # OpenAI green
-            "GEM": "#4285F4",   # Gemini blue
-            "OLL": "#555555",   # Ollama dark gray
-            "CUS": "#9C27B0",   # Custom purple
-        }
-        bg_color = provider_colors.get(suggestion.provider_code, "#666")
+        bg_color = PROVIDER_COLORS.get(suggestion.provider_code, "#666")
         provider_label.setStyleSheet(f"""
             QLabel {{
                 background-color: {bg_color};
@@ -190,7 +202,199 @@ class MTSuggestionItem(QFrame):
         super().mousePressEvent(event)
 
 
-class MTQuickPopup(QDialog):
+class QuickTransProviderMixin:
+    """Shared provider enumeration + LLM calling logic.
+
+    Used by both the QuickTrans popup (``MTQuickPopup``) and the docked
+    under-grid panel (``QuickTransPanel``). Both set ``self.parent_app`` to the
+    Workbench main window, which supplies the API keys, enabled-provider
+    states, MT call methods, and LLM client wiring.
+    """
+
+    def _load_mt_quick_settings(self) -> Dict[str, Any]:
+        """Load MT Quick Lookup specific settings"""
+        if hasattr(self.parent_app, 'load_general_settings'):
+            settings = self.parent_app.load_general_settings()
+            return settings.get('mt_quick_lookup', {})
+        return {}
+
+    def _get_enabled_providers(self, include_mt: bool = True,
+                               include_llms: bool = True) -> List[Tuple[str, str, callable]]:
+        """Get enabled providers with their call functions.
+
+        ``include_mt`` / ``include_llms`` let callers fetch only the cheap MT
+        engines or only the (paid) LLMs – the docked panel uses this to
+        auto-fetch MT while keeping LLMs on-demand.
+        """
+        providers = []
+
+        if not self.parent_app:
+            return providers
+
+        api_keys = {}
+        enabled_providers = {}
+
+        if hasattr(self.parent_app, 'load_api_keys'):
+            api_keys = self.parent_app.load_api_keys()
+        if hasattr(self.parent_app, 'load_provider_enabled_states'):
+            enabled_providers = self.parent_app.load_provider_enabled_states()
+
+        # Load MT Quick Lookup specific settings
+        mt_quick_settings = self._load_mt_quick_settings()
+
+        if include_mt:
+            # Define MT providers: (display_name, code, enabled_key, api_key_name, call_method_name)
+            mt_provider_defs = [
+                ("Google Translate", "GT", "mt_google_translate", "google_translate", "call_google_translate"),
+                ("DeepL", "DL", "mt_deepl", "deepl", "call_deepl"),
+                ("Microsoft Translator", "MS", "mt_microsoft", "microsoft_translate", "call_microsoft_translate"),
+                ("Amazon Translate", "AT", "mt_amazon", "amazon_translate", "call_amazon_translate"),
+                ("ModernMT", "MMT", "mt_modernmt", "modernmt", "call_modernmt"),
+                ("MyMemory", "MM", "mt_mymemory", None, "call_mymemory"),  # MyMemory works without key
+            ]
+
+            for name, code, enabled_key, api_key_name, method_name in mt_provider_defs:
+                # Check if provider is enabled in MT Quick Lookup settings (default: use MT Settings state)
+                quick_lookup_key = f"mtql_{code.lower()}"
+                if not mt_quick_settings.get(quick_lookup_key, enabled_providers.get(enabled_key, True)):
+                    continue
+
+                # Check if API key is available (MyMemory doesn't require one)
+                if api_key_name and not api_keys.get(api_key_name):
+                    continue
+
+                # Get the call method
+                if hasattr(self.parent_app, method_name):
+                    call_method = getattr(self.parent_app, method_name)
+
+                    # Create a wrapper that handles the API key
+                    api_key = api_keys.get(api_key_name) if api_key_name else None
+
+                    def make_caller(m, k):
+                        return lambda text, src, tgt: m(text, src, tgt, k)
+
+                    providers.append((name, code, make_caller(call_method, api_key)))
+
+        # Add LLM providers if enabled
+        if include_llms:
+            self._add_llm_providers(providers, api_keys, mt_quick_settings)
+
+        return providers
+
+    def _add_llm_providers(self, providers: List, api_keys: Dict, mt_quick_settings: Dict):
+        """Add LLM providers (Claude, OpenAI, Gemini) to the providers list"""
+        # LLM provider definitions: (name, code, api_key_name, settings_key)
+        llm_defs = [
+            ("Claude", "CL", "claude", "mtql_claude"),
+            ("OpenAI", "GPT", "openai", "mtql_openai"),
+            ("Gemini", "GEM", "gemini", "mtql_gemini"),
+            ("Ollama", "OLL", "ollama", "mtql_ollama"),
+            ("Custom", "CUS", "custom_openai", "mtql_custom_openai"),
+        ]
+
+        for name, code, api_key_name, settings_key in llm_defs:
+            # Check if LLM is enabled in MT Quick Lookup settings (default: disabled)
+            if not mt_quick_settings.get(settings_key, False):
+                continue
+
+            # Check if API key is available
+            if api_key_name == 'gemini':
+                has_key = bool(api_keys.get('gemini') or api_keys.get('google'))
+            elif api_key_name in ('ollama', 'custom_openai'):
+                has_key = True  # No API key needed
+            else:
+                has_key = bool(api_keys.get(api_key_name))
+
+            if not has_key:
+                continue
+
+            # Get model from settings or use default
+            model_key = f"{settings_key}_model"
+            model = mt_quick_settings.get(model_key, None)
+
+            # Create LLM translation caller
+            def make_llm_caller(provider_name, provider_key, provider_model):
+                def call_llm(text, src_lang, tgt_lang):
+                    return self._call_llm_translation(provider_key, text, src_lang, tgt_lang, provider_model)
+                return call_llm
+
+            providers.append((name, code, make_llm_caller(name, api_key_name, model)))
+
+    def _call_llm_translation(self, provider: str, text: str, source_lang: str, target_lang: str, model: str = None) -> str:
+        """Call LLM for translation"""
+        try:
+            from modules.llm_clients import LLMClient, load_api_keys
+
+            if hasattr(self, 'parent_app') and self.parent_app and hasattr(self.parent_app, 'load_api_keys'):
+                api_keys = self.parent_app.load_api_keys()
+            else:
+                api_keys = load_api_keys()
+
+            if provider == 'gemini':
+                api_key = api_keys.get('gemini') or api_keys.get('google')
+            else:
+                api_key = api_keys.get(provider)
+
+            if not api_key and provider not in ('ollama', 'custom_openai'):
+                return f"[Error: No API key for {provider}]"
+
+            # Reuse main app client wiring when available (supports custom profiles/base_url)
+            if hasattr(self, 'parent_app') and self.parent_app and hasattr(self.parent_app, 'create_llm_client'):
+                llm_settings = self.parent_app.load_llm_settings() if hasattr(self.parent_app, 'load_llm_settings') else None
+                resolved_model = model
+                if not resolved_model and llm_settings:
+                    resolved_model = llm_settings.get(f"{provider}_model")
+                client = self.parent_app.create_llm_client(provider, resolved_model, api_keys, settings=llm_settings)
+            else:
+                base_url = None
+                if provider == 'custom_openai':
+                    api_key = api_key or 'not-needed'
+                client = LLMClient(
+                    api_key=api_key,
+                    provider=provider,
+                    model=model,
+                    base_url=base_url
+                )
+
+            # Use a strict prompt that forces translation-only output
+            prompt = (
+                f"Translate the following text from {source_lang} to {target_lang}.\n"
+                f"Output ONLY the translation, nothing else. "
+                f"No explanations, no alternatives, no notes, no quotation marks.\n\n"
+                f"{text}"
+            )
+            system_prompt = (
+                "You are a translation engine. Output only the translated text. "
+                "Never add explanations, alternatives, notes, or commentary. "
+                "Never wrap the output in quotes. "
+                "If the text is already in the target language, output it unchanged."
+            )
+
+            result = client.translate(
+                text="",
+                source_lang=source_lang,
+                target_lang=target_lang,
+                custom_prompt=prompt,
+                system_prompt=system_prompt,
+            )
+
+            # Clean up result - remove quotes if present
+            if result:
+                result = result.strip()
+                if (result.startswith('"') and result.endswith('"')) or (result.startswith("'") and result.endswith("'")):
+                    result = result[1:-1]
+                # Remove any "Translation:" or similar prefixes
+                for prefix in ['Translation:', 'translation:', 'Result:', 'Output:']:
+                    if result.startswith(prefix):
+                        result = result[len(prefix):].strip()
+
+            return result or "[No translation returned]"
+
+        except Exception as e:
+            return f"[Error: {str(e)}]"
+
+
+class MTQuickPopup(QuickTransProviderMixin, QDialog):
     """
     GT4T-style popup showing MT suggestions from all enabled providers
 
@@ -478,180 +682,6 @@ class MTQuickPopup(QDialog):
         self.worker.all_complete.connect(self._on_all_complete)
         self.worker.start()
 
-    def _get_enabled_providers(self) -> List[Tuple[str, str, callable]]:
-        """Get list of enabled MT providers with their call functions"""
-        providers = []
-
-        if not self.parent_app:
-            return providers
-
-        api_keys = {}
-        enabled_providers = {}
-
-        if hasattr(self.parent_app, 'load_api_keys'):
-            api_keys = self.parent_app.load_api_keys()
-        if hasattr(self.parent_app, 'load_provider_enabled_states'):
-            enabled_providers = self.parent_app.load_provider_enabled_states()
-
-        # Load MT Quick Lookup specific settings
-        mt_quick_settings = self._load_mt_quick_settings()
-
-        # Define MT providers: (display_name, code, enabled_key, api_key_name, call_method_name)
-        mt_provider_defs = [
-            ("Google Translate", "GT", "mt_google_translate", "google_translate", "call_google_translate"),
-            ("DeepL", "DL", "mt_deepl", "deepl", "call_deepl"),
-            ("Microsoft Translator", "MS", "mt_microsoft", "microsoft_translate", "call_microsoft_translate"),
-            ("Amazon Translate", "AT", "mt_amazon", "amazon_translate", "call_amazon_translate"),
-            ("ModernMT", "MMT", "mt_modernmt", "modernmt", "call_modernmt"),
-            ("MyMemory", "MM", "mt_mymemory", None, "call_mymemory"),  # MyMemory works without key
-        ]
-
-        for name, code, enabled_key, api_key_name, method_name in mt_provider_defs:
-            # Check if provider is enabled in MT Quick Lookup settings (default: use MT Settings state)
-            quick_lookup_key = f"mtql_{code.lower()}"
-            if not mt_quick_settings.get(quick_lookup_key, enabled_providers.get(enabled_key, True)):
-                continue
-
-            # Check if API key is available (MyMemory doesn't require one)
-            if api_key_name and not api_keys.get(api_key_name):
-                continue
-
-            # Get the call method
-            if hasattr(self.parent_app, method_name):
-                call_method = getattr(self.parent_app, method_name)
-
-                # Create a wrapper that handles the API key
-                api_key = api_keys.get(api_key_name) if api_key_name else None
-
-                def make_caller(m, k):
-                    return lambda text, src, tgt: m(text, src, tgt, k)
-
-                providers.append((name, code, make_caller(call_method, api_key)))
-
-        # Add LLM providers if enabled
-        self._add_llm_providers(providers, api_keys, mt_quick_settings)
-
-        return providers
-
-    def _load_mt_quick_settings(self) -> Dict[str, Any]:
-        """Load MT Quick Lookup specific settings"""
-        if hasattr(self.parent_app, 'load_general_settings'):
-            settings = self.parent_app.load_general_settings()
-            return settings.get('mt_quick_lookup', {})
-        return {}
-
-    def _add_llm_providers(self, providers: List, api_keys: Dict, mt_quick_settings: Dict):
-        """Add LLM providers (Claude, OpenAI, Gemini) to the providers list"""
-        # LLM provider definitions: (name, code, api_key_name, settings_key)
-        llm_defs = [
-            ("Claude", "CL", "claude", "mtql_claude"),
-            ("OpenAI", "GPT", "openai", "mtql_openai"),
-            ("Gemini", "GEM", "gemini", "mtql_gemini"),
-            ("Ollama", "OLL", "ollama", "mtql_ollama"),
-            ("Custom", "CUS", "custom_openai", "mtql_custom_openai"),
-        ]
-
-        for name, code, api_key_name, settings_key in llm_defs:
-            # Check if LLM is enabled in MT Quick Lookup settings (default: disabled)
-            if not mt_quick_settings.get(settings_key, False):
-                continue
-
-            # Check if API key is available
-            if api_key_name == 'gemini':
-                has_key = bool(api_keys.get('gemini') or api_keys.get('google'))
-            elif api_key_name in ('ollama', 'custom_openai'):
-                has_key = True  # No API key needed
-            else:
-                has_key = bool(api_keys.get(api_key_name))
-
-            if not has_key:
-                continue
-
-            # Get model from settings or use default
-            model_key = f"{settings_key}_model"
-            model = mt_quick_settings.get(model_key, None)
-
-            # Create LLM translation caller
-            def make_llm_caller(provider_name, provider_key, provider_model):
-                def call_llm(text, src_lang, tgt_lang):
-                    return self._call_llm_translation(provider_key, text, src_lang, tgt_lang, provider_model)
-                return call_llm
-
-            providers.append((name, code, make_llm_caller(name, api_key_name, model)))
-
-    def _call_llm_translation(self, provider: str, text: str, source_lang: str, target_lang: str, model: str = None) -> str:
-        """Call LLM for translation"""
-        try:
-            from modules.llm_clients import LLMClient, load_api_keys
-
-            if hasattr(self, 'parent_app') and self.parent_app and hasattr(self.parent_app, 'load_api_keys'):
-                api_keys = self.parent_app.load_api_keys()
-            else:
-                api_keys = load_api_keys()
-
-            if provider == 'gemini':
-                api_key = api_keys.get('gemini') or api_keys.get('google')
-            else:
-                api_key = api_keys.get(provider)
-
-            if not api_key and provider not in ('ollama', 'custom_openai'):
-                return f"[Error: No API key for {provider}]"
-
-            # Reuse main app client wiring when available (supports custom profiles/base_url)
-            if hasattr(self, 'parent_app') and self.parent_app and hasattr(self.parent_app, 'create_llm_client'):
-                llm_settings = self.parent_app.load_llm_settings() if hasattr(self.parent_app, 'load_llm_settings') else None
-                resolved_model = model
-                if not resolved_model and llm_settings:
-                    resolved_model = llm_settings.get(f"{provider}_model")
-                client = self.parent_app.create_llm_client(provider, resolved_model, api_keys, settings=llm_settings)
-            else:
-                base_url = None
-                if provider == 'custom_openai':
-                    api_key = api_key or 'not-needed'
-                client = LLMClient(
-                    api_key=api_key,
-                    provider=provider,
-                    model=model,
-                    base_url=base_url
-                )
-
-            # Use a strict prompt that forces translation-only output
-            prompt = (
-                f"Translate the following text from {source_lang} to {target_lang}.\n"
-                f"Output ONLY the translation, nothing else. "
-                f"No explanations, no alternatives, no notes, no quotation marks.\n\n"
-                f"{text}"
-            )
-            system_prompt = (
-                "You are a translation engine. Output only the translated text. "
-                "Never add explanations, alternatives, notes, or commentary. "
-                "Never wrap the output in quotes. "
-                "If the text is already in the target language, output it unchanged."
-            )
-
-            result = client.translate(
-                text="",
-                source_lang=source_lang,
-                target_lang=target_lang,
-                custom_prompt=prompt,
-                system_prompt=system_prompt,
-            )
-
-            # Clean up result - remove quotes if present
-            if result:
-                result = result.strip()
-                if (result.startswith('"') and result.endswith('"')) or (result.startswith("'") and result.endswith("'")):
-                    result = result[1:-1]
-                # Remove any "Translation:" or similar prefixes
-                for prefix in ['Translation:', 'translation:', 'Result:', 'Output:']:
-                    if result.startswith(prefix):
-                        result = result[len(prefix):].strip()
-
-            return result or "[No translation returned]"
-
-        except Exception as e:
-            return f"[Error: {str(e)}]"
-
     def _send_to_superlookup(self):
         """Close the popup and open Workbench's SuperLookup tab with
         the current QuickTrans query pre-filled.
@@ -819,4 +849,286 @@ class MTQuickPopup(QDialog):
         if self.worker and self.worker.isRunning():
             self.worker.quit()
             self.worker.wait(1000)
+        super().closeEvent(event)
+
+
+class QuickTransPanel(QuickTransProviderMixin, QWidget):
+    """Docked QuickTrans panel for the under-grid tab area.
+
+    A trimmed, always-on version of the QuickTrans popup. It auto-fetches the
+    cheap/free MT engines (Google, MyMemory, Microsoft, ...) for the current
+    segment's source text whenever the panel is visible. LLM providers
+    (Claude, OpenAI, Gemini, ...) are NOT auto-fetched – each gets an
+    on-demand "Fetch" button so paid AI calls only happen when the user asks.
+    Clicking any result row inserts it into the current target cell.
+
+    The host wires it up by:
+        panel = QuickTransPanel(main_window)
+        panel.translation_selected.connect(insert_fn)
+        # on every segment change:
+        panel.request_update(source_text, source_lang, target_lang)
+    """
+
+    translation_selected = pyqtSignal(str)
+
+    def __init__(self, parent_app, parent=None):
+        super().__init__(parent)
+        self.parent_app = parent_app
+        self.source_lang = getattr(parent_app, 'source_language', 'en')
+        self.target_lang = getattr(parent_app, 'target_language', 'nl')
+
+        self._pending: Optional[Tuple[str, str, str]] = None  # (source, src, tgt)
+        self._last_fetched: Optional[str] = None              # source actually fetched
+        self._fetch_token: int = 0          # bumped each fetch; stale workers are ignored
+        self._workers: List[MTFetchWorker] = []   # keep refs so threads aren't GC'd mid-run
+        self.suggestions: List[MTSuggestion] = []
+
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(300)
+        self._debounce.timeout.connect(self._do_fetch)
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(6, 4, 6, 6)
+        outer.setSpacing(4)
+
+        # Header: just the action buttons, right-aligned. No title label –
+        # the tab is already named "QuickTrans".
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(2)
+        header.addStretch()
+
+        self._refresh_btn = QPushButton("🔄")
+        self._refresh_btn.setFixedSize(22, 22)
+        self._refresh_btn.setToolTip("Re-fetch translations for the current segment")
+        self._refresh_btn.setStyleSheet(_PANEL_ICON_BTN_STYLE)
+        self._refresh_btn.clicked.connect(self._force_refresh)
+        header.addWidget(self._refresh_btn)
+
+        settings_btn = QPushButton("⚙️")
+        settings_btn.setFixedSize(22, 22)
+        settings_btn.setToolTip("Configure QuickTrans providers")
+        settings_btn.setStyleSheet(_PANEL_ICON_BTN_STYLE)
+        settings_btn.clicked.connect(self._open_settings)
+        header.addWidget(settings_btn)
+        outer.addLayout(header)
+
+        # Persistent status / placeholder line. Lives in the OUTER layout, not
+        # inside results_layout – _clear_results() wipes the results layout, so
+        # keeping the label out of it avoids deleting the very widget we reuse.
+        self.status_label = QLabel("Select a segment to see translations.")
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("color: #888; font-size: 9pt; padding: 6px;")
+        outer.addWidget(self.status_label)
+
+        # Scrollable list of result rows
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        container = QWidget()
+        self.results_layout = QVBoxLayout(container)
+        self.results_layout.setContentsMargins(0, 0, 0, 0)
+        self.results_layout.setSpacing(4)
+        self.results_layout.addStretch()
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll, 1)
+
+    def _open_settings(self):
+        if self.parent_app and hasattr(self.parent_app, 'open_mt_quick_lookup_settings'):
+            self.parent_app.open_mt_quick_lookup_settings()
+
+    # ── update lifecycle ────────────────────────────────────────────────
+    def request_update(self, source_text: str, source_lang: str = None, target_lang: str = None):
+        """Called by the host on every segment change. Stores the pending
+        segment and (if the panel is visible) schedules a debounced fetch."""
+        source_text = (source_text or "").strip()
+        if source_lang:
+            self.source_lang = source_lang
+        if target_lang:
+            self.target_lang = target_lang
+        self._pending = (source_text, self.source_lang, self.target_lang)
+        if self.isVisible() and source_text and source_text != self._last_fetched:
+            self._debounce.start()
+
+    def showEvent(self, event):
+        """When the tab becomes visible, fetch the pending segment (the
+        panel doesn't fetch while hidden, to avoid needless MT calls)."""
+        super().showEvent(event)
+        if self._pending and self._pending[0] and self._pending[0] != self._last_fetched:
+            self._debounce.start()
+
+    def _force_refresh(self):
+        """Manual ↻: re-fetch the current segment even if unchanged."""
+        self._last_fetched = None
+        if self._pending and self._pending[0]:
+            self._do_fetch()
+
+    # ── rendering ───────────────────────────────────────────────────────
+    def _clear_results(self):
+        # Remove every widget except the trailing stretch (last item).
+        while self.results_layout.count() > 1:
+            item = self.results_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self.suggestions = []
+
+    def _do_fetch(self):
+        if not self._pending:
+            return
+        source_text, src, tgt = self._pending
+        if not source_text:
+            return
+        self._last_fetched = source_text
+        self._clear_results()
+
+        # Bump the token so any still-running worker from a previous segment
+        # has its (late) results ignored rather than appended to this one.
+        self._fetch_token += 1
+        token = self._fetch_token
+
+        mt_providers = self._get_enabled_providers(include_mt=True, include_llms=False)
+        llm_providers = self._get_enabled_providers(include_mt=False, include_llms=True)
+
+        if not mt_providers and not llm_providers:
+            self.status_label.setText("⚠️ No QuickTrans providers enabled. Click ⚙ to configure.")
+            self._show_status()
+            return
+
+        # Auto-fetch the cheap MT engines.
+        if mt_providers:
+            self.status_label.setText("Fetching…")
+            self._show_status()
+            self._start_worker(source_text, src, tgt, mt_providers,
+                               on_ready=self._on_mt_result, token=token,
+                               on_complete=self._on_mt_complete)
+        else:
+            self._hide_status()
+
+        # LLMs: on-demand buttons only (no automatic, billable calls).
+        for name, code, call_func in llm_providers:
+            self._add_llm_button(name, code, call_func, source_text, src, tgt)
+
+    def _start_worker(self, source_text, src, tgt, providers, on_ready, token, on_complete=None):
+        """Start an MTFetchWorker, tracking it so it isn't GC'd mid-run and
+        dropping its results if a newer fetch has superseded this one."""
+        worker = MTFetchWorker(source_text, src, tgt, providers)
+        self._workers.append(worker)
+
+        def _ready(pn, pc, tr, err, _tok=token):
+            if _tok == self._fetch_token:
+                on_ready(pn, pc, tr, err)
+
+        def _done(_w=worker, _tok=token):
+            if on_complete is not None and _tok == self._fetch_token:
+                on_complete()
+            if _w in self._workers:
+                self._workers.remove(_w)
+
+        worker.result_ready.connect(_ready)
+        worker.all_complete.connect(_done)
+        worker.start()
+        return worker
+
+    def _show_status(self):
+        self.status_label.show()
+
+    def _hide_status(self):
+        self.status_label.hide()
+
+    def _on_mt_result(self, provider_name, provider_code, translation, is_error):
+        self._hide_status()
+        self._append_result(provider_name, provider_code, translation, is_error)
+
+    def _on_mt_complete(self):
+        # If nothing rendered at all (no MT rows AND no LLM buttons – only the
+        # trailing stretch remains), surface a friendly message.
+        if not self.suggestions and self.results_layout.count() <= 1:
+            self.status_label.setText("No translations available.")
+            self._show_status()
+
+    def _append_result(self, name, code, translation, is_error) -> 'MTSuggestionItem':
+        suggestion = MTSuggestion(name, code, translation, is_error)
+        self.suggestions.append(suggestion)
+        item = MTSuggestionItem(len(self.suggestions), suggestion)
+        item.clicked.connect(self._on_item_clicked)
+        # Insert before the trailing stretch.
+        self.results_layout.insertWidget(self.results_layout.count() - 1, item)
+        return item
+
+    def _add_llm_button(self, name, code, call_func, source_text, src, tgt):
+        """Add an on-demand 'Fetch' row for an LLM provider."""
+        row = QFrame()
+        row.setStyleSheet(
+            "QFrame { background: #fafafa; border: 1px dashed #cfcfcf; border-radius: 4px; }"
+        )
+        h = QHBoxLayout(row)
+        h.setContentsMargins(8, 4, 8, 4)
+        h.setSpacing(8)
+
+        chip = QLabel(name)
+        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bg = PROVIDER_COLORS.get(code, "#666")
+        chip.setStyleSheet(
+            f"QLabel {{ background-color: {bg}; color: white; font-weight: bold; "
+            f"font-size: 9px; border-radius: 3px; padding: 2px 8px; }}"
+        )
+        h.addWidget(chip)
+
+        hint = QLabel("AI – click to fetch")
+        hint.setStyleSheet("color: #999; font-size: 9pt; border: none;")
+        h.addWidget(hint)
+        h.addStretch()
+
+        btn = QPushButton("Fetch")
+        btn.setFixedHeight(22)
+        btn.setToolTip(f"Fetch an AI translation from {name} (makes one API call)")
+        h.addWidget(btn)
+
+        self.results_layout.insertWidget(self.results_layout.count() - 1, row)
+
+        def on_click():
+            btn.setEnabled(False)
+            btn.setText("…")
+            worker = MTFetchWorker(source_text, src, tgt, [(name, code, call_func)])
+            self._workers.append(worker)
+
+            def on_ready(pn, pc, tr, err):
+                idx = self.results_layout.indexOf(row)
+                if idx < 0:
+                    idx = self.results_layout.count() - 1
+                suggestion = MTSuggestion(pn, pc, tr, err)
+                self.suggestions.append(suggestion)
+                item = MTSuggestionItem(len(self.suggestions), suggestion)
+                item.clicked.connect(self._on_item_clicked)
+                self.results_layout.insertWidget(idx, item)
+                row.setParent(None)
+                row.deleteLater()
+
+            def on_done(_w=worker):
+                if _w in self._workers:
+                    self._workers.remove(_w)
+
+            worker.result_ready.connect(on_ready)
+            worker.all_complete.connect(on_done)
+            worker.start()
+
+        btn.clicked.connect(on_click)
+
+    def _on_item_clicked(self, translation: str):
+        self.translation_selected.emit(translation)
+
+    def closeEvent(self, event):
+        # Let any in-flight workers finish so QThreads aren't destroyed while
+        # running. They're short (one HTTP round-trip) and stale results are
+        # already ignored via the fetch token.
+        for w in list(self._workers):
+            if w.isRunning():
+                w.wait(1000)
         super().closeEvent(event)

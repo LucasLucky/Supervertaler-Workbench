@@ -7575,15 +7575,30 @@ class SupervertalerQt(QMainWindow):
         QApplication.instance().processEvents()  # Allow UI to finish initializing
         self.load_font_sizes_from_preferences()
         
-        # Restore TermLens under-grid visibility and position
+        # Restore under-grid dock (TermLens / QuickTrans) visibility, position
+        # and which tab was active.
         if hasattr(self, 'bottom_tabs'):
-            termlens_visible = general_settings.get('termlens_under_grid_visible', False)
-            above = general_settings.get('tabs_above_grid', False)
-            self.tabs_above_grid = above
-            if termlens_visible:
-                self.set_termlens_position('above' if above else 'below', save=False)
-            else:
-                self.set_termlens_position(None, save=False)
+            self._restoring_dock = True
+            try:
+                termlens_visible = general_settings.get('termlens_under_grid_visible', False)
+                above = general_settings.get('tabs_above_grid', False)
+                self.tabs_above_grid = above
+                if termlens_visible:
+                    self.set_termlens_position('above' if above else 'below', save=False)
+                else:
+                    self.set_termlens_position(None, save=False)
+                # Restore the active tab choice.
+                active_tab = general_settings.get('bottom_dock_active_tab', 'termlens')
+                if active_tab == 'quicktrans' and getattr(self, 'quicktrans_panel', None) is not None:
+                    self.bottom_tabs.setCurrentWidget(self.quicktrans_panel)
+                self._sync_bottom_dock_menu()
+                # Restore the Match Panel top tab (TermLens / QuickTrans).
+                match_tab = general_settings.get('match_top_active_tab', 'termlens')
+                if (match_tab == 'quicktrans' and hasattr(self, 'match_top_tabs')
+                        and getattr(self, 'quicktrans_panel_match', None) is not None):
+                    self.match_top_tabs.setCurrentWidget(self.quicktrans_panel_match)
+            finally:
+                self._restoring_dock = False
 
         # First-run check - show unified setup wizard
         if self._needs_data_location_dialog or not general_settings.get('first_run_completed', False):
@@ -9988,20 +10003,33 @@ class SupervertalerQt(QMainWindow):
 
         view_menu.addSeparator()
         
-        # TermLens under-grid placement (live; click the active one again to hide)
-        self.termlens_above_action = QAction("🔍 Show TermLens &above grid", self)
-        self.termlens_above_action.setCheckable(True)
-        self.termlens_above_action.setChecked(False)
-        self.termlens_above_action.triggered.connect(lambda checked: self._on_termlens_action('above', checked))
-        self.termlens_above_action.setToolTip("Show the TermLens panel above the grid (click again to hide)")
-        view_menu.addAction(self.termlens_above_action)
+        # Under-grid panel placement. The dock holds the TermLens and
+        # QuickTrans tabs; this submenu controls only WHERE the dock sits
+        # (the tab bar in the dock chooses which of the two is shown).
+        from PyQt6.QtGui import QActionGroup
+        underdock_menu = view_menu.addMenu("📑 TermLens / QuickTrans panel")
+        self.underdock_action_group = QActionGroup(self)
+        self.underdock_action_group.setExclusive(True)
 
-        self.termlens_below_action = QAction("🔍 Show TermLens &below grid", self)
-        self.termlens_below_action.setCheckable(True)
-        self.termlens_below_action.setChecked(False)
-        self.termlens_below_action.triggered.connect(lambda checked: self._on_termlens_action('below', checked))
-        self.termlens_below_action.setToolTip("Show the TermLens panel below the grid (click again to hide)")
-        view_menu.addAction(self.termlens_below_action)
+        self.underdock_hide_action = QAction("Hide", self)
+        self.underdock_hide_action.setCheckable(True)
+        self.underdock_hide_action.setToolTip("Hide the under-grid panel")
+        self.underdock_hide_action.triggered.connect(lambda: self.set_termlens_position(None))
+
+        self.underdock_above_action = QAction("Show above grid", self)
+        self.underdock_above_action.setCheckable(True)
+        self.underdock_above_action.setToolTip("Dock the panel above the translation grid")
+        self.underdock_above_action.triggered.connect(lambda: self.set_termlens_position('above'))
+
+        self.underdock_below_action = QAction("Show below grid", self)
+        self.underdock_below_action.setCheckable(True)
+        self.underdock_below_action.setToolTip("Dock the panel below the translation grid")
+        self.underdock_below_action.triggered.connect(lambda: self.set_termlens_position('below'))
+
+        for _a in (self.underdock_hide_action, self.underdock_above_action, self.underdock_below_action):
+            self.underdock_action_group.addAction(_a)
+            underdock_menu.addAction(_a)
+        self.underdock_hide_action.setChecked(True)
 
         view_menu.addSeparator()
 
@@ -14586,6 +14614,24 @@ class SupervertalerQt(QMainWindow):
                 self.termlens_widget_match.update_with_matches(source_text, termbase_list, nt_matches, status_hint)
             except Exception as e:
                 self.log(f"Error updating Match Panel termlens: {e}")
+
+        # Keep the QuickTrans panels (under-grid and Match Panel) pointed at
+        # the current segment. Each self-guards: it only actually fetches when
+        # it is the visible tab, and auto-fetches the cheap MT engines only
+        # (LLMs stay on-demand), so this is cheap to call on every segment.
+        try:
+            if self.current_project:
+                src = self.current_project.source_lang or 'en'
+                tgt = self.current_project.target_lang or 'nl'
+            else:
+                src = getattr(self, 'source_language', 'en')
+                tgt = getattr(self, 'target_language', 'nl')
+            for _panel in (getattr(self, 'quicktrans_panel', None),
+                           getattr(self, 'quicktrans_panel_match', None)):
+                if _panel is not None:
+                    _panel.request_update(source_text, src, tgt)
+        except Exception as e:
+            self.log(f"Error updating QuickTrans panel(s): {e}")
 
     def _update_termlens_for_segment(self, segment):
         """Explicitly update termlens for a segment (v1.9.182).
@@ -25628,12 +25674,27 @@ class SupervertalerQt(QMainWindow):
         
         # Add only TermLens tab to bottom_tabs (Segment Note and Session Log will be in right panel)
         bottom_tabs.addTab(self.termlens_widget, "🔍 TermLens")
-        
+
+        # QuickTrans docked panel – a trimmed, always-on version of the
+        # QuickTrans popup. Auto-fetches cheap MT for the current segment;
+        # LLMs stay on-demand. Lives as a second tab next to TermLens.
+        try:
+            from modules.quicktrans import QuickTransPanel
+            self.quicktrans_panel = QuickTransPanel(self)
+            self.quicktrans_panel.translation_selected.connect(self._insert_quicktrans_translation)
+            bottom_tabs.addTab(self.quicktrans_panel, "⚡ QuickTrans")
+        except Exception as e:
+            self.quicktrans_panel = None
+            self.log(f"Could not create QuickTrans panel: {e}")
+
         # Default to TermLens tab (index 0)
         bottom_tabs.setCurrentIndex(0)
-        
+
         # Store reference to bottom_tabs for later access
         self.bottom_tabs = bottom_tabs
+        # Keep the View-menu dock checkmarks in sync as the user switches
+        # between the TermLens and QuickTrans tabs (and remember the choice).
+        bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)
         
         # Proofreading note tab (read-only, AI-generated, keyed by LLM model)
         proofreading_notes_widget = QWidget()
@@ -37641,8 +37702,24 @@ class SupervertalerQt(QMainWindow):
         termlens_bold = font_settings.get('termlens_font_bold', False)
         self.termlens_widget_match.set_font_settings(termlens_family, termlens_size, termlens_bold)
         termlens_layout.addWidget(self.termlens_widget_match)
-        
-        splitter.addWidget(termlens_container)
+
+        # Wrap the TermLens section + a QuickTrans panel in a tab pair, so the
+        # user can have TermLens below the grid and QuickTrans here (or vice
+        # versa). Mirrors the under-grid TermLens | QuickTrans dock.
+        from PyQt6.QtWidgets import QTabWidget as _QTabWidget
+        self.match_top_tabs = _QTabWidget()
+        self.match_top_tabs.addTab(termlens_container, "📖 TermLens")
+        try:
+            from modules.quicktrans import QuickTransPanel
+            self.quicktrans_panel_match = QuickTransPanel(self)
+            self.quicktrans_panel_match.translation_selected.connect(self._insert_quicktrans_translation)
+            self.match_top_tabs.addTab(self.quicktrans_panel_match, "⚡ QuickTrans")
+            self.match_top_tabs.currentChanged.connect(self._on_match_top_tab_changed)
+        except Exception as e:
+            self.quicktrans_panel_match = None
+            self.log(f"Could not create Match Panel QuickTrans panel: {e}")
+
+        splitter.addWidget(self.match_top_tabs)
         
         # BOTTOM: Container for TM Source + TM Target boxes
         # v1.9.307: Store references for layout switching (horizontal ↔ vertical)
@@ -39522,10 +39599,10 @@ class SupervertalerQt(QMainWindow):
             tabs.setVisible(False)
             visible = False
 
-        if hasattr(self, 'termlens_above_action'):
-            self.termlens_above_action.setChecked(position == 'above')
-        if hasattr(self, 'termlens_below_action'):
-            self.termlens_below_action.setChecked(position == 'below')
+        # The under-grid dock now holds two tabs (TermLens + QuickTrans), so
+        # the menu checkmarks depend on both visibility/position AND which tab
+        # is active. _sync_bottom_dock_menu() works that out.
+        self._sync_bottom_dock_menu()
 
         if save:
             settings = self.load_general_settings()
@@ -39533,15 +39610,83 @@ class SupervertalerQt(QMainWindow):
             settings['tabs_above_grid'] = self.tabs_above_grid
             self.save_general_settings(settings)
 
-    def _on_termlens_action(self, position, checked):
-        """View-menu handler. The actions are checkable, so clicking the active
-        item unchecks it (checked=False) -> hide; clicking an unchecked item
-        (checked=True) -> show in that position."""
-        if checked:
-            self.set_termlens_position(position)
-        else:
-            self.set_termlens_position(None)
-    
+    def _sync_bottom_dock_menu(self):
+        """Keep the 'Under-grid panel' radio items (Hide / Above / Below) in
+        sync with the dock's current visibility and position. The TermLens vs
+        QuickTrans choice is made via the dock's tab bar, not the menu."""
+        if not hasattr(self, 'bottom_tabs') or not hasattr(self, 'underdock_hide_action'):
+            return
+        try:
+            visible = self.bottom_tabs.isVisible()
+        except Exception:
+            return
+        above = visible and getattr(self, 'tabs_above_grid', False)
+        below = visible and not getattr(self, 'tabs_above_grid', False)
+        # setChecked does not emit triggered(), so this won't recurse.
+        self.underdock_above_action.setChecked(above)
+        self.underdock_below_action.setChecked(below)
+        self.underdock_hide_action.setChecked(not visible)
+
+    def _on_bottom_tab_changed(self, _idx):
+        """Tab switched in the under-grid dock: remember which tab the user
+        prefers (unless we're restoring at startup)."""
+        if not getattr(self, '_restoring_dock', False):
+            self._save_bottom_dock_active_tab()
+
+    def _save_bottom_dock_active_tab(self):
+        if not hasattr(self, 'bottom_tabs'):
+            return
+        try:
+            cur = self.bottom_tabs.currentWidget()
+            name = 'quicktrans' if cur is getattr(self, 'quicktrans_panel', None) else 'termlens'
+            s = self.load_general_settings()
+            s['bottom_dock_active_tab'] = name
+            self.save_general_settings(s)
+        except Exception:
+            pass
+
+    def _on_match_top_tab_changed(self, _idx):
+        """Match Panel top tab switched (TermLens / QuickTrans): remember the
+        choice (unless we're restoring at startup)."""
+        if getattr(self, '_restoring_dock', False):
+            return
+        try:
+            cur = self.match_top_tabs.currentWidget()
+            name = 'quicktrans' if cur is getattr(self, 'quicktrans_panel_match', None) else 'termlens'
+            s = self.load_general_settings()
+            s['match_top_active_tab'] = name
+            self.save_general_settings(s)
+        except Exception:
+            pass
+
+    def _insert_quicktrans_translation(self, translation: str):
+        """Insert a QuickTrans-panel result into the current segment's target
+        cell. Replaces the selection if there is one, otherwise the whole
+        target. Mirrors the popup's insert behaviour."""
+        try:
+            row = self.table.currentRow()
+            if row < 0:
+                return
+            target_widget = self.table.cellWidget(row, 3)
+            if not target_widget or not hasattr(target_widget, 'toPlainText'):
+                return
+            focus_widget = QApplication.focusWidget()
+            if (focus_widget is target_widget and hasattr(focus_widget, 'textCursor')
+                    and focus_widget.textCursor().hasSelection()):
+                cursor = focus_widget.textCursor()
+                cursor.insertText(translation)
+            else:
+                target_widget.setPlainText(translation)
+            if hasattr(self, 'segments') and row < len(self.segments):
+                new_target = target_widget.toPlainText()
+                if hasattr(self, 'reverse_invisible_replacements'):
+                    new_target = self.reverse_invisible_replacements(new_target)
+                self.segments[row].target = new_target
+                self.mark_segment_modified(row)
+            self.log("✅ Inserted QuickTrans translation")
+        except Exception as e:
+            self.log(f"Error inserting QuickTrans translation: {e}")
+
     def _update_file_boundary_labels(self):
         """Create/reposition floating filename banner labels at file boundaries in multi-file projects.
 
@@ -62233,8 +62378,27 @@ class SuperlookupTab(QWidget):
     def _handle_quicktrans_hotkey(self):
         """Runs on Qt main thread after the QuickTrans global hotkey fires."""
         try:
-            # Capture the foreground window BEFORE we do anything –
-            # this is the app the user was working in (browser, Trados, etc.)
+            # If the user is working inside Workbench itself (e.g. the cursor
+            # is in a target cell), skip the clipboard round-trip entirely and
+            # use the in-app popup. show_mt_quick_popup() already does the
+            # right thing: translate the current selection if there is one,
+            # otherwise fall back to the whole source segment. The clipboard
+            # flow below would instead copy nothing and reuse stale clipboard
+            # text when nothing is selected – which is the bug the user hit.
+            #
+            # NOTE: this handler lives on SuperlookupTab, not the main window,
+            # so show_mt_quick_popup() must be called on self.main_window.
+            from PyQt6.QtWidgets import QApplication
+            main_window = getattr(self, 'main_window', None) or self.window()
+            if (QApplication.activeWindow() is not None
+                    and main_window is not None
+                    and hasattr(main_window, 'show_mt_quick_popup')):
+                main_window.show_mt_quick_popup()
+                return
+
+            # Otherwise the hotkey came from another application (browser,
+            # Trados, etc.). Capture that foreground window BEFORE we do
+            # anything, then copy the user's selection to the clipboard.
             from modules.platform_helpers import CrossPlatformKeySender, get_foreground_window
             self._quicktrans_source_window = get_foreground_window()
             print(f"[QuickTrans] Captured source window: {self._quicktrans_source_window}")

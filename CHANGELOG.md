@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.119 (May 21, 2026)
+**Current Version:** v1.10.120 (May 21, 2026)
+
+
+## v1.10.120 – May 21, 2026
+
+### Added
+
+- **QuickTrans now docks as an always-on panel, beside TermLens.** A trimmed version of the QuickTrans popup that lives as a tab next to TermLens, in two places: under the translation grid, and in the Match Panel (top-right, above the TM boxes). It auto-fetches the cheap/free machine-translation engines (Google, MyMemory, Microsoft, …) for the current segment, while AI providers (Claude, OpenAI, Gemini, …) appear as on-demand **Fetch** buttons so paid calls only happen when you ask. Click any result to drop it into the target cell. Each panel only fetches while its tab is visible, so there's no needless work or cost.
+  - You can mix and match: TermLens under the grid with QuickTrans on the right, the reverse, or the same panel in both spots. Choices persist across restarts.
+  - The View menu's old TermLens placement items are consolidated into a single **View ▸ 📑 TermLens / QuickTrans panel ▸ Hide / Show above grid / Show below grid** submenu; the TermLens vs QuickTrans choice is made via the dock's own tab bar.
+
+### Fixed
+
+- **Ctrl+Alt+Q now translates the current segment when used inside Workbench.** Previously the global QuickTrans hotkey always did a clipboard copy first, so pressing it in a target cell with nothing selected showed stale clipboard text (or nothing). It now detects that Workbench is the active window and translates the current selection — or the whole source segment if nothing is selected — exactly like the right-click QuickTrans. The clipboard-capture flow is unchanged when the hotkey is used from other applications.
 
 
 ## v1.10.119 – May 21, 2026
