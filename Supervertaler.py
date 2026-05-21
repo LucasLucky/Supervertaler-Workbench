@@ -20791,16 +20791,27 @@ class SupervertalerQt(QMainWindow):
             _r.addWidget(_rl); _r.addWidget(_w)
             mt_layout.addLayout(_r)
 
+        self._custom_mt_raw_cb = CheckmarkCheckBox("Send raw text only (MT mode)")
+        self._custom_mt_raw_cb.setChecked(True)
+        self._custom_mt_raw_cb.setToolTip(
+            "On (recommended for MT proxies): send just the source text, with the\n"
+            "language direction in the system message, so a bare MT endpoint never\n"
+            "translates the instruction wrapper. Turn off if the endpoint is an\n"
+            "instruction-following LLM that should see a full 'translate this' prompt.")
+        mt_layout.addWidget(self._custom_mt_raw_cb)
+
         def _cmt_populate(index):
             if 0 <= index < len(self._custom_mt_profiles):
                 _pp = self._custom_mt_profiles[index]
                 self._custom_mt_endpoint_input.setText(_pp.get('endpoint', ''))
                 self._custom_mt_model_input.setText(_pp.get('model', ''))
                 self._custom_mt_key_input.setText(_pp.get('api_key', ''))
+                self._custom_mt_raw_cb.setChecked(bool(_pp.get('raw_mode', True)))
             else:
                 self._custom_mt_endpoint_input.clear()
                 self._custom_mt_model_input.clear()
                 self._custom_mt_key_input.clear()
+                self._custom_mt_raw_cb.setChecked(True)
 
         def _cmt_sync():
             _i = self._custom_mt_profile_combo.currentIndex()
@@ -20808,6 +20819,7 @@ class SupervertalerQt(QMainWindow):
                 self._custom_mt_profiles[_i]['endpoint'] = self._custom_mt_endpoint_input.text().strip()
                 self._custom_mt_profiles[_i]['model'] = self._custom_mt_model_input.text().strip()
                 self._custom_mt_profiles[_i]['api_key'] = self._custom_mt_key_input.text().strip()
+                self._custom_mt_profiles[_i]['raw_mode'] = self._custom_mt_raw_cb.isChecked()
 
         def _cmt_add():
             from PyQt6.QtWidgets import QInputDialog, QMessageBox
@@ -20819,7 +20831,7 @@ class SupervertalerQt(QMainWindow):
                 if any(p.get('name') == name for p in self._custom_mt_profiles):
                     QMessageBox.warning(self, "Duplicate Name", f"A profile named '{name}' already exists.")
                     return
-                self._custom_mt_profiles.append({'name': name, 'endpoint': '', 'model': '', 'api_key': ''})
+                self._custom_mt_profiles.append({'name': name, 'endpoint': '', 'model': '', 'api_key': '', 'raw_mode': True})
                 self._custom_mt_profile_combo.addItem(name)
                 self._custom_mt_profile_combo.setCurrentIndex(self._custom_mt_profile_combo.count() - 1)
 
@@ -20840,6 +20852,7 @@ class SupervertalerQt(QMainWindow):
         self._custom_mt_endpoint_input.editingFinished.connect(_cmt_sync)
         self._custom_mt_model_input.editingFinished.connect(_cmt_sync)
         self._custom_mt_key_input.editingFinished.connect(_cmt_sync)
+        self._custom_mt_raw_cb.toggled.connect(lambda _checked: _cmt_sync())
         _cmt_add_btn.clicked.connect(_cmt_add)
         _cmt_del_btn.clicked.connect(_cmt_del)
         if self._custom_mt_profile_combo.count() > 0:
@@ -21022,6 +21035,7 @@ class SupervertalerQt(QMainWindow):
                 self._custom_mt_profiles[idx]['endpoint'] = self._custom_mt_endpoint_input.text().strip()
                 self._custom_mt_profiles[idx]['model'] = self._custom_mt_model_input.text().strip()
                 self._custom_mt_profiles[idx]['api_key'] = self._custom_mt_key_input.text().strip()
+                self._custom_mt_profiles[idx]['raw_mode'] = self._custom_mt_raw_cb.isChecked()
             llm_settings = self.load_llm_settings()
             llm_settings['custom_mt_profiles'] = self._custom_mt_profiles
             llm_settings['custom_mt_active_profile'] = self._custom_mt_profile_combo.currentText()
@@ -52228,18 +52242,32 @@ class SupervertalerQt(QMainWindow):
                 http_proxy=http_proxy,
             )
 
-            prompt = (
-                f"Translate the following text from {source_lang} to {target_lang}.\n"
-                f"Output ONLY the translation, nothing else. "
-                f"No explanations, no alternatives, no notes, no quotation marks.\n\n"
-                f"{text}"
-            )
-            system_prompt = (
-                "You are a translation engine. Output only the translated text. "
-                "Never add explanations, alternatives, notes, or commentary. "
-                "Never wrap the output in quotes. "
-                "If the text is already in the target language, output it unchanged."
-            )
+            # Raw MT mode (default for MT endpoints): send ONLY the source text as
+            # the user message, with the language direction in the system message.
+            # A bare MT proxy that simply translates the user message then receives
+            # clean text instead of the instruction wrapper, while still learning
+            # the target language from the system message. Turn it off for an
+            # endpoint that is really an instruction-following LLM.
+            raw_mode = bool(profile.get('raw_mode', True))
+            if raw_mode:
+                prompt = text
+                system_prompt = (
+                    f"Translate from {source_lang} to {target_lang}. "
+                    "Output only the translated text — no quotes, notes, or explanations."
+                )
+            else:
+                prompt = (
+                    f"Translate the following text from {source_lang} to {target_lang}.\n"
+                    f"Output ONLY the translation, nothing else. "
+                    f"No explanations, no alternatives, no notes, no quotation marks.\n\n"
+                    f"{text}"
+                )
+                system_prompt = (
+                    "You are a translation engine. Output only the translated text. "
+                    "Never add explanations, alternatives, notes, or commentary. "
+                    "Never wrap the output in quotes. "
+                    "If the text is already in the target language, output it unchanged."
+                )
 
             result = client.translate(
                 text="",

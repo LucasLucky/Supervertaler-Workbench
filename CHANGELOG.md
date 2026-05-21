@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.126 (May 21, 2026)
+**Current Version:** v1.10.127 (May 21, 2026)
+
+
+## v1.10.127 – May 21, 2026
+
+### Added
+
+- **"Send raw text only (MT mode)" option for Custom MT endpoints.** On by default (and recommended for MT proxies), this sends just the source text to the endpoint, with the language direction carried in the system message – so a plain MT proxy translates only your sentence, never the surrounding "translate this…" instruction. Turn it off for an endpoint that is really an instruction-following LLM and should see a full prompt.
 
 
 ## v1.10.126 – May 21, 2026
