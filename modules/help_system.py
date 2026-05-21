@@ -153,15 +153,14 @@ class Topics:
     QA_TAGS             = "workbench/qa/tag-validation/"
     QA_NT               = "workbench/qa/non-translatables/"
 
-    # Companion Tabs — file paths in the help repo are still under
-    # workbench/sidekick/ for backlink stability (the section was
-    # renamed in SUMMARY.md from "Sidekick" to "Companion Tabs", but
-    # files weren't moved). The Astro site uses folder-based URLs,
-    # so the URL stays at /workbench/sidekick/*.
-    SIDEKICK            = "workbench/sidekick/overview/"
-    TRADOS_AWARE_CHAT   = "workbench/sidekick/trados-aware-chat/"
-    VOICE               = "workbench/sidekick/voice/"
-    CLIPBOARD           = "workbench/sidekick/clipboard/"
+    # Voice, Clipboard Manager, and Chat — the old "Companion Tabs"
+    # grouping was dropped (2026-05-21). Voice and Clipboard Manager are
+    # now their own top-level sections; Chat moved under AI Translation.
+    # The old /workbench/sidekick/* URLs 301-redirect to these.
+    SIDEKICK            = "workbench/voice/overview/"   # legacy alias → Voice
+    TRADOS_AWARE_CHAT   = "workbench/ai-translation/chat/"
+    VOICE               = "workbench/voice/overview/"
+    CLIPBOARD           = "workbench/clipboard/overview/"
     # QuickTrans. Moved to its own top-level section at
     # workbench/quicktrans/overview.md (2026-05-21); old /sidekick/
     # quicktrans-popup/ URL 301-redirects. AI_QUICKLAUNCHER alias kept
