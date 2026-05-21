@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.132 (May 21, 2026)
+**Current Version:** v1.10.133 (May 21, 2026)
+
+
+## v1.10.133 – May 21, 2026
+
+### Fixed
+
+- **Ctrl+1…9 now reliably inserts a QuickTrans result while you are editing the target.** The target cell now delegates Ctrl+1…9 to the match-insert action, so the shortcut works even when the text editor has focus (previously the digit could be swallowed by the editor before the window-level shortcut fired).
 
 
 ## v1.10.132 – May 21, 2026

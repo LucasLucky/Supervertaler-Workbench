@@ -4820,6 +4820,17 @@ class EditableGridTextEditor(QTextEdit):
             self._copy_source_to_target()
             event.accept()
             return
+
+        # Ctrl+1..9: insert the numbered QuickTrans result into the target while
+        # editing. Delegated to the main window so it works even though QTextEdit
+        # would otherwise swallow the digit before the window-level QShortcut.
+        if (_cleaned_modifiers(event) == Qt.KeyboardModifier.ControlModifier
+                and Qt.Key.Key_1 <= event.key() <= Qt.Key.Key_9):
+            main_window = self._get_main_window()
+            if main_window and hasattr(main_window, 'insert_match_by_number'):
+                main_window.insert_match_by_number(event.key() - Qt.Key.Key_1 + 1)
+                event.accept()
+                return
         
         # Ctrl+B: Apply bold formatting to selection
         if event.key() == Qt.Key.Key_B and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
