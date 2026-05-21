@@ -14,7 +14,7 @@ Features:
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QScrollArea, QWidget, QPushButton, QApplication
+    QScrollArea, QWidget, QPushButton, QApplication, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSettings
 from PyQt6.QtGui import QKeySequence, QShortcut, QCursor, QFont
@@ -140,11 +140,15 @@ class MTSuggestionItem(QFrame):
                 border-radius: 4px;
             }
         """)
-        layout.addWidget(num_label)
+        # Align to the top so the badge stays a small fixed pill instead of
+        # stretching down the full height of a multi-line (long) translation.
+        layout.addWidget(num_label, 0, Qt.AlignmentFlag.AlignTop)
 
-        # Provider name badge – full name, sized to content
+        # Provider name badge – a compact pill, top-aligned and content-sized.
         provider_label = QLabel(suggestion.provider_name)
         provider_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Keep the chip its natural (text) height regardless of row height.
+        provider_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
         # Color-code by provider code (internal key, not displayed)
         bg_color = PROVIDER_COLORS.get(suggestion.provider_code, "#666")
@@ -152,13 +156,13 @@ class MTSuggestionItem(QFrame):
             QLabel {{
                 background-color: {bg_color};
                 color: white;
-                font-weight: bold;
+                font-weight: 600;
                 font-size: 9px;
-                border-radius: 3px;
-                padding: 2px 8px;
+                border-radius: 9px;
+                padding: 1px 8px;
             }}
         """)
-        layout.addWidget(provider_label)
+        layout.addWidget(provider_label, 0, Qt.AlignmentFlag.AlignTop)
 
         # Translation text
         text_label = QLabel(suggestion.translation)
@@ -170,7 +174,7 @@ class MTSuggestionItem(QFrame):
         else:
             text_label.setStyleSheet("color: #333; font-size: 11px;")
 
-        layout.addWidget(text_label, 1)
+        layout.addWidget(text_label, 1, Qt.AlignmentFlag.AlignTop)
 
         self._update_style()
 

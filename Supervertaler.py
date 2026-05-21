@@ -9121,6 +9121,17 @@ class SupervertalerQt(QMainWindow):
                 source_lang = getattr(self, 'source_language', 'en')
                 target_lang = getattr(self, 'target_language', 'nl')
 
+            # Bidirectional QuickTrans: if the selected text is actually in the
+            # project's target language, flip the direction so it's translated
+            # back to the source. Falls back to the project pair when detection
+            # is uncertain, so this never makes things worse.
+            try:
+                from modules.lang_detect import resolve_direction
+                source_lang, target_lang = resolve_direction(
+                    text_to_translate, source_lang, target_lang)
+            except Exception as e:
+                self.log(f"QuickTrans language auto-detect skipped: {e}")
+
             # Create popup
             popup = MTQuickPopup(
                 parent_app=self,

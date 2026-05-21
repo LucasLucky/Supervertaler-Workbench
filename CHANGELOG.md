@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.133 (May 21, 2026)
+**Current Version:** v1.10.134 (May 21, 2026)
+
+
+## v1.10.134 – May 21, 2026
+
+### Added
+
+- **QuickTrans now auto-detects direction.** When you summon QuickTrans on text that is actually in the project's *target* language (e.g. you select Dutch in an English→Dutch project), it now detects that and translates back to the source language, instead of trying to translate the text into the language it's already in. Detection is a lightweight, offline check between the project's two languages; when it can't decide confidently (very short or ambiguous text, or a language pair it doesn't have data for) it falls back to the project's normal direction, so it never makes things worse.
+
+### Changed
+
+- **QuickTrans provider labels are now compact pills.** The coloured provider chips (Google Translate, MyMemory, …) no longer stretch to the full height of long, multi-line translations – they stay small and top-aligned next to the result.
 
 
 ## v1.10.133 – May 21, 2026
