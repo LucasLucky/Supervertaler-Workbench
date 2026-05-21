@@ -143,7 +143,9 @@ class Topics:
     SUPERLOOKUP         = "workbench/superlookup/overview/"
     SUPERLOOKUP_TM      = "workbench/superlookup/tm-search/"
     SUPERLOOKUP_GLOSS   = "workbench/superlookup/termbase-search/"
-    SUPERLOOKUP_MT      = "workbench/superlookup/mt/"
+    # Machine Translation moved out of SuperLookup into the dedicated
+    # QuickTrans section (2026-05-21). Old /superlookup/mt/ URL 301-redirects.
+    SUPERLOOKUP_MT      = "workbench/quicktrans/machine-translation/"
     SUPERLOOKUP_WEB     = "workbench/superlookup/web-resources/"
 
     # Quality Assurance (folder is workbench/qa/ on disk)
@@ -160,11 +162,11 @@ class Topics:
     TRADOS_AWARE_CHAT   = "workbench/sidekick/trados-aware-chat/"
     VOICE               = "workbench/sidekick/voice/"
     CLIPBOARD           = "workbench/sidekick/clipboard/"
-    # QuickTrans Popup. Lives at workbench/sidekick/quicktrans-popup.md
-    # in the help repo since v1.10.22 (was workbench/ai-translation/
-    # before). AI_QUICKLAUNCHER alias kept for any external code that
-    # imports the old name (no in-tree call-sites; defensive only).
-    QUICKTRANS_POPUP    = "workbench/sidekick/quicktrans-popup/"
+    # QuickTrans. Moved to its own top-level section at
+    # workbench/quicktrans/overview.md (2026-05-21); old /sidekick/
+    # quicktrans-popup/ URL 301-redirects. AI_QUICKLAUNCHER alias kept
+    # for any external code that imports the old name (defensive only).
+    QUICKTRANS_POPUP    = "workbench/quicktrans/overview/"
     AI_QUICKTRANS_POPUP = QUICKTRANS_POPUP   # v1.10.21 alias
     AI_QUICKLAUNCHER    = QUICKTRANS_POPUP   # pre-v1.10.21 alias
 

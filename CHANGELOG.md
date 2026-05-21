@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.128 (May 21, 2026)
+**Current Version:** v1.10.129 (May 21, 2026)
+
+
+## v1.10.129 – May 21, 2026
+
+### Changed
+
+- **In-app Help links for Machine Translation and QuickTrans now point at the new help locations.** The help site moved these pages into a dedicated QuickTrans section; the "?" help buttons were updated to match (old URLs still redirect).
 
 
 ## v1.10.128 – May 21, 2026
