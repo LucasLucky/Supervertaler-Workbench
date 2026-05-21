@@ -540,15 +540,9 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         container_layout.setContentsMargins(12, 12, 12, 12)
         container_layout.setSpacing(8)
 
-        # Header with title and settings button
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 4)
-
-        title_label = QLabel("⚡ Supervertaler QuickTrans")
-        title_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #333;")
-        header_layout.addWidget(title_label)
-
-        header_layout.addStretch()
+        # The window title bar already shows "Supervertaler QuickTrans", so the
+        # action buttons (Run in SuperLookup, settings) sit on the Source row
+        # below rather than in a separate header that repeats the title.
 
         # Shared style for icon-only header buttons. Reused for both
         # the SuperLookup hand-off button and the settings cog so they
@@ -597,7 +591,6 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
             }
         """)
         superlookup_btn.clicked.connect(self._send_to_superlookup)
-        header_layout.addWidget(superlookup_btn)
 
         # Settings button
         settings_btn = QPushButton("⚙️")
@@ -605,9 +598,6 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         settings_btn.setToolTip("Configure QuickTrans providers")
         settings_btn.setStyleSheet(_icon_btn_style)
         settings_btn.clicked.connect(self._open_settings)
-        header_layout.addWidget(settings_btn)
-
-        container_layout.addLayout(header_layout)
 
         # Source text display
         source_frame = QFrame()
@@ -621,9 +611,18 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         source_layout = QVBoxLayout(source_frame)
         source_layout.setContentsMargins(8, 6, 8, 6)
 
+        # Source label on the left; the action buttons (Run in SuperLookup,
+        # settings) on the right of the same row.
+        source_header_row = QHBoxLayout()
+        source_header_row.setContentsMargins(0, 0, 0, 0)
+        source_header_row.setSpacing(4)
         source_header = QLabel("Source:")
         source_header.setStyleSheet("font-size: 9px; color: #666; font-weight: bold;")
-        source_layout.addWidget(source_header)
+        source_header_row.addWidget(source_header, 0, Qt.AlignmentFlag.AlignVCenter)
+        source_header_row.addStretch()
+        source_header_row.addWidget(superlookup_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        source_header_row.addWidget(settings_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        source_layout.addLayout(source_header_row)
 
         source_text_label = QLabel(self.source_text)
         source_text_label.setWordWrap(True)

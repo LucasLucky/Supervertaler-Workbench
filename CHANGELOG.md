@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.140 (May 21, 2026)
+**Current Version:** v1.10.141 (May 21, 2026)
+
+
+## v1.10.141 – May 21, 2026
+
+### Changed
+
+- **Tidier QuickTrans popup header.** The popup no longer shows a second "Supervertaler QuickTrans" title that just duplicated the window title bar. The 🔍 Run in SuperLookup and ⚙️ settings buttons now sit at the right of the "Source:" row, saving a row of vertical space.
 
 
 ## v1.10.140 – May 21, 2026
