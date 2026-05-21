@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.137 (May 21, 2026)
+**Current Version:** v1.10.138 (May 21, 2026)
+
+
+## v1.10.138 – May 21, 2026
+
+### Fixed
+
+- **Bidirectional QuickTrans now also works for the system-wide Ctrl+Alt+Q.** Auto-direction-detection was only applied to the in-app popup; the global hotkey (selecting text in another application) uses a separate code path that still always followed the project direction. So in a Dutch→English project, selecting English text elsewhere and pressing Ctrl+Alt+Q left it untranslated. The global path now uses the same detection: if the captured text is in the project's target language, it's translated back to the source.
 
 
 ## v1.10.137 – May 21, 2026

@@ -62820,6 +62820,16 @@ class SuperlookupTab(QWidget):
                 source_lang = getattr(main_window, 'source_language', 'English')
                 target_lang = getattr(main_window, 'target_language', 'Dutch')
 
+            # Bidirectional: if the captured text is actually in the project's
+            # target language, flip so it's translated back to the source. Same
+            # behaviour as the in-app popup (show_mt_quick_popup). Falls back to
+            # the project direction when detection is uncertain.
+            try:
+                from modules.lang_detect import resolve_direction
+                source_lang, target_lang = resolve_direction(text, source_lang, target_lang)
+            except Exception as e:
+                print(f"[QuickTrans] language auto-detect skipped: {e}")
+
             # Import and show MT Quick Lookup popup
             from modules.quicktrans import MTQuickPopup
 
