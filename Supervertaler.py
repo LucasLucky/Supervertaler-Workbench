@@ -20791,6 +20791,14 @@ class SupervertalerQt(QMainWindow):
             _r.addWidget(_rl); _r.addWidget(_w)
             mt_layout.addLayout(_r)
 
+        self._custom_mt_show_cb = CheckmarkCheckBox("Show this profile in QuickTrans")
+        self._custom_mt_show_cb.setChecked(True)
+        self._custom_mt_show_cb.setToolTip(
+            "Tick to include THIS profile as a result in the QuickTrans popup.\n"
+            "Untick to keep the profile configured but hidden. (The 'Custom MT\n"
+            "endpoint' checkbox above is the master on/off for all profiles.)")
+        mt_layout.addWidget(self._custom_mt_show_cb)
+
         self._custom_mt_raw_cb = CheckmarkCheckBox("Send raw text only (MT mode)")
         self._custom_mt_raw_cb.setChecked(True)
         self._custom_mt_raw_cb.setToolTip(
@@ -20800,6 +20808,11 @@ class SupervertalerQt(QMainWindow):
             "instruction-following LLM that should see a full 'translate this' prompt.")
         mt_layout.addWidget(self._custom_mt_raw_cb)
 
+        # Remove whitespace AND control/non-printable characters (e.g. a stray
+        # NUL pasted into a field, which makes requests reject the URL).
+        def _cmt_clean(s):
+            return ''.join(ch for ch in (s or '') if ord(ch) >= 0x20).strip()
+
         def _cmt_populate(index):
             if 0 <= index < len(self._custom_mt_profiles):
                 _pp = self._custom_mt_profiles[index]
@@ -20807,19 +20820,22 @@ class SupervertalerQt(QMainWindow):
                 self._custom_mt_model_input.setText(_pp.get('model', ''))
                 self._custom_mt_key_input.setText(_pp.get('api_key', ''))
                 self._custom_mt_raw_cb.setChecked(bool(_pp.get('raw_mode', True)))
+                self._custom_mt_show_cb.setChecked(bool(_pp.get('enabled', True)))
             else:
                 self._custom_mt_endpoint_input.clear()
                 self._custom_mt_model_input.clear()
                 self._custom_mt_key_input.clear()
                 self._custom_mt_raw_cb.setChecked(True)
+                self._custom_mt_show_cb.setChecked(True)
 
         def _cmt_sync():
             _i = self._custom_mt_profile_combo.currentIndex()
             if 0 <= _i < len(self._custom_mt_profiles):
-                self._custom_mt_profiles[_i]['endpoint'] = self._custom_mt_endpoint_input.text().strip()
-                self._custom_mt_profiles[_i]['model'] = self._custom_mt_model_input.text().strip()
-                self._custom_mt_profiles[_i]['api_key'] = self._custom_mt_key_input.text().strip()
+                self._custom_mt_profiles[_i]['endpoint'] = _cmt_clean(self._custom_mt_endpoint_input.text())
+                self._custom_mt_profiles[_i]['model'] = _cmt_clean(self._custom_mt_model_input.text())
+                self._custom_mt_profiles[_i]['api_key'] = _cmt_clean(self._custom_mt_key_input.text())
                 self._custom_mt_profiles[_i]['raw_mode'] = self._custom_mt_raw_cb.isChecked()
+                self._custom_mt_profiles[_i]['enabled'] = self._custom_mt_show_cb.isChecked()
 
         def _cmt_add():
             from PyQt6.QtWidgets import QInputDialog, QMessageBox
@@ -20831,7 +20847,7 @@ class SupervertalerQt(QMainWindow):
                 if any(p.get('name') == name for p in self._custom_mt_profiles):
                     QMessageBox.warning(self, "Duplicate Name", f"A profile named '{name}' already exists.")
                     return
-                self._custom_mt_profiles.append({'name': name, 'endpoint': '', 'model': '', 'api_key': '', 'raw_mode': True})
+                self._custom_mt_profiles.append({'name': name, 'endpoint': '', 'model': '', 'api_key': '', 'raw_mode': True, 'enabled': True})
                 self._custom_mt_profile_combo.addItem(name)
                 self._custom_mt_profile_combo.setCurrentIndex(self._custom_mt_profile_combo.count() - 1)
 
@@ -20853,6 +20869,7 @@ class SupervertalerQt(QMainWindow):
         self._custom_mt_model_input.editingFinished.connect(_cmt_sync)
         self._custom_mt_key_input.editingFinished.connect(_cmt_sync)
         self._custom_mt_raw_cb.toggled.connect(lambda _checked: _cmt_sync())
+        self._custom_mt_show_cb.toggled.connect(lambda _checked: _cmt_sync())
         _cmt_add_btn.clicked.connect(_cmt_add)
         _cmt_del_btn.clicked.connect(_cmt_del)
         if self._custom_mt_profile_combo.count() > 0:
@@ -21032,10 +21049,12 @@ class SupervertalerQt(QMainWindow):
         if getattr(self, '_custom_mt_profile_combo', None) is not None:
             idx = self._custom_mt_profile_combo.currentIndex()
             if 0 <= idx < len(self._custom_mt_profiles):
-                self._custom_mt_profiles[idx]['endpoint'] = self._custom_mt_endpoint_input.text().strip()
-                self._custom_mt_profiles[idx]['model'] = self._custom_mt_model_input.text().strip()
-                self._custom_mt_profiles[idx]['api_key'] = self._custom_mt_key_input.text().strip()
+                _clean = lambda s: ''.join(ch for ch in (s or '') if ord(ch) >= 0x20).strip()
+                self._custom_mt_profiles[idx]['endpoint'] = _clean(self._custom_mt_endpoint_input.text())
+                self._custom_mt_profiles[idx]['model'] = _clean(self._custom_mt_model_input.text())
+                self._custom_mt_profiles[idx]['api_key'] = _clean(self._custom_mt_key_input.text())
                 self._custom_mt_profiles[idx]['raw_mode'] = self._custom_mt_raw_cb.isChecked()
+                self._custom_mt_profiles[idx]['enabled'] = self._custom_mt_show_cb.isChecked()
             llm_settings = self.load_llm_settings()
             llm_settings['custom_mt_profiles'] = self._custom_mt_profiles
             llm_settings['custom_mt_active_profile'] = self._custom_mt_profile_combo.currentText()
@@ -52222,11 +52241,17 @@ class SupervertalerQt(QMainWindow):
             if not profile:
                 return "[Custom MT: no endpoint configured]"
 
-            endpoint = (profile.get('endpoint') or '').strip()
+            # Strip whitespace AND any control/non-printable characters (a stray
+            # NUL or similar pasted into the field would otherwise make requests
+            # reject the URL with "Invalid non-printable ASCII character").
+            def _clean(s):
+                return ''.join(ch for ch in (s or '') if ord(ch) >= 0x20).strip()
+
+            endpoint = _clean(profile.get('endpoint'))
             if not endpoint:
                 return "[Custom MT: no endpoint configured]"
 
-            model = (profile.get('model') or '').strip() or 'custom-model'
+            model = _clean(profile.get('model')) or 'custom-model'
             api_keys = self.load_api_keys()
             api_key = ((profile.get('api_key') or '').strip()
                        or api_keys.get('custom_mt', '')

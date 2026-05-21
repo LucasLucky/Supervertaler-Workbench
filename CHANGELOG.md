@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.127 (May 21, 2026)
+**Current Version:** v1.10.128 (May 21, 2026)
+
+
+## v1.10.128 – May 21, 2026
+
+### Added
+
+- **Per-profile "Show this profile in QuickTrans" toggle for Custom MT endpoints.** You can now configure several Custom MT profiles but choose which ones actually appear in the QuickTrans popup, instead of all enabled profiles always showing. The "Custom MT endpoint" checkbox remains the master on/off for the feature.
+
+### Fixed
+
+- **A stray non-printable character in a Custom MT endpoint URL no longer breaks the profile.** If a control character (e.g. a NUL) was accidentally pasted into the Endpoint URL or Model field, requests rejected it with "Invalid non-printable ASCII character in URL". Endpoint, model and key are now cleaned of control characters both when used and when saved, so the profile works without re-typing.
 
 
 ## v1.10.127 – May 21, 2026

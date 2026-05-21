@@ -284,6 +284,8 @@ class QuickTransProviderMixin:
                 llm_settings = (self.parent_app.load_llm_settings()
                                 if hasattr(self.parent_app, 'load_llm_settings') else {})
                 for profile in (llm_settings.get('custom_mt_profiles') or []):
+                    if not profile.get('enabled', True):
+                        continue  # profile hidden from QuickTrans by the user
                     if not (profile.get('endpoint') or '').strip():
                         continue
                     p_name = profile.get('name') or 'Custom MT'
