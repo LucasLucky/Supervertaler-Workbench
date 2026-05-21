@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.129 (May 21, 2026)
+**Current Version:** v1.10.130 (May 21, 2026)
+
+
+## v1.10.130 – May 21, 2026
+
+### Added
+
+- **QuickTrans panel now groups results under "Machine translation" and "AI / LLM" headers.** The docked QuickTrans panel previously listed every provider in one flat list, so it wasn't obvious which results were fast/free machine-translation engines and which were (metered) AI/LLM suggestions. Results are now split into a Machine translation section (top) and an AI / LLM section below it, each with a heading. (The standalone global popup, which streams results in arrival order, will get the same grouping in a follow-up.)
 
 
 ## v1.10.129 – May 21, 2026

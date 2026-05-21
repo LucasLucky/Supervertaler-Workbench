@@ -989,6 +989,15 @@ class QuickTransPanel(QuickTransProviderMixin, QWidget):
             self._do_fetch()
 
     # ── rendering ───────────────────────────────────────────────────────
+    def _make_section_header(self, text: str) -> QLabel:
+        """A lightweight group-header label ('Machine translation' / 'AI / LLM')."""
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            "QLabel { color: #888; font-size: 8pt; font-weight: bold; "
+            "border: none; padding: 6px 2px 1px 2px; }"
+        )
+        return lbl
+
     def _clear_results(self):
         # Remove every widget except the trailing stretch (last item).
         while self.results_layout.count() > 1:
@@ -998,6 +1007,9 @@ class QuickTransPanel(QuickTransProviderMixin, QWidget):
                 w.setParent(None)
                 w.deleteLater()
         self.suggestions = []
+        # Section-header anchors are recreated per fetch (see _do_fetch).
+        self._mt_header = None
+        self._ai_header = None
 
     def _do_fetch(self):
         if not self._pending:
@@ -1020,6 +1032,18 @@ class QuickTransPanel(QuickTransProviderMixin, QWidget):
             self.status_label.setText("⚠️ No QuickTrans providers enabled. Click ⚙ to configure.")
             self._show_status()
             return
+
+        # Group headers: Machine translation first, then AI / LLM. MT rows are
+        # inserted above the AI header; LLM rows below it (see _append_result and
+        # _add_llm_button). A header is only shown if its section has providers.
+        self._mt_header = None
+        self._ai_header = None
+        if mt_providers:
+            self._mt_header = self._make_section_header("⚡  Machine translation")
+            self.results_layout.insertWidget(self.results_layout.count() - 1, self._mt_header)
+        if llm_providers:
+            self._ai_header = self._make_section_header("\U0001F916  AI / LLM  ·  billed per use")
+            self.results_layout.insertWidget(self.results_layout.count() - 1, self._ai_header)
 
         # Auto-fetch the cheap MT engines.
         if mt_providers:
@@ -1078,8 +1102,14 @@ class QuickTransPanel(QuickTransProviderMixin, QWidget):
         self.suggestions.append(suggestion)
         item = MTSuggestionItem(len(self.suggestions), suggestion)
         item.clicked.connect(self._on_item_clicked)
-        # Insert before the trailing stretch.
-        self.results_layout.insertWidget(self.results_layout.count() - 1, item)
+        # MT rows live above the AI / LLM header so MT stays grouped at the top;
+        # fall back to before the trailing stretch when there is no AI section.
+        ai_header = getattr(self, '_ai_header', None)
+        if ai_header is not None and self.results_layout.indexOf(ai_header) >= 0:
+            idx = self.results_layout.indexOf(ai_header)
+        else:
+            idx = self.results_layout.count() - 1
+        self.results_layout.insertWidget(idx, item)
         return item
 
     def _add_llm_button(self, name, code, call_func, source_text, src, tgt):
