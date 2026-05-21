@@ -2,8 +2,8 @@
 Trados Bridge Client
 ====================
 
-Client for the Sidekick Bridge (a localhost HTTP API exposed by the
-Supervertaler for Trados plugin – see Core/SidekickBridge.cs in that repo).
+Client for the Supervertaler Bridge (a localhost HTTP API exposed by the
+Supervertaler for Trados plugin – see Core/SupervertalerBridge.cs in that repo).
 
 Discovery flow:
   1. Resolve the shared user-data root (same `%APPDATA%\\Supervertaler\\config.json`
@@ -84,7 +84,7 @@ def _bridge_handshake_path() -> Path:
 
 class TradosBridgeClient:
     """
-    Singleton-friendly client.  One instance per Sidekick is fine; the
+    Singleton-friendly client.  One instance per client is fine; the
     handshake parse is cheap (cached against mtime) and there's no per-instance
     network state to leak.
     """
@@ -414,7 +414,7 @@ if QObject is not None:
     class TradosBridgePoller(QObject):
         """
         Singleton coordinator that drives a single off-main-thread probe
-        of the Trados Sidekick Bridge and broadcasts availability changes
+        of the Trados Supervertaler Bridge and broadcasts availability changes
         to any number of subscribers via ``availability_changed``.
 
         Replaces the previous "every ChatViewWidget runs its own 3 s

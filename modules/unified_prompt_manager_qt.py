@@ -5155,7 +5155,7 @@ Output ONLY the delimiters and prompt content. No text before ===PROMPT_START===
         context = self._build_ai_context(user_text)
 
         # Trados-aware mode: prepend the active Trados project context
-        # (fetched via the localhost Sidekick Bridge) when the bridge is
+        # (fetched via the localhost Supervertaler Bridge) when the bridge is
         # reachable AND the user hasn't toggled the Trados chip off.
         # Failure here is silently swallowed – the message is sent anyway
         # without Trados grounding rather than being blocked on a

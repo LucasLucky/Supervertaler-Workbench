@@ -316,7 +316,7 @@ class ChatViewWidget(QWidget):
 
         self._context_chips_row.addStretch()
 
-        # Trados Sidekick Bridge integration: detect whether the Trados
+        # Trados Supervertaler Bridge integration: detect whether the Trados
         # plugin is running and auto-light the Trados chip when it is.
         # The chip is hidden entirely when no bridge has ever been seen,
         # to avoid cluttering the UI for users who don't have the plugin.

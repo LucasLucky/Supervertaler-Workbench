@@ -10564,18 +10564,19 @@ class SupervertalerQt(QMainWindow):
         # deleted and no code path references _floating_assistant
         # any more.
 
-        # Sidekick Bridge server – inverse of the Trados-side bridge.
+        # Supervertaler Bridge server – inverse of the Trados-side bridge.
         # Lets the Trados plugin POST a QuickLauncher prompt here for
-        # the Workbench Chat panel to run. The class / file / wire
-        # paths keep the "Sidekick" name because Core/SidekickBridge.cs
-        # on the Trados side looks up the handshake by that name; only
-        # the consumer (here) changed from FloatingAssistant to the
-        # in-Workbench Chat tab when Sidekick was retired. See
-        # modules/sidekick_bridge_server.py for the wire format.
+        # the Workbench Chat panel to run. Only the on-disk handshake
+        # filename (sidekick-bridge.json) keeps the old "sidekick" name,
+        # because Core/SupervertalerBridge.cs on the Trados side looks up
+        # the handshake by that exact name; renaming it would break the
+        # bridge for mismatched product versions. The consumer here is
+        # the in-Workbench Chat tab (FloatingAssistant was retired in
+        # v1.10.4). See modules/supervertaler_bridge_server.py.
         self._bridge_server = None
         try:
-            from modules.sidekick_bridge_server import SidekickBridgeServer
-            self._bridge_server = SidekickBridgeServer(self)
+            from modules.supervertaler_bridge_server import SupervertalerBridgeServer
+            self._bridge_server = SupervertalerBridgeServer(self)
             self._bridge_server.run_prompt_requested.connect(
                 self._on_bridge_prompt_request
             )

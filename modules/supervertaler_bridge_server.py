@@ -1,19 +1,20 @@
 """
-Workbench Bridge Server (historical name: "Sidekick Bridge")
-============================================================
+Supervertaler Bridge Server (formerly "Sidekick Bridge")
+========================================================
 
 Localhost HTTP listener that lets the Supervertaler for Trados plugin
 *push* a QuickLauncher prompt into Workbench's Chat panel. The inverse
 of ``trados_bridge_client``: there Workbench reads context from Trados;
 here Trados sends a prompt for Workbench to run.
 
-The file/class names retain the "Sidekick" prefix because the Trados
-side (Core/SidekickBridge.cs and the on-disk handshake file
-``sidekick-bridge.json``) is a wire-protocol surface that older plugin
-versions look up by exactly those names. Renaming server-side would
-break compatibility with deployed Trados plugins. Internally the
-consumer is now Workbench's Chat tab (the floating Sidekick window was
-retired in v1.10.4); the prompt is handed off to
+The feature was renamed from "Sidekick Bridge" to "Supervertaler Bridge".
+Only the on-disk handshake filename ``sidekick-bridge.json`` and the log
+``sidekick-bridge.log`` keep the old name: they are a wire-protocol
+surface that already-deployed Trados plugins look up by exactly that
+name, so renaming them would break the bridge for users who update one
+product but not the other. Class/module names were renamed freely.
+Internally the consumer is now Workbench's Chat tab (the floating
+Sidekick window was retired in v1.10.4); the prompt is handed off to
 ``SupervertalerQt.show_supervertaler_assistant`` instead of the
 defunct ``FloatingAssistant``.
 
@@ -73,7 +74,7 @@ _LOG_TRUNCATED_THIS_SESSION = False
 
 def _log(message: str) -> None:
     """Append-only log file with a session-start header. Mirrors
-    Core/SidekickBridge.cs::BridgeLog on the Trados side so users can
+    Core/SupervertalerBridge.cs::BridgeLog on the Trados side so users can
     diagnose discovery failures from either end.
     """
     global _LOG_TRUNCATED_THIS_SESSION
@@ -87,7 +88,7 @@ def _log(message: str) -> None:
             if not _LOG_TRUNCATED_THIS_SESSION:
                 _LOG_TRUNCATED_THIS_SESSION = True
                 header = (
-                    f"--- Sidekick bridge session started at {datetime.now().isoformat()} "
+                    f"--- Supervertaler Bridge session started at {datetime.now().isoformat()} "
                     f"(PID {os.getpid()}) ---\n"
                     f"runtime_dir = {_runtime_dir()}\n"
                     f"handshake   = {_handshake_path()}\n"
@@ -164,7 +165,7 @@ class _BridgeRequestHandler(BaseHTTPRequestHandler):
             pass
 
     def _check_auth(self) -> bool:
-        bridge: SidekickBridgeServer = self.server.bridge  # type: ignore[attr-defined]
+        bridge: SupervertalerBridgeServer = self.server.bridge  # type: ignore[attr-defined]
         header = self.headers.get("Authorization", "")
         prefix = "Bearer "
         if not header.startswith(prefix):
@@ -204,7 +205,7 @@ class _BridgeRequestHandler(BaseHTTPRequestHandler):
             display_prompt = data.get("displayPrompt") or prompt
             prompt_name = data.get("promptName") or ""
 
-            bridge: SidekickBridgeServer = self.server.bridge  # type: ignore[attr-defined]
+            bridge: SupervertalerBridgeServer = self.server.bridge  # type: ignore[attr-defined]
             _log(f"POST /v1/run-prompt accepted (name='{prompt_name}', "
                  f"prompt={len(prompt)} chars, displayPrompt={len(display_prompt)} chars)")
             bridge.run_prompt_requested.emit(prompt, display_prompt, prompt_name)
@@ -230,7 +231,7 @@ class _BridgeRequestHandler(BaseHTTPRequestHandler):
 # ── Bridge ─────────────────────────────────────────────────────────────────
 
 
-class SidekickBridgeServer(QObject):
+class SupervertalerBridgeServer(QObject):
     """Owns the HTTP listener thread and exposes a Qt signal that fires
     on every accepted prompt. Owners (FloatingAssistant) connect to
     ``run_prompt_requested`` to actually inject the prompt into chat.
@@ -286,7 +287,7 @@ class SidekickBridgeServer(QObject):
 
         self._thread = threading.Thread(
             target=self._server.serve_forever,
-            name="SidekickBridge",
+            name="SupervertalerBridge",
             daemon=True,
         )
         self._thread.start()
