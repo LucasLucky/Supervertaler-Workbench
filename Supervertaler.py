@@ -9700,10 +9700,17 @@ class SupervertalerQt(QMainWindow):
         export_txt_action.triggered.connect(self.export_simple_txt)
         export_menu.addAction(export_txt_action)
 
-        export_ai_action = QAction("📄 &AI-Readable Markdown (.md)...", self)
-        export_ai_action.triggered.connect(self.export_bilingual_table_markdown)
-        export_ai_action.setToolTip("Export segments in [SEGMENT] format for AI translation/review")
-        export_menu.addAction(export_ai_action)
+        ai_export_submenu = export_menu.addMenu("📄 &AI-Readable Markdown")
+
+        export_ai_table_action = QAction("Markdown &Table...", self)
+        export_ai_table_action.triggered.connect(self.export_bilingual_table_markdown)
+        export_ai_table_action.setToolTip("Export segments as a bilingual Markdown table for AI translation/review")
+        ai_export_submenu.addAction(export_ai_table_action)
+
+        export_ai_segment_action = QAction("Labelled &Segments...", self)
+        export_ai_segment_action.triggered.connect(self.export_for_ai)
+        export_ai_segment_action.setToolTip("Export segments in [SEGMENT] format with language-labelled lines for AI translation/review")
+        ai_export_submenu.addAction(export_ai_segment_action)
 
         export_menu.addSeparator()
 
