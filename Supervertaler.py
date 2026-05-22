@@ -13786,10 +13786,19 @@ class SupervertalerQt(QMainWindow):
             return
         
         segments = list(self.current_project.segments)
-        
+
         if not segments:
             QMessageBox.warning(self, "No Data", "No segments to export")
             return
+
+        # v1.10.143: flush any in-grid edits back to the segment objects before
+        # exporting, so the exported targets always match what's shown in the
+        # grid (defensive – the live textChanged sync should already keep these
+        # in step, but a Bilingual Table is a deliverable, so we make sure).
+        try:
+            self._sync_grid_targets_to_segments(segments)
+        except Exception as _sync_exc:
+            self.log(f"⚠️ Bilingual export: grid→segment sync skipped: {_sync_exc}")
         
         # Determine default filename
         project_name = getattr(self.current_project, 'name', 'project')
@@ -37622,7 +37631,21 @@ class SupervertalerQt(QMainWindow):
                         # Capture old values for undo
                         old_target = target_segment.target
                         old_status = target_segment.status
-                        
+
+                        # Idempotent guard (v1.10.143): if the fully-cleaned text already
+                        # equals what's stored on the segment, this textChanged is a
+                        # spurious/programmatic event — Qt delivers queued document-change
+                        # events after our own blockSignals()+setPlainText() display
+                        # re-render (below) and at grid load — never a genuine user edit,
+                        # which always changes the text. Returning here keeps
+                        # segment.target reliably in sync on every real keystroke.
+                        # (Previously the re-render reset _initial_load_complete=False,
+                        # which could make the NEXT genuine edit be dropped, leaving a
+                        # stale segment.target → stale export + stale TM until a
+                        # re-confirm. That reset has been removed below.)
+                        if new_text == old_target:
+                            return
+
                         # Update the target text
                         if self.debug_mode_enabled:
                             self.log(f"📝 BEFORE update: seg {segment_id} target='{target_segment.target[:30] if target_segment.target else 'EMPTY'}...', status={target_segment.status}, obj_id={id(target_segment)}")
@@ -37657,7 +37680,11 @@ class SupervertalerQt(QMainWindow):
                                 editor_widget.setPlainText(display_text)
                                 cur.setPosition(new_pos)
                                 editor_widget.setTextCursor(cur)
-                                editor_widget._initial_load_complete = False
+                                # v1.10.143: do NOT reset _initial_load_complete here.
+                                # The queued spurious textChanged this setPlainText may
+                                # emit is now harmlessly absorbed by the idempotent guard
+                                # above (new_text == segment.target), so we no longer risk
+                                # swallowing the user's next real keystroke.
                                 editor_widget.blockSignals(False)
 
                         # Reset 'confirmed' status to 'draft' when user edits the segment
@@ -51412,10 +51439,13 @@ class SupervertalerQt(QMainWindow):
         old_target = segment.target
         old_status = segment.status
 
-        target_widget = self.table.cellWidget(current_row, 3)
-        if target_widget:
-            current_text = target_widget.toPlainText().strip()
-            segment.target = current_text
+        # v1.10.143: use the robust grid→segment sync (reverses invisible-char
+        # display markers — ·, →, °, ↵ — and restores any stripped outer
+        # wrapping tag) instead of a naive toPlainText(), so confirming a
+        # segment that was edited with "Show invisibles" on can't write display
+        # markers into segment.target (and from there into the TM / export).
+        if self.table.cellWidget(current_row, 3):
+            self._sync_grid_targets_to_segments([segment])
 
         segment.status = 'confirmed'
 

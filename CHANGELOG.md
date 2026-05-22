@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.142 (May 21, 2026)
+**Current Version:** v1.10.143 (May 22, 2026)
+
+
+## v1.10.143 – May 22, 2026
+
+### Fixed
+
+- **Edits to a confirmed segment now reliably reach the TM and exports.** With "Show invisibles" on, editing an already-confirmed segment (changing a word or two) and pressing Ctrl+Enter could leave the change out of the in-memory translation: it wasn't reflected in the TM match pane and wasn't written to an exported Supervertaler Bilingual Table, and only a manual unconfirm/reconfirm (or F5) fixed it. The cause was the live "text changed" sync swallowing the keystroke right after the editor re-rendered its invisible-character markers. The sync now uses an idempotent guard that can never drop a genuine edit, so segment text stays in step on every keystroke.
+- **Confirming an "invisibles-on" segment no longer risks writing display markers into the TM.** Ctrl+Enter now captures the target through the same robust grid→segment sync used elsewhere (which reverses the ·/→/°/↵ display markers and restores any hidden outer wrapping tag) instead of a raw read of the on-screen text.
+- **Bilingual Table export now flushes grid edits first.** As a safeguard, exporting a Supervertaler Bilingual Table syncs any in-grid edits back to the segments before writing the document, so the export always matches what's on screen.
 
 
 ## v1.10.142 – May 21, 2026
