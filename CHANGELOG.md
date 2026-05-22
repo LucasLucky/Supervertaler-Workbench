@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.143 (May 22, 2026)
+**Current Version:** v1.10.144 (May 22, 2026)
+
+
+## v1.10.144 – May 22, 2026
+
+### Fixed
+
+- **The TM match pane now shows your edit after you re-confirm a segment.** After editing a confirmed segment's translation and pressing Ctrl+Enter, navigating back to that segment still showed the *old* translation in the TM Target pane, even though the new translation had been correctly written to the TM. The match pane was being served from the per-segment match cache, which wasn't refreshed after a TM write (a blanket refresh had been removed because it made navigation slow). Saving a segment to the TM now does a *targeted* cache refresh – it clears only the cached matches for segments that share that exact source (so repetitions update too), leaving every other segment cached, so the pane shows the up-to-date TM translation without slowing navigation down.
 
 
 ## v1.10.143 – May 22, 2026

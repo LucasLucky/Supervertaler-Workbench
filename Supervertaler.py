@@ -29183,6 +29183,10 @@ class SupervertalerQt(QMainWindow):
         if not self.current_project:
             return
 
+        # v1.10.143: keep the untransformed source so we can do a targeted
+        # match-cache invalidation below (segment.source is stored untransformed).
+        original_source = source
+
         # Strip invisible character markers (↵, ·, →, °) to prevent marker leakage into TM
         if hasattr(self, 'reverse_invisible_replacements'):
             source = self.reverse_invisible_replacements(source)
@@ -29242,9 +29246,33 @@ class SupervertalerQt(QMainWindow):
             mode_note = " (overwrite)" if overwrite_mode else ""
             msg = f"💾 Saved segment to {saved_count} TM(s){mode_note}"
             self._queue_tm_save_log(msg)
-            # NOTE: Removed cache invalidation here - it was destroying batch worker's cache
-            # on every Ctrl+Enter, making navigation extremely slow. The small chance of
-            # seeing stale TM matches is far less important than responsive navigation.
+            # v1.10.143: targeted match-cache invalidation.
+            # The per-segment match cache (translation_matches_cache, keyed by
+            # segment id) holds the TM match that was looked up for each segment.
+            # After writing this source's new translation to the TM, every
+            # segment that shares this source now has a STALE cached TM match —
+            # navigating back to it would show the pre-edit target in the match
+            # pane (exactly the "TM still says <old word>" symptom). Clear only
+            # those entries (matched by untransformed source, so repetitions are
+            # handled too); everything else stays cached, so navigation is still
+            # fast. A blanket clear was removed previously for that very reason.
+            try:
+                if hasattr(self, 'translation_matches_cache') and self.translation_matches_cache:
+                    norm_source = (original_source or '').strip()
+                    with self.translation_matches_cache_lock:
+                        stale_ids = [
+                            seg.id for seg in self.current_project.segments
+                            if seg.id in self.translation_matches_cache
+                            and (seg.source or '').strip() == norm_source
+                        ]
+                        for sid in stale_ids:
+                            del self.translation_matches_cache[sid]
+                    if stale_ids:
+                        self._queue_tm_save_log(
+                            f"🔄 Refreshed match cache for {len(stale_ids)} segment(s) sharing this source"
+                        )
+            except Exception as _inv_exc:
+                self.log(f"⚠️ Match-cache invalidation skipped: {_inv_exc}")
     
     def invalidate_translation_cache(self, smart_invalidation=True):
         """
