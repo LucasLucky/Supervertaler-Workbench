@@ -138,11 +138,12 @@ class TMDatabase:
         self.source_lang = get_simple_lang_code(source_lang)
         self.target_lang = get_simple_lang_code(target_lang)
     
-    def add_entry(self, source: str, target: str, tm_id: str = 'project', 
-                  context_before: str = None, context_after: str = None, notes: str = None):
+    def add_entry(self, source: str, target: str, tm_id: str = 'project',
+                  context_before: str = None, context_after: str = None, notes: str = None,
+                  overwrite: bool = False):
         """
         Add translation pair to TM
-        
+
         Args:
             source: Source text
             target: Target text
@@ -150,10 +151,13 @@ class TMDatabase:
             context_before: Previous segment for context
             context_after: Next segment for context
             notes: Optional notes
+            overwrite: If True, delete existing entries with the same source in
+                       this TM before inserting (keeps only the latest target –
+                       used by "Update Active TM(s)" so the TM stays clean).
         """
         if not source or not target:
             return
-        
+
         self.db.add_translation_unit(
             source=source.strip(),
             target=target.strip(),
@@ -162,7 +166,8 @@ class TMDatabase:
             tm_id=tm_id,
             context_before=context_before,
             context_after=context_after,
-            notes=notes
+            notes=notes,
+            overwrite=overwrite
         )
     
     def add_to_project_tm(self, source: str, target: str):

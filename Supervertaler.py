@@ -9908,12 +9908,15 @@ class SupervertalerQt(QMainWindow):
             lambda checked=False: self.translate_multiple_segments("filtered_segments")
         )
         translate_menu.addAction(translate_filtered_action)
-        
-        edit_menu.addSeparator()
-        
-        # Bulk Operations submenu
-        self.bulk_menu = edit_menu.addMenu("Bulk &Operations")
-        edit_menu.aboutToShow.connect(self._update_bulk_menu_label)
+
+        # Bulk Operations — promoted to a top-level menubar menu in v1.10.145
+        # (was a submenu under Edit). It's a sizeable, distinct category of
+        # project-wide segment operations, so it gets first-class placement
+        # between Edit and View for discoverability (e.g. "Update Active TM(s)"
+        # was previously three levels deep). Created here (before the View menu
+        # is added) so it lands right after Edit in the menubar.
+        self.bulk_menu = menubar.addMenu("&Bulk Operations")
+        self.bulk_menu.aboutToShow.connect(self._update_bulk_menu_label)
         bulk_menu = self.bulk_menu
 
         confirm_selected_action = QAction("✅ &Confirm Selected Segments", self)
@@ -9955,8 +9958,13 @@ class SupervertalerQt(QMainWindow):
         copy_nontrans_action.triggered.connect(self.copy_source_to_target_non_translatable_bulk)
         bulk_menu.addAction(copy_nontrans_action)
 
-        send_to_tm_action = QAction("💾 &Send Segments to TM...", self)
-        send_to_tm_action.setToolTip("Send confirmed segments to a writable Translation Memory")
+        send_to_tm_action = QAction("💾 &Update Active TM(s)...", self)
+        send_to_tm_action.setToolTip(
+            "Send/update confirmed (and other selected-status) segments into a "
+            "writable Translation Memory. With overwrite on, same-source entries "
+            "are replaced so the TM keeps only the latest translation. "
+            "(Formerly 'Send Segments to TM'.)"
+        )
         send_to_tm_action.triggered.connect(self.send_segments_to_tm_dialog)
         bulk_menu.addAction(send_to_tm_action)
         
@@ -43640,9 +43648,15 @@ class SupervertalerQt(QMainWindow):
                     skipped_count += 1
                     continue
 
-                # Strip outer wrapping tags first (like <li-b>, <li-o>, <p>) if setting is enabled
+                # Reverse any invisible-char display markers (·/→/°/↵) so they
+                # never leak into the TM (defensive – the model is usually clean).
                 source_clean = seg.source
                 target_clean = seg.target
+                if hasattr(self, 'reverse_invisible_replacements'):
+                    source_clean = self.reverse_invisible_replacements(source_clean)
+                    target_clean = self.reverse_invisible_replacements(target_clean)
+
+                # Strip outer wrapping tags first (like <li-b>, <li-o>, <p>) if setting is enabled
                 if self.hide_outer_wrapping_tags:
                     source_clean, _ = strip_outer_wrapping_tags(source_clean)
                     target_clean, _ = strip_outer_wrapping_tags(target_clean)
@@ -43651,12 +43665,18 @@ class SupervertalerQt(QMainWindow):
                 source_clean = strip_formatting_tags(source_clean) if has_formatting_tags(source_clean) else source_clean
                 target_clean = strip_formatting_tags(target_clean) if has_formatting_tags(target_clean) else target_clean
 
-                # Add to TM using the correct method
+                # Add to TM. v1.10.145: honour the "Update existing entries
+                # (overwrite if source matches)" checkbox – previously it was
+                # ignored and entries were always appended, so the TM accumulated
+                # duplicates instead of being updated. With overwrite on, entries
+                # with the same source are replaced, leaving a clean TM with only
+                # the latest translation per source.
                 try:
                     self.tm_database.add_entry(
                         source=source_clean,
                         target=target_clean,
-                        tm_id=target_tm_id
+                        tm_id=target_tm_id,
+                        overwrite=overwrite_cb.isChecked()
                     )
                     sent_count += 1
                 except Exception as add_error:
@@ -48482,15 +48502,15 @@ class SupervertalerQt(QMainWindow):
             return
         action = self.bulk_menu.menuAction()
         if not self.current_project or not hasattr(self, 'table') or not self.table:
-            action.setText("Bulk &Operations")
+            action.setText("&Bulk Operations")
             return
         visible = sum(1 for r in range(self.table.rowCount())
                       if not self.table.isRowHidden(r))
         total = self.table.rowCount()
         if visible < total and visible > 0:
-            action.setText(f"Bulk &Operations ({visible} filtered)")
+            action.setText(f"&Bulk Operations ({visible} filtered)")
         else:
-            action.setText("Bulk &Operations")
+            action.setText("&Bulk Operations")
 
     def show_advanced_filters_dialog(self):
         """Show advanced filters dialog with detailed filtering options"""

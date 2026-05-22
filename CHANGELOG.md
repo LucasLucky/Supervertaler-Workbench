@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.144 (May 22, 2026)
+**Current Version:** v1.10.145 (May 22, 2026)
+
+
+## v1.10.145 – May 22, 2026
+
+### Fixed
+
+- **"Update Active TM(s)" now actually updates the TM instead of duplicating entries.** The bulk "send segments to TM" tool had an "Update existing entries (overwrite if source matches)" option, but it was ignored – every run appended, so the TM accumulated duplicate source entries instead of replacing them. The overwrite option is now wired through, so with it on (the default) each source keeps only its latest translation, leaving a clean TM. Invisible-character markers are also stripped from the text before it's written.
+
+### Changed
+
+- **"Bulk Operations" is now a top-level menu.** It was a submenu buried under **Edit**; it's now its own menu in the menubar (between Edit and View), so project-wide segment operations – confirm selected, change status, clear/copy translations, update TM, clean tags, proofread – are one click shallower and easier to find.
+- **"Send Segments to TM…" renamed to "💾 Update Active TM(s)…"** (under Bulk Operations), matching the wording used in Trados and memoQ. The dialog is unchanged: pick scope (whole project or selection), which statuses to include, and the target writable TM.
 
 
 ## v1.10.144 – May 22, 2026
