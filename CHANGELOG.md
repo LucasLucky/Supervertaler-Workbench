@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.153 (May 23, 2026)
+**Current Version:** v1.10.154 (May 23, 2026)
+
+
+## v1.10.154 – May 23, 2026
+
+### Fixed
+
+- **The double-tap Shift context-menu shortcut no longer fires while you're typing.** The detector was watching for any two Shift releases within 350 ms, with no awareness of whether the Shift had actually been used to type a shifted character in between. Touch-typing two consecutive capitalised characters quickly enough — "AB", "OK", "BRANTS", any acronym or capitalised word — would land two Shift releases inside the window and open the context menu on the focused widget mid-sentence. The filter now tracks whether any non-Shift key was pressed during each Shift hold; if so, that release is consumed and ignored for tap detection (and the tap timer is reset so the next genuine bare-Shift tap doesn't get spuriously paired with it). So the gesture now requires two **bare** Shift taps, the way it was always intended, and typing shifted characters never triggers it.
 
 
 ## v1.10.153 – May 23, 2026

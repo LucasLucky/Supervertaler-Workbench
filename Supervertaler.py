@@ -1985,8 +1985,19 @@ class _DoubleTapShiftEventFilter(QObject):
 
     Replaces the AutoHotkey double-shift detection that was previously in
     supervertaler_hotkeys.ahk.  Only fires when the Supervertaler window
-    is active.  Two Shift releases within 350 ms opens the context menu of
-    whatever widget currently has focus.
+    is active.  Two **bare** Shift releases within 350 ms opens the context
+    menu of whatever widget currently has focus.
+
+    v1.10.154: a Shift release that ended a shifted-character entry (i.e.
+    Shift+letter, Shift+symbol, etc.) is no longer counted as a tap. This
+    fixes a false-positive that fired the context menu while the user was
+    typing two consecutive capitalised characters quickly enough that the
+    two Shift releases landed within 350 ms — common when touch-typing
+    words like ``"AB"``, ``"OK"``, ``"BRANTS"``. The filter now tracks
+    whether any non-Shift key was pressed during the current Shift hold;
+    if so, that release is consumed and ignored for tap-detection
+    purposes (and the tap timer is reset so the *next* genuine bare tap
+    doesn't get spuriously paired with it).
     """
 
     THRESHOLD_MS = 350
@@ -1995,11 +2006,31 @@ class _DoubleTapShiftEventFilter(QObject):
         super().__init__(main_window)
         self._main_window = main_window
         self._last_shift_release = 0
+        # v1.10.154: True if any non-Shift key has been pressed since the
+        # most recent fresh Shift press. Set by KeyPress, reset on a fresh
+        # Shift press.
+        self._shift_was_used = False
 
     def eventFilter(self, obj, event):
         from PyQt6.QtCore import QEvent
 
-        if event.type() != QEvent.Type.KeyRelease:
+        event_type = event.type()
+
+        # v1.10.154: track "did anything ride on this Shift hold?".
+        # We watch KeyPress (not Release) so we know about a shifted
+        # character as soon as it goes down, before its Shift's Release
+        # fires. Auto-repeat events are ignored — they're a single
+        # logical press from the user's perspective.
+        if event_type == QEvent.Type.KeyPress and not event.isAutoRepeat():
+            if event.key() == Qt.Key.Key_Shift:
+                # Fresh Shift press — start a new hold window.
+                self._shift_was_used = False
+            else:
+                # Any other key going down during the hold "uses" the Shift.
+                self._shift_was_used = True
+            return False
+
+        if event_type != QEvent.Type.KeyRelease:
             return False
 
         if event.key() != Qt.Key.Key_Shift:
@@ -2012,6 +2043,15 @@ class _DoubleTapShiftEventFilter(QObject):
 
         # Ignore auto-repeat
         if event.isAutoRepeat():
+            return False
+
+        # v1.10.154: if this Shift was used to type a shifted character,
+        # it's not a "tap". Reset both the used-flag and the tap timer so
+        # the next genuine bare Shift tap doesn't get paired with this
+        # consumed release.
+        if self._shift_was_used:
+            self._shift_was_used = False
+            self._last_shift_release = 0
             return False
 
         now = time.time() * 1000  # ms
