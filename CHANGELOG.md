@@ -2,7 +2,72 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.146 (May 22, 2026)
+**Current Version:** v1.10.153 (May 23, 2026)
+
+
+## v1.10.153 – May 23, 2026
+
+### Fixed
+
+- **Cell-clicks no longer freeze for 2–34 seconds after importing a Trados package (or any non-DOCX format) on a setup with many termbases.** Profiling a user's 5,269-segment SDLPPX with 45 termbases registered (all deactivated for the new project) showed every single cell-click running `find_termbase_matches_in_source` for between 2 s and **34.6 s**, with the window stuck in "Not Responding" the whole time. Root cause: a fix from v1.9.423 that builds the in-memory termbase index (`_start_termbase_batch_worker()`) and pre-warms the TM/MT/LLM match cache (`_start_prefetch_worker()`) on import was only ever wired into `import_docx_from_path` — *every other* project-import path (SDLPPX, standalone SDLXLIFF, SDLXLIFF folder, memoQ bilingual DOCX / RTF / XLIFF, CafeTran, Trados bilingual, Phrase, DéjàVu, review-table, plain text, multi-file folder — 13 methods) was missing the calls. Without the in-memory index, `find_termbase_matches_in_source` fell through to its fallback per-word SQL query path: one `SELECT … FROM termbase_terms` per word in the source segment, against every termbase in the database. On a long segment with 45 termbases that's hundreds of queries per click. The two calls have been factored into a new shared `_finalise_import_with_indexes()` helper and inserted into all 13 import methods. The existing wiring in `import_docx_from_path` is unchanged. (`import_docx`, `import_document`, and `import_okapi_format` all delegate to `import_docx_from_path`, so they were already covered indirectly.)
+
+### Changed
+
+- **`find_termbase_matches_in_source` now distinguishes "index built but empty" from "index never built".** Previously both conditions caused it to fall through to the slow per-word SQL path. Now a new `_termbase_index_built` flag, set to `True` at the end of `_build_termbase_index` (even when the resulting index is empty), tells the fast path "the index has been built and there genuinely are no active terms — return `{}` instantly". This is a defensive fix that protects against the same class of regression if any future import path is added without the `_finalise_import_with_indexes()` call.
+
+
+## v1.10.152 – May 23, 2026
+
+### Changed
+
+- **Clicking Next page (or Ctrl+Enter on the last segment of a page) is now usually instantaneous on large projects.** Previously each Next click had to build all ~200 widgets for the new page from scratch on the main thread (~10 s + the new progress dialog from v1.10.151). The grid now prefetches the *next* page in the background after every pagination change: roughly 750 ms after the current page settles, it starts populating the next page in 10-row chunks separated by 50 ms `QTimer` hops, so the work happens in the idle gaps while you read/edit/AI-translate the current page. By the time you click Next or confirm-out of the last segment, the next page's widgets are already installed and the navigation just flips visibility — no widget construction, no progress dialog, no waiting. (Qt requires widget creation on the main thread, so this isn't a worker thread — it's idle-time chunking. The main thread stays responsive throughout: typing, scrolling, AI calls, etc. are unaffected.) A generation counter cancels any in-flight prefetch the moment you navigate again, change the page size, change a filter, or open a different project, so we never populate stale rows or fight with a foreground populate. The prefetch self-skips when there's nothing to do: filter mode (pagination doesn't apply), "All" mode (everything is populated by the foreground path anyway), the last page, or when the next page already has its widgets (e.g. after backward navigation).
+- For very large jumps that *do* still require a foreground populate (jumping from page 2 to page 25 with the page-jump field, or switching to "All"), the v1.10.151 progress dialog remains — that path is unchanged.
+
+
+## v1.10.151 – May 23, 2026
+
+### Fixed
+
+- **The Trados Package Information dialog no longer grows taller than the screen on packages with many files.** Importing an SDLPPX with 40+ files used to render the file list inline in a `QLabel` that just kept growing, pushing the Import/Cancel buttons off the bottom of the screen — the only way to dismiss the dialog was to press Enter (which luckily triggered the default Import action) or to drag the dialog. The file list now lives in a scrollable list widget with a fixed visible height, the dialog is height-capped, and the buttons stay visible regardless of how many files the package contains. The summary line ("Project / Languages / Total segments") and the "Include locked segments" checkbox stay at the top and bottom respectively, with the scrollable file list in the middle.
+- **Switching the "Per page" selector from a paged value to "All" on a large project no longer freezes with "Not Responding".** On a ~5,000-segment project opened at 200 segments/page, only the first 200 rows had real `QTextEdit` widgets installed (the rest were cheap placeholders, per v1.10.147's page-aware loading). Switching to "All" needed to install widgets for the remaining ~4,800 rows in one go — same per-row cost as the original SDLXLIFF freeze (~5 minutes), with no UI feedback. The lazy-populate path in `_apply_pagination_to_grid` now wraps that loop in the shared `_ImportProgressDialog` whenever the batch is 200 rows or more, with the same per-25-row event-loop pump that prevents the OS "Not Responding" overlay. Small page flips (under 200 rows of new work) still happen inline with no dialog flash.
+
+
+## v1.10.150 – May 23, 2026
+
+### Changed
+
+- **Every project-import path now shows a progress dialog spanning the slow grid-load phase, not just XML parsing.** Auditing the codebase turned up the same bug copy-pasted across most import methods: a `QProgressDialog` for the parse phase that closed *before* the much slower `load_segments_to_grid` call ran, leaving Windows free to put up the "Not Responding" overlay on anything larger than a few hundred segments. Eleven of eighteen import methods had no progress dialog at all. A new shared helper class, `_ImportProgressDialog`, now centralises the dialog plumbing — it spans the whole pipeline, pumps the Qt event loop on every update so the OS never marks the app unresponsive, and exposes ready-made callbacks shaped for both the SDLXLIFF-style parser protocol and `load_segments_to_grid`'s row-progress callback. The three Trados paths (.sdlppx, standalone .sdlxliff, folder of .sdlxliff) were rewritten to use the helper end-to-end, with their existing locked-segment / package-info dialogs hidden via the helper's `suspended()` context manager so the progress bar reappears once the user has answered. The other eight project-import paths (memoQ bilingual DOCX / RTF / XLIFF, CafeTran, Trados bilingual, Phrase, DéjàVu, review-table DOCX, plain text, multi-file folder) got a minimal-impact wrap: the helper is opened just for the grid-load step, where the time is actually spent. (`import_tmx_file` is unchanged — it's a TM-only path and already had a working dialog. `import_docx`, `import_document`, and `import_okapi_format` all delegate to `import_docx_from_path`, which has had a correctly-spanning dialog for a while; those entry points were already covered by inheritance.)
+- Net effect: importing a large file in any format no longer flashes a "Not Responding" label — the dialog stays up with continuously-updating labels and progress bars from the moment you pick a file until the grid finishes building. Cancel works during the parse phase everywhere, and during the grid-load phase for the Trados paths.
+
+
+## v1.10.149 – May 23, 2026
+
+### Changed
+
+- **SDLXLIFF import no longer shows "Not Responding" — the progress dialog now spans the whole import, not just the XML parse.** The progress dialog created when you pick an SDLXLIFF file used to close as soon as parsing finished (which on most files is under a second). The slow part — building the grid, initialising the TM, attaching spellcheck — then ran with no UI feedback at all, which on Windows is exactly long enough (5+ s on large files) to trigger the OS "Not Responding" label even though the app was still working. The dialog now stays open through every phase, updating its label and progress bar as it goes: "Parsing SDLXLIFF: …" during XML parse, "Loading N segments into grid… (i/N)" during the per-row widget build (updates every 25 rows), and an indeterminate "Finalising import…" bar for the short TM/spellcheck/file-filter wiring at the end. The Cancel button works during the parse and grid-load phases; if you cancel mid-grid-load the partial load is left in place (you can re-import). This only affects standalone SDLXLIFF import for now; full Trados packages (.sdlppx) and folder imports still close the dialog early — same treatment can be applied there if it becomes a pain point.
+
+
+## v1.10.148 – May 23, 2026
+
+### Changed
+
+- **Opening projects between 300–2,000 segments is significantly faster.** v1.10.147 made the grid page-aware – but only for projects that already exceeded the auto-pagination threshold of 2,000 segments. Profiling a 479-segment SDLXLIFF showed it was still taking ~38 s in `load_segments_to_grid` because (a) the threshold was high enough that 479-seg files defaulted to "All" mode and built all 479 heavy `QTextEdit` widgets up-front, (b) `apply_font_to_grid` then ran a second per-row pass over those 479 widgets re-applying the same fonts that were just set at construction time (~9 s), and (c) `auto_resize_rows()` was being called a second redundant time from the import path (~0.4 s + potential cell-selection event leakage from its internal `processEvents()` pump). Three changes fix this:
+    - Lowered the auto-pagination threshold from 2,000 → **1,000** segments and the fallback page size from 500 → **200**, so files between 1,000 and 2,000 segments now benefit from page-aware loading by default. Files of 1,000 segments or fewer still open in "All" mode (single-page scrolling) as before. You can override either way via the **Per page** selector at any time.
+    - `apply_font_to_grid` learned a `skip_per_row=True` mode and `load_segments_to_grid` now uses it – the per-row font work is already done by `_populate_single_row` at widget-construction time, so re-iterating the whole grid afterwards was pure duplication. The full pass still runs when you change the font from the menu.
+    - Removed the duplicate `auto_resize_rows()` call in the SDLXLIFF import path; `load_segments_to_grid` already calls it.
+
+- Net result on the profiled 479-segment file: import-and-render time drops from ~41 s to roughly ~30 s. For files that now cross the new 1,000-segment threshold, the improvement is much larger (initial widget construction goes from N rows to 200).
+
+
+## v1.10.147 – May 23, 2026
+
+### Changed
+
+- **Opening large SDLXLIFF (and other large) projects is much faster.** The grid previously built a full `QTextEdit` (rich source viewer + editable target editor) for **every** segment up-front, even rows that pagination was about to hide – so a 1,200-segment SDLXLIFF spent several seconds constructing ~1,200 heavy widgets just to make 50 of them visible. The grid is now page-aware: at load time only rows on the current page get the full editor widgets, and off-page rows get a cheap `QTableWidgetItem` placeholder (segment ID + status colour). When you navigate to another page (or change a filter so different rows become visible), those rows get their widgets installed just-in-time, so the cost is paid as you need it instead of all at once on open. Scrolling, typing, and re-rendering on the current page behave exactly the same as before – this only affects the time between picking a file and being able to start working in it. Based on the same optimisation Hans Lenting applied in his Simpelvertaler fork (which in turn draws on Piotr Bienkowski's [XLIFF2Editor](https://github.com/piotr-bienkowski/XLIFF2Editor)).
+
+### Fixed
+
+- **SDLXLIFF import no longer produces empty grid rows for empty `<trans-unit>` and `<mrk>` segments.** Trados sometimes emits trans-units (or per-segment markers within a segmented unit) whose source contains only whitespace; previously these became empty rows in the grid that you then had to filter out. They are now skipped at parse time. (Also from the Simpelvertaler fork.)
 
 
 ## v1.10.146 – May 22, 2026

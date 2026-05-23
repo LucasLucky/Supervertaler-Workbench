@@ -226,7 +226,13 @@ class SDLXLIFFParser:
         
         if source_elem is None:
             return segments
-        
+        # v1.10.147 (from Hans Lenting's Simpelvertaler fork): skip trans-units
+        # whose source text is entirely empty/whitespace — they don't produce a
+        # usable grid row, so generating one just creates an empty segment that
+        # the user then has to filter out.
+        if not ''.join(source_elem.itertext()).strip():
+            return segments
+
         # Check if this is a segmented trans-unit (has mrk elements)
         if seg_source is not None:
             # Parse segmented content
@@ -307,7 +313,12 @@ class SDLXLIFFParser:
             mid = source_mrk.get('mid')
             if not mid:
                 continue
-            
+            # v1.10.147 (from Hans Lenting's Simpelvertaler fork): same guard
+            # as in _parse_trans_unit — drop mrk segments whose source text is
+            # whitespace-only so we don't manufacture empty rows.
+            if not ''.join(source_mrk.itertext()).strip():
+                continue
+
             source_xml = self._element_inner_xml(source_mrk)
             source_text = self._extract_text(source_mrk)
             

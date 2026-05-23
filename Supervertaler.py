@@ -88,6 +88,7 @@ import os
 import platform
 import subprocess
 import atexit
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple, Callable
 from dataclasses import dataclass, asdict, field
@@ -7255,6 +7256,151 @@ class LiveProgressDialog(QDialog):
 
 
 # ============================================================================
+# IMPORT PROGRESS DIALOG (shared helper)
+# ============================================================================
+# v1.10.150: centralises the boilerplate every import_* method used to copy
+# around a QProgressDialog. Historically each path reinvented this, with
+# inconsistent results — three were correct, four created a dialog that
+# closed before the slow grid-load phase (so the user saw "Not Responding"
+# for ~30 s), and eleven had no dialog at all. This wrapper makes correct
+# behaviour the default: the dialog spans the entire pipeline, every phase
+# pumps the Qt event loop so the OS never marks the app unresponsive, and
+# the helper exposes callbacks shaped for both the parser-style protocol
+# (stage/current/total/message → continue_bool) and load_segments_to_grid
+# (rows_done, total).
+# ============================================================================
+
+class _ImportProgressDialog:
+    """Context-managed progress dialog spanning a full import pipeline.
+
+    Usage::
+
+        with _ImportProgressDialog(self, "Importing SDLXLIFF",
+                                    initial_label=f"Opening {name}…",
+                                    initial_total=len(file_paths)) as prog:
+            handler.load(file_paths, progress_callback=prog.parse_callback)
+            if prog.cancelled():
+                return
+            with prog.suspended():
+                reply = QMessageBox.question(self, …)
+            prog.set_phase(f"Loading {n} segments into grid…", total=n)
+            self.load_segments_to_grid(progress_callback=prog.grid_callback)
+            prog.set_phase("Finalising import…")
+            …
+    """
+
+    def __init__(self, parent, title: str = "Importing",
+                 initial_label: str = "Working…",
+                 initial_total: int = 1):
+        self._parent = parent
+        self._title = title
+        self._initial_label = initial_label
+        self._initial_total = max(int(initial_total), 1)
+        self._dialog = None
+
+    def __enter__(self):
+        self._dialog = QProgressDialog(
+            self._initial_label, "Cancel", 0, self._initial_total, self._parent
+        )
+        self._dialog.setWindowTitle(self._title)
+        self._dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._dialog.setMinimumDuration(0)
+        self._dialog.setAutoClose(False)
+        self._dialog.setAutoReset(False)
+        self._dialog.setValue(0)
+        QApplication.processEvents()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._dialog is not None:
+            try:
+                self._dialog.close()
+            except Exception:
+                pass
+            self._dialog = None
+        return False  # propagate exceptions
+
+    # --- state ----------------------------------------------------------------
+
+    def cancelled(self) -> bool:
+        return self._dialog is not None and self._dialog.wasCanceled()
+
+    # --- phase control --------------------------------------------------------
+
+    def set_phase(self, label: str, total: int = 0) -> None:
+        """Begin a new phase. ``total=0`` switches to an indeterminate (busy)
+        bar; any positive total sets a determinate range with progress 0."""
+        if self._dialog is None:
+            return
+        if total > 0:
+            self._dialog.setRange(0, int(total))
+            self._dialog.setValue(0)
+        else:
+            self._dialog.setRange(0, 0)  # busy/indeterminate
+        self._dialog.setLabelText(label)
+        QApplication.processEvents()
+
+    def update(self, value: int, total: int = None, label: str = None) -> bool:
+        """Update progress. Returns ``False`` if the user has cancelled."""
+        if self._dialog is None:
+            return True
+        if self.cancelled():
+            return False
+        if total is not None and total > 0:
+            self._dialog.setRange(0, int(total))
+        self._dialog.setValue(int(value))
+        if label is not None:
+            self._dialog.setLabelText(label)
+        QApplication.processEvents()
+        return not self.cancelled()
+
+    # --- ready-made callbacks for common producers ---------------------------
+
+    def parse_callback(self, stage: str, current: int, total: int,
+                       message: str) -> bool:
+        """Callback matching the (stage, current, total, message) → continue
+        protocol used by StandaloneSDLXLIFFHandler.load and friends."""
+        if self._dialog is None:
+            return False
+        if self.cancelled():
+            return False
+        self._dialog.setRange(0, max(int(total), 1))
+        self._dialog.setValue(int(current))
+        label = f"{message} ({current}/{total})" if total else message
+        self._dialog.setLabelText(label)
+        QApplication.processEvents()
+        return not self.cancelled()
+
+    def grid_callback(self, rows_done: int, total: int) -> None:
+        """Callback matching the (rows_done, total) protocol used by
+        ``SupervertalerQt.load_segments_to_grid``."""
+        if self._dialog is None:
+            return
+        if self.cancelled():
+            return
+        self._dialog.setValue(int(rows_done))
+        self._dialog.setLabelText(
+            f"Loading segments into grid… ({rows_done:,}/{total:,})"
+        )
+        QApplication.processEvents()
+
+    # --- suspend (for nested modal dialogs) ----------------------------------
+
+    @contextmanager
+    def suspended(self):
+        """Temporarily hide the dialog (e.g. for a ``QMessageBox.question``
+        the user must answer mid-import) and re-show it on exit."""
+        if self._dialog is not None:
+            self._dialog.hide()
+        try:
+            yield
+        finally:
+            if self._dialog is not None:
+                self._dialog.show()
+                QApplication.processEvents()
+
+
+# ============================================================================
 # MAIN WINDOW
 # ============================================================================
 
@@ -7376,6 +7522,14 @@ class SupervertalerQt(QMainWindow):
         # Structure: list of term dicts with pre-compiled regex patterns
         self.termbase_index = []
         self.termbase_index_lock = threading.Lock()
+        # v1.10.153: distinguishes "no terms" from "not yet built". Without
+        # this flag, find_termbase_matches_in_source treats an empty index
+        # as "fall back to the per-word SQL query path" — fine when the
+        # index genuinely hasn't been built, disastrous (2-34 s per cell
+        # click) when every termbase is intentionally deactivated for the
+        # current project. Set to True at the end of _build_termbase_index
+        # so a deliberate empty index returns {} instantly.
+        self._termbase_index_built = False
         
         # TM/MT/LLM prefetch cache for instant segment switching (like memoQ)
         # Maps segment ID → {"TM": [...], "MT": [...], "LLM": [...]}
@@ -26170,10 +26324,18 @@ class SupervertalerQt(QMainWindow):
     # Pagination methods
     # Documents at or below this segment count open with every segment shown
     # ("All"); larger ones fall back to PAGE_FALLBACK_SIZE per page so the
-    # initial visible-row layout stays snappy. Grid widgets are always built
-    # for the whole document, so this only bounds how many rows are visible.
-    PAGE_AUTO_ALL_THRESHOLD = 2000
-    PAGE_FALLBACK_SIZE = 500
+    # initial widget-construction cost stays bounded. As of v1.10.147 the
+    # grid is page-aware and only builds full QTextEdit widgets for rows on
+    # the current page (off-page rows get cheap placeholders and are
+    # populated lazily on navigation), so this also controls how many heavy
+    # widgets get constructed at load time — not just how many rows are
+    # visible. Lowered in v1.10.148 from 2000/500 → 1000/200 after profiling
+    # showed that "All" mode on a 479-segment SDLXLIFF spent ~27 s in the
+    # per-row widget-creation loop and another ~9 s re-applying fonts. Users
+    # who prefer the single-page UX on bigger projects can still switch via
+    # the "Per page" selector.
+    PAGE_AUTO_ALL_THRESHOLD = 1000
+    PAGE_FALLBACK_SIZE = 200
 
     def _maybe_auto_set_page_size(self):
         """Pick the grid page size once per freshly-opened project.
@@ -26310,36 +26472,85 @@ class SupervertalerQt(QMainWindow):
         segments = self.current_project.segments
         empty_rows = {i for i in range(total_segments) if not segments[i].source.strip()}
 
-        # When a filter is active, show ALL matching rows (ignore pagination)
-        # When no filter is active, apply normal pagination
+        # Compute the set of rows that will be visible. We do this first (rather
+        # than iterating + flipping setRowHidden) so the lazy-populate pass
+        # below knows exactly which rows it needs to install widgets for.
         if filter_allowlist is not None:
-            # Filter mode: show all matching rows across the entire document
-            self.table.setUpdatesEnabled(False)
-            try:
-                for row in range(total_segments):
-                    hidden = row not in filter_allowlist or row in empty_rows
-                    self.table.setRowHidden(row, hidden)
-            finally:
-                self.table.setUpdatesEnabled(True)
+            # Filter mode: show all matching rows across the entire document.
+            rows_to_show = {r for r in filter_allowlist if r not in empty_rows}
         else:
-            # Normal pagination mode
+            # Normal pagination mode.
             if self.grid_page_size >= 999999:
-                # "All" mode - show everything
+                # "All" mode - show everything.
                 start_row = 0
                 end_row = total_segments
             else:
                 start_row = self.grid_current_page * self.grid_page_size
                 end_row = min(start_row + self.grid_page_size, total_segments)
+            rows_to_show = {r for r in range(start_row, end_row) if r not in empty_rows}
 
-            # Batch show/hide for performance
-            self.table.setUpdatesEnabled(False)
-            try:
-                for row in range(total_segments):
-                    in_page = start_row <= row < end_row
-                    hidden = not in_page or row in empty_rows
-                    self.table.setRowHidden(row, hidden)
-            finally:
-                self.table.setUpdatesEnabled(True)
+        # v1.10.147 (page-aware grid loading – based on Hans Lenting's
+        # Simpelvertaler fork): rows that haven't yet had their full editor
+        # widgets installed get them now, just-in-time, so the user only ever
+        # pays the widget-construction cost for rows that are about to be
+        # visible. Untouched rows continue to use their cheap placeholder.
+        #
+        # v1.10.151: when a single pagination change brings a large number
+        # of un-populated rows into view at once (typically switching from
+        # 100/200/page to "All" on a multi-thousand-segment project), wrap
+        # the populate loop in the shared _ImportProgressDialog so the user
+        # sees activity instead of a "Not Responding" freeze. Threshold
+        # chosen so small page flips stay invisible.
+        populated = getattr(self, '_populated_rows', None)
+        if populated is not None:
+            seg_count = len(segments)
+            rows_to_populate = [r for r in rows_to_show
+                                if r not in populated and r < seg_count]
+
+            def _do_populate(progress_callback=None):
+                old_suppress = getattr(self, '_suppress_target_change_handlers', False)
+                self._suppress_target_change_handlers = True
+                try:
+                    for i, row in enumerate(rows_to_populate):
+                        self._populate_single_row(row, segments[row])
+                        # The newly-installed target editor inherits the
+                        # suppression flag we just set; unblock its signals
+                        # so user edits will reach the change handler.
+                        w = self.table.cellWidget(row, 3)
+                        if w:
+                            w.blockSignals(False)
+                        # Every ~25 rows, give the progress dialog a chance
+                        # to repaint and the event loop a chance to keep the
+                        # OS from marking the window unresponsive.
+                        if progress_callback is not None and i % 25 == 0:
+                            progress_callback(i, len(rows_to_populate))
+                finally:
+                    self._suppress_target_change_handlers = old_suppress
+
+            if len(rows_to_populate) >= 200:
+                # Substantial batch — show a progress dialog. 200 was chosen
+                # because that's where the per-row widget-construction cost
+                # starts being perceptible (~5 s on a typical SDLXLIFF).
+                with _ImportProgressDialog(
+                    self, title="Loading more segments",
+                    initial_label=(
+                        f"Loading {len(rows_to_populate):,} additional "
+                        "segments into grid…"
+                    ),
+                    initial_total=len(rows_to_populate),
+                ) as _prog:
+                    _do_populate(progress_callback=_prog.grid_callback)
+            elif rows_to_populate:
+                # Small batch — populate inline, no dialog flash.
+                _do_populate()
+
+        # Now hide/show in a single batched pass.
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row in range(total_segments):
+                self.table.setRowHidden(row, row not in rows_to_show)
+        finally:
+            self.table.setUpdatesEnabled(True)
 
         # Recalculate heights for visible rows to prevent layout corruption.
         # Call synchronously first, then schedule a deferred resize to catch any
@@ -26349,7 +26560,130 @@ class SupervertalerQt(QMainWindow):
 
         # Update pagination UI
         self._update_pagination_ui()
-    
+
+        # v1.10.152: kick off background prefetch of the NEXT page in idle
+        # time so the next "Next page" click (or Ctrl+Enter on the last
+        # segment of this page) is instantaneous instead of triggering a
+        # 200-row populate-and-progress-dialog cycle.
+        self._start_background_populate()
+
+    # ------------------------------------------------------------------
+    # v1.10.152: idle-time next-page prefetch
+    # ------------------------------------------------------------------
+    # After every pagination change we schedule the *following* page to be
+    # populated quietly in the background, in small batches separated by
+    # QTimer hops so the main thread (typing, AI calls, scrolling) stays
+    # responsive. Qt requires widget creation on the main thread, so a real
+    # worker thread can't help here — but yielding between micro-batches
+    # via QTimer.singleShot gives the same user-visible effect: the next
+    # page is ready by the time the user asks for it.
+    #
+    # The generation counter invalidates an in-flight prefetch as soon as
+    # any new pagination/filter/project event would change "what's next" —
+    # so we never populate stale rows or fight with a foreground populate.
+    # ------------------------------------------------------------------
+
+    BACKGROUND_POPULATE_BATCH_SIZE = 10  # rows per batch
+    BACKGROUND_POPULATE_BATCH_DELAY_MS = 50  # gap between batches
+    BACKGROUND_POPULATE_INITIAL_DELAY_MS = 750  # wait before first batch
+
+    def _start_background_populate(self):
+        """Schedule the next page to be populated in idle time.
+
+        Skips when there's nothing useful to prefetch: "All" mode (every
+        row will be populated by the foreground path anyway), filter mode
+        (pagination doesn't apply), already on the last page, or the next
+        page already has its widgets installed.
+        """
+        # Always bump the generation, which cancels any in-flight prefetch
+        # — this is what makes navigating-while-prefetching safe.
+        self._background_populate_generation = getattr(
+            self, '_background_populate_generation', 0
+        ) + 1
+
+        if not self.current_project or not self.current_project.segments:
+            return
+
+        populated = getattr(self, '_populated_rows', None)
+        if populated is None:
+            return
+
+        # Filter mode shows results across the whole document, not paged.
+        if getattr(self, '_active_text_filter_rows', None) is not None:
+            return
+
+        page_size = getattr(self, 'grid_page_size', 50)
+        if (not isinstance(page_size, int)
+                or page_size <= 0
+                or page_size >= 999999):
+            return
+
+        current_page = getattr(self, 'grid_current_page', 0)
+        total = len(self.current_project.segments)
+        next_start = (current_page + 1) * page_size
+        if next_start >= total:
+            return  # already on the last page
+
+        next_end = min(next_start + page_size, total)
+        rows_to_prefetch = [r for r in range(next_start, next_end)
+                            if r not in populated]
+        if not rows_to_prefetch:
+            return  # next page is already populated (e.g. backwards nav)
+
+        self._background_populate_queue = rows_to_prefetch
+        my_gen = self._background_populate_generation
+        # Give the freshly-loaded current page a moment to settle and the
+        # user a moment to start interacting before we steal main-thread
+        # time for the prefetch.
+        QTimer.singleShot(
+            self.BACKGROUND_POPULATE_INITIAL_DELAY_MS,
+            lambda gen=my_gen: self._background_populate_step(gen),
+        )
+
+    def _background_populate_step(self, generation: int):
+        """Populate a small batch and reschedule until the queue is empty."""
+        # Generation mismatch: a newer prefetch (or project change) has
+        # superseded us. Drop our queue and exit silently.
+        if generation != getattr(self, '_background_populate_generation', 0):
+            return
+        queue = getattr(self, '_background_populate_queue', None)
+        if not queue:
+            return
+        if not self.current_project or not self.current_project.segments:
+            return
+
+        segments = self.current_project.segments
+        seg_count = len(segments)
+        populated = getattr(self, '_populated_rows', None)
+        if populated is None:
+            return
+
+        batch = queue[:self.BACKGROUND_POPULATE_BATCH_SIZE]
+        self._background_populate_queue = queue[self.BACKGROUND_POPULATE_BATCH_SIZE:]
+
+        old_suppress = getattr(self, '_suppress_target_change_handlers', False)
+        self._suppress_target_change_handlers = True
+        try:
+            for row in batch:
+                # Re-check membership each iteration — a foreground populate
+                # (e.g. user clicked Next while we were mid-batch) may have
+                # already populated this row.
+                if row in populated or row >= seg_count:
+                    continue
+                self._populate_single_row(row, segments[row])
+                w = self.table.cellWidget(row, 3)
+                if w:
+                    w.blockSignals(False)
+        finally:
+            self._suppress_target_change_handlers = old_suppress
+
+        # If there's more to do, hop to the event loop and come back.
+        if self._background_populate_queue:
+            QTimer.singleShot(
+                self.BACKGROUND_POPULATE_BATCH_DELAY_MS,
+                lambda gen=generation: self._background_populate_step(gen),
+            )
+
     def go_to_first_page(self):
         """Navigate to first page"""
         if not hasattr(self, 'grid_current_page'):
@@ -28248,6 +28582,36 @@ class SupervertalerQt(QMainWindow):
                 pass
         return result
 
+    def _finalise_import_with_indexes(self):
+        """v1.10.153: shared post-import wiring for every import path.
+
+        Calls ``_start_termbase_batch_worker()`` (which builds the in-memory
+        termbase index — without it ``find_termbase_matches_in_source``
+        falls through to per-word SQL queries, ~2-34 s per cell click on a
+        45-termbase database) and ``_start_prefetch_worker(first 50)``
+        (which pre-warms the TM/MT/LLM match cache so the first cell-clicks
+        land on cached results instead of cold lookups). Mirrors the
+        wiring that ``import_docx_from_path`` has had since v1.9.423 but
+        that was never replicated to the other ~13 import paths. Both
+        calls are wrapped in try/except so a worker failure can't roll
+        back the import — the grid is already on screen by the time we
+        get here.
+        """
+        try:
+            self._start_termbase_batch_worker()
+        except Exception as _e:
+            self.log(f"⚠ Failed to start termbase batch worker after import: {_e}")
+        try:
+            if (self.current_project
+                    and len(self.current_project.segments) > 0):
+                prefetch_ids = [
+                    seg.id
+                    for seg in self.current_project.segments[:50]
+                ]
+                self._start_prefetch_worker(prefetch_ids)
+        except Exception as _e:
+            self.log(f"⚠ Failed to start prefetch worker after import: {_e}")
+
     def _build_termbase_index(self):
         """
         Build in-memory index of ALL terms from activated termbases (v1.9.182).
@@ -28455,6 +28819,10 @@ class SupervertalerQt(QMainWindow):
             # Thread-safe update of the index
             with self.termbase_index_lock:
                 self.termbase_index = new_index
+                # v1.10.153: mark the index as "actually built" so
+                # find_termbase_matches_in_source knows an empty list
+                # means "no active terms" rather than "not yet built".
+                self._termbase_index_built = True
 
             elapsed = time.time() - start_time
             self.log(f"✅ Built termbase index: {len(new_index)} terms in {elapsed:.2f}s")
@@ -31132,7 +31500,16 @@ class SupervertalerQt(QMainWindow):
             # CRITICAL: Update _original_segment_order for new import
             self._original_segment_order = self.current_project.segments.copy()
 
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing plain text",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
 
             # Initialize TM for this project
             self.initialize_tm_database()
@@ -31165,6 +31542,11 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'prompt_manager_qt'):
                 self.prompt_manager_qt.refresh_context()
             
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self,
                 "Import Complete",
@@ -32436,7 +32818,16 @@ class SupervertalerQt(QMainWindow):
         self._original_segment_order = self.current_project.segments.copy()
 
         # Load into grid
-        self.load_segments_to_grid()
+        # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+        # the user sees activity instead of "Not Responding" on large files.
+        # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+        _n_segs = len(self.current_project.segments) if self.current_project else 0
+        with _ImportProgressDialog(
+            self, title="Importing folder (multi-file project)",
+            initial_label=f"Loading {_n_segs:,} segments into grid…",
+            initial_total=max(_n_segs, 1),
+        ) as _prog:
+            self.load_segments_to_grid(progress_callback=_prog.grid_callback)
 
         # Initialize TM and clear stale resources from previous project
         self.initialize_tm_database()
@@ -32456,11 +32847,17 @@ class SupervertalerQt(QMainWindow):
         self.log(f"   Files: {len(file_metadata)}")
         self.log(f"   Language pair: {source_lang.upper()} → {target_lang.upper()}")
         
+        # v1.10.153: build the termbase index and prefetch TM/MT/LLM
+        # matches for the first 50 segments — without this, cell-clicks
+        # fall through to per-word SQL queries (2-34 s per click on a
+        # 40+ termbase database).
+        self._finalise_import_with_indexes()
+
         # Show success message with summary
         file_summary = "\n".join([f"  • {f['name']}: {f['segment_count']} segments" for f in file_metadata[:10]])
         if len(file_metadata) > 10:
             file_summary += f"\n  ... and {len(file_metadata) - 10} more files"
-        
+
         QMessageBox.information(
             self,
             "Multi-File Import Complete",
@@ -33477,7 +33874,16 @@ class SupervertalerQt(QMainWindow):
             self._original_segment_order = self.current_project.segments.copy()
 
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing memoQ bilingual DOCX",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
 
             # Clear caches to ensure fresh TM lookups
@@ -33511,6 +33917,11 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'prompt_manager_qt'):
                 self.prompt_manager_qt.refresh_context()
 
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Imported {len(source_segments)} segment(s) from memoQ bilingual DOCX.\n\n"
@@ -33735,7 +34146,16 @@ class SupervertalerQt(QMainWindow):
             self.project_modified = True
             self._original_segment_order = self.current_project.segments.copy()
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing memoQ RTF",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
 
             # Clear caches
@@ -33769,6 +34189,11 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'prompt_manager_qt'):
                 self.prompt_manager_qt.refresh_context()
 
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Imported {len(source_segments)} segment(s) from memoQ bilingual RTF.\n\n"
@@ -34266,7 +34691,16 @@ class SupervertalerQt(QMainWindow):
             self._original_segment_order = self.current_project.segments.copy()
 
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing memoQ XLIFF",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
 
             # Clear caches to ensure fresh TM lookups
@@ -34293,6 +34727,11 @@ class SupervertalerQt(QMainWindow):
             if pretranslated_count > 0:
                 msg += f"\n\nPretranslated: {pretranslated_count} segment(s) with target text loaded."
 
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 msg
@@ -34680,7 +35119,16 @@ class SupervertalerQt(QMainWindow):
             self._original_segment_order = self.current_project.segments.copy()
 
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing CafeTran bilingual DOCX",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
 
             # Clear caches to ensure fresh TM lookups
@@ -34700,6 +35148,11 @@ class SupervertalerQt(QMainWindow):
             # Log success
             self.log(f"✓ Imported {len(segments)} segments from CafeTran bilingual DOCX: {Path(file_path).name}")
             
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Successfully imported {len(segments)} segment(s) from CafeTran bilingual DOCX.\n\n"
@@ -34929,7 +35382,16 @@ class SupervertalerQt(QMainWindow):
             self.project_file_path = None
             self.project_modified = True
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing Trados bilingual DOCX",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
 
             # Clear caches to ensure fresh TM lookups
@@ -34953,6 +35415,11 @@ class SupervertalerQt(QMainWindow):
             if tagged_count:
                 self.log(f"  {tagged_count} segments contain inline tags")
             
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Successfully imported {len(segments)} segment(s) from Trados bilingual review DOCX.\n\n"
@@ -35134,252 +35601,269 @@ class SupervertalerQt(QMainWindow):
         try:
             from modules.sdlppx_handler import TradosPackageHandler
 
-            # Load the package behind a progress dialog so large packages
-            # (hundreds of SDLXLIFFs) don't look frozen during extraction/parsing.
-            load_progress = QProgressDialog(
-                f"Opening {Path(file_path).name}...", "Cancel", 0, 100, self
-            )
-            load_progress.setWindowTitle("Importing Trados Package")
-            load_progress.setWindowModality(Qt.WindowModality.WindowModal)
-            load_progress.setMinimumDuration(0)
-            load_progress.setAutoClose(False)
-            load_progress.setAutoReset(False)
-            load_progress.setValue(0)
-            QApplication.processEvents()
-
-            def _on_load_progress(stage: str, current: int, total: int, message: str) -> bool:
-                if load_progress.wasCanceled():
-                    return False
-                if stage == 'extract':
-                    # Extraction is a single zipfile.extractall() call – can't
-                    # stream progress through it; show indeterminate-style label.
-                    load_progress.setRange(0, 0)
-                    load_progress.setLabelText(message)
-                elif stage == 'parse':
-                    load_progress.setRange(0, max(total, 1))
-                    load_progress.setValue(current)
-                    load_progress.setLabelText(
-                        f"Parsing SDLXLIFF: {message} ({current}/{total})"
-                        if total else f"Parsing: {message}"
-                    )
-                QApplication.processEvents()
-                return not load_progress.wasCanceled()
-
+            # v1.10.150: one shared progress dialog spans the whole import
+            # (extract → parse → info dialog → segment build → grid load →
+            # finalise). Previously there were two separate dialogs with a
+            # gap between them — and neither stayed up through the slow
+            # load_segments_to_grid phase.
             handler = TradosPackageHandler(log_callback=self.log)
-            package = handler.load_package(file_path, progress_callback=_on_load_progress)
-            load_progress.close()
+            package = None
+            with _ImportProgressDialog(
+                self, title="Importing Trados Package",
+                initial_label=f"Opening {Path(file_path).name}…",
+                initial_total=100,
+            ) as prog:
 
-            if not package:
-                if load_progress.wasCanceled():
-                    self.log("❌ SDLPPX load cancelled by user")
+                def _on_pkg_parse(stage: str, current: int, total: int, message: str) -> bool:
+                    # Custom callback because SDLPPX's protocol carries a
+                    # `stage` flag that distinguishes the indeterminate
+                    # extract step from the determinate per-file parse step.
+                    if prog.cancelled():
+                        return False
+                    if stage == 'extract':
+                        prog.set_phase(message)  # indeterminate
+                    elif stage == 'parse':
+                        prog.update(
+                            current, total=total,
+                            label=(f"Parsing SDLXLIFF: {message} ({current}/{total})"
+                                   if total else f"Parsing: {message}"),
+                        )
+                    return not prog.cancelled()
+
+                package = handler.load_package(file_path, progress_callback=_on_pkg_parse)
+
+                if not package:
+                    if prog.cancelled():
+                        self.log("❌ SDLPPX load cancelled by user")
+                        handler.cleanup()
+                        return
+                    QMessageBox.critical(
+                        self, "Error",
+                        "Failed to load the Trados Studio package.\n\n"
+                        "Please ensure the file is a valid .sdlppx file."
+                    )
+                    return
+
+                # Package info dialog (with optional include-locked checkbox).
+                # Hide the progress dialog while the user interacts.
+                from PyQt6.QtWidgets import (
+                    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QDialogButtonBox,
+                    QGroupBox, QTextEdit, QListWidget,
+                )
+
+                info_dialog = QDialog(self)
+                info_dialog.setWindowTitle("Trados Package Information")
+                info_dialog.setMinimumWidth(550)
+                # v1.10.151: cap the dialog height so packages with many files
+                # (40+) don't push the Import/Cancel buttons off the screen.
+                # The file list goes in a scrollable QListWidget below.
+                info_dialog.setMaximumHeight(640)
+                info_layout = QVBoxLayout(info_dialog)
+
+                total_segments = sum(len(f.segments) for f in package.xliff_files)
+                locked_count = sum(
+                    1 for f in package.xliff_files for s in f.segments
+                    if s.locked or s.trans_unit_id.startswith('lockTU_')
+                )
+                translatable_count = total_segments - locked_count
+                file_info = [(Path(f.file_path).name, len(f.segments)) for f in package.xliff_files]
+
+                # Compact summary at the top: project / languages / counts.
+                summary = (
+                    f"<b>Project:</b> {package.project_name}<br>"
+                    f"<b>Languages:</b> {package.source_lang} → {package.target_lang}<br>"
+                    f"<b>Total segments:</b> {total_segments:,}"
+                )
+                if locked_count:
+                    summary += (
+                        f" ({translatable_count:,} translatable, "
+                        f"{locked_count:,} locked)"
+                    )
+                summary_label = QLabel(summary)
+                summary_label.setWordWrap(True)
+                info_layout.addWidget(summary_label)
+
+                # Files in package: scrollable list with a fixed visible
+                # height. Previously this was rendered inline in the QLabel,
+                # which made the dialog grow taller than the screen for
+                # packages with many files.
+                info_layout.addWidget(QLabel(
+                    f"<b>Files in package ({len(file_info):,}):</b>"
+                ))
+                files_list = QListWidget()
+                files_list.setMaximumHeight(280)
+                for fname, count in file_info:
+                    files_list.addItem(f"{fname}  —  {count:,} segments")
+                info_layout.addWidget(files_list)
+
+                include_locked_cb = None
+                if locked_count:
+                    include_locked_cb = CheckmarkCheckBox(
+                        f"Include locked/non-translatable segments for context ({locked_count:,} segments)"
+                    )
+                    include_locked_cb.setChecked(False)
+                    include_locked_cb.setToolTip(
+                        "Locked segments are non-translatable content that Trados marks as protected.\n"
+                        "Including them provides context but may slow loading for large packages."
+                    )
+                    info_layout.addWidget(include_locked_cb)
+                    info_layout.addSpacing(5)
+
+                buttons = QDialogButtonBox(
+                    QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+                )
+                buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Import")
+                buttons.accepted.connect(info_dialog.accept)
+                buttons.rejected.connect(info_dialog.reject)
+                info_layout.addWidget(buttons)
+
+                with prog.suspended():
+                    accepted = info_dialog.exec() == QDialog.DialogCode.Accepted
+
+                if not accepted:
+                    self.log("✗ User cancelled SDLPPX import")
                     handler.cleanup()
                     return
-                QMessageBox.critical(
-                    self, "Error",
-                    "Failed to load the Trados Studio package.\n\n"
-                    "Please ensure the file is a valid .sdlppx file."
+
+                # Segment-build phase: per-file progress in the same dialog.
+                include_locked = (include_locked_cb.isChecked()
+                                  if include_locked_cb else False)
+                is_multifile = len(package.xliff_files) > 1
+                segments = []
+                file_metadata = []
+                global_index = 0
+                total_locked_filtered = 0
+                total_files = len(package.xliff_files)
+
+                prog.set_phase(
+                    f"Building segments… (0/{total_files} files)", total=total_files,
                 )
-                return
-            
-            # Show package info dialog
-            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QDialogButtonBox, QGroupBox, QTextEdit
-            
-            info_dialog = QDialog(self)
-            info_dialog.setWindowTitle("Trados Package Information")
-            info_dialog.setMinimumWidth(500)
-            info_layout = QVBoxLayout(info_dialog)
-            
-            # Project info and file list
-            info_text = f"<b>Project:</b> {package.project_name}<br>"
-            info_text += f"<b>Languages:</b> {package.source_lang} → {package.target_lang}<br>"
-            
-            # Count segments and locked segments
-            total_segments = sum(len(f.segments) for f in package.xliff_files)
-            locked_count = sum(
-                1 for f in package.xliff_files for s in f.segments
-                if s.locked or s.trans_unit_id.startswith('lockTU_')
-            )
-            translatable_count = total_segments - locked_count
-            file_info = [(Path(f.file_path).name, len(f.segments)) for f in package.xliff_files]
 
-            info_text += f"<b>Total segments:</b> {total_segments}"
-            if locked_count:
-                info_text += f" ({translatable_count} translatable, {locked_count} locked)"
-            info_text += "<br><br>"
-            info_text += "<b>Files in package:</b><br>"
-            for fname, count in file_info:
-                info_text += f"  • {fname}: {count} segments<br>"
+                cancelled = False
+                for file_idx, xliff_file in enumerate(package.xliff_files):
+                    if prog.cancelled():
+                        cancelled = True
+                        break
 
-            info_label = QLabel(info_text)
-            info_label.setWordWrap(True)
-            info_layout.addWidget(info_label)
+                    file_id = file_idx + 1
+                    file_name = Path(xliff_file.file_path).name
+                    file_start = global_index
 
-            # Option to include locked segments
-            include_locked_cb = None
-            if locked_count:
-                include_locked_cb = CheckmarkCheckBox(
-                    f"Include locked/non-translatable segments for context ({locked_count} segments)"
-                )
-                include_locked_cb.setChecked(False)
-                include_locked_cb.setToolTip(
-                    "Locked segments are non-translatable content that Trados marks as protected.\n"
-                    "Including them provides context but may slow loading for large packages."
-                )
-                info_layout.addWidget(include_locked_cb)
-                info_layout.addSpacing(5)
-
-            # Buttons
-            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-            buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Import")
-            buttons.accepted.connect(info_dialog.accept)
-            buttons.rejected.connect(info_dialog.reject)
-            info_layout.addWidget(buttons)
-            
-            if info_dialog.exec() != QDialog.DialogCode.Accepted:
-                self.log("✗ User cancelled SDLPPX import")
-                handler.cleanup()
-                return
-            
-            # Build segments per-file so the multi-file views system activates.
-            # Filter out lock TU structural segments always; optionally include
-            # locked (translate="no") segments if user checked the box.
-            include_locked = (include_locked_cb.isChecked()
-                              if include_locked_cb else False)
-            is_multifile = len(package.xliff_files) > 1
-            segments = []
-            file_metadata = []
-            global_index = 0
-            total_locked_filtered = 0
-
-            # Progress dialog so large packages don't look frozen
-            total_files = len(package.xliff_files)
-            progress_dialog = QProgressDialog(
-                "Building segments...", "Cancel", 0, total_files, self
-            )
-            progress_dialog.setWindowTitle("Importing Trados Package")
-            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-            progress_dialog.setMinimumDuration(0)
-
-            cancelled = False
-            for file_idx, xliff_file in enumerate(package.xliff_files):
-                if progress_dialog.wasCanceled():
-                    cancelled = True
-                    break
-
-                file_id = file_idx + 1
-                file_name = Path(xliff_file.file_path).name
-                file_start = global_index
-
-                progress_dialog.setValue(file_idx)
-                progress_dialog.setLabelText(
-                    f"Building segments: {file_name} ({file_idx + 1}/{total_files})"
-                )
-                QApplication.processEvents()
-
-                for sdl_seg in xliff_file.segments:
-                    # Lock TU structural segments are always excluded
-                    if sdl_seg.trans_unit_id.startswith('lockTU_'):
-                        total_locked_filtered += 1
-                        continue
-                    # Locked (translate="no") segments: include or skip
-                    is_locked = sdl_seg.locked
-                    if is_locked and not include_locked:
-                        total_locked_filtered += 1
-                        continue
-                    seg = self._map_sdlxliff_segment(
-                        sdl_seg, global_index,
-                        file_id=file_id if is_multifile else None,
-                        file_name=file_name if is_multifile else "",
-                        locked=is_locked
+                    prog.update(
+                        file_idx, total=total_files,
+                        label=f"Building segments: {file_name} ({file_idx + 1}/{total_files})",
                     )
-                    segments.append(seg)
-                    global_index += 1
 
-                if is_multifile:
-                    file_segs = segments[file_start:global_index]
-                    file_metadata.append({
-                        'id': file_id,
-                        'name': file_name,
-                        'path': xliff_file.file_path,
-                        'type': 'sdlxliff',
-                        'segment_count': len(file_segs),
-                        'start_segment_id': file_segs[0].id if file_segs else None,
-                        'end_segment_id': file_segs[-1].id if file_segs else None,
-                    })
+                    for sdl_seg in xliff_file.segments:
+                        if sdl_seg.trans_unit_id.startswith('lockTU_'):
+                            total_locked_filtered += 1
+                            continue
+                        is_locked = sdl_seg.locked
+                        if is_locked and not include_locked:
+                            total_locked_filtered += 1
+                            continue
+                        seg = self._map_sdlxliff_segment(
+                            sdl_seg, global_index,
+                            file_id=file_id if is_multifile else None,
+                            file_name=file_name if is_multifile else "",
+                            locked=is_locked
+                        )
+                        segments.append(seg)
+                        global_index += 1
 
-            progress_dialog.setValue(total_files)
+                    if is_multifile:
+                        file_segs = segments[file_start:global_index]
+                        file_metadata.append({
+                            'id': file_id,
+                            'name': file_name,
+                            'path': xliff_file.file_path,
+                            'type': 'sdlxliff',
+                            'segment_count': len(file_segs),
+                            'start_segment_id': file_segs[0].id if file_segs else None,
+                            'end_segment_id': file_segs[-1].id if file_segs else None,
+                        })
 
-            if cancelled:
-                self.log("❌ SDLPPX import cancelled by user")
-                handler.cleanup()
-                return
+                if cancelled:
+                    self.log("❌ SDLPPX import cancelled by user")
+                    handler.cleanup()
+                    return
 
-            if total_locked_filtered:
-                self.log(f"Filtered {total_locked_filtered} "
-                         f"locked/non-translatable segments "
-                         f"({len(segments)} translatable)")
+                if total_locked_filtered:
+                    self.log(f"Filtered {total_locked_filtered} "
+                             f"locked/non-translatable segments "
+                             f"({len(segments)} translatable)")
 
-            if not segments:
-                QMessageBox.warning(
-                    self, "No Segments",
-                    "No translatable segments found in the package."
+                if not segments:
+                    QMessageBox.warning(
+                        self, "No Segments",
+                        "No translatable segments found in the package."
+                    )
+                    handler.cleanup()
+                    return
+
+                # Normalize language codes to full names
+                source_lang = self._normalize_language_code(package.source_lang)
+                target_lang = self._normalize_language_code(package.target_lang)
+
+                # Create new project (multi-file when package has multiple SDLXLIFF files)
+                self.current_project = Project(
+                    name=package.project_name or Path(file_path).stem,
+                    segments=segments,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    is_multifile=is_multifile,
+                    files=file_metadata if is_multifile else None
                 )
-                handler.cleanup()
-                return
 
-            # Normalize language codes to full names
-            source_lang = self._normalize_language_code(package.source_lang)
-            target_lang = self._normalize_language_code(package.target_lang)
+                # Store handler and package info for round-trip export
+                self.sdlppx_handler = handler
+                self.sdlppx_source_file = file_path
+                self.current_project.sdlppx_source_path = file_path
 
-            # Create new project (multi-file when package has multiple SDLXLIFF files)
-            self.current_project = Project(
-                name=package.project_name or Path(file_path).stem,
-                segments=segments,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                is_multifile=is_multifile,
-                files=file_metadata if is_multifile else None
-            )
-            
-            # Store handler and package info for round-trip export
-            self.sdlppx_handler = handler
-            self.sdlppx_source_file = file_path
-            self.current_project.sdlppx_source_path = file_path
+                # CRITICAL: Update _original_segment_order for new import
+                self._original_segment_order = self.current_project.segments.copy()
 
-            # CRITICAL: Update _original_segment_order for new import
-            self._original_segment_order = self.current_project.segments.copy()
+                # Sync global language settings with imported project languages
+                self.source_language = source_lang
+                self.target_language = target_lang
 
-            # Sync global language settings with imported project languages
-            self.source_language = source_lang
-            self.target_language = target_lang
+                # Update UI
+                self.project_file_path = None
+                self.project_modified = True
+                self.update_window_title()
 
-            # Update UI
-            self.project_file_path = None
-            self.project_modified = True
-            self.update_window_title()
-            self.load_segments_to_grid()
-            self.initialize_tm_database()
-            self._clear_caches_after_import()
-            self._deactivate_all_resources_for_new_project()
+                # Grid-load phase.
+                prog.set_phase(
+                    f"Loading {len(segments):,} segments into grid…",
+                    total=len(segments),
+                )
+                self.load_segments_to_grid(progress_callback=prog.grid_callback)
 
-            # Auto-resize rows for better initial display
-            self.auto_resize_rows()
+                # Finalise (TM/spellcheck/file-filter): indeterminate.
+                prog.set_phase("Finalising import…")
+                self.initialize_tm_database()
+                self._clear_caches_after_import()
+                self._deactivate_all_resources_for_new_project()
+                # v1.10.148: auto_resize_rows already called inside
+                # load_segments_to_grid; the second call here was duplicate
+                # work and removed.
+                self._initialize_spellcheck_for_target_language(target_lang)
+                self._update_file_filter_combo()
 
-            # Initialize spellcheck for target language
-            self._initialize_spellcheck_for_target_language(target_lang)
+                # Count pretranslated segments
+                pretrans_count = sum(1 for s in segments if s.target)
 
-            # Activate multi-file views dropdown if applicable
-            self._update_file_filter_combo()
+                self.log(f"✓ Imported {len(segments)} segments from Trados package: {Path(file_path).name}")
+                if pretrans_count:
+                    self.log(f"  {pretrans_count} segments are pretranslated")
+                if is_multifile:
+                    self.log(f"  {len(file_metadata)} files in package (multi-file view active)")
 
-            # Count pretranslated segments
-            pretrans_count = sum(1 for s in segments if s.target)
-
-            self.log(f"✓ Imported {len(segments)} segments from Trados package: {Path(file_path).name}")
-            if pretrans_count:
-                self.log(f"  {pretrans_count} segments are pretranslated")
-            if is_multifile:
-                self.log(f"  {len(file_metadata)} files in package (multi-file view active)")
-
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Successfully imported {len(segments)} segment(s) from Trados Studio package.\n\n"
@@ -35389,7 +35873,7 @@ class SupervertalerQt(QMainWindow):
                 f"Pretranslated: {pretrans_count}\n\n"
                 f"After translation, export back as SDLRPX to return to the Trados user."
             )
-            
+
         except ImportError as e:
             QMessageBox.critical(
                 self, "Missing Dependency",
@@ -35708,165 +36192,175 @@ class SupervertalerQt(QMainWindow):
 
             self.log(f"Importing {len(file_paths)} SDLXLIFF file(s)...")
 
-            # Progress dialog so large files don't look frozen during parsing.
+            # v1.10.150: shared _ImportProgressDialog wrapper replaces the
+            # hand-rolled QProgressDialog plumbing. Dialog spans the whole
+            # import; the helper supplies ready-made parser/grid callbacks
+            # and a context manager for hiding it during nested modal prompts.
             first_name = Path(file_paths[0]).name
-            load_progress = QProgressDialog(
-                f"Opening {first_name}...", "Cancel", 0, max(len(file_paths), 1), self
-            )
-            load_progress.setWindowTitle("Importing SDLXLIFF")
-            load_progress.setWindowModality(Qt.WindowModality.WindowModal)
-            load_progress.setMinimumDuration(0)
-            load_progress.setAutoClose(False)
-            load_progress.setAutoReset(False)
-            load_progress.setValue(0)
-            QApplication.processEvents()
-
-            def _on_load_progress(stage: str, current: int, total: int, message: str) -> bool:
-                if load_progress.wasCanceled():
-                    return False
-                load_progress.setRange(0, max(total, 1))
-                load_progress.setValue(current)
-                load_progress.setLabelText(
-                    f"Parsing SDLXLIFF: {message} ({current}/{total})"
-                    if total else f"Parsing: {message}"
+            with _ImportProgressDialog(
+                self, title="Importing SDLXLIFF",
+                initial_label=f"Opening {first_name}…",
+                initial_total=len(file_paths),
+            ) as prog:
+                handler = StandaloneSDLXLIFFHandler(log_callback=self.log)
+                load_ok = handler.load(
+                    file_paths, progress_callback=prog.parse_callback
                 )
-                QApplication.processEvents()
-                return not load_progress.wasCanceled()
-
-            handler = StandaloneSDLXLIFFHandler(log_callback=self.log)
-            load_ok = handler.load(file_paths, progress_callback=_on_load_progress)
-            cancelled = load_progress.wasCanceled()
-            load_progress.close()
-
-            if cancelled:
-                self.log("❌ SDLXLIFF import cancelled by user")
-                return
-            if not load_ok:
-                QMessageBox.critical(
-                    self, "Import Error",
-                    "Failed to load the SDLXLIFF file(s). Check the log for details."
-                )
-                return
-
-            all_sdl_segments = handler.get_all_segments()
-
-            # Count locked segments and ask user whether to include them
-            total_count = len(all_sdl_segments)
-            locked_count = sum(
-                1 for s in all_sdl_segments
-                if s.locked or s.trans_unit_id.startswith('lockTU_')
-            )
-            include_locked = False
-            if locked_count and (total_count - locked_count) > 0:
-                reply = QMessageBox.question(
-                    self, "Locked Segments Detected",
-                    f"Found {locked_count:,} locked/non-translatable segments "
-                    f"out of {total_count:,} total.\n\n"
-                    f"Include locked segments in the grid?\n"
-                    f"(They provide context but may slow loading.)",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
-                )
-                include_locked = (reply == QMessageBox.StandardButton.Yes)
-
-            # Build segments per-file so the multi-file UI activates
-            is_multifile = len(handler.xliff_files) > 1
-            segments = []
-            file_metadata = []
-            global_index = 0
-
-            for file_idx, xliff_file in enumerate(handler.xliff_files):
-                file_id = file_idx + 1
-                file_name = Path(xliff_file.file_path).name
-                file_start = global_index
-
-                for sdl_seg in xliff_file.segments:
-                    if sdl_seg.trans_unit_id.startswith('lockTU_'):
-                        continue
-                    is_locked = sdl_seg.locked
-                    if is_locked and not include_locked:
-                        continue
-                    seg = self._map_sdlxliff_segment(
-                        sdl_seg, global_index,
-                        file_id=file_id if is_multifile else None,
-                        file_name=file_name if is_multifile else "",
-                        locked=is_locked
+                if prog.cancelled():
+                    self.log("❌ SDLXLIFF import cancelled by user")
+                    return
+                if not load_ok:
+                    QMessageBox.critical(
+                        self, "Import Error",
+                        "Failed to load the SDLXLIFF file(s). Check the log for details."
                     )
-                    segments.append(seg)
-                    global_index += 1
+                    return
 
-                if is_multifile:
-                    file_segs = segments[file_start:global_index]
-                    if file_segs:
-                        file_metadata.append({
-                            'id': file_id,
-                            'name': file_name,
-                            'path': xliff_file.file_path,
-                            'type': 'sdlxliff',
-                            'segment_count': len(file_segs),
-                            'start_segment_id': file_segs[0].id,
-                            'end_segment_id': file_segs[-1].id,
-                        })
+                all_sdl_segments = handler.get_all_segments()
 
-            if not segments:
-                QMessageBox.warning(
-                    self, "No Segments",
-                    "No translatable segments found in the selected file(s)."
+                # Count locked segments and ask user whether to include them
+                total_count = len(all_sdl_segments)
+                locked_count = sum(
+                    1 for s in all_sdl_segments
+                    if s.locked or s.trans_unit_id.startswith('lockTU_')
                 )
-                return
+                include_locked = False
+                if locked_count and (total_count - locked_count) > 0:
+                    with prog.suspended():
+                        reply = QMessageBox.question(
+                            self, "Locked Segments Detected",
+                            f"Found {locked_count:,} locked/non-translatable segments "
+                            f"out of {total_count:,} total.\n\n"
+                            f"Include locked segments in the grid?\n"
+                            f"(They provide context but may slow loading.)",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.No
+                        )
+                    include_locked = (reply == QMessageBox.StandardButton.Yes)
 
-            # Normalize language codes to full names
-            source_lang = self._normalize_language_code(handler.get_source_lang())
-            target_lang = self._normalize_language_code(handler.get_target_lang())
+                # Build segments per-file so the multi-file UI activates
+                is_multifile = len(handler.xliff_files) > 1
+                segments = []
+                file_metadata = []
+                global_index = 0
 
-            # Create project name
-            if len(file_paths) == 1:
-                project_name = Path(file_paths[0]).stem
-            else:
-                project_name = f"{Path(file_paths[0]).stem} (+{len(file_paths) - 1} files)"
+                for file_idx, xliff_file in enumerate(handler.xliff_files):
+                    file_id = file_idx + 1
+                    file_name = Path(xliff_file.file_path).name
+                    file_start = global_index
 
-            # Create new project
-            self.current_project = Project(
-                name=project_name,
-                segments=segments,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                is_multifile=is_multifile,
-                files=file_metadata if is_multifile else None
-            )
+                    for sdl_seg in xliff_file.segments:
+                        if sdl_seg.trans_unit_id.startswith('lockTU_'):
+                            continue
+                        is_locked = sdl_seg.locked
+                        if is_locked and not include_locked:
+                            continue
+                        seg = self._map_sdlxliff_segment(
+                            sdl_seg, global_index,
+                            file_id=file_id if is_multifile else None,
+                            file_name=file_name if is_multifile else "",
+                            locked=is_locked
+                        )
+                        segments.append(seg)
+                        global_index += 1
 
-            # Store handler and source paths for round-trip export
-            self.sdlxliff_handler = handler
-            self.sdlxliff_source_files = file_paths
-            self.current_project.sdlxliff_source_paths = file_paths
+                    if is_multifile:
+                        file_segs = segments[file_start:global_index]
+                        if file_segs:
+                            file_metadata.append({
+                                'id': file_id,
+                                'name': file_name,
+                                'path': xliff_file.file_path,
+                                'type': 'sdlxliff',
+                                'segment_count': len(file_segs),
+                                'start_segment_id': file_segs[0].id,
+                                'end_segment_id': file_segs[-1].id,
+                            })
 
-            # CRITICAL: Update _original_segment_order for new import
-            self._original_segment_order = self.current_project.segments.copy()
+                if not segments:
+                    QMessageBox.warning(
+                        self, "No Segments",
+                        "No translatable segments found in the selected file(s)."
+                    )
+                    return
 
-            # Sync global language settings
-            self.source_language = source_lang
-            self.target_language = target_lang
+                # Normalize language codes to full names
+                source_lang = self._normalize_language_code(handler.get_source_lang())
+                target_lang = self._normalize_language_code(handler.get_target_lang())
 
-            # Update UI
-            self.project_file_path = None
-            self.project_modified = True
-            self.update_window_title()
-            self.load_segments_to_grid()
-            self.initialize_tm_database()
-            self._clear_caches_after_import()
-            self._deactivate_all_resources_for_new_project()
-            self.auto_resize_rows()
-            self._initialize_spellcheck_for_target_language(target_lang)
-            self._update_file_filter_combo()
+                # Create project name
+                if len(file_paths) == 1:
+                    project_name = Path(file_paths[0]).stem
+                else:
+                    project_name = f"{Path(file_paths[0]).stem} (+{len(file_paths) - 1} files)"
 
-            # Count pretranslated segments
-            pretrans_count = sum(1 for s in segments if s.target)
+                # Create new project
+                self.current_project = Project(
+                    name=project_name,
+                    segments=segments,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    is_multifile=is_multifile,
+                    files=file_metadata if is_multifile else None
+                )
 
-            files_info = f"Files: {len(file_paths)}\n" if len(file_paths) > 1 else ""
-            self.log(f"✓ Imported {len(segments)} segments from {len(file_paths)} SDLXLIFF file(s)")
-            if pretrans_count:
-                self.log(f"  {pretrans_count} segments are pretranslated")
+                # Store handler and source paths for round-trip export
+                self.sdlxliff_handler = handler
+                self.sdlxliff_source_files = file_paths
+                self.current_project.sdlxliff_source_paths = file_paths
 
+                # CRITICAL: Update _original_segment_order for new import
+                self._original_segment_order = self.current_project.segments.copy()
+
+                # Sync global language settings
+                self.source_language = source_lang
+                self.target_language = target_lang
+
+                # Update UI
+                self.project_file_path = None
+                self.project_modified = True
+                self.update_window_title()
+
+                # Grid-load phase: helper supplies a ready-made callback that
+                # updates the same dialog every ~25 rows and pumps the event
+                # loop so the OS never marks the window as "Not Responding".
+                prog.set_phase(
+                    f"Loading {len(segments):,} segments into grid…",
+                    total=len(segments),
+                )
+                self.load_segments_to_grid(progress_callback=prog.grid_callback)
+
+                # Final wiring: indeterminate "busy" bar for the short
+                # remaining steps (TM/spellcheck/file-filter).
+                prog.set_phase("Finalising import…")
+
+                self.initialize_tm_database()
+                self._clear_caches_after_import()
+                self._deactivate_all_resources_for_new_project()
+                # v1.10.148: auto_resize_rows() is already called inside
+                # load_segments_to_grid above — the second call here was
+                # duplicate work (~0.4 s on a 479-segment SDLXLIFF) and could
+                # trigger spurious cell-selection events via the processEvents()
+                # pump inside its loop.
+                self._initialize_spellcheck_for_target_language(target_lang)
+                self._update_file_filter_combo()
+
+                # Count pretranslated segments
+                pretrans_count = sum(1 for s in segments if s.target)
+
+                files_info = f"Files: {len(file_paths)}\n" if len(file_paths) > 1 else ""
+                self.log(f"✓ Imported {len(segments)} segments from {len(file_paths)} SDLXLIFF file(s)")
+                if pretrans_count:
+                    self.log(f"  {pretrans_count} segments are pretranslated")
+
+            # _ImportProgressDialog __exit__ closes the dialog before we
+            # show the success message, so the info box is the only modal
+            # remaining when the user dismisses it.
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Successfully imported {len(segments)} segment(s) from SDLXLIFF.\n\n"
@@ -35919,162 +36413,157 @@ class SupervertalerQt(QMainWindow):
         try:
             from modules.sdlppx_handler import StandaloneSDLXLIFFHandler
 
-            # Progress dialog so large folders don't look frozen during parsing.
-            load_progress = QProgressDialog(
-                f"Opening {len(file_paths)} SDLXLIFF file(s)...", "Cancel",
-                0, max(len(file_paths), 1), self
-            )
-            load_progress.setWindowTitle("Importing SDLXLIFF Folder")
-            load_progress.setWindowModality(Qt.WindowModality.WindowModal)
-            load_progress.setMinimumDuration(0)
-            load_progress.setAutoClose(False)
-            load_progress.setAutoReset(False)
-            load_progress.setValue(0)
-            QApplication.processEvents()
-
-            def _on_load_progress(stage: str, current: int, total: int, message: str) -> bool:
-                if load_progress.wasCanceled():
-                    return False
-                load_progress.setRange(0, max(total, 1))
-                load_progress.setValue(current)
-                load_progress.setLabelText(
-                    f"Parsing SDLXLIFF: {message} ({current}/{total})"
-                    if total else f"Parsing: {message}"
-                )
-                QApplication.processEvents()
-                return not load_progress.wasCanceled()
-
-            handler = StandaloneSDLXLIFFHandler(log_callback=self.log)
-            load_ok = handler.load(file_paths, progress_callback=_on_load_progress)
-            cancelled = load_progress.wasCanceled()
-            load_progress.close()
-
-            if cancelled:
-                self.log("❌ SDLXLIFF folder import cancelled by user")
-                return
-            if not load_ok:
-                QMessageBox.critical(
-                    self, "Import Error",
-                    "Failed to load the SDLXLIFF file(s). Check the log for details."
-                )
-                return
-
-            all_sdl_segments = handler.get_all_segments()
-
-            # Count locked segments and ask user whether to include them
-            total_count = len(all_sdl_segments)
-            locked_count = sum(
-                1 for s in all_sdl_segments
-                if s.locked or s.trans_unit_id.startswith('lockTU_')
-            )
-            include_locked = False
-            if locked_count and (total_count - locked_count) > 0:
-                reply = QMessageBox.question(
-                    self, "Locked Segments Detected",
-                    f"Found {locked_count:,} locked/non-translatable segments "
-                    f"out of {total_count:,} total.\n\n"
-                    f"Include locked segments in the grid?\n"
-                    f"(They provide context but may slow loading.)",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
-                )
-                include_locked = (reply == QMessageBox.StandardButton.Yes)
-
-            if not all_sdl_segments:
-                QMessageBox.warning(
-                    self, "No Segments",
-                    "No translatable segments found in the SDLXLIFF files."
-                )
-                return
-
-            # Build segments and file_metadata per-file so the multi-file UI activates
-            is_multifile = len(handler.xliff_files) > 1
-            segments = []
-            file_metadata = []
-            global_index = 0
-
-            for file_idx, xliff_file in enumerate(handler.xliff_files):
-                file_id = file_idx + 1
-                file_name = Path(xliff_file.file_path).name
-                file_start = global_index
-
-                for sdl_seg in xliff_file.segments:
-                    # Lock TU structural segments are always excluded
-                    if sdl_seg.trans_unit_id.startswith('lockTU_'):
-                        continue
-                    # Locked (translate="no") segments: include or skip
-                    is_locked = sdl_seg.locked
-                    if is_locked and not include_locked:
-                        continue
-                    seg = self._map_sdlxliff_segment(
-                        sdl_seg, global_index,
-                        file_id=file_id if is_multifile else None,
-                        file_name=file_name if is_multifile else "",
-                        locked=is_locked
+            # v1.10.150: shared _ImportProgressDialog spans the whole import.
+            with _ImportProgressDialog(
+                self, title="Importing SDLXLIFF Folder",
+                initial_label=f"Opening {len(file_paths)} SDLXLIFF file(s)…",
+                initial_total=len(file_paths),
+            ) as prog:
+                handler = StandaloneSDLXLIFFHandler(log_callback=self.log)
+                load_ok = handler.load(file_paths, progress_callback=prog.parse_callback)
+                if prog.cancelled():
+                    self.log("❌ SDLXLIFF folder import cancelled by user")
+                    return
+                if not load_ok:
+                    QMessageBox.critical(
+                        self, "Import Error",
+                        "Failed to load the SDLXLIFF file(s). Check the log for details."
                     )
-                    segments.append(seg)
-                    global_index += 1
+                    return
 
-                if is_multifile:
-                    file_segs = segments[file_start:global_index]
-                    file_metadata.append({
-                        'id': file_id,
-                        'name': file_name,
-                        'path': xliff_file.file_path,
-                        'type': 'sdlxliff',
-                        'segment_count': len(file_segs),
-                        'start_segment_id': file_segs[0].id if file_segs else None,
-                        'end_segment_id': file_segs[-1].id if file_segs else None,
-                    })
+                all_sdl_segments = handler.get_all_segments()
 
-            # Normalize language codes to full names
-            source_lang = self._normalize_language_code(handler.get_source_lang())
-            target_lang = self._normalize_language_code(handler.get_target_lang())
+                # Count locked segments and ask user whether to include them
+                total_count = len(all_sdl_segments)
+                locked_count = sum(
+                    1 for s in all_sdl_segments
+                    if s.locked or s.trans_unit_id.startswith('lockTU_')
+                )
+                include_locked = False
+                if locked_count and (total_count - locked_count) > 0:
+                    with prog.suspended():
+                        reply = QMessageBox.question(
+                            self, "Locked Segments Detected",
+                            f"Found {locked_count:,} locked/non-translatable segments "
+                            f"out of {total_count:,} total.\n\n"
+                            f"Include locked segments in the grid?\n"
+                            f"(They provide context but may slow loading.)",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.No
+                        )
+                    include_locked = (reply == QMessageBox.StandardButton.Yes)
 
-            # Create project name from folder
-            project_name = f"{folder_path.name} ({len(file_paths)} files)"
+                if not all_sdl_segments:
+                    QMessageBox.warning(
+                        self, "No Segments",
+                        "No translatable segments found in the SDLXLIFF files."
+                    )
+                    return
 
-            # Create new project
-            self.current_project = Project(
-                name=project_name,
-                segments=segments,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                is_multifile=is_multifile,
-                files=file_metadata if is_multifile else None
-            )
+                # Build segments and file_metadata per-file so the multi-file UI activates
+                is_multifile = len(handler.xliff_files) > 1
+                segments = []
+                file_metadata = []
+                global_index = 0
 
-            # Store handler and source paths for round-trip export
-            self.sdlxliff_handler = handler
-            self.sdlxliff_source_files = file_paths
-            self.current_project.sdlxliff_source_paths = file_paths
+                for file_idx, xliff_file in enumerate(handler.xliff_files):
+                    file_id = file_idx + 1
+                    file_name = Path(xliff_file.file_path).name
+                    file_start = global_index
 
-            # CRITICAL: Update _original_segment_order for new import
-            self._original_segment_order = self.current_project.segments.copy()
+                    for sdl_seg in xliff_file.segments:
+                        # Lock TU structural segments are always excluded
+                        if sdl_seg.trans_unit_id.startswith('lockTU_'):
+                            continue
+                        # Locked (translate="no") segments: include or skip
+                        is_locked = sdl_seg.locked
+                        if is_locked and not include_locked:
+                            continue
+                        seg = self._map_sdlxliff_segment(
+                            sdl_seg, global_index,
+                            file_id=file_id if is_multifile else None,
+                            file_name=file_name if is_multifile else "",
+                            locked=is_locked
+                        )
+                        segments.append(seg)
+                        global_index += 1
 
-            # Sync global language settings
-            self.source_language = source_lang
-            self.target_language = target_lang
+                    if is_multifile:
+                        file_segs = segments[file_start:global_index]
+                        file_metadata.append({
+                            'id': file_id,
+                            'name': file_name,
+                            'path': xliff_file.file_path,
+                            'type': 'sdlxliff',
+                            'segment_count': len(file_segs),
+                            'start_segment_id': file_segs[0].id if file_segs else None,
+                            'end_segment_id': file_segs[-1].id if file_segs else None,
+                        })
 
-            # Update UI
-            self.project_file_path = None
-            self.project_modified = True
-            self.update_window_title()
-            self.load_segments_to_grid()
-            self.initialize_tm_database()
-            self._clear_caches_after_import()
-            self._deactivate_all_resources_for_new_project()
-            self.auto_resize_rows()
-            self._initialize_spellcheck_for_target_language(target_lang)
-            self._update_file_filter_combo()
+                # Normalize language codes to full names
+                source_lang = self._normalize_language_code(handler.get_source_lang())
+                target_lang = self._normalize_language_code(handler.get_target_lang())
 
-            # Count pretranslated segments
-            pretrans_count = sum(1 for s in segments if s.target)
+                # Create project name from folder
+                project_name = f"{folder_path.name} ({len(file_paths)} files)"
 
-            self.log(f"✓ Imported {len(segments)} segments from {len(file_paths)} SDLXLIFF file(s) in folder: {folder_path.name}")
-            if pretrans_count:
-                self.log(f"  {pretrans_count} segments are pretranslated")
+                # Create new project
+                self.current_project = Project(
+                    name=project_name,
+                    segments=segments,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    is_multifile=is_multifile,
+                    files=file_metadata if is_multifile else None
+                )
 
+                # Store handler and source paths for round-trip export
+                self.sdlxliff_handler = handler
+                self.sdlxliff_source_files = file_paths
+                self.current_project.sdlxliff_source_paths = file_paths
+
+                # CRITICAL: Update _original_segment_order for new import
+                self._original_segment_order = self.current_project.segments.copy()
+
+                # Sync global language settings
+                self.source_language = source_lang
+                self.target_language = target_lang
+
+                # Update UI
+                self.project_file_path = None
+                self.project_modified = True
+                self.update_window_title()
+
+                # Grid-load phase: dialog stays open with per-row progress.
+                prog.set_phase(
+                    f"Loading {len(segments):,} segments into grid…",
+                    total=len(segments),
+                )
+                self.load_segments_to_grid(progress_callback=prog.grid_callback)
+
+                # Finalise (TM/spellcheck/file-filter): indeterminate bar.
+                prog.set_phase("Finalising import…")
+                self.initialize_tm_database()
+                self._clear_caches_after_import()
+                self._deactivate_all_resources_for_new_project()
+                # v1.10.148: auto_resize_rows is already called inside
+                # load_segments_to_grid; remove the redundant second call
+                # that other import paths still have for consistency.
+                self._initialize_spellcheck_for_target_language(target_lang)
+                self._update_file_filter_combo()
+
+                # Count pretranslated segments
+                pretrans_count = sum(1 for s in segments if s.target)
+
+                self.log(f"✓ Imported {len(segments)} segments from {len(file_paths)} SDLXLIFF file(s) in folder: {folder_path.name}")
+                if pretrans_count:
+                    self.log(f"  {pretrans_count} segments are pretranslated")
+
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Successfully imported {len(segments)} segment(s) from {len(file_paths)} SDLXLIFF file(s).\n\n"
@@ -36474,7 +36963,16 @@ class SupervertalerQt(QMainWindow):
             self.project_file_path = None
             self.project_modified = True
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing Phrase bilingual DOCX",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
             self._clear_caches_after_import()
             self._deactivate_all_resources_for_new_project()
@@ -36493,6 +36991,11 @@ class SupervertalerQt(QMainWindow):
             if tagged_count:
                 self.log(f"  {tagged_count} segments contain inline tags")
 
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Successfully imported {len(segments)} segment(s) from Phrase bilingual DOCX.\n\n"
@@ -36802,7 +37305,16 @@ class SupervertalerQt(QMainWindow):
             self.project_file_path = None
             self.project_modified = True
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing DéjàVu bilingual",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             self.initialize_tm_database()
             self._clear_caches_after_import()
             self._deactivate_all_resources_for_new_project()
@@ -36822,6 +37334,11 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'prompt_manager_qt'):
                 self.prompt_manager_qt.refresh_context()
 
+            # v1.10.153: build the termbase index and prefetch
+            # TM/MT/LLM matches for the first 50 segments — without
+            # this, cell-clicks fall through to per-word SQL queries
+            # (2-34 s per click on a 40+ termbase database).
+            self._finalise_import_with_indexes()
             QMessageBox.information(
                 self, "Import Successful",
                 f"Imported {len(segments_data)} segment(s) from Déjà Vu X3 bilingual RTF.\n\n"
@@ -37133,6 +37650,12 @@ class SupervertalerQt(QMainWindow):
                     })
             
             if not changes and not mismatches:
+                # v1.10.153: build the termbase index and prefetch
+                # TM/MT/LLM matches for the first 50 segments —
+                # without this, cell-clicks fall through to per-word
+                # SQL queries (2-34 s per click on a 40+ termbase
+                # database).
+                self._finalise_import_with_indexes()
                 QMessageBox.information(
                     self, "No Changes",
                     f"Compared {len(imported_data)} segments - no changes detected."
@@ -37198,7 +37721,16 @@ class SupervertalerQt(QMainWindow):
             # Mark project as modified and refresh UI
             self.project_modified = True
             self.update_window_title()
-            self.load_segments_to_grid()
+            # v1.10.150: wrap the slow grid-load in the shared progress dialog so
+            # the user sees activity instead of "Not Responding" on large files.
+            # (Minimal wrap: subsequent fast finalise steps stay outside the dialog.)
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing review-table DOCX",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             
             self.log(f"✓ Applied {applied_count} change(s) from bilingual table: {Path(file_path).name}")
             
@@ -37356,6 +37888,419 @@ class SupervertalerQt(QMainWindow):
     # GRID MANAGEMENT
     # ========================================================================
     
+    # ---------------------------------------------------------------------
+    # Page-aware grid loading (v1.10.147 — based on Hans Lenting's
+    # "Simpelvertaler" fork). Instead of constructing ~1200 full QTextEdit
+    # widgets up-front on project open, only build them for rows on the
+    # current page; off-page rows get a cheap QTableWidgetItem placeholder
+    # and the heavy widgets are installed lazily by the pagination handler
+    # when they become visible. Major initial-load speedup on large
+    # SDLXLIFF projects; scrolling/typing behaviour is unchanged.
+    # ---------------------------------------------------------------------
+
+    def _compute_initial_visible_rows(self, total: int) -> set:
+        """Return the set of row indices that should get full editor widgets
+        on initial grid load (current page only).
+
+        Part of the page-aware grid loading optimisation in v1.10.147 (based
+        on Hans Lenting's Simpelvertaler fork). Off-page rows get a cheap
+        QTableWidgetItem placeholder and are populated lazily by the
+        pagination handler when they become visible.
+        """
+        filter_allowlist = getattr(self, '_active_text_filter_rows', None)
+        if filter_allowlist is not None:
+            return set(filter_allowlist)
+        page_size = getattr(self, 'grid_page_size', 50)
+        if not isinstance(page_size, int) or page_size <= 0 or page_size >= 999999:
+            # "All" mode (or unset) — populate every row.
+            return set(range(total))
+        current_page = getattr(self, 'grid_current_page', 0)
+        start_row = current_page * page_size
+        end_row = min(start_row + page_size, total)
+        return set(range(start_row, end_row))
+
+    def _populate_single_row(self, row, segment):
+        """Install full source/target editor widgets and metadata for one row.
+
+        Extracted from the per-row body of load_segments_to_grid as part of
+        the page-aware grid loading optimisation in v1.10.147 (based on
+        Hans Lenting's Simpelvertaler fork). Called once per row at grid
+        load for rows on the current page, and called lazily by the
+        pagination handler when off-page rows become visible. Tracks which
+        rows have widgets via self._populated_rows.
+        """
+        if not hasattr(self, '_populated_rows'):
+            self._populated_rows = set()
+        # The pre-pass in load_segments_to_grid stashes the computed list
+        # numbers on self; use them here for both eager and lazy population.
+        list_numbers = getattr(self, '_list_numbers', {})
+
+        # Clear any previous cell widgets
+        self.table.removeCellWidget(row, 2)  # Source
+        self.table.removeCellWidget(row, 3)  # Target
+        self.table.removeCellWidget(row, 4)  # Match
+        self.table.removeCellWidget(row, 5)  # Status
+        
+        # ID - Segment number (black in light themes, theme text color in dark themes)
+        id_item = QTableWidgetItem(str(segment.id))
+        id_item.setFlags(id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
+        id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Black for light themes, theme text color for dark themes
+        theme = self.theme_manager.current_theme
+        segment_num_color = "black" if theme.name in ["Light (Default)", "Soft Gray", "Warm Cream", "Sepia", "High Contrast"] else theme.text
+        id_item.setForeground(QColor(segment_num_color))
+        id_item.setBackground(QColor())  # Default background from theme
+        # Smaller font for segment numbers
+        seg_num_font = QFont(self.default_font_family, max(9, self.default_font_size - 1))
+        id_item.setFont(seg_num_font)
+        self.table.setItem(row, 0, id_item)
+        
+        # Type - show segment type based on style and content
+        # Determine type display from style attribute and segment type
+        style = getattr(segment, 'style', 'Normal')
+        
+        # Check for list items - use stored list_type/list_number if available
+        list_type = getattr(segment, 'list_type', '')
+        list_number_stored = getattr(segment, 'list_number', None)
+        
+        # Use pre-calculated list number from our loop above
+        list_number_calculated = list_numbers.get(row, None)
+        
+        # Fallback: detect from source text if list_type not set
+        source_text = segment.source.strip()
+        is_list_item = bool(list_type) or (
+            source_text.startswith('<li-o>') or  # Tagged ordered list item
+            source_text.startswith('<li-b>') or  # Tagged bullet list item
+            source_text.startswith('<li>') or    # Legacy list tag
+            source_text.lstrip().startswith(('• ', '- ', '* ', '· ')) or
+            (len(source_text) > 2 and source_text[0].isdigit() and source_text[1:3] in ('. ', ') '))
+        )
+        
+        # Determine type display
+        if 'Title' in style:
+            type_display = "Title"
+        elif 'Heading 1' in style or 'Heading1' in style:
+            type_display = "H1"
+        elif 'Heading 2' in style or 'Heading2' in style:
+            type_display = "H2"
+        elif 'Heading 3' in style or 'Heading3' in style:
+            type_display = "H3"
+        elif 'Heading 4' in style or 'Heading4' in style:
+            type_display = "H4"
+        elif 'Subtitle' in style:
+            type_display = "Sub"
+        elif is_list_item:
+            # Show list number for numbered lists, bullet for unordered
+            # Check for <li-b> tag first (explicit bullet)
+            if '<li-b>' in source_text:
+                type_display = "•"
+            # Check for bullet patterns in text
+            elif source_text.lstrip().startswith(('• ', '- ', '* ', '· ')):
+                type_display = "•"
+            elif list_type == "bullet":
+                type_display = "•"
+            elif list_number_stored is not None:
+                type_display = f"#{list_number_stored}"
+            elif list_number_calculated is not None:
+                type_display = f"#{list_number_calculated}"
+            elif '<li-o>' in source_text or '<li>' in source_text:
+                # Ordered list - use calculated number or show #?
+                type_display = f"#{list_numbers.get(row, '?')}"
+            elif list_type == "numbered":
+                type_display = "#?"
+            else:
+                # Fallback: check for number at start of text
+                import re
+                num_match = re.match(r'^(\d+)[.)\s]', source_text)
+                if num_match:
+                    type_display = f"#{num_match.group(1)}"
+                elif '<li-o>' in source_text:
+                    # Has <li-o> but no number - numbered list
+                    type_display = "#?"
+                else:
+                    type_display = "li"
+        elif segment.type and segment.type != "para":
+            # Handle # type specially - only show #N for actual numbered items
+            if segment.type == "#":
+                # Plain "#" means continuation text within a list, show as paragraph
+                type_display = "¶"
+            elif segment.type.startswith("#") and len(segment.type) > 1:
+                # Has a number like "#1", "#2" - keep it
+                type_display = segment.type
+            else:
+                type_display = segment.type.upper()
+        else:
+            type_display = "¶"  # Paragraph symbol
+        
+        type_item = QTableWidgetItem(type_display)
+        type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
+        type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Color-code by type for better visibility
+        if type_display in ("H1", "H2", "H3", "H4", "Title"):
+            type_item.setForeground(QColor("#1976D2"))  # Blue for headings (works in both themes)
+        elif type_display.startswith("#") or type_display in ("•", "li"):
+            type_item.setForeground(QColor("#388E3C"))  # Green for list items (works in both themes)
+
+        # Slightly smaller font for type symbols (kept in sync with apply_font_to_grid).
+        # The ¶ paragraph mark renders heavier than the text labels, so shave an
+        # extra point off it specifically.
+        _type_delta = 2 if type_display == "¶" else 1
+        type_font = QFont(self.default_font_family, max(6, self.default_font_size - _type_delta))
+        type_item.setFont(type_font)
+
+        self.table.setItem(row, 1, type_item)
+        
+        # Source - Use read-only QTextEdit widget for easy text selection
+        # Strip outer wrapping tags if setting is enabled (display only, data unchanged)
+        source_for_display = segment.source
+        stripped_source_tag = None
+        if self.hide_outer_wrapping_tags:
+            stripped, stripped_source_tag = strip_outer_wrapping_tags(segment.source)
+            source_for_display = stripped
+        # Apply compact tag shortening if in compact mode
+        # Build tag_map from source so target uses same numbering
+        _compact_tag_map = None
+        if getattr(self, 'tag_view_mode', 'tags') == 'compact':
+            _compact_tag_map = {}
+            source_for_display = compact_tags(source_for_display, _compact_tag_map)
+        # Apply invisible character replacements for display only
+        source_display_text = self.apply_invisible_replacements(source_for_display)
+        source_editor = ReadOnlyGridTextEditor(source_display_text, self.table, row)
+
+        # Initialize empty termbase matches (will be populated lazily on segment selection or by background worker)
+        source_editor.termbase_matches = {}
+
+        # Set font to match grid – both setFont (so editor knows its
+        # logical font) AND apply_grid_font_size (so the size lives in
+        # the widget's own stylesheet and wins over ThemeManager's
+        # app-level QTextEdit rule at non-100% UI scale).
+        font = QFont(self.default_font_family, self.default_font_size)
+        source_editor.setFont(font)
+        source_editor.apply_grid_font_size(self.default_font_size)
+
+        # Set as cell widget (allows easy text selection)
+        self.table.setCellWidget(row, 2, source_editor)
+
+        # Also set a placeholder item for row height calculation
+        source_item = QTableWidgetItem()
+        source_item.setFlags(Qt.ItemFlag.NoItemFlags)  # No interaction
+        self.table.setItem(row, 2, source_item)
+
+        # Target - Use editable QTextEdit widget for easy text selection and editing
+        # Strip outer wrapping tags if enabled (will be auto-restored when saving)
+        target_for_display = segment.target
+        stripped_target_tag = None
+        if self.hide_outer_wrapping_tags:
+            stripped, stripped_target_tag = strip_outer_wrapping_tags(segment.target)
+            target_for_display = stripped
+            # Store stripped tag on segment for restore during save
+            # Use source tag as reference (target should match source structure)
+            segment._stripped_outer_tag = stripped_source_tag or stripped_target_tag
+
+        # Apply compact tag shortening to target (display only – reversed before saving)
+        if _compact_tag_map is not None:
+            target_for_display = compact_tags(target_for_display, _compact_tag_map)
+        # Apply invisible character replacements for display (will be reversed when saving)
+        target_display_text = self.apply_invisible_replacements(target_for_display)
+        target_editor = EditableGridTextEditor(target_display_text, self.table, row, self.table)
+        target_editor.setFont(font)
+        target_editor.apply_grid_font_size(self.default_font_size)
+        # Store stripped tag on editor for auto-restore
+        target_editor._stripped_outer_tag = stripped_source_tag or stripped_target_tag
+        # Store compact tag map for reverse-expanding on save
+        target_editor._compact_tag_map = _compact_tag_map
+
+        # Make locked segments read-only (included for context only)
+        if getattr(segment, 'locked', False):
+            target_editor.setReadOnly(True)
+
+        # Connect text changes to update segment
+        # Use a factory function to create a proper closure that captures the segment ID
+        def make_target_changed_handler(segment_id, editor_widget):
+            # Create debounce timer for expensive operations
+            debounce_timer = None
+            
+            def on_target_text_changed():
+                nonlocal debounce_timer
+                new_text = editor_widget.toPlainText()
+
+                # Reverse compact tag placeholders before saving
+                compact_map = getattr(editor_widget, '_compact_tag_map', None)
+                if compact_map:
+                    new_text = expand_compact_tags(new_text, compact_map)
+
+                # Reverse invisible character replacements before saving
+                new_text = self.reverse_invisible_replacements(new_text)
+
+                # Auto-restore stripped outer wrapping tags if they were hidden
+                stripped_tag = getattr(editor_widget, '_stripped_outer_tag', None)
+                if stripped_tag and self.hide_outer_wrapping_tags:
+                    # Only re-add if the text doesn't already have the tag
+                    if not new_text.strip().startswith(f'<{stripped_tag}'):
+                        new_text = f'<{stripped_tag}>{new_text}</{stripped_tag}>'
+
+                # DEBUG: Log EVERY call to catch the culprit (only in debug mode)
+                if self.debug_mode_enabled:
+                    self.log(f"🔔 textChanged FIRED: segment_id={segment_id}, new_text='{new_text[:20] if new_text else 'EMPTY'}...'")
+
+                # CRITICAL: Ignore spurious textChanged event from Qt's queued document changes
+                # When signals are unblocked after setPlainText(), Qt delivers queued events
+                # This flag prevents false TM saves during grid load/filter/refresh operations
+                if not editor_widget._initial_load_complete:
+                    editor_widget._initial_load_complete = True
+                    if self.debug_mode_enabled:
+                        self.log(f"🔔 textChanged IGNORED (initial load) for segment {segment_id}")
+                    return
+
+                if self._suppress_target_change_handlers:
+                    if self.debug_mode_enabled:
+                        self.log(f"🔔 textChanged SUPPRESSED for segment {segment_id}")
+                    return
+                
+                # CRITICAL: Find segment by ID, not by row index!
+                # Row indices can change, but segment IDs are stable
+                target_segment = next((seg for seg in self.current_project.segments if seg.id == segment_id), None)
+                if not target_segment:
+                    return
+                
+                # Capture old values for undo
+                old_target = target_segment.target
+                old_status = target_segment.status
+
+                # Idempotent guard (v1.10.143): if the fully-cleaned text already
+                # equals what's stored on the segment, this textChanged is a
+                # spurious/programmatic event — Qt delivers queued document-change
+                # events after our own blockSignals()+setPlainText() display
+                # re-render (below) and at grid load — never a genuine user edit,
+                # which always changes the text. Returning here keeps
+                # segment.target reliably in sync on every real keystroke.
+                # (Previously the re-render reset _initial_load_complete=False,
+                # which could make the NEXT genuine edit be dropped, leaving a
+                # stale segment.target → stale export + stale TM until a
+                # re-confirm. That reset has been removed below.)
+                if new_text == old_target:
+                    return
+
+                # Update the target text
+                if self.debug_mode_enabled:
+                    self.log(f"📝 BEFORE update: seg {segment_id} target='{target_segment.target[:30] if target_segment.target else 'EMPTY'}...', status={target_segment.status}, obj_id={id(target_segment)}")
+                target_segment.target = new_text
+
+                # If invisible markers are active, re-apply them so the widget display
+                # stays in sync (e.g. ↵ after Shift+Enter when Show Invisibles is on).
+                # In compact mode, use compact text for display (not the expanded save text)
+                if hasattr(self, 'invisible_display_settings') and any(self.invisible_display_settings.values()):
+                    display_source = new_text
+                    compact_map = getattr(editor_widget, '_compact_tag_map', None)
+                    if compact_map:
+                        display_source = compact_tags(display_source, compact_map)
+                    display_text = self.apply_invisible_replacements(display_source)
+                    if display_text != editor_widget.toPlainText():
+                        # Cursor position in the clean (marker-free) new_text.
+                        # The widget currently shows the old display text; we need to
+                        # map the cursor to its position in new_text first.
+                        cur = editor_widget.textCursor()
+                        old_display_pos = cur.position()
+                        old_display = editor_widget.toPlainText()
+                        # Convert old_display_pos → clean-text position by stripping
+                        # markers that appear before cursor in the OLD display text.
+                        old_before_cursor = old_display[:old_display_pos]
+                        clean_pos = len(self.reverse_invisible_replacements(old_before_cursor))
+                        # Now map clean_pos → new display_text position.
+                        # apply_invisible_replacements inserts markers before each
+                        # invisible char; count them in the display text up to clean_pos.
+                        new_display_before = self.apply_invisible_replacements(display_source[:clean_pos])
+                        new_pos = min(len(new_display_before), len(display_text))
+                        editor_widget.blockSignals(True)
+                        editor_widget.setPlainText(display_text)
+                        cur.setPosition(new_pos)
+                        editor_widget.setTextCursor(cur)
+                        # v1.10.143: do NOT reset _initial_load_complete here.
+                        # The queued spurious textChanged this setPlainText may
+                        # emit is now harmlessly absorbed by the idempotent guard
+                        # above (new_text == segment.target), so we no longer risk
+                        # swallowing the user's next real keystroke.
+                        editor_widget.blockSignals(False)
+
+                # Reset 'confirmed' status to 'draft' when user edits the segment
+                # This prevents auto-saving to TM until user re-confirms the edit
+                new_status = old_status
+                if old_status == 'confirmed' and new_text != old_target:
+                    from PyQt6.QtCore import QTimer as QTimerLocal
+                    new_status = 'draft'
+                    target_segment.status = new_status
+                    if self.debug_mode_enabled:
+                        self.log(f"📝 Status reset: confirmed → draft (segment edited)")
+                    # Refresh the status icon in the grid (debounced to avoid UI lag)
+                    QTimerLocal.singleShot(0, lambda sid=segment_id: self._refresh_segment_status_by_id(sid))
+                
+                if self.debug_mode_enabled:
+                    self.log(f"📝 AFTER update: seg {segment_id} target='{target_segment.target[:30] if target_segment.target else 'EMPTY'}...', status={target_segment.status}, obj_id={id(target_segment)}")
+                
+                # Record undo state with any status change
+                self.record_undo_state(segment_id, old_target, new_text, old_status, new_status)
+                
+                # Mark project as modified
+                self.project_modified = True
+                
+                # DEBOUNCED: Expensive UI/DB operations (only after user stops typing)
+                # Cancel previous timer
+                if debounce_timer:
+                    debounce_timer.stop()
+                
+                # Schedule expensive operations after 500ms of inactivity
+                from PyQt6.QtCore import QTimer
+                debounce_timer = QTimer()
+                debounce_timer.setSingleShot(True)
+                # CRITICAL: Use default parameter to capture new_text BY VALUE, not by reference
+                # This prevents the closure from capturing a variable that changes later
+                debounce_timer.timeout.connect(lambda text=new_text: self._handle_target_text_debounced_by_id(
+                    segment_id, text
+                ))
+                debounce_timer.start(1000)  # 1000ms delay (increased for better responsiveness)
+                    
+            return on_target_text_changed
+        
+        # Set as cell widget FIRST (before connecting signals)
+        self.table.setCellWidget(row, 3, target_editor)
+        
+        # Also set a placeholder item for row height calculation
+        target_item = QTableWidgetItem()
+        target_item.setFlags(Qt.ItemFlag.NoItemFlags)  # No interaction
+        self.table.setItem(row, 3, target_item)
+        
+        # CRITICAL: Connect textChanged AFTER widget is in table and setText is done
+        # This prevents programmatic setText from triggering TM saves during grid reload
+        target_editor.textChanged.connect(make_target_changed_handler(segment.id, target_editor))
+        
+        # DO NOT unblock signals here - they stay blocked until end of load_segments_to_grid
+
+        # Pre-populate status cell item so gridlines render before widget assignment
+        status_placeholder = QTableWidgetItem()
+        status_placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
+        status_placeholder.setBackground(QColor(get_status(segment.status).color))
+        self.table.setItem(row, 4, status_placeholder)
+
+        # Status column (icon + match + comment)
+        self._update_status_cell(row, segment)
+        
+        # Apply alternating row colors to source and target widgets
+        self._apply_row_color(row, source_editor, target_editor)
+
+        # File boundary separator for multi-file projects
+        if getattr(self.current_project, 'is_multifile', False) and row > 0:
+            prev_file_id = getattr(self.current_project.segments[row - 1], 'file_id', None)
+            curr_file_id = getattr(segment, 'file_id', None)
+            if curr_file_id is not None and prev_file_id is not None and curr_file_id != prev_file_id:
+                source_editor.set_file_boundary(True)
+                target_editor.set_file_boundary(True)
+                # Re-apply row color so the border-top takes effect in the stylesheet
+                self._apply_row_color(row, source_editor, target_editor)
+
+        self._populated_rows.add(row)
+
+
     def load_segments_to_grid(self, progress_callback=None):
         """Load segments into the grid with termbase highlighting.
 
@@ -37433,6 +38378,13 @@ class SupervertalerQt(QMainWindow):
 
         try:
             _total_rows = len(self.current_project.segments)
+            # v1.10.147: stash list_numbers on self so the lazy
+            # populate path (pagination) can read them, and decide which
+            # rows get full widgets right now vs cheap placeholders.
+            self._list_numbers = list_numbers
+            self._populated_rows = set()
+            _initial_visible = self._compute_initial_visible_rows(_total_rows)
+
             for row, segment in enumerate(self.current_project.segments):
                 # Yield to the Qt event loop every ~25 rows so the window
                 # repaints and the OS doesn't mark it "Not Responding".
@@ -37442,379 +38394,41 @@ class SupervertalerQt(QMainWindow):
                     except Exception:
                         pass
 
-                # Clear any previous cell widgets
-                self.table.removeCellWidget(row, 2)  # Source
-                self.table.removeCellWidget(row, 3)  # Target
-                self.table.removeCellWidget(row, 4)  # Match
-                self.table.removeCellWidget(row, 5)  # Status
-                
-                # ID - Segment number (black in light themes, theme text color in dark themes)
-                id_item = QTableWidgetItem(str(segment.id))
-                id_item.setFlags(id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
-                id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                # Black for light themes, theme text color for dark themes
-                theme = self.theme_manager.current_theme
-                segment_num_color = "black" if theme.name in ["Light (Default)", "Soft Gray", "Warm Cream", "Sepia", "High Contrast"] else theme.text
-                id_item.setForeground(QColor(segment_num_color))
-                id_item.setBackground(QColor())  # Default background from theme
-                # Smaller font for segment numbers
-                seg_num_font = QFont(self.default_font_family, max(9, self.default_font_size - 1))
-                id_item.setFont(seg_num_font)
-                self.table.setItem(row, 0, id_item)
-                
-                # Type - show segment type based on style and content
-                # Determine type display from style attribute and segment type
-                style = getattr(segment, 'style', 'Normal')
-                
-                # Check for list items - use stored list_type/list_number if available
-                list_type = getattr(segment, 'list_type', '')
-                list_number_stored = getattr(segment, 'list_number', None)
-                
-                # Use pre-calculated list number from our loop above
-                list_number_calculated = list_numbers.get(row, None)
-                
-                # Fallback: detect from source text if list_type not set
-                source_text = segment.source.strip()
-                is_list_item = bool(list_type) or (
-                    source_text.startswith('<li-o>') or  # Tagged ordered list item
-                    source_text.startswith('<li-b>') or  # Tagged bullet list item
-                    source_text.startswith('<li>') or    # Legacy list tag
-                    source_text.lstrip().startswith(('• ', '- ', '* ', '· ')) or
-                    (len(source_text) > 2 and source_text[0].isdigit() and source_text[1:3] in ('. ', ') '))
-                )
-                
-                # Determine type display
-                if 'Title' in style:
-                    type_display = "Title"
-                elif 'Heading 1' in style or 'Heading1' in style:
-                    type_display = "H1"
-                elif 'Heading 2' in style or 'Heading2' in style:
-                    type_display = "H2"
-                elif 'Heading 3' in style or 'Heading3' in style:
-                    type_display = "H3"
-                elif 'Heading 4' in style or 'Heading4' in style:
-                    type_display = "H4"
-                elif 'Subtitle' in style:
-                    type_display = "Sub"
-                elif is_list_item:
-                    # Show list number for numbered lists, bullet for unordered
-                    # Check for <li-b> tag first (explicit bullet)
-                    if '<li-b>' in source_text:
-                        type_display = "•"
-                    # Check for bullet patterns in text
-                    elif source_text.lstrip().startswith(('• ', '- ', '* ', '· ')):
-                        type_display = "•"
-                    elif list_type == "bullet":
-                        type_display = "•"
-                    elif list_number_stored is not None:
-                        type_display = f"#{list_number_stored}"
-                    elif list_number_calculated is not None:
-                        type_display = f"#{list_number_calculated}"
-                    elif '<li-o>' in source_text or '<li>' in source_text:
-                        # Ordered list - use calculated number or show #?
-                        type_display = f"#{list_numbers.get(row, '?')}"
-                    elif list_type == "numbered":
-                        type_display = "#?"
-                    else:
-                        # Fallback: check for number at start of text
-                        import re
-                        num_match = re.match(r'^(\d+)[.)\s]', source_text)
-                        if num_match:
-                            type_display = f"#{num_match.group(1)}"
-                        elif '<li-o>' in source_text:
-                            # Has <li-o> but no number - numbered list
-                            type_display = "#?"
-                        else:
-                            type_display = "li"
-                elif segment.type and segment.type != "para":
-                    # Handle # type specially - only show #N for actual numbered items
-                    if segment.type == "#":
-                        # Plain "#" means continuation text within a list, show as paragraph
-                        type_display = "¶"
-                    elif segment.type.startswith("#") and len(segment.type) > 1:
-                        # Has a number like "#1", "#2" - keep it
-                        type_display = segment.type
-                    else:
-                        type_display = segment.type.upper()
+
+                if row in _initial_visible:
+                    # Eager populate: this row is on the current page.
+                    self._populate_single_row(row, segment)
                 else:
-                    type_display = "¶"  # Paragraph symbol
-                
-                type_item = QTableWidgetItem(type_display)
-                type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
-                type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                # Color-code by type for better visibility
-                if type_display in ("H1", "H2", "H3", "H4", "Title"):
-                    type_item.setForeground(QColor("#1976D2"))  # Blue for headings (works in both themes)
-                elif type_display.startswith("#") or type_display in ("•", "li"):
-                    type_item.setForeground(QColor("#388E3C"))  # Green for list items (works in both themes)
-
-                # Slightly smaller font for type symbols (kept in sync with apply_font_to_grid).
-                # The ¶ paragraph mark renders heavier than the text labels, so shave an
-                # extra point off it specifically.
-                _type_delta = 2 if type_display == "¶" else 1
-                type_font = QFont(self.default_font_family, max(6, self.default_font_size - _type_delta))
-                type_item.setFont(type_font)
-
-                self.table.setItem(row, 1, type_item)
-                
-                # Source - Use read-only QTextEdit widget for easy text selection
-                # Strip outer wrapping tags if setting is enabled (display only, data unchanged)
-                source_for_display = segment.source
-                stripped_source_tag = None
-                if self.hide_outer_wrapping_tags:
-                    stripped, stripped_source_tag = strip_outer_wrapping_tags(segment.source)
-                    source_for_display = stripped
-                # Apply compact tag shortening if in compact mode
-                # Build tag_map from source so target uses same numbering
-                _compact_tag_map = None
-                if getattr(self, 'tag_view_mode', 'tags') == 'compact':
-                    _compact_tag_map = {}
-                    source_for_display = compact_tags(source_for_display, _compact_tag_map)
-                # Apply invisible character replacements for display only
-                source_display_text = self.apply_invisible_replacements(source_for_display)
-                source_editor = ReadOnlyGridTextEditor(source_display_text, self.table, row)
-
-                # Initialize empty termbase matches (will be populated lazily on segment selection or by background worker)
-                source_editor.termbase_matches = {}
-
-                # Set font to match grid – both setFont (so editor knows its
-                # logical font) AND apply_grid_font_size (so the size lives in
-                # the widget's own stylesheet and wins over ThemeManager's
-                # app-level QTextEdit rule at non-100% UI scale).
-                font = QFont(self.default_font_family, self.default_font_size)
-                source_editor.setFont(font)
-                source_editor.apply_grid_font_size(self.default_font_size)
-
-                # Set as cell widget (allows easy text selection)
-                self.table.setCellWidget(row, 2, source_editor)
-
-                # Also set a placeholder item for row height calculation
-                source_item = QTableWidgetItem()
-                source_item.setFlags(Qt.ItemFlag.NoItemFlags)  # No interaction
-                self.table.setItem(row, 2, source_item)
-
-                # Target - Use editable QTextEdit widget for easy text selection and editing
-                # Strip outer wrapping tags if enabled (will be auto-restored when saving)
-                target_for_display = segment.target
-                stripped_target_tag = None
-                if self.hide_outer_wrapping_tags:
-                    stripped, stripped_target_tag = strip_outer_wrapping_tags(segment.target)
-                    target_for_display = stripped
-                    # Store stripped tag on segment for restore during save
-                    # Use source tag as reference (target should match source structure)
-                    segment._stripped_outer_tag = stripped_source_tag or stripped_target_tag
-
-                # Apply compact tag shortening to target (display only – reversed before saving)
-                if _compact_tag_map is not None:
-                    target_for_display = compact_tags(target_for_display, _compact_tag_map)
-                # Apply invisible character replacements for display (will be reversed when saving)
-                target_display_text = self.apply_invisible_replacements(target_for_display)
-                target_editor = EditableGridTextEditor(target_display_text, self.table, row, self.table)
-                target_editor.setFont(font)
-                target_editor.apply_grid_font_size(self.default_font_size)
-                # Store stripped tag on editor for auto-restore
-                target_editor._stripped_outer_tag = stripped_source_tag or stripped_target_tag
-                # Store compact tag map for reverse-expanding on save
-                target_editor._compact_tag_map = _compact_tag_map
-
-                # Make locked segments read-only (included for context only)
-                if getattr(segment, 'locked', False):
-                    target_editor.setReadOnly(True)
-
-                # Connect text changes to update segment
-                # Use a factory function to create a proper closure that captures the segment ID
-                def make_target_changed_handler(segment_id, editor_widget):
-                    # Create debounce timer for expensive operations
-                    debounce_timer = None
-                    
-                    def on_target_text_changed():
-                        nonlocal debounce_timer
-                        new_text = editor_widget.toPlainText()
-
-                        # Reverse compact tag placeholders before saving
-                        compact_map = getattr(editor_widget, '_compact_tag_map', None)
-                        if compact_map:
-                            new_text = expand_compact_tags(new_text, compact_map)
-
-                        # Reverse invisible character replacements before saving
-                        new_text = self.reverse_invisible_replacements(new_text)
-
-                        # Auto-restore stripped outer wrapping tags if they were hidden
-                        stripped_tag = getattr(editor_widget, '_stripped_outer_tag', None)
-                        if stripped_tag and self.hide_outer_wrapping_tags:
-                            # Only re-add if the text doesn't already have the tag
-                            if not new_text.strip().startswith(f'<{stripped_tag}'):
-                                new_text = f'<{stripped_tag}>{new_text}</{stripped_tag}>'
-
-                        # DEBUG: Log EVERY call to catch the culprit (only in debug mode)
-                        if self.debug_mode_enabled:
-                            self.log(f"🔔 textChanged FIRED: segment_id={segment_id}, new_text='{new_text[:20] if new_text else 'EMPTY'}...'")
-
-                        # CRITICAL: Ignore spurious textChanged event from Qt's queued document changes
-                        # When signals are unblocked after setPlainText(), Qt delivers queued events
-                        # This flag prevents false TM saves during grid load/filter/refresh operations
-                        if not editor_widget._initial_load_complete:
-                            editor_widget._initial_load_complete = True
-                            if self.debug_mode_enabled:
-                                self.log(f"🔔 textChanged IGNORED (initial load) for segment {segment_id}")
-                            return
-
-                        if self._suppress_target_change_handlers:
-                            if self.debug_mode_enabled:
-                                self.log(f"🔔 textChanged SUPPRESSED for segment {segment_id}")
-                            return
-                        
-                        # CRITICAL: Find segment by ID, not by row index!
-                        # Row indices can change, but segment IDs are stable
-                        target_segment = next((seg for seg in self.current_project.segments if seg.id == segment_id), None)
-                        if not target_segment:
-                            return
-                        
-                        # Capture old values for undo
-                        old_target = target_segment.target
-                        old_status = target_segment.status
-
-                        # Idempotent guard (v1.10.143): if the fully-cleaned text already
-                        # equals what's stored on the segment, this textChanged is a
-                        # spurious/programmatic event — Qt delivers queued document-change
-                        # events after our own blockSignals()+setPlainText() display
-                        # re-render (below) and at grid load — never a genuine user edit,
-                        # which always changes the text. Returning here keeps
-                        # segment.target reliably in sync on every real keystroke.
-                        # (Previously the re-render reset _initial_load_complete=False,
-                        # which could make the NEXT genuine edit be dropped, leaving a
-                        # stale segment.target → stale export + stale TM until a
-                        # re-confirm. That reset has been removed below.)
-                        if new_text == old_target:
-                            return
-
-                        # Update the target text
-                        if self.debug_mode_enabled:
-                            self.log(f"📝 BEFORE update: seg {segment_id} target='{target_segment.target[:30] if target_segment.target else 'EMPTY'}...', status={target_segment.status}, obj_id={id(target_segment)}")
-                        target_segment.target = new_text
-
-                        # If invisible markers are active, re-apply them so the widget display
-                        # stays in sync (e.g. ↵ after Shift+Enter when Show Invisibles is on).
-                        # In compact mode, use compact text for display (not the expanded save text)
-                        if hasattr(self, 'invisible_display_settings') and any(self.invisible_display_settings.values()):
-                            display_source = new_text
-                            compact_map = getattr(editor_widget, '_compact_tag_map', None)
-                            if compact_map:
-                                display_source = compact_tags(display_source, compact_map)
-                            display_text = self.apply_invisible_replacements(display_source)
-                            if display_text != editor_widget.toPlainText():
-                                # Cursor position in the clean (marker-free) new_text.
-                                # The widget currently shows the old display text; we need to
-                                # map the cursor to its position in new_text first.
-                                cur = editor_widget.textCursor()
-                                old_display_pos = cur.position()
-                                old_display = editor_widget.toPlainText()
-                                # Convert old_display_pos → clean-text position by stripping
-                                # markers that appear before cursor in the OLD display text.
-                                old_before_cursor = old_display[:old_display_pos]
-                                clean_pos = len(self.reverse_invisible_replacements(old_before_cursor))
-                                # Now map clean_pos → new display_text position.
-                                # apply_invisible_replacements inserts markers before each
-                                # invisible char; count them in the display text up to clean_pos.
-                                new_display_before = self.apply_invisible_replacements(display_source[:clean_pos])
-                                new_pos = min(len(new_display_before), len(display_text))
-                                editor_widget.blockSignals(True)
-                                editor_widget.setPlainText(display_text)
-                                cur.setPosition(new_pos)
-                                editor_widget.setTextCursor(cur)
-                                # v1.10.143: do NOT reset _initial_load_complete here.
-                                # The queued spurious textChanged this setPlainText may
-                                # emit is now harmlessly absorbed by the idempotent guard
-                                # above (new_text == segment.target), so we no longer risk
-                                # swallowing the user's next real keystroke.
-                                editor_widget.blockSignals(False)
-
-                        # Reset 'confirmed' status to 'draft' when user edits the segment
-                        # This prevents auto-saving to TM until user re-confirms the edit
-                        new_status = old_status
-                        if old_status == 'confirmed' and new_text != old_target:
-                            from PyQt6.QtCore import QTimer as QTimerLocal
-                            new_status = 'draft'
-                            target_segment.status = new_status
-                            if self.debug_mode_enabled:
-                                self.log(f"📝 Status reset: confirmed → draft (segment edited)")
-                            # Refresh the status icon in the grid (debounced to avoid UI lag)
-                            QTimerLocal.singleShot(0, lambda sid=segment_id: self._refresh_segment_status_by_id(sid))
-                        
-                        if self.debug_mode_enabled:
-                            self.log(f"📝 AFTER update: seg {segment_id} target='{target_segment.target[:30] if target_segment.target else 'EMPTY'}...', status={target_segment.status}, obj_id={id(target_segment)}")
-                        
-                        # Record undo state with any status change
-                        self.record_undo_state(segment_id, old_target, new_text, old_status, new_status)
-                        
-                        # Mark project as modified
-                        self.project_modified = True
-                        
-                        # DEBOUNCED: Expensive UI/DB operations (only after user stops typing)
-                        # Cancel previous timer
-                        if debounce_timer:
-                            debounce_timer.stop()
-                        
-                        # Schedule expensive operations after 500ms of inactivity
-                        from PyQt6.QtCore import QTimer
-                        debounce_timer = QTimer()
-                        debounce_timer.setSingleShot(True)
-                        # CRITICAL: Use default parameter to capture new_text BY VALUE, not by reference
-                        # This prevents the closure from capturing a variable that changes later
-                        debounce_timer.timeout.connect(lambda text=new_text: self._handle_target_text_debounced_by_id(
-                            segment_id, text
-                        ))
-                        debounce_timer.start(1000)  # 1000ms delay (increased for better responsiveness)
-                            
-                    return on_target_text_changed
-                
-                # Set as cell widget FIRST (before connecting signals)
-                self.table.setCellWidget(row, 3, target_editor)
-                
-                # Also set a placeholder item for row height calculation
-                target_item = QTableWidgetItem()
-                target_item.setFlags(Qt.ItemFlag.NoItemFlags)  # No interaction
-                self.table.setItem(row, 3, target_item)
-                
-                # CRITICAL: Connect textChanged AFTER widget is in table and setText is done
-                # This prevents programmatic setText from triggering TM saves during grid reload
-                target_editor.textChanged.connect(make_target_changed_handler(segment.id, target_editor))
-                
-                # DO NOT unblock signals here - they stay blocked until end of load_segments_to_grid
-
-                # Pre-populate status cell item so gridlines render before widget assignment
-                status_placeholder = QTableWidgetItem()
-                status_placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
-                status_placeholder.setBackground(QColor(get_status(segment.status).color))
-                self.table.setItem(row, 4, status_placeholder)
-
-                # Status column (icon + match + comment)
-                self._update_status_cell(row, segment)
-                
-                # Apply alternating row colors to source and target widgets
-                self._apply_row_color(row, source_editor, target_editor)
-
-                # File boundary separator for multi-file projects
-                if getattr(self.current_project, 'is_multifile', False) and row > 0:
-                    prev_file_id = getattr(self.current_project.segments[row - 1], 'file_id', None)
-                    curr_file_id = getattr(segment, 'file_id', None)
-                    if curr_file_id is not None and prev_file_id is not None and curr_file_id != prev_file_id:
-                        source_editor.set_file_boundary(True)
-                        target_editor.set_file_boundary(True)
-                        # Re-apply row color so the border-top takes effect in the stylesheet
-                        self._apply_row_color(row, source_editor, target_editor)
+                    # Cheap placeholder for off-page rows; pagination
+                    # will lazy-populate full widgets on navigation.
+                    self.table.removeCellWidget(row, 2)
+                    self.table.removeCellWidget(row, 3)
+                    self.table.removeCellWidget(row, 4)
+                    self.table.removeCellWidget(row, 5)
+                    _id_item = QTableWidgetItem(str(segment.id))
+                    _id_item.setFlags(_id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    _id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(row, 0, _id_item)
+                    _status_ph = QTableWidgetItem()
+                    _status_ph.setFlags(Qt.ItemFlag.NoItemFlags)
+                    _status_ph.setBackground(QColor(get_status(segment.status).color))
+                    self.table.setItem(row, 4, _status_ph)
 
 
-            # Apply current font
-            self.apply_font_to_grid()
-            
+            # v1.10.148: per-row fonts are already set by _populate_single_row
+            # at construction time, so the per-row pass of apply_font_to_grid
+            # is pure duplicated work here (~9 s on a 479-segment SDLXLIFF).
+            # Pass skip_per_row=True to do only the table-wide font/header/
+            # column-width tweaks. The full pass still runs when the user
+            # changes the font from the menu.
+            self.apply_font_to_grid(skip_per_row=True)
+
             # Auto-resize rows
             self.auto_resize_rows()
             self._enforce_status_row_heights()
-            
+
             self.log(f"✓ Loaded {len(self.current_project.segments)} segments to grid")
-            
+
             # Apply pagination - show only segments for current page
             self._apply_pagination_to_grid()
 
@@ -40153,8 +40767,18 @@ class SupervertalerQt(QMainWindow):
         self._column_resize_timer.timeout.connect(self._resize_visible_rows)
         self._column_resize_timer.start(150)  # 150ms debounce
 
-    def apply_font_to_grid(self):
-        """Apply selected font to all grid cells"""
+    def apply_font_to_grid(self, skip_per_row: bool = False):
+        """Apply selected font to all grid cells.
+
+        Args:
+            skip_per_row: When True, only the table-wide setup (table font,
+                header font, segment-column width) runs; the per-row
+                iteration that re-applies fonts to every QTextEdit and
+                Type-column item is skipped. v1.10.148: used from
+                load_segments_to_grid, where _populate_single_row has
+                already set per-row fonts at construction time — re-doing
+                that work added ~9 s on a 479-segment file.
+        """
         font = QFont(self.default_font_family, self.default_font_size)
 
         self.table.setFont(font)
@@ -40162,6 +40786,12 @@ class SupervertalerQt(QMainWindow):
         # Also update header font - same size as grid content, normal weight
         header_font = QFont(self.default_font_family, self.default_font_size, QFont.Weight.Normal)
         self.table.horizontalHeader().setFont(header_font)
+
+        if skip_per_row:
+            # Fast path for initial load: fonts on individual cells/widgets
+            # were already set by _populate_single_row at construction time.
+            self._update_segment_column_width()
+            return
 
         # Type column (1) uses its own slightly smaller font – must match the
         # formula used at grid-creation time so zoom scales ¶ along with the text.
@@ -44845,11 +45475,20 @@ class SupervertalerQt(QMainWindow):
 
         try:
             # v1.9.182: Use in-memory index for instant lookup (1000x faster)
-            # The index is built on project load by _build_termbase_index()
+            # The index is built on project load by _build_termbase_index().
+            # v1.10.153: distinguish "index built but empty" (no active
+            # terms — return {} instantly) from "index never built"
+            # (rare — fall through to per-word SQL queries below). The
+            # latter path is ~2-34 s on a 45-termbase database, so we
+            # really want to avoid hitting it just because the user
+            # deactivated all termbases for this project.
             with self.termbase_index_lock:
-                has_index = bool(self.termbase_index)
+                index_built = getattr(self, '_termbase_index_built', False)
+                has_terms = bool(self.termbase_index)
 
-            if has_index:
+            if index_built:
+                if not has_terms:
+                    return {}
                 # Fast path: use pre-built in-memory index, then deduplicate
                 matches = self._search_termbase_in_memory(source_text)
                 return self._deduplicate_termbase_matches(matches)
