@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.159 (May 23, 2026)
+**Current Version:** v1.10.160 (May 23, 2026)
+
+
+## v1.10.160 – May 23, 2026
+
+### Fixed
+
+- **"View System Prompt" dialog now shows the prompt directly in a resizable window, instead of hiding it behind a tiny "Show Details" pane.** The dialog was a `QMessageBox.setDetailedText`, which uses a fixed-size collapsible scroll box that can't be enlarged — so a multi-page system prompt was practically unreadable. Replaced with a proper `QDialog` containing a full-size read-only `QTextEdit` viewer that opens at 820 × 600 by default and can be freely resized.
+- **"Edit in Settings" button in that dialog now actually opens Settings — not the SuperLookup tab.** The button hard-coded `main_tabs.setCurrentIndex(4)` with a comment claiming that was Settings. Index 4 was Settings *when the code was written*, but SuperLookup, Clipboard Manager, and Voice have since been inserted between AI and Settings, shifting Settings to index 7 — and putting SuperLookup at index 4 instead. The navigation now looks up the Settings tab by label, so it can't silently break again when the tab list is reordered. The System Prompts sub-tab navigation was already label-based; left as-is.
 
 
 ## v1.10.159 – May 23, 2026

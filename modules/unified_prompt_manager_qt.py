@@ -3354,31 +3354,84 @@ class UnifiedPromptManagerQt:
         dialog.exec()
     
     def _view_current_system_template(self):
-        """View the current system prompt with option to edit in Settings"""
-        template = self.get_system_template(self.current_mode)
+        """View the current system prompt with option to edit in Settings.
 
-        dialog = QMessageBox(self.main_widget)
-        dialog.setWindowTitle(f"System Prompt: {self._get_mode_display_name()}")
-        dialog.setText(f"Current system prompt for {self._get_mode_display_name()} mode:")
-        dialog.setDetailedText(template)
-        dialog.setIcon(QMessageBox.Icon.Information)
-        # Add Edit button alongside OK
-        edit_btn = dialog.addButton("Edit in Settings", QMessageBox.ButtonRole.ActionRole)
-        dialog.addButton(QMessageBox.StandardButton.Ok)
+        v1.10.160: replaced QMessageBox.setDetailedText with a proper
+        resizable QDialog. QMessageBox's detail pane is a fixed-size
+        widget that can't be enlarged, so a multi-page system prompt was
+        unreadable inside a tiny scroll box. The new dialog opens at a
+        sensible default size, can be resized freely, and shows the
+        prompt content immediately rather than hidden behind a
+        "Show Details" button.
+        """
+        template = self.get_system_template(self.current_mode)
+        mode_name = self._get_mode_display_name()
+
+        dialog = QDialog(self.main_widget)
+        dialog.setWindowTitle(f"System Prompt: {mode_name}")
+        dialog.resize(820, 600)
+
+        v = QVBoxLayout(dialog)
+
+        header = QLabel(
+            f"<b>Current system prompt for {mode_name} mode.</b><br>"
+            "Read-only here — use <b>Edit in Settings</b> below to change it."
+        )
+        header.setWordWrap(True)
+        v.addWidget(header)
+
+        viewer = QTextEdit()
+        viewer.setReadOnly(True)
+        viewer.setFont(QFont("Consolas", 9))
+        viewer.setPlainText(template)
+        v.addWidget(viewer, 1)
+
+        buttons = QDialogButtonBox()
+        edit_btn = buttons.addButton("Edit in Settings", QDialogButtonBox.ButtonRole.ActionRole)
+        close_btn = buttons.addButton(QDialogButtonBox.StandardButton.Close)
+        close_btn.setDefault(True)
+        v.addWidget(buttons)
+
+        # Wire up — Close just closes the dialog; Edit closes it and
+        # navigates to the Settings → System Prompts tab.
+        close_btn.clicked.connect(dialog.accept)
+        edit_btn.clicked.connect(lambda: (dialog.accept(),
+                                          self._open_system_prompts_settings()))
+
         dialog.exec()
 
-        if dialog.clickedButton() == edit_btn:
-            self._open_system_prompts_settings()
-    
     def _open_system_prompts_settings(self):
-        """Open system prompts in settings"""
+        """Open the Settings tab and switch to the System Prompts sub-tab.
+
+        v1.10.160: replaced the hard-coded ``main_tabs.setCurrentIndex(4)``
+        with a label-based lookup. Index 4 *was* Settings when this code
+        was written, but the top-level tab list has since had SuperLookup,
+        Clipboard Manager, and Voice inserted between AI and Settings.
+        Settings is now at index 7 on the current build, but any future
+        insertion would silently re-break the same way — so we look it
+        up by label and stop hard-coding the index.
+        """
         try:
-            # Navigate to Settings tab if main app has the method
-            # Use parent_app (not app)
             if hasattr(self.parent_app, 'main_tabs') and hasattr(self.parent_app, 'settings_tabs'):
-                # Navigate to Settings tab (index 4: Grid=0, Resources=1, AI=2, Tools=3, Settings=4)
-                self.parent_app.main_tabs.setCurrentIndex(4)
-                # Find System Prompts sub-tab by label text (robust against index changes)
+                # 1. Locate the top-level Settings tab by label, not index.
+                settings_idx = -1
+                main_tabs = self.parent_app.main_tabs
+                for i in range(main_tabs.count()):
+                    if "Settings" in main_tabs.tabText(i):
+                        settings_idx = i
+                        break
+                if settings_idx < 0:
+                    QMessageBox.warning(
+                        self.main_widget,
+                        "Navigation Issue",
+                        "Could not find the top-level Settings tab.\n\n"
+                        "Please open Settings manually."
+                    )
+                    return
+                main_tabs.setCurrentIndex(settings_idx)
+
+                # 2. Switch to the System Prompts sub-tab (already
+                #    label-based here; just kept consistent).
                 target_index = -1
                 for i in range(self.parent_app.settings_tabs.count()):
                     tab_text = self.parent_app.settings_tabs.tabText(i)
@@ -3388,12 +3441,11 @@ class UnifiedPromptManagerQt:
                 if target_index >= 0:
                     self.parent_app.settings_tabs.setCurrentIndex(target_index)
                 else:
-                    print(f"[WARNING] Could not find System Prompts tab in settings_tabs")
                     QMessageBox.warning(
                         self.main_widget,
                         "Navigation Issue",
-                        "Could not find the System Prompts tab.\n\n"
-                        "Please manually navigate to Settings → System Prompts."
+                        "Found the Settings tab but not the System Prompts sub-tab.\n\n"
+                        "Please switch to it manually."
                     )
             else:
                 # Fallback message
