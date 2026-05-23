@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.155 (May 23, 2026)
+**Current Version:** v1.10.156 (May 23, 2026)
+
+
+## v1.10.156 – May 23, 2026
+
+### Changed
+
+- **AutoPrompt-generated prompts now save to a folder called "AutoPrompt", not "Supervertaler Sidekick Prompts".** Sidekick was retired in v1.10.4 and was never the right home for these prompts — they're used in batch translation and as the project's Custom Prompt, not in an assistant-style chat. New prompts created by the ✨ AutoPrompt button go to the new folder; existing prompts in the old folder stay where they are (no migration, so nothing breaks).
+
+### Fixed
+
+- **The Custom Prompt label updates immediately after running AutoPrompt.** Previously the AutoPrompt path set the library's in-memory active-prompt state (which is why the log said `✓ Set custom prompt: …`) but didn't refresh the QT-side "Custom Prompt:" label, the prompt editor pane, or the in-library ⭐ marker — so the UI still showed `[None selected]` even though things were technically wired up underneath. The AutoPrompt completion path now drives the same UI-aware activation method that's used everywhere else, so the label, editor, and marker all update at once.
+- **AutoPrompt activations now survive a restart.** The active-prompt path was already being saved to the `.svproj` (in `prompt_settings.active_primary_prompt_path`), but only on auto-backup — default every 5 minutes. Restarting Supervertaler before the next auto-save silently lost the AutoPrompt activation, so users came back to `[None selected]` on the Prompt Manager tab and had to re-activate manually. The .svproj is now saved immediately when AutoPrompt activates, so the activation persists even if you restart seconds later.
+- **Renaming the active Custom Prompt no longer silently breaks restoration on next project open.** The load code checked `if primary_path in library.prompts:` exactly, so a renamed-or-moved prompt's stored path no longer existed and the load fell through silently with no warning. There's now a basename-match fallback that restores the activation if exactly one prompt in the library has the same filename stem, plus loud log entries when restoration is ambiguous or impossible, so users aren't left wondering why the Custom Prompt slot is empty after restart.
 
 
 ## v1.10.155 – May 23, 2026

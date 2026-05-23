@@ -5374,11 +5374,15 @@ IMPORTANT:
             prompt_name = f"{detected_domain.title()} Translation {source_lang}-{target_lang}"
             description = f"AI-generated {detected_domain} domain prompt with anti-truncation controls and self-verification"
 
-        # Use the ai_action_system to create the prompt (reuses existing save/activate logic)
+        # Use the ai_action_system to create the prompt (reuses existing save/activate logic).
+        # v1.10.156: folder renamed from "Supervertaler Sidekick Prompts" — Sidekick
+        # was retired in v1.10.4 and AutoPrompt-generated prompts no longer belong
+        # in a folder named after it. Prompts created before this version stay in
+        # the old folder (no migration); new ones go to "AutoPrompt".
         params = {
             'name': prompt_name,
             'content': content,
-            'folder': 'Supervertaler Sidekick Prompts',
+            'folder': 'AutoPrompt',
             'description': description,
             'activate': True,
         }
@@ -5393,10 +5397,34 @@ IMPORTANT:
                     self._refresh_tree()
                 if hasattr(self, '_update_active_prompt_display'):
                     self._update_active_prompt_display()
+                # v1.10.156: explicitly drive the UI-aware activate path so the
+                # "Custom Prompt:" label, editor pane, and the in-library
+                # ⭐ marker actually refresh. _action_create_prompt already
+                # called library.set_primary_prompt() (because activate=True
+                # in params), but that only updated in-memory library state —
+                # it didn't touch the QT-side UI elements. Calling
+                # _set_primary_prompt() here is idempotent on the library
+                # side (set to the same path) but pulls the UI into sync.
+                new_path = result.get('path')
+                if new_path and new_path in self.library.prompts:
+                    self._set_primary_prompt(new_path)
+                # v1.10.156: persist the new active-prompt selection to the
+                # .svproj NOW, not on the next auto-save. Without this, a
+                # restart inside the auto-save window (default 5 min)
+                # silently lost the AutoPrompt activation — exactly what
+                # users reported when they saw "[None selected]" after
+                # relaunching minutes after running AutoPrompt.
+                try:
+                    if (hasattr(self.parent_app, 'save_project')
+                            and getattr(self.parent_app, 'current_project', None)
+                            and getattr(self.parent_app, 'project_file_path', None)):
+                        self.parent_app.save_project()
+                except Exception as save_err:
+                    self.log_message(f"[AI Assistant] ⚠ Could not save project after AutoPrompt: {save_err}")
                 # Navigate the user to the newly-created prompt so they can
                 # immediately see and edit it (rather than leaving them in
                 # the chat view with just a confirmation message).
-                self._navigate_to_created_prompt(result.get('path'))
+                self._navigate_to_created_prompt(new_path)
             else:
                 self._add_chat_message("system", f"⚠ Failed to create prompt: {result.get('message', 'Unknown error')}")
         except Exception as e:

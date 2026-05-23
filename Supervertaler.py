@@ -28229,9 +28229,33 @@ class SupervertalerQt(QMainWindow):
                             else:
                                 self.log(f"⚠ External prompt file not found: {external_file_path}")
                         elif primary_path in library.prompts:
-                            # Regular library prompt
+                            # Regular library prompt — exact path match.
                             self.prompt_manager_qt._set_primary_prompt(primary_path)
                             self.log(f"✓ Restored primary prompt: {primary_path}")
+                        else:
+                            # v1.10.156: stored path no longer exists in the
+                            # library. Most common cause: the user renamed or
+                            # moved the prompt after activating it, and the
+                            # next .svproj save captured the new path (good)
+                            # but the OLD .svproj on disk still has the
+                            # stored one. Try a basename-match fallback so a
+                            # single rename doesn't lose the activation, and
+                            # log loudly either way so the user knows.
+                            stem = Path(primary_path).stem.lower()
+                            candidates = [p for p in library.prompts
+                                          if Path(p).stem.lower() == stem]
+                            if len(candidates) == 1:
+                                fallback = candidates[0]
+                                self.prompt_manager_qt._set_primary_prompt(fallback)
+                                self.log(f"⚠ Primary prompt path '{primary_path}' no longer exists; "
+                                         f"restored by name match to '{fallback}'.")
+                            elif len(candidates) > 1:
+                                self.log(f"⚠ Primary prompt path '{primary_path}' no longer exists; "
+                                         f"name-match found {len(candidates)} candidates — too ambiguous "
+                                         f"to auto-select. Set Custom Prompt manually.")
+                            else:
+                                self.log(f"⚠ Primary prompt path '{primary_path}' no longer exists in the "
+                                         f"library (renamed, moved, or deleted). Set Custom Prompt manually.")
                     
                     # Restore attached prompts
                     attached_paths = prompt_settings.get('attached_prompt_paths', [])
