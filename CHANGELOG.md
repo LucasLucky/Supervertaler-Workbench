@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.161 (May 23, 2026)
+**Current Version:** v1.10.162 (May 23, 2026)
+
+
+## v1.10.162 – May 23, 2026
+
+### Changed
+
+- **Prompt Manager left panel restructured into five clearly-numbered, visually-distinct sections.** Follow-up to v1.10.159's three-section split; addresses several rough edges that became obvious once the underlying structure was clean enough to see them:
+    - **Section 4 — Image Context.** Image Context used to hover loose under sections 1-3, visually orphaned from the prompt stack it actually belongs to. It's now its own numbered section with the same styled-title treatment as the rest, so the four context layers (System / Custom / Attached / Images) read as one consistent stack.
+    - **Section 5 — Prompt Library.** The library buttons toolbar (+ New / 📁 New Folder / etc.) and the library tree are now wrapped in a single styled section with the same numbered heading treatment. Buttons sit inside the section, below the heading, instead of floating above a bare tree. The tree's own redundant inner "Prompt Library" header is hidden — the section title carries that label now.
+    - **✨ AutoPrompt button moved into Section 2 (Custom Prompt)**, with a short caption explaining what it does. It used to live in the library buttons toolbar where it was easy to miss — but AutoPrompt's whole purpose is to populate the Custom Prompt slot, so it belongs in the section it fills, with prominent styling (bold, blue).
+    - **Clear All Attachments moved into Section 3 (Attached Prompts).** It's an action that only affects that section, so a separate utility row at the bottom was confusing.
+    - **Preview Combined is the only thing at the very bottom of the left panel** — one button, centred, with no other controls competing for it. There's now exactly one place to find "what will actually be sent to the AI".
+- **All five sections share the same coloured-title strip styling** (light-blue background, navy text, rounded corners), so the numbering reads as a real visual hierarchy rather than five identical-looking group boxes.
+- All underlying widget references (`primary_prompt_label`, `attached_list_widget`, `image_context_label`, `tree_widget`) keep the same names, so nothing else in the codebase is affected.
 
 
 ## v1.10.161 – May 23, 2026

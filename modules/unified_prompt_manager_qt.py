@@ -1182,19 +1182,38 @@ class UnifiedPromptManagerQt:
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
         
-        # Active Configuration Panel (top of left)
+        # Active Configuration: sections 1-4 (System / Custom / Attached
+        # / Image Context) – all styled numbered group boxes from
+        # _create_active_config_panel.
         config_group = self._create_active_config_panel()
         config_group.setMinimumHeight(150)
         left_layout.addWidget(config_group)
-        
-        # Library Action Buttons (below Active Config, above tree)
-        library_buttons = self._create_library_buttons()
-        left_layout.addWidget(library_buttons)
-        
-        # Prompt Library Tree (bottom of left)
-        tree_panel = self._create_library_tree_panel()
-        tree_panel.setMinimumHeight(200)
-        left_layout.addWidget(tree_panel, 1)  # stretch factor 1 - tree expands
+
+        # Section 5: Prompt Library (styled group containing button row
+        # + tree). v1.10.162 merged the previously-separate library
+        # buttons toolbar and library tree panel into one numbered
+        # section so the heading carries the same visual weight as 1-4.
+        library_section = self._create_library_section()
+        library_section.setMinimumHeight(220)
+        left_layout.addWidget(library_section, 1)  # stretch — fills
+
+        # Preview Combined: bottom of the left panel, on its own row, so
+        # there's exactly one place to find "what will actually be sent
+        # to the AI". v1.10.162 moved it here from the old utility row
+        # that sat awkwardly between the prompt sections and the
+        # library.
+        preview_row = QHBoxLayout()
+        preview_row.setContentsMargins(0, 4, 0, 0)
+        preview_row.addStretch()
+        btn_preview = QPushButton("👁 Preview Combined")
+        btn_preview.setToolTip(
+            "Preview the complete assembled prompt that will be sent to the AI\n"
+            "(System Prompt + Custom Prompt + Attached Prompts + your text)"
+        )
+        btn_preview.clicked.connect(self._preview_combined_prompt)
+        preview_row.addWidget(btn_preview)
+        preview_row.addStretch()
+        left_layout.addLayout(preview_row)
         
         left_panel.setMinimumWidth(300)
         main_splitter.addWidget(left_panel)
@@ -1218,12 +1237,19 @@ class UnifiedPromptManagerQt:
         return tab
     
     def _create_library_buttons(self) -> QWidget:
-        """Create action buttons for Prompt Library (between Active Config and tree)"""
+        """Create the action-button row for the Prompt Library section.
+
+        v1.10.162: AutoPrompt moved out of here into Section 2 (Custom
+        Prompt) where it directly populates the slot it fills. The
+        remaining buttons stay here as library-level actions (creating /
+        finding / reordering library entries) rather than actions that
+        affect the current project's active prompt stack.
+        """
         container = QWidget()
         btn_layout = QHBoxLayout(container)
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.setSpacing(5)
-        
+
         btn_new = QPushButton("+ New")
         btn_new.clicked.connect(self._new_prompt)
         btn_layout.addWidget(btn_new)
@@ -1232,26 +1258,11 @@ class UnifiedPromptManagerQt:
         btn_folder.clicked.connect(self._new_folder)
         btn_layout.addWidget(btn_folder)
 
-        # AutoPrompt: create a domain-specific prompt automatically by analysing
-        # the current document. Lives next to "+ New" and "📁 New Folder"
-        # because both create a new prompt entry — manual vs auto-generated.
-        # Was previously a misleading heading-styled button at the top of the
-        # AI chat view; moved here so the generated prompt appears in-place
-        # and the user can immediately see and edit it.
-        btn_auto = QPushButton("✨ AutoPrompt")
-        btn_auto.setToolTip(
-            "Analyse the current document (domain, tone, terminology) and "
-            "auto-generate a tailored translation prompt."
-        )
-        btn_auto.setStyleSheet("font-weight: bold; color: #1976D2;")
-        btn_auto.clicked.connect(self._analyze_and_generate)
-        btn_layout.addWidget(btn_auto)
-
         btn_settings = QPushButton("⚙️ System Prompts")
         btn_settings.clicked.connect(self._open_system_prompts_settings)
         btn_settings.setToolTip("Configure mode-specific system prompts (Settings)")
         btn_layout.addWidget(btn_settings)
-        
+
         btn_refresh = QPushButton("🔄 Refresh")
         btn_refresh.clicked.connect(self._refresh_library)
         btn_layout.addWidget(btn_refresh)
@@ -1265,10 +1276,31 @@ class UnifiedPromptManagerQt:
         btn_expand_all.setToolTip("Expand all folders in the Prompt Library tree")
         btn_expand_all.clicked.connect(self._expand_prompt_library_tree)
         btn_layout.addWidget(btn_expand_all)
-        
+
         btn_layout.addStretch()
-        
+
         return container
+
+    def _create_library_section(self) -> QGroupBox:
+        """v1.10.162: wrap the library button row + tree in a numbered
+        styled section so it reads as 'Section 5' in the prompt-stack
+        sequence rather than as a loose toolbar floating above a bare
+        tree. Buttons sit INSIDE the section, below the styled heading.
+        """
+        section = self._styled_section_group(
+            "5. Prompt Library — saved prompts you can pick from"
+        )
+        v = QVBoxLayout()
+        v.setContentsMargins(6, 4, 6, 4)
+        v.setSpacing(6)
+
+        v.addWidget(self._create_library_buttons())
+
+        tree_panel = self._create_library_tree_panel()
+        v.addWidget(tree_panel, 1)
+
+        section.setLayout(v)
+        return section
     
     def _create_ai_assistant_tab(self) -> QWidget:
         """Create the AI Assistant tab for the grid-side right panel."""
@@ -1929,52 +1961,96 @@ class UnifiedPromptManagerQt:
         return view
 
     def _create_library_tree_panel(self) -> QWidget:
-        """Create left panel with folder tree"""
+        """Create left panel with folder tree.
+
+        v1.10.162: the tree's own "Prompt Library" header is now redundant
+        with the surrounding section title from _create_library_section,
+        so it's hidden.
+        """
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Tree widget
         self.tree_widget = PromptLibraryTreeWidget(self)
         self.tree_widget.setHeaderLabels(["Prompt Library"])
+        self.tree_widget.setHeaderHidden(True)  # section title already says this
         self.tree_widget.setAlternatingRowColors(True)
         self.tree_widget.itemClicked.connect(self._on_tree_item_clicked)
         self.tree_widget.itemDoubleClicked.connect(self._on_tree_item_double_clicked)
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self._show_tree_context_menu)
-        
+
         layout.addWidget(self.tree_widget)
-        
+
         return panel
     
+    # ------------------------------------------------------------------
+    # Section-group styling (v1.10.162)
+    # ------------------------------------------------------------------
+    # Numbered prompt-stack sections share a consistent visual style: a
+    # coloured title strip so the title carries weight and the sections
+    # read as distinct stacked blocks rather than blurring together. Pure
+    # cosmetic helper — no behaviour changes.
+    # ------------------------------------------------------------------
+    _SECTION_STYLE = (
+        "QGroupBox {"
+        "  font-weight: bold;"
+        "  margin-top: 14px;"
+        "  border: 1px solid #B3D4FC;"
+        "  border-radius: 4px;"
+        "  padding: 14px 6px 6px 6px;"
+        "}"
+        "QGroupBox::title {"
+        "  subcontrol-origin: margin;"
+        "  subcontrol-position: top left;"
+        "  padding: 3px 10px;"
+        "  background-color: #E3F2FD;"
+        "  color: #1565C0;"
+        "  border-radius: 3px;"
+        "  left: 8px;"
+        "}"
+    )
+
+    def _styled_section_group(self, title: str) -> QGroupBox:
+        """Return a QGroupBox with the standard numbered-section style."""
+        g = QGroupBox(title)
+        g.setStyleSheet(self._SECTION_STYLE)
+        return g
+
     def _create_active_config_panel(self) -> QWidget:
         """Create the active prompt configuration panel.
 
-        v1.10.159: restructured from one ambiguous "Custom Prompt" group box
-        into three explicitly-numbered group boxes (System / Custom /
-        Attached), each with a one-line caption explaining what it is, so
-        new users can tell the three concepts apart at a glance. The
-        previous layout put a "View System Prompt" button inside the
-        "Custom Prompt" group, which made it look like the two were the
-        same thing. They aren't:
-          1. System Prompt — built into the app per-mode, edited in Settings
-          2. Custom Prompt — the user's project-specific prompt, picked
-             from the library (or generated by ✨ AutoPrompt)
-          3. Attached Prompts — optional extras stacked on top
-        Image Context, Preview Combined and Clear All Attachments stay
-        below as a utility row (image context is a different kind of input
-        — pictures rather than text — and the two buttons act on the
-        whole stack rather than any single prompt).
+        v1.10.162 restructure (follow-up to v1.10.159):
+          1. System Prompt    — built-in instructions, edited in Settings
+          2. Custom Prompt    — project-specific instructions; ✨ AutoPrompt
+                                button now lives HERE (was on the library
+                                toolbar) since it directly populates this
+                                slot — that's the action that matters
+                                most for translation work
+          3. Attached Prompts — optional extras; "Clear All Attachments"
+                                button moved INTO this section (it only
+                                affects this section, so it doesn't
+                                belong in a separate utility row)
+          4. Image Context    — numbered too now (was hovering loose under
+                                the three numbered sections)
+        Each section has a coloured title strip via _styled_section_group
+        so the numbering reads as five distinct stacked blocks (section
+        5 is the Prompt Library, styled identically further down).
+        Preview Combined moves to a single button at the very bottom of
+        the left panel.
         """
         container = QWidget()
         outer = QVBoxLayout(container)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(6)
+        outer.setSpacing(8)
 
         # ----------------------------------------------------------------
         # 1. System Prompt
         # ----------------------------------------------------------------
-        system_group = QGroupBox("1. System Prompt — built-in instructions for the AI")
+        system_group = self._styled_section_group(
+            "1. System Prompt — built-in instructions for the AI"
+        )
         system_layout = QVBoxLayout()
         system_layout.setSpacing(4)
 
@@ -2002,9 +2078,12 @@ class UnifiedPromptManagerQt:
         outer.addWidget(system_group)
 
         # ----------------------------------------------------------------
-        # 2. Custom Prompt
+        # 2. Custom Prompt (with AutoPrompt button — moved from library
+        # toolbar so the most important action sits in the slot it fills)
         # ----------------------------------------------------------------
-        custom_group = QGroupBox("2. Custom Prompt — your project-specific instructions")
+        custom_group = self._styled_section_group(
+            "2. Custom Prompt — your project-specific instructions"
+        )
         custom_layout = QVBoxLayout()
         custom_layout.setSpacing(4)
 
@@ -2030,10 +2109,32 @@ class UnifiedPromptManagerQt:
 
         custom_layout.addLayout(primary_layout)
 
+        # AutoPrompt action lives here now, with a short explanation so
+        # users coming fresh to the panel understand what it does.
+        autoprompt_row = QHBoxLayout()
+        btn_autoprompt = QPushButton("✨ AutoPrompt")
+        btn_autoprompt.setStyleSheet("font-weight: bold; color: #1976D2;")
+        btn_autoprompt.setToolTip(
+            "Analyse the current document (domain, tone, terminology) and "
+            "auto-generate a tailored translation prompt, then save it as "
+            "the Custom Prompt for this project."
+        )
+        btn_autoprompt.clicked.connect(self._analyze_and_generate)
+        autoprompt_row.addWidget(btn_autoprompt)
+
+        autoprompt_caption = QLabel(
+            "Analyses the current document and generates a tailored "
+            "translation prompt for it, then sets it as the Custom Prompt."
+        )
+        autoprompt_caption.setStyleSheet("color: #666; font-size: 8pt;")
+        autoprompt_caption.setWordWrap(True)
+        autoprompt_row.addWidget(autoprompt_caption, 1)
+        custom_layout.addLayout(autoprompt_row)
+
         custom_caption = QLabel(
             "Domain / project context layered on top of the System Prompt. "
-            "Set one from the library below, or click <b>✨ AutoPrompt</b> "
-            "to generate one for this project."
+            "Set one from the library below, use <b>Load External…</b> for "
+            "an out-of-library file, or click <b>✨ AutoPrompt</b> above."
         )
         custom_caption.setStyleSheet("color: #666; font-size: 8pt;")
         custom_caption.setWordWrap(True)
@@ -2043,9 +2144,13 @@ class UnifiedPromptManagerQt:
         outer.addWidget(custom_group)
 
         # ----------------------------------------------------------------
-        # 3. Attached Prompts
+        # 3. Attached Prompts (Clear All Attachments button moved INTO
+        # this section — it only affects this list, so it belongs here
+        # rather than in a separate bottom utility row)
         # ----------------------------------------------------------------
-        attached_group = QGroupBox("3. Attached Prompts — optional extras")
+        attached_group = self._styled_section_group(
+            "3. Attached Prompts — optional extras"
+        )
         attached_layout = QVBoxLayout()
         attached_layout.setSpacing(4)
 
@@ -2055,6 +2160,13 @@ class UnifiedPromptManagerQt:
         self.attached_list_widget.setRootIsDecorated(False)
         self.attached_list_widget.setColumnWidth(0, 200)
         attached_layout.addWidget(self.attached_list_widget)
+
+        attached_actions = QHBoxLayout()
+        attached_actions.addStretch()
+        btn_clear_all = QPushButton("Clear All Attachments")
+        btn_clear_all.clicked.connect(self._clear_all_attachments)
+        attached_actions.addWidget(btn_clear_all)
+        attached_layout.addLayout(attached_actions)
 
         attached_caption = QLabel(
             "Additional prompts stacked on top of the Custom Prompt — "
@@ -2068,40 +2180,37 @@ class UnifiedPromptManagerQt:
         outer.addWidget(attached_group)
 
         # ----------------------------------------------------------------
-        # Image Context + stack actions (not numbered — these aren't text
-        # prompts; they're inputs/actions that apply to the whole stack.)
+        # 4. Image Context (promoted to its own numbered section so it
+        # reads as part of the prompt-stack rather than a stray row
+        # floating under the three text-prompt sections)
         # ----------------------------------------------------------------
-        image_layout = QHBoxLayout()
-        image_label = QLabel("🖼️ Image Context:")
-        image_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        image_layout.addWidget(image_label)
+        image_group = self._styled_section_group(
+            "4. Image Context — visual references for the AI"
+        )
+        image_layout = QVBoxLayout()
+        image_layout.setSpacing(4)
+
+        image_row = QHBoxLayout()
+        image_emoji = QLabel("🖼️")
+        image_emoji.setFont(QFont("Segoe UI", 11))
+        image_row.addWidget(image_emoji)
 
         self.image_context_label = QLabel("[None loaded]")
         self.image_context_label.setStyleSheet("color: #999;")
-        self.image_context_label.setToolTip(
-            "Images loaded via Project Resources → Image Context tab\n"
-            "are sent as binary data alongside your prompt when\n"
-            "figure references (Fig. 1, Figure 2A, etc.) are detected."
+        image_row.addWidget(self.image_context_label, 1)
+        image_layout.addLayout(image_row)
+
+        image_caption = QLabel(
+            "Images loaded via <i>Project Resources → Image Context</i> "
+            "are sent as binary data alongside your prompt when figure "
+            "references (Fig. 1, Figure 2A, …) are detected."
         )
-        image_layout.addWidget(self.image_context_label, 1)
-        outer.addLayout(image_layout)
+        image_caption.setStyleSheet("color: #666; font-size: 8pt;")
+        image_caption.setWordWrap(True)
+        image_layout.addWidget(image_caption)
 
-        btn_layout = QHBoxLayout()
-
-        btn_preview = QPushButton("Preview Combined")
-        btn_preview.setToolTip(
-            "Preview the complete assembled prompt that will be sent to the AI\n"
-            "(System Prompt + Custom Prompt + Attached Prompts + your text)"
-        )
-        btn_preview.clicked.connect(self._preview_combined_prompt)
-        btn_layout.addWidget(btn_preview)
-
-        btn_clear_all = QPushButton("Clear All Attachments")
-        btn_clear_all.clicked.connect(self._clear_all_attachments)
-        btn_layout.addWidget(btn_clear_all)
-
-        btn_layout.addStretch()
-        outer.addLayout(btn_layout)
+        image_group.setLayout(image_layout)
+        outer.addWidget(image_group)
 
         return container
     
