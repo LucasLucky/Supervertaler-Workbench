@@ -10199,27 +10199,35 @@ class SupervertalerQt(QMainWindow):
         # Navigation submenu
         nav_menu = view_menu.addMenu("📑 &Navigate To")
         
+        # v1.10.161: navigation actions now look the target tab up by
+        # label substring instead of hard-coding the index. Previously the
+        # five nav actions had five different stale-index time bombs;
+        # the Settings one had already exploded (was landing on
+        # SuperLookup since the v1.10 tab insertions).
         go_editor_action = QAction("📝 &Grid", self)
-        go_editor_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(0) if hasattr(self, 'main_tabs') else None)
+        go_editor_action.triggered.connect(lambda: self._switch_main_tab("Editor"))
         nav_menu.addAction(go_editor_action)
 
         go_tms_action = QAction("💾 &TMs", self)
-        go_tms_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(1) if hasattr(self, 'main_tabs') else None)
+        go_tms_action.triggered.connect(lambda: self._switch_main_tab("TMs"))
         nav_menu.addAction(go_tms_action)
 
         go_termbases_action = QAction("🏷️ Term&bases", self)
-        go_termbases_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(2) if hasattr(self, 'main_tabs') else None)
+        go_termbases_action.triggered.connect(lambda: self._switch_main_tab("Termbases"))
         nav_menu.addAction(go_termbases_action)
 
         go_prompt_manager_action = QAction("⚡ &QuickLauncher", self)
-        go_prompt_manager_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(3) if hasattr(self, 'main_tabs') else None)
+        go_prompt_manager_action.triggered.connect(lambda: self._switch_main_tab("AI"))
         nav_menu.addAction(go_prompt_manager_action)
 
         # Tools-tab navigation entry retired in v1.9.467: PDF Rescue and TMX
         # Editor now open in their own windows from the Tools menu instead.
 
         go_settings_action = QAction("⚙️ &Settings", self)
-        go_settings_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(4) if hasattr(self, 'main_tabs') else None)
+        # v1.10.161: label-based lookup (was setCurrentIndex(4), which started
+        # landing on SuperLookup when SuperLookup/Clipboard/Voice were
+        # inserted between AI and Settings).
+        go_settings_action.triggered.connect(lambda: self._switch_main_tab("Settings"))
         nav_menu.addAction(go_settings_action)
         
         view_menu.addSeparator()
@@ -26940,6 +26948,52 @@ class SupervertalerQt(QMainWindow):
             return not sip.isdeleted(widget)
         except RuntimeError:
             return False
+
+    # --------------------------------------------------------------------
+    # v1.10.161: label-based tab lookup
+    # --------------------------------------------------------------------
+    # Several places in the codebase used to navigate to tabs by hard-coded
+    # integer index (e.g. ``main_tabs.setCurrentIndex(4)`` with a comment
+    # claiming that was the Settings tab). Every time a new top-level tab
+    # was inserted between AI and Settings (SuperLookup, Clipboard
+    # Manager, Voice all arrived between v1.9 and v1.10), the index in the
+    # *comment* stayed correct while the *code* silently started landing
+    # on whatever tab now occupied that slot — at the time of writing this
+    # audit, all the "Settings" hard-codes were silently landing on
+    # SuperLookup, and the "MT Settings sub-tab=3" hard-code was landing
+    # on Voice (MT had moved to index 5).
+    #
+    # These helpers replace integer lookups with label-substring lookups,
+    # so future tab insertions can never silently re-break navigation.
+    # Returns True on success so callers can detect a missing tab.
+    # --------------------------------------------------------------------
+
+    def _switch_main_tab(self, label_contains: str) -> bool:
+        """Switch the top-level tab bar to the first tab whose label
+        contains ``label_contains`` (case-sensitive substring match).
+        Returns True on success, False if no matching tab was found.
+        """
+        if not hasattr(self, 'main_tabs') or self.main_tabs is None:
+            return False
+        for i in range(self.main_tabs.count()):
+            if label_contains in self.main_tabs.tabText(i):
+                self.main_tabs.setCurrentIndex(i)
+                return True
+        return False
+
+    def _switch_settings_subtab(self, label_contains: str) -> bool:
+        """Switch the Settings sub-tabs to the first tab whose label
+        contains ``label_contains`` (case-insensitive substring match).
+        Returns True on success, False if no matching tab was found.
+        """
+        if not hasattr(self, 'settings_tabs') or self.settings_tabs is None:
+            return False
+        needle = label_contains.lower()
+        for i in range(self.settings_tabs.count()):
+            if needle in self.settings_tabs.tabText(i).lower():
+                self.settings_tabs.setCurrentIndex(i)
+                return True
+        return False
 
     def _get_line_edit_text(self, attr_name: str) -> str:
         """Safely fetch text from a shared QLineEdit, handling deleted widgets."""
@@ -52913,8 +52967,11 @@ class SupervertalerQt(QMainWindow):
             subtab_name: Name of the sub-tab to navigate to (e.g., "AI Settings")
         """
         if hasattr(self, 'main_tabs'):
-            # Main tabs (post-v1.9.467): Grid=0, TMs=1, Termbases=2, AI=3, Settings=4
-            self.main_tabs.setCurrentIndex(4)
+            # v1.10.161: label-based (was hard-coded index 4 with stale
+            # comment claiming Settings=4; that became SuperLookup when
+            # SuperLookup/Clipboard/Voice were inserted between AI and
+            # Settings — Settings is now at index 7).
+            self._switch_main_tab("Settings")
 
             # Navigate to specific sub-tab if requested
             if subtab_name and hasattr(self, 'settings_tabs'):
@@ -59277,13 +59334,16 @@ class SuperlookupTab(QWidget):
     def _open_mt_settings(self):
         """Navigate to Settings → MT Settings tab"""
         if self.main_window:
-            # Go to main Settings tab (Settings is index 4 in the
-            # post-v1.9.467 layout: Editor/TMs/Termbases/AI/Settings)
-            if hasattr(self.main_window, 'main_tabs'):
-                self.main_window.main_tabs.setCurrentIndex(4)
-            # Go to MT Settings sub-tab (index 3: General=0, AI=1, Language=2, MT=3)
-            if hasattr(self.main_window, 'settings_tabs'):
-                self.main_window.settings_tabs.setCurrentIndex(3)
+            # v1.10.161: label-based on both axes.
+            # Was hard-coded main_tabs.setCurrentIndex(4) +
+            # settings_tabs.setCurrentIndex(3), both stale: Settings drifted
+            # to 7 (so 4 landed on SuperLookup) and MT Settings drifted
+            # past index 3 (so 3 landed on Voice, not MT). Label lookup
+            # can't silently drift the same way.
+            if hasattr(self.main_window, '_switch_main_tab'):
+                self.main_window._switch_main_tab("Settings")
+            if hasattr(self.main_window, '_switch_settings_subtab'):
+                self.main_window._switch_settings_subtab("MT")
     
     def _update_mt_provider_status(self):
         """Update the MT provider status display"""
@@ -63749,10 +63809,14 @@ class SuperlookupTab(QWidget):
                 main_window.raise_()
                 main_window.activateWindow()
 
-            # Switch to AI tab (index 3 in the post-v1.9.422 layout:
-            # Editor/TMs/Termbases/AI/Tools/Settings)
-            if hasattr(main_window, 'main_tabs'):
-                main_window.main_tabs.setCurrentIndex(3)
+            # v1.10.161: label-based. Was hard-coded setCurrentIndex(3)
+            # with stale comment about "post-v1.9.422 layout" — currently
+            # correct (AI is still at index 3) but fragile. The comment
+            # also still mentioned a "Tools" tab that no longer exists.
+            if hasattr(main_window, '_switch_main_tab'):
+                main_window._switch_main_tab("AI")
+            elif hasattr(main_window, 'main_tabs'):
+                main_window.main_tabs.setCurrentIndex(3)  # last-resort fallback
 
             # Switch to Supervertaler Sidekick sub-tab and insert text
             if hasattr(main_window, 'prompt_manager_qt') and main_window.prompt_manager_qt:
@@ -63836,15 +63900,24 @@ class SuperlookupTab(QWidget):
             print(f"[Superlookup] Main window type: {type(main_window).__name__}")
             print(f"[Superlookup] Has main_tabs: {hasattr(main_window, 'main_tabs')}")
             
-            # Switch to Tools tab (main_tabs index 4 in the post-v1.9.422 layout:
-            # Grid=0, TMs=1, Termbases=2, AI=3, Tools=4, Settings=5)
-            if hasattr(main_window, 'main_tabs'):
-                print(f"[Superlookup] Current main_tab index: {main_window.main_tabs.currentIndex()}")
-                main_window.main_tabs.setCurrentIndex(4)  # Tools tab
-                print(f"[Superlookup] Switched to Tools tab (index 4)")
-                QApplication.processEvents()  # Force GUI update
+            # v1.10.161: label-based. Was hard-coded setCurrentIndex(4)
+            # with a stale comment referring to a "Tools" tab that no
+            # longer exists — the old "Tools" tab was retired and
+            # SuperLookup got promoted to its own top-level tab. The old
+            # code happened to land on SuperLookup *by coincidence*
+            # because SuperLookup is now where Tools used to be (index
+            # 4), but that's no comfort if the tab list shuffles again.
+            if hasattr(main_window, '_switch_main_tab'):
+                if main_window._switch_main_tab("SuperLookup"):
+                    print(f"[Superlookup] Switched to SuperLookup tab via label lookup")
+                else:
+                    print(f"[Superlookup] WARNING: SuperLookup tab not found")
+            elif hasattr(main_window, 'main_tabs'):
+                main_window.main_tabs.setCurrentIndex(4)  # last-resort fallback
+                print(f"[Superlookup] Fell back to hard-coded index 4")
             else:
                 print(f"[Superlookup] WARNING: Main window has no main_tabs attribute!")
+            QApplication.processEvents()  # Force GUI update
             
             # Switch to Superlookup within modules_tabs
             if hasattr(main_window, 'modules_tabs'):

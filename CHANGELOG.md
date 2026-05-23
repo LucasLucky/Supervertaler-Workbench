@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.160 (May 23, 2026)
+**Current Version:** v1.10.161 (May 23, 2026)
+
+
+## v1.10.161 – May 23, 2026
+
+### Fixed
+
+Audit after v1.10.160 turned up **five places** in the codebase that navigated to tabs by hard-coded integer index, with stale comments claiming indices that no longer matched the actual tab order. Same underlying mechanism as the v1.10.160 SuperLookup bug: every time a new top-level tab was inserted (SuperLookup, Clipboard Manager, Voice all arrived between v1.9 and v1.10), the index in the *comment* stayed correct while the *code* silently started landing on whatever tab now occupied that slot. Two were already actively broken; three were one tab insertion away from breaking.
+
+- **View → Navigate To → ⚙️ Settings** now actually opens Settings instead of SuperLookup.
+- **Internal `navigate_to_settings_subtab()` helper** (used by Status Bar diagnostic links and a few other places) now opens Settings instead of SuperLookup.
+- **MT-status panel's "Open MT Settings" jump** now lands on Settings → MT Settings instead of SuperLookup → Voice (it was double-broken: the wrong main tab *and* the wrong sub-tab — MT Settings had drifted to index 5, but the code hard-coded sub-tab 3 which is now Voice).
+- **SuperLookup's "switch to Tools tab" code** had a stale comment about a "Tools" tab that was retired in v1.9.467. Currently lands on the correct destination (SuperLookup itself) by pure coincidence — the new top-level SuperLookup tab happens to occupy the slot the old Tools tab used to. Future tab insertions would have re-broken this; now label-based.
+- **AI tab navigation from the inter-window bridge** was currently correct (AI is still at index 3) but fragile; preventively converted to label lookup.
+- **View → Navigate To → Editor / TMs / Termbases / QuickLauncher** also converted preventively.
+
+### Changed
+
+- Added two small helpers on `SupervertalerQt` — **`_switch_main_tab(label_substring)`** and **`_switch_settings_subtab(label_substring)`** — that look tabs up by label substring instead of by index. All seven hard-coded `main_tabs.setCurrentIndex(N)` navigation calls now go through these, plus one `settings_tabs.setCurrentIndex(N)` call. New code adding tab navigation should use them too. Future tab insertions/reorderings can't silently re-break navigation in any of these places.
 
 
 ## v1.10.160 – May 23, 2026
