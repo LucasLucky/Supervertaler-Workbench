@@ -9,7 +9,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ### Added
 
-- **Contextual "?" help link in the Prompt Manager.** A small circular `?` button now sits on the same bottom row as **👁 Preview Combined** in the Prompt Manager's left panel. One click opens the Prompt Manager help page (`help.supervertaler.com/workbench/ai-translation/prompt-library/`) in the user's default browser — the same destination F1 already reached via the existing `set_help_topic` tag, but now visibly discoverable. Uses the shared `HelpButton` widget so the styling matches every other in-app help affordance.
+- **Contextual "?" help link in the Prompt Manager.** A small circular `?` button now sits in the **top-right corner of the Prompt Manager's left panel**, following the same convention used in every other dialog and section across the Workbench. One click opens the Prompt Manager help page (`help.supervertaler.com/workbench/ai-translation/prompt-library/`) in the user's default browser — the same destination F1 already reached via the existing `set_help_topic` tag, but now visibly discoverable. Uses the shared `HelpButton` widget so the styling matches every other in-app help affordance.
 
 
 ## v1.10.165 – May 23, 2026
