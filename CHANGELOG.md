@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.158 (May 23, 2026)
+**Current Version:** v1.10.159 (May 23, 2026)
+
+
+## v1.10.159 – May 23, 2026
+
+### Changed
+
+- **The Active Configuration panel in the Prompt Manager has been restructured for clarity.** The previous "Custom Prompt" group box was a confusing pile-up of four different concepts: a "View System Prompt" button (about the *system* prompt, which is a separate thing), the actual Custom Prompt name + Load External + Clear buttons, the Attached Prompts list, and an Image Context status row. New users had no way to tell which control affected which concept. The panel is now three explicitly-numbered group boxes, each with a one-line caption explaining what it is:
+    - **1. System Prompt — built-in instructions for the AI** — shows the current mode and the View System Prompt button, with a caption pointing at *Settings → System Prompts* where it's edited.
+    - **2. Custom Prompt — your project-specific instructions** — shows the active Custom Prompt name with Load External and Clear buttons, plus a caption pointing at the library below and the ✨ AutoPrompt button.
+    - **3. Attached Prompts — optional extras** — shows the attached-prompt list with a caption explaining they're stacked on top of the Custom Prompt.
+- Image Context, Preview Combined, and Clear All Attachments stay below the three numbered group boxes as a separate utility row, since they don't fit the "numbered prompt slot" model — image context is a different *kind* of input (pictures rather than text), and the two buttons act on the whole stack rather than any single slot.
+- All underlying widget references (`primary_prompt_label`, `attached_list_widget`, `image_context_label`) keep the same names, so no other code is affected.
 
 
 ## v1.10.158 – May 23, 2026
