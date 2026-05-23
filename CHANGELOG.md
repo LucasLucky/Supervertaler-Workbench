@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.162 (May 23, 2026)
+**Current Version:** v1.10.163 (May 23, 2026)
+
+
+## v1.10.163 – May 23, 2026
+
+### Changed
+
+Polish pass on the Prompt Manager left panel restructured in v1.10.162.
+
+- **Section captions are now consistently at the bottom of each numbered section, prefixed with a blue ⓘ info icon.** In Section 2 the explanation about what the Custom Prompt slot is for had ended up *above* a piece of actionable UI (the AutoPrompt button), which read as "instructions you must follow" rather than "background information about this section". All captions now sit at the very bottom of their sections, after every action control, so the read order is: actions first, explanation last. Same icon and styling everywhere — the captions read as part of the section frame rather than mixed in with the controls.
+- **Section 2 (Custom Prompt) is now a two-column split.** The two ways to set the Custom Prompt slot have their own column:
+    - **Left column** ("Active Custom Prompt") — the currently-active prompt (⭐ name) plus the *Load External…* and *Clear* buttons for managing it manually.
+    - **Right column** ("Generate one automatically") — the ✨ AutoPrompt button.
+    - A vertical separator between them. The shared section caption sits below both columns and explains all three options in one go.
 
 
 ## v1.10.162 – May 23, 2026

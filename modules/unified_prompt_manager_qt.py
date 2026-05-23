@@ -2045,6 +2045,18 @@ class UnifiedPromptManagerQt:
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(8)
 
+        # Helper for the consistent bottom caption styling — every numbered
+        # section ends with a small italic info-icon-prefixed explanation.
+        # v1.10.163: standardised position (always at the bottom) and icon
+        # so the captions read as part of the section frame rather than
+        # mixed in with the actionable controls.
+        def _section_info(text: str) -> QLabel:
+            lbl = QLabel(f"<span style='color:#1976D2;'>ⓘ</span> {text}")
+            lbl.setStyleSheet("color: #666; font-size: 8pt;")
+            lbl.setWordWrap(True)
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+            return lbl
+
         # ----------------------------------------------------------------
         # 1. System Prompt
         # ----------------------------------------------------------------
@@ -2066,26 +2078,39 @@ class UnifiedPromptManagerQt:
         system_row.addWidget(btn_view_template)
         system_layout.addLayout(system_row)
 
-        system_caption = QLabel(
+        system_layout.addStretch(0)
+        system_layout.addWidget(_section_info(
             "Auto-selected for the current mode. Edit in "
             "<i>Settings → 📝 System Prompts</i>."
-        )
-        system_caption.setStyleSheet("color: #666; font-size: 8pt;")
-        system_caption.setWordWrap(True)
-        system_layout.addWidget(system_caption)
+        ))
 
         system_group.setLayout(system_layout)
         outer.addWidget(system_group)
 
         # ----------------------------------------------------------------
-        # 2. Custom Prompt (with AutoPrompt button — moved from library
-        # toolbar so the most important action sits in the slot it fills)
+        # 2. Custom Prompt — two-column split:
+        #    LEFT: pick from library / load external / clear (the
+        #          currently-active prompt slot)
+        #    RIGHT: ✨ AutoPrompt button (the other way to set this slot)
+        # Vertical separator between them. The section caption stays at
+        # the bottom of the whole section, spanning both columns.
         # ----------------------------------------------------------------
         custom_group = self._styled_section_group(
             "2. Custom Prompt — your project-specific instructions"
         )
         custom_layout = QVBoxLayout()
-        custom_layout.setSpacing(4)
+        custom_layout.setSpacing(6)
+
+        columns_row = QHBoxLayout()
+        columns_row.setSpacing(10)
+
+        # --- LEFT column: active prompt + manual controls ---
+        left_col = QVBoxLayout()
+        left_col.setSpacing(4)
+
+        left_heading = QLabel("<b>Active Custom Prompt</b>")
+        left_heading.setStyleSheet("color: #333; font-size: 9pt;")
+        left_col.addWidget(left_heading)
 
         primary_layout = QHBoxLayout()
         primary_label = QLabel("⭐")
@@ -2095,23 +2120,39 @@ class UnifiedPromptManagerQt:
         self.primary_prompt_label = QLabel("[None selected]")
         self.primary_prompt_label.setStyleSheet("color: #999;")
         primary_layout.addWidget(self.primary_prompt_label, 1)
+        left_col.addLayout(primary_layout)
 
+        left_buttons = QHBoxLayout()
         btn_load_external = QPushButton("Load External...")
         btn_load_external.clicked.connect(self._load_external_primary_prompt)
         btn_load_external.setToolTip("Load a prompt file from anywhere on your computer")
-        btn_load_external.setMaximumWidth(110)
-        primary_layout.addWidget(btn_load_external)
+        left_buttons.addWidget(btn_load_external)
 
         btn_clear_primary = QPushButton("Clear")
         btn_clear_primary.clicked.connect(self._clear_primary_prompt)
-        btn_clear_primary.setMaximumWidth(60)
-        primary_layout.addWidget(btn_clear_primary)
+        btn_clear_primary.setMaximumWidth(70)
+        left_buttons.addWidget(btn_clear_primary)
+        left_buttons.addStretch()
+        left_col.addLayout(left_buttons)
+        left_col.addStretch()
 
-        custom_layout.addLayout(primary_layout)
+        columns_row.addLayout(left_col, 3)
 
-        # AutoPrompt action lives here now, with a short explanation so
-        # users coming fresh to the panel understand what it does.
-        autoprompt_row = QHBoxLayout()
+        # Vertical separator between the two columns
+        vsep = QFrame()
+        vsep.setFrameShape(QFrame.Shape.VLine)
+        vsep.setFrameShadow(QFrame.Shadow.Sunken)
+        vsep.setStyleSheet("color: #B3D4FC;")
+        columns_row.addWidget(vsep)
+
+        # --- RIGHT column: AutoPrompt action ---
+        right_col = QVBoxLayout()
+        right_col.setSpacing(4)
+
+        right_heading = QLabel("<b>Generate one automatically</b>")
+        right_heading.setStyleSheet("color: #333; font-size: 9pt;")
+        right_col.addWidget(right_heading)
+
         btn_autoprompt = QPushButton("✨ AutoPrompt")
         btn_autoprompt.setStyleSheet("font-weight: bold; color: #1976D2;")
         btn_autoprompt.setToolTip(
@@ -2120,33 +2161,24 @@ class UnifiedPromptManagerQt:
             "the Custom Prompt for this project."
         )
         btn_autoprompt.clicked.connect(self._analyze_and_generate)
-        autoprompt_row.addWidget(btn_autoprompt)
+        right_col.addWidget(btn_autoprompt)
+        right_col.addStretch()
 
-        autoprompt_caption = QLabel(
-            "Analyses the current document and generates a tailored "
-            "translation prompt for it, then sets it as the Custom Prompt."
-        )
-        autoprompt_caption.setStyleSheet("color: #666; font-size: 8pt;")
-        autoprompt_caption.setWordWrap(True)
-        autoprompt_row.addWidget(autoprompt_caption, 1)
-        custom_layout.addLayout(autoprompt_row)
+        columns_row.addLayout(right_col, 2)
 
-        custom_caption = QLabel(
+        custom_layout.addLayout(columns_row)
+        custom_layout.addWidget(_section_info(
             "Domain / project context layered on top of the System Prompt. "
             "Set one from the library below, use <b>Load External…</b> for "
-            "an out-of-library file, or click <b>✨ AutoPrompt</b> above."
-        )
-        custom_caption.setStyleSheet("color: #666; font-size: 8pt;")
-        custom_caption.setWordWrap(True)
-        custom_layout.addWidget(custom_caption)
+            "an out-of-library file, or click <b>✨ AutoPrompt</b> to have "
+            "the AI generate one tailored to the current document."
+        ))
 
         custom_group.setLayout(custom_layout)
         outer.addWidget(custom_group)
 
         # ----------------------------------------------------------------
-        # 3. Attached Prompts (Clear All Attachments button moved INTO
-        # this section — it only affects this list, so it belongs here
-        # rather than in a separate bottom utility row)
+        # 3. Attached Prompts
         # ----------------------------------------------------------------
         attached_group = self._styled_section_group(
             "3. Attached Prompts — optional extras"
@@ -2168,21 +2200,16 @@ class UnifiedPromptManagerQt:
         attached_actions.addWidget(btn_clear_all)
         attached_layout.addLayout(attached_actions)
 
-        attached_caption = QLabel(
+        attached_layout.addWidget(_section_info(
             "Additional prompts stacked on top of the Custom Prompt — "
             "right-click any prompt in the library to attach it."
-        )
-        attached_caption.setStyleSheet("color: #666; font-size: 8pt;")
-        attached_caption.setWordWrap(True)
-        attached_layout.addWidget(attached_caption)
+        ))
 
         attached_group.setLayout(attached_layout)
         outer.addWidget(attached_group)
 
         # ----------------------------------------------------------------
-        # 4. Image Context (promoted to its own numbered section so it
-        # reads as part of the prompt-stack rather than a stray row
-        # floating under the three text-prompt sections)
+        # 4. Image Context
         # ----------------------------------------------------------------
         image_group = self._styled_section_group(
             "4. Image Context — visual references for the AI"
@@ -2200,14 +2227,11 @@ class UnifiedPromptManagerQt:
         image_row.addWidget(self.image_context_label, 1)
         image_layout.addLayout(image_row)
 
-        image_caption = QLabel(
+        image_layout.addWidget(_section_info(
             "Images loaded via <i>Project Resources → Image Context</i> "
             "are sent as binary data alongside your prompt when figure "
             "references (Fig. 1, Figure 2A, …) are detected."
-        )
-        image_caption.setStyleSheet("color: #666; font-size: 8pt;")
-        image_caption.setWordWrap(True)
-        image_layout.addWidget(image_caption)
+        ))
 
         image_group.setLayout(image_layout)
         outer.addWidget(image_group)
