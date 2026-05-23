@@ -184,7 +184,8 @@ def _resolve_lang_name(code_or_name):
     return _LANG_CODE_TO_NAME.get(code_or_name.lower().strip(), code_or_name)
 
 
-from modules.styled_widgets import CheckmarkCheckBox  # noqa: E402
+from modules.styled_widgets import CheckmarkCheckBox, HelpButton  # noqa: E402
+from modules.help_system import Topics as HelpTopics  # noqa: E402
 
 
 class PromptLibraryTreeWidget(QTreeWidget):
@@ -1213,6 +1214,15 @@ class UnifiedPromptManagerQt:
         btn_preview.clicked.connect(self._preview_combined_prompt)
         preview_row.addWidget(btn_preview)
         preview_row.addStretch()
+        # v1.10.166: contextual "?" link to the Prompt Manager help page.
+        # Sits flush-right on the same row as Preview Combined, so the
+        # whole panel has one consistent "what is this?" affordance
+        # without inflating the section headers.
+        help_btn = HelpButton(
+            HelpTopics.AI_PROMPT_MANAGER,
+            tooltip="Open the Prompt Manager help page",
+        )
+        preview_row.addWidget(help_btn)
         left_layout.addLayout(preview_row)
         
         left_panel.setMinimumWidth(300)
