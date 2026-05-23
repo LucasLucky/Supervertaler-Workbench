@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.164 (May 23, 2026)
+**Current Version:** v1.10.165 (May 23, 2026)
+
+
+## v1.10.165 – May 23, 2026
+
+### Changed
+
+- **Removed the duplicate "⚙️ System Prompts" button from the Section 5 (Prompt Library) toolbar.** Section 1's "View System Prompt" button already opens a dialog whose "Edit in Settings" button goes to exactly the same place — keeping a second entry point in the library toolbar just added clutter without adding any new capability. The remaining library buttons are now pure library-level actions: **+ New**, **📁 New Folder**, **🔄 Refresh**, **▸ Collapse all**, **▾ Expand all**.
 
 
 ## v1.10.164 – May 23, 2026

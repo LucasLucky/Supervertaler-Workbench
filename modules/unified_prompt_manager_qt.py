@@ -1240,10 +1240,14 @@ class UnifiedPromptManagerQt:
         """Create the action-button row for the Prompt Library section.
 
         v1.10.162: AutoPrompt moved out of here into Section 2 (Custom
-        Prompt) where it directly populates the slot it fills. The
-        remaining buttons stay here as library-level actions (creating /
-        finding / reordering library entries) rather than actions that
-        affect the current project's active prompt stack.
+        Prompt) where it directly populates the slot it fills.
+        v1.10.165: "⚙️ System Prompts" removed — Section 1's
+        "View System Prompt" button opens a dialog with its own
+        "Edit in Settings" button that goes to the same place; keeping
+        a duplicate here just cluttered the toolbar.
+
+        The remaining buttons are pure library-level actions: creating
+        / finding / reordering library entries.
         """
         container = QWidget()
         btn_layout = QHBoxLayout(container)
@@ -1257,11 +1261,6 @@ class UnifiedPromptManagerQt:
         btn_folder = QPushButton("📁 New Folder")
         btn_folder.clicked.connect(self._new_folder)
         btn_layout.addWidget(btn_folder)
-
-        btn_settings = QPushButton("⚙️ System Prompts")
-        btn_settings.clicked.connect(self._open_system_prompts_settings)
-        btn_settings.setToolTip("Configure mode-specific system prompts (Settings)")
-        btn_layout.addWidget(btn_settings)
 
         btn_refresh = QPushButton("🔄 Refresh")
         btn_refresh.clicked.connect(self._refresh_library)
