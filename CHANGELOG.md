@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.154 (May 23, 2026)
+**Current Version:** v1.10.155 (May 23, 2026)
+
+
+## v1.10.155 – May 23, 2026
+
+### Changed
+
+- **"Auto-generate markdown for imported documents" moved from AI Settings to General Settings.** The checkbox is now under **Settings → ⚙️ General → 📥 Document Import** (a new group), instead of where it used to be at the bottom of **Settings → 🤖 AI Settings → 🎯 AI Behavior Settings**. The categorisation now matches what the setting actually does: the trigger is import time (a filesystem write at document-open), and the consumer being AI Assistant is incidental. The setting key is unchanged (`auto_generate_markdown`), so any value you'd already configured carries over automatically — no migration, no reset. Default remains off. Saving AI Settings no longer touches this preference, so changes made on the General tab can't be clobbered by a subsequent AI-tab save.
 
 
 ## v1.10.154 – May 23, 2026

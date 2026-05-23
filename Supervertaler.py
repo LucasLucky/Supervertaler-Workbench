@@ -20775,16 +20775,12 @@ class SupervertalerQt(QMainWindow):
         )
         behavior_layout.addWidget(llm_matching_cb)
         self.llm_matching_checkbox = llm_matching_cb
-        
-        # Auto-generate markdown
-        auto_markdown_cb = CheckmarkCheckBox("Auto-generate markdown for imported documents")
-        auto_markdown_cb.setChecked(general_settings.get('auto_generate_markdown', False))
-        auto_markdown_cb.setToolTip(
-            "Automatically convert imported documents to markdown format\n"
-            "for AI Assistant access in user_data_private/ai_assistant/current_document/"
-        )
-        behavior_layout.addWidget(auto_markdown_cb)
-        
+
+        # v1.10.155: "Auto-generate markdown for imported documents" moved to
+        # Settings → ⚙️ General → 📥 Document Import. It's triggered at import
+        # time (a filesystem write at document-open), so it belongs with
+        # other import-time toggles, not under AI behaviour.
+
         # LLM match limits
         behavior_layout.addSpacing(10)
         llm_limits_label = QLabel("<b>LLM Match Limits:</b>")
@@ -20817,7 +20813,7 @@ class SupervertalerQt(QMainWindow):
             batch_size_spin, surrounding_spin, full_context_cb, context_slider,
             tm_no_check_rb, tm_fuzzy_rb, tm_exact_rb, auto_propagate_cb, delay_spin,
             ollama_keepwarm_cb,
-            llm_matching_cb, auto_markdown_cb, llm_spin,
+            llm_matching_cb, llm_spin,
             quicklauncher_context_slider,
             custom_radio=custom_radio, custom_endpoint_input=custom_endpoint_input,
             custom_model_input=custom_model_input, custom_enable_cb=custom_enable_cb,
@@ -21861,6 +21857,36 @@ class SupervertalerQt(QMainWindow):
 
         # Global Hotkeys section has been moved to the Keyboard Shortcuts tab
         # (see modules/keyboard_shortcuts_widget.py)
+
+        # ----------------------------------------------------------------
+        # Document Import group (v1.10.155)
+        # ----------------------------------------------------------------
+        # Houses behaviour toggles that take effect at import time. Until
+        # v1.10.155 the "Auto-generate markdown for imported documents"
+        # checkbox lived under "AI Behavior Settings" on the AI Settings
+        # tab — its only consumer is AI Assistant, but the trigger is
+        # import (a filesystem write at document-open time), not anything
+        # AI-related. Moved here so the categorisation matches when the
+        # setting actually fires. The setting key (auto_generate_markdown)
+        # is unchanged, so existing user preferences carry over without
+        # migration.
+        # ----------------------------------------------------------------
+        doc_import_group = QGroupBox("📥 Document Import")
+        doc_import_layout = QVBoxLayout()
+
+        auto_markdown_cb = CheckmarkCheckBox("Auto-generate markdown for imported documents")
+        auto_markdown_cb.setChecked(general_settings.get('auto_generate_markdown', False))
+        auto_markdown_cb.setToolTip(
+            "Automatically convert imported documents to markdown format\n"
+            "for AI Assistant access in user_data_private/ai_assistant/current_document/\n\n"
+            "(Off by default — touches the filesystem on every import.)"
+        )
+        doc_import_layout.addWidget(auto_markdown_cb)
+        # Store reference so the General save handler can read its state.
+        self.auto_markdown_checkbox = auto_markdown_cb
+
+        doc_import_group.setLayout(doc_import_layout)
+        layout.addWidget(doc_import_group)
 
         # Find & Replace settings group
         find_replace_group = QGroupBox("Find && Replace Settings")
@@ -24571,7 +24597,7 @@ class SupervertalerQt(QMainWindow):
                                    batch_size_spin, surrounding_spin, full_context_cb, context_slider,
                                    tm_no_check_rb, tm_fuzzy_rb, tm_exact_rb, auto_propagate_cb, delay_spin,
                                    ollama_keepwarm_cb,
-                                   llm_matching_cb, auto_markdown_cb, llm_spin,
+                                   llm_matching_cb, llm_spin,
                                    quicklauncher_context_slider,
                                    custom_radio=None, custom_endpoint_input=None,
                                    custom_model_input=None, custom_enable_cb=None,
@@ -24665,10 +24691,11 @@ class SupervertalerQt(QMainWindow):
         
         # Update LLM matching setting
         self.enable_llm_matching = llm_matching_cb.isChecked()
-        
-        # Update auto-markdown setting
-        self.auto_generate_markdown = auto_markdown_cb.isChecked()
-        
+
+        # v1.10.155: auto_generate_markdown is now owned by the General tab
+        # (📥 Document Import group). Don't touch it from here so saving AI
+        # settings doesn't clobber a value set on the other tab.
+
         # Save all general settings including AI-related ones
         general_prefs = self.load_general_settings()
         general_prefs['batch_size'] = batch_size_spin.value()
@@ -24683,7 +24710,8 @@ class SupervertalerQt(QMainWindow):
         general_prefs['lookup_delay'] = delay_spin.value()
         general_prefs['ollama_keepwarm'] = ollama_keepwarm_cb.isChecked()
         general_prefs['enable_llm_matching'] = llm_matching_cb.isChecked()
-        general_prefs['auto_generate_markdown'] = auto_markdown_cb.isChecked()
+        # v1.10.155: auto_generate_markdown is now saved by the General tab,
+        # not here — see _create_general_settings_tab → Document Import group.
 
         # Update LLM match limits
         if 'match_limits' not in general_prefs:
@@ -24811,7 +24839,12 @@ class SupervertalerQt(QMainWindow):
             'auto_confirm_100_percent_matches': auto_confirm_100_cb.isChecked() if auto_confirm_100_cb is not None else False,
             'auto_confirm_overwrite_existing': auto_confirm_overwrite_cb.isChecked() if auto_confirm_overwrite_cb is not None else False,
             'tm_save_mode': tm_save_mode_combo.currentData() if tm_save_mode_combo is not None else 'latest',
-            'auto_generate_markdown': existing_settings.get('auto_generate_markdown', False),  # Preserve AI setting
+            # v1.10.155: now owned by the General tab (📥 Document Import group).
+            # Reads from the dedicated checkbox stored on self.
+            'auto_generate_markdown': (self.auto_markdown_checkbox.isChecked()
+                                       if hasattr(self, 'auto_markdown_checkbox')
+                                          and self.auto_markdown_checkbox is not None
+                                       else existing_settings.get('auto_generate_markdown', False)),
             'enable_termbase_grid_highlighting': tb_highlight_cb.isChecked() if tb_highlight_cb is not None else True,
             'enable_llm_matching': existing_settings.get('enable_llm_matching', False),  # Preserve AI setting
             'termbase_hide_shorter_matches': tb_hide_shorter_cb.isChecked() if tb_hide_shorter_cb is not None else False,
