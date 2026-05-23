@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.156 (May 23, 2026)
+**Current Version:** v1.10.157 (May 23, 2026)
+
+
+## v1.10.157 – May 23, 2026
+
+### Changed
+
+- **The ✨ AutoPrompt button no longer freezes the window while the LLM is generating.** The underlying `chat_backend.send_ai_request` call is synchronous and I/O-bound — running it on the main thread froze the whole window for 1-3 minutes with reasoning-capable models (Opus 4.7, GPT-5, etc.) and triggered the Windows "Not Responding" overlay, with no visual indication that anything was actually happening. The call now runs on a dedicated `_AutoPromptWorker` QThread with a modal **"Generating AutoPrompt"** progress dialog (indeterminate "busy" bar — no token-level progress is exposed by any provider). The dialog shows which provider it's waiting on, explains that reasoning models take a few minutes, and has a working Cancel button. Cancelling can't actually abort the HTTP request mid-flight — the server keeps processing — but the result is then silently discarded, which is the next best thing.
+- **AutoPrompt now asks you to name + place the prompt before saving.** Previously the generated prompt was silently auto-saved into a hard-coded folder ("Supervertaler Sidekick Prompts" pre-v1.10.156, "AutoPrompt" briefly in v1.10.156) with a name like "Patent Translation Dutch-English" that bore no relation to the project you were working on. A new **"Save AutoPrompt"** dialog now appears after generation completes, with:
+    - a read-only **preview** of the generated content so you can see what was made before committing to a name/location,
+    - a **Name** field pre-filled with the current project's name (falling back to the auto-detected `<Domain> Translation <Source>-<Target>` pattern when there's no current project),
+    - a **Folder** dropdown listing every existing top-level folder in your prompt library plus "Translate" (the new default), editable so you can type a brand-new folder name and it'll be created on save.
+- **Cancelling the save dialog leaves the generated content in the chat log** so you can copy it out manually if you wanted to keep it but not save it as a file.
+- Setting the active Custom Prompt via the dialog still triggers the same immediate `.svproj` save introduced in v1.10.156, so the activation survives a restart even seconds after generation completes.
 
 
 ## v1.10.156 – May 23, 2026

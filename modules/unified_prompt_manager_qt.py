@@ -19,7 +19,9 @@ from PyQt6.QtWidgets import (
     QTextEdit, QPlainTextEdit, QSplitter, QGroupBox, QMessageBox, QFileDialog,
     QInputDialog, QLineEdit, QFrame, QMenu, QCheckBox, QSizePolicy, QScrollArea, QTabWidget,
     QListWidget, QListWidgetItem, QStyledItemDelegate, QStyleOptionViewItem, QApplication, QDialog,
-    QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView
+    QAbstractItemView, QTableWidget, QTableWidgetItem, QHeaderView,
+    # v1.10.157: AutoPrompt progress + save dialogs
+    QProgressDialog, QFormLayout, QComboBox, QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal, QThread, QSize, QRect, QRectF
 from PyQt6.QtGui import QFont, QColor, QAction, QIcon, QPainter, QPen, QBrush, QPainterPath, QLinearGradient
@@ -34,6 +36,126 @@ from modules.shortcut_display import format_shortcut_for_display
 from modules.document_analyzer import DocumentAnalyzer
 from modules.chat_backend import ChatBackend
 from modules.chat_view_widget import ChatViewWidget
+
+
+# ============================================================================
+# AutoPrompt: worker thread + save dialog (v1.10.157)
+# ============================================================================
+# The AutoPrompt button used to call chat_backend.send_ai_request directly on
+# the main thread. That call is synchronous and I/O-bound — with
+# reasoning-capable models (Opus 4.7, GPT-5 etc.) it can take 1-3 minutes,
+# during which the whole window froze and Windows put up "Not Responding".
+# The worker class below moves that call off the main thread so the progress
+# dialog stays responsive (and the user can cancel without killing the app).
+#
+# The save dialog (run after the LLM responds) gives the user a chance to
+# name the prompt and pick a folder before the file is written, instead of
+# the previous silent auto-save into a hard-coded folder.
+# ============================================================================
+
+
+class _AutoPromptWorker(QThread):
+    """Background worker that runs an AutoPrompt LLM call off the main thread.
+
+    Emits ``finished_ok(response_text, metadata)`` on success or
+    ``failed(error_message)`` on exception. There's no real way to abort an
+    in-flight HTTP request to most LLM providers from the outside, so the
+    "Cancel" button on the progress dialog detaches the signal connections
+    rather than killing the thread — the call runs to completion but its
+    result is ignored.
+    """
+
+    finished_ok = pyqtSignal(str, dict)
+    failed = pyqtSignal(str)
+
+    def __init__(self, chat_backend, prompt: str, system_prompt: str):
+        super().__init__()
+        self._chat_backend = chat_backend
+        self._prompt = prompt
+        self._system_prompt = system_prompt
+
+    def run(self):
+        try:
+            response_text, metadata = self._chat_backend.send_ai_request(
+                self._prompt, self._system_prompt, is_analysis=True
+            )
+            self.finished_ok.emit(response_text or "", metadata or {})
+        except Exception as e:
+            import traceback
+            self.failed.emit(f"{e}\n\n{traceback.format_exc()}")
+
+
+class _AutoPromptSaveDialog(QDialog):
+    """Dialog shown after AutoPrompt generation completes.
+
+    Lets the user choose the prompt's name and folder before the file is
+    written, with a preview of the generated content above. Pre-fills name
+    with the current project name (falling back to the auto-detected
+    domain pattern) and folder with "Translate" (falling back to the
+    first available folder).
+    """
+
+    def __init__(self, generated_content: str, suggested_name: str,
+                 available_folders: list, default_folder: str,
+                 parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Save AutoPrompt")
+        self.setMinimumWidth(640)
+        self.setMinimumHeight(480)
+
+        layout = QVBoxLayout(self)
+
+        # Preview pane (read-only, monospace) so the user can see what was
+        # generated before committing to a name/folder.
+        layout.addWidget(QLabel("<b>Generated prompt preview:</b>"))
+        preview = QTextEdit()
+        preview.setPlainText(generated_content)
+        preview.setReadOnly(True)
+        mono = QFont("Consolas", 9)
+        preview.setFont(mono)
+        preview.setMinimumHeight(240)
+        layout.addWidget(preview, 1)
+
+        # Name + folder fields
+        form = QFormLayout()
+
+        self.name_edit = QLineEdit(suggested_name)
+        self.name_edit.selectAll()
+        form.addRow("Name:", self.name_edit)
+
+        # Folder dropdown is editable so the user can type a new folder name
+        # that doesn't exist yet — _action_create_prompt creates intermediate
+        # directories on save.
+        self.folder_combo = QComboBox()
+        self.folder_combo.setEditable(True)
+        self.folder_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        for f in available_folders:
+            self.folder_combo.addItem(f)
+        # Set default — prefer exact match, else fall back to setting raw text.
+        idx = self.folder_combo.findText(default_folder)
+        if idx >= 0:
+            self.folder_combo.setCurrentIndex(idx)
+        else:
+            self.folder_combo.setEditText(default_folder)
+        form.addRow("Folder:", self.folder_combo)
+
+        layout.addLayout(form)
+
+        # Save / Cancel
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setDefault(True)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_name(self) -> str:
+        return self.name_edit.text().strip()
+
+    def get_folder(self) -> str:
+        return self.folder_combo.currentText().strip()
 
 
 # Language code → full name mapping (matches Supervertaler.py available_langs)
@@ -5244,6 +5366,12 @@ IMPORTANT:
 
         Used by _analyze_and_generate (AutoPrompt) and legacy code paths.
         New chat messages go through _context_aware_send instead.
+
+        v1.10.157: the AutoPrompt (is_analysis=True) path now dispatches
+        the LLM call to a QThread + progress dialog instead of running it
+        synchronously on the main thread. The non-analysis path stays
+        synchronous \u2014 those calls are short enough (seconds, not minutes)
+        that worker-thread overhead would be net-negative.
         """
         if not self.llm_client:
             self._add_chat_message(
@@ -5252,41 +5380,36 @@ IMPORTANT:
             )
             return
 
+        if is_analysis:
+            # AutoPrompt path: long, blocking, worth a worker thread.
+            self._run_autoprompt_with_progress(prompt)
+            return
+
+        # Non-analysis path: keep synchronous (existing behaviour).
         try:
             self.log_message(f"[AI Assistant] Sending request ({len(prompt)} chars)")
 
-            if is_analysis:
-                ai_system_prompt = (
-                    "You are a prompt engineering specialist for professional translation. "
-                    "Generate the requested translation prompt and wrap it in "
-                    "===PROMPT_START=== and ===PROMPT_END=== delimiters. "
-                    "Output ONLY the delimiters and prompt content, nothing else."
-                )
-            else:
-                ai_system_prompt = "You are an AI assistant for Supervertaler, a professional translation workbench."
+            ai_system_prompt = "You are an AI assistant for Supervertaler, a professional translation workbench."
 
             response_text, metadata = self.chat_backend.send_ai_request(
-                prompt, ai_system_prompt, is_analysis=is_analysis
+                prompt, ai_system_prompt, is_analysis=False
             )
 
             if response_text and response_text.strip():
-                if is_analysis:
-                    self._handle_analysis_response(response_text)
-                else:
-                    cleaned_response, action_results = self.ai_action_system.parse_and_execute(response_text)
-                    if cleaned_response and cleaned_response.strip():
-                        self._add_chat_message("assistant", cleaned_response)
-                    if action_results:
-                        formatted_results = self.ai_action_system.format_action_results(action_results)
-                        self._add_chat_message("system", formatted_results)
+                cleaned_response, action_results = self.ai_action_system.parse_and_execute(response_text)
+                if cleaned_response and cleaned_response.strip():
+                    self._add_chat_message("assistant", cleaned_response)
+                if action_results:
+                    formatted_results = self.ai_action_system.format_action_results(action_results)
+                    self._add_chat_message("system", formatted_results)
 
-                    if action_results and any(
-                        r['action'] in ('create_prompt', 'update_prompt', 'delete_prompt', 'activate_prompt')
-                        for r in action_results if r['success']
-                    ):
-                        self.library.load_all_prompts()
-                        if hasattr(self, 'tree_widget') and self.tree_widget:
-                            self._refresh_tree()
+                if action_results and any(
+                    r['action'] in ('create_prompt', 'update_prompt', 'delete_prompt', 'activate_prompt')
+                    for r in action_results if r['success']
+                ):
+                    self.library.load_all_prompts()
+                    if hasattr(self, 'tree_widget') and self.tree_widget:
+                        self._refresh_tree()
             else:
                 self._add_chat_message("system", "\u26A0 Received empty response from AI.")
 
@@ -5297,6 +5420,104 @@ IMPORTANT:
                 "system",
                 f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details."
             )
+
+    def _run_autoprompt_with_progress(self, prompt: str):
+        """Run the AutoPrompt LLM call in a worker thread with a progress dialog.
+
+        v1.10.157: replaces the previous synchronous main-thread call that
+        froze the window for 1-3 minutes with reasoning-capable models.
+        """
+        ai_system_prompt = (
+            "You are a prompt engineering specialist for professional translation. "
+            "Generate the requested translation prompt and wrap it in "
+            "===PROMPT_START=== and ===PROMPT_END=== delimiters. "
+            "Output ONLY the delimiters and prompt content, nothing else."
+        )
+
+        self.log_message(f"[AI Assistant] Sending AutoPrompt request ({len(prompt)} chars) via worker thread")
+
+        # Try to surface the active provider name in the dialog text so the
+        # user knows what they're waiting on. Best-effort \u2014 falls back to a
+        # generic label if the chat backend doesn't expose it.
+        provider_label = "the AI"
+        try:
+            cb = self.chat_backend
+            for attr in ('provider_display_name', 'provider_name',
+                         'active_provider_name', 'provider'):
+                v = getattr(cb, attr, None)
+                if v:
+                    provider_label = str(v)
+                    break
+        except Exception:
+            pass
+
+        progress = QProgressDialog(
+            f"Generating prompt with {provider_label}\u2026\n\n"
+            "Reasoning-capable models (Opus, GPT-5, etc.) can take 1-3 minutes.\n"
+            "You can cancel at any time; the in-flight request will still\n"
+            "complete on the server but its result will be discarded.",
+            "Cancel", 0, 0, self.main_widget
+        )
+        progress.setWindowTitle("Generating AutoPrompt")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        QApplication.processEvents()
+
+        worker = _AutoPromptWorker(self.chat_backend, prompt, ai_system_prompt)
+        # Hold a reference so the worker isn't GC'd mid-flight.
+        self._autoprompt_worker = worker
+        self._autoprompt_progress = progress
+
+        def _close_progress():
+            try:
+                progress.close()
+            except Exception:
+                pass
+
+        def _on_finished(response_text, _metadata):
+            _close_progress()
+            if not response_text or not response_text.strip():
+                self._add_chat_message("system", "\u26A0 Received empty response from AI.")
+                return
+            try:
+                self._handle_analysis_response(response_text)
+            except Exception as e:
+                import traceback
+                self.log_message(f"[AI Assistant] \u274C ERROR handling AutoPrompt response: {traceback.format_exc()}")
+                self._add_chat_message(
+                    "system",
+                    f"\u26A0 Error processing AutoPrompt response: {e}\n\nCheck the log for details."
+                )
+
+        def _on_failed(error_message):
+            _close_progress()
+            self.log_message(f"[AI Assistant] \u274C AutoPrompt ERROR: {error_message}")
+            self._add_chat_message(
+                "system",
+                f"\u26A0 Error generating prompt: {error_message.splitlines()[0]}\n\n"
+                "Check the log for the full traceback."
+            )
+
+        def _on_cancel():
+            # We can't abort the HTTP request, but we can stop caring about
+            # the result \u2014 disconnect the signals so the eventual completion
+            # is silently ignored.
+            try:
+                worker.finished_ok.disconnect()
+                worker.failed.disconnect()
+            except Exception:
+                pass
+            self.log_message("[AI Assistant] AutoPrompt cancelled by user (in-flight request continues server-side).")
+            self._add_chat_message("system", "\u26A0 AutoPrompt cancelled. Any in-flight request will still complete on the server.")
+
+        worker.finished_ok.connect(_on_finished)
+        worker.failed.connect(_on_failed)
+        progress.canceled.connect(_on_cancel)
+
+        worker.start()
     
     def _handle_analysis_response(self, response: str):
         """Handle delimiter-based response from analysis prompt generation.
@@ -5335,14 +5556,21 @@ IMPORTANT:
         self._create_prompt_from_content(prompt_content)
 
     def _create_prompt_from_content(self, content: str):
-        """Create a prompt in the library from raw content string."""
-        # Determine prompt name from project context
+        """Create a prompt in the library from raw content string.
+
+        v1.10.157: instead of silently auto-saving into a hard-coded folder,
+        opens a save dialog where the user can name the prompt and pick a
+        folder. Suggested name is the current project name; suggested
+        folder is "Translate".
+        """
+        # Detect domain + language pair so we have a sensible fallback name
+        # if the project has no name (e.g. unsaved fresh import).
         source_lang = "Source"
         target_lang = "Target"
         detected_domain = "general"
 
-        if hasattr(self.parent_app, 'current_project') and self.parent_app.current_project:
-            project = self.parent_app.current_project
+        project = getattr(self.parent_app, 'current_project', None)
+        if project:
             if hasattr(project, 'source_lang') and project.source_lang:
                 source_lang = _resolve_lang_name(project.source_lang)
             elif hasattr(project, 'source_language') and project.source_language:
@@ -5359,30 +5587,77 @@ IMPORTANT:
                 detected_domain = domain
                 break
 
-        # Check if multi-file project
+        # Check if multi-file project (used in description)
         is_multifile = False
         file_count = 0
-        if hasattr(self.parent_app, 'current_project') and self.parent_app.current_project:
-            project = self.parent_app.current_project
+        if project:
             is_multifile = getattr(project, 'is_multifile', False)
             file_count = len(getattr(project, 'files', []) or [])
 
-        if is_multifile and file_count > 1:
-            prompt_name = f"{detected_domain.title()} Translation {source_lang}-{target_lang} ({file_count} files)"
-            description = f"AI-generated {detected_domain} domain prompt for {file_count}-file project with per-file guidance"
+        # Suggested name = project name if we have one, else fall back to
+        # the detected pattern. The project name is what the user already
+        # thinks of this work as ("BRANTS (URSU-008-BE-EP)"), so it's the
+        # most useful default. The pattern fallback ("Patent Translation
+        # Dutch-English") still applies when there's no current project.
+        if project and getattr(project, 'name', None):
+            suggested_name = project.name
+        elif is_multifile and file_count > 1:
+            suggested_name = f"{detected_domain.title()} Translation {source_lang}-{target_lang} ({file_count} files)"
         else:
-            prompt_name = f"{detected_domain.title()} Translation {source_lang}-{target_lang}"
-            description = f"AI-generated {detected_domain} domain prompt with anti-truncation controls and self-verification"
+            suggested_name = f"{detected_domain.title()} Translation {source_lang}-{target_lang}"
+
+        if is_multifile and file_count > 1:
+            description = (f"AI-generated {detected_domain} domain prompt for "
+                           f"{file_count}-file project with per-file guidance")
+        else:
+            description = (f"AI-generated {detected_domain} domain prompt with "
+                           f"anti-truncation controls and self-verification")
+
+        # Folder dropdown: list existing top-level folders in the library +
+        # the canonical defaults. Sort alphabetically but float "Translate"
+        # to the top because it's the default and the most-likely target
+        # for an AutoPrompt-generated translation prompt.
+        folders = set()
+        for relative_path in self.library.prompts.keys():
+            if '/' in relative_path:
+                folders.add(relative_path.split('/', 1)[0])
+        # Make sure Translate is always offered even on a fresh install.
+        folders.add('Translate')
+        sorted_folders = sorted(folders, key=lambda s: s.lower())
+        if 'Translate' in sorted_folders:
+            sorted_folders.remove('Translate')
+            sorted_folders = ['Translate'] + sorted_folders
+
+        dialog = _AutoPromptSaveDialog(
+            generated_content=content,
+            suggested_name=suggested_name,
+            available_folders=sorted_folders,
+            default_folder='Translate',
+            parent=self.main_widget,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._add_chat_message(
+                "system",
+                "⚠ AutoPrompt save cancelled. The generated content is in the chat "
+                "log above if you'd like to copy it out manually."
+            )
+            return
+
+        chosen_name = dialog.get_name()
+        chosen_folder = dialog.get_folder()
+
+        if not chosen_name:
+            QMessageBox.warning(
+                self.main_widget, "Name required",
+                "Please provide a name for the prompt."
+            )
+            return
 
         # Use the ai_action_system to create the prompt (reuses existing save/activate logic).
-        # v1.10.156: folder renamed from "Supervertaler Sidekick Prompts" — Sidekick
-        # was retired in v1.10.4 and AutoPrompt-generated prompts no longer belong
-        # in a folder named after it. Prompts created before this version stay in
-        # the old folder (no migration); new ones go to "AutoPrompt".
         params = {
-            'name': prompt_name,
+            'name': chosen_name,
             'content': content,
-            'folder': 'AutoPrompt',
+            'folder': chosen_folder,
             'description': description,
             'activate': True,
         }
