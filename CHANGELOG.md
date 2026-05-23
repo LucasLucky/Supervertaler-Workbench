@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.163 (May 23, 2026)
+**Current Version:** v1.10.164 (May 23, 2026)
+
+
+## v1.10.164 – May 23, 2026
+
+### Fixed
+
+- **Stale "Project Resources" UI path references in two help strings.** There's no "Project Resources" tab anywhere in Supervertaler Workbench — the name must be an artefact of an old tab layout. Two messages still referred to it:
+    - The **Section 4 (Image Context)** caption said *"Images loaded via Project Resources → Image Context …"*. Now points to the actual location: *"Images loaded via the ✨ AI → 🖼️ Image Context tab …"*.
+    - The **"No TMs Activated"** warning (shown when pre-translating from TM with no readable TMs) said *"Please go to Project Resources → Translation Memories …"*. Now points to *"Please go to the 💾 TMs tab …"*, which is where they actually live.
 
 
 ## v1.10.163 – May 23, 2026

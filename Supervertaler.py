@@ -55807,8 +55807,8 @@ class SupervertalerQt(QMainWindow):
                 QMessageBox.warning(
                     self, "No TMs Activated",
                     "No Translation Memories are activated for reading.\n\n"
-                    "Please go to Project Resources → Translation Memories and enable "
-                    "the 'Read' checkbox for the TMs you want to use."
+                    "Please go to the 💾 TMs tab and enable the 'Read' "
+                    "checkbox for the TMs you want to use."
                 )
                 return
             

@@ -2228,9 +2228,9 @@ class UnifiedPromptManagerQt:
         image_layout.addLayout(image_row)
 
         image_layout.addWidget(_section_info(
-            "Images loaded via <i>Project Resources → Image Context</i> "
+            "Images loaded via the <i>✨ AI → 🖼️ Image Context</i> tab "
             "are sent as binary data alongside your prompt when figure "
-            "references (Fig. 1, Figure 2A, …) are detected."
+            "references (Fig. 1, Figure 2A, …) are detected in a segment."
         ))
 
         image_group.setLayout(image_layout)
