@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.157 (May 23, 2026)
+**Current Version:** v1.10.158 (May 23, 2026)
+
+
+## v1.10.158 – May 23, 2026
+
+### Fixed
+
+- **AutoPrompt's "Save AutoPrompt" folder dropdown now actually lists existing folders on Windows.** The v1.10.157 dropdown was extracting top-level folders by string-splitting library keys on `'/'`. Library keys are filesystem-joined paths, so on Windows they use `\\` — the `'/'` check matched nothing and the dropdown silently fell back to just the hardcoded `Translate` entry. Switched to `pathlib.Path.parts`, which handles both separators consistently, so every existing top-level prompt folder (Proofread, QuickLauncher, Translate, etc.) now shows up regardless of OS.
 
 
 ## v1.10.157 – May 23, 2026

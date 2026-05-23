@@ -5617,10 +5617,16 @@ IMPORTANT:
         # the canonical defaults. Sort alphabetically but float "Translate"
         # to the top because it's the default and the most-likely target
         # for an AutoPrompt-generated translation prompt.
+        #
+        # v1.10.158 fix: library keys are filesystem-joined paths, which use
+        # '\\' on Windows. The previous '/'-only check matched nothing on
+        # Windows and the dropdown only showed the hardcoded "Translate".
+        # Path.parts handles both separators consistently.
         folders = set()
         for relative_path in self.library.prompts.keys():
-            if '/' in relative_path:
-                folders.add(relative_path.split('/', 1)[0])
+            parts = Path(relative_path).parts
+            if len(parts) > 1:
+                folders.add(parts[0])
         # Make sure Translate is always offered even on a fresh install.
         folders.add('Translate')
         sorted_folders = sorted(folders, key=lambda s: s.lower())
