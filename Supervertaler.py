@@ -62567,22 +62567,35 @@ class SuperlookupTab(QWidget):
                 print(f"[DEBUG search_termbases] Searching in '{termbase['name']}'")
                 terms = self.termbase_mgr.get_terms(termbase_id, connection=connection)
 
-                # v1.10.171: detect "reversed" termbases relative to the
-                # project's language pair. If the termbase's native source
-                # is actually the project's TARGET (and vice versa), we
-                # need to swap source/target in every result so the cells
-                # line up with the column headers (which are derived from
-                # the project's source/target language, not the termbase's).
-                # Without this swap, a NL→EN project searching an EN→NL
-                # termbase would see English under the "Dutch" header and
-                # vice versa — the user-reported bug. When direction can't
-                # be inferred (no project language pair set, or termbase
-                # lang missing), leave orientation alone.
+                # v1.10.172: decide whether to swap source/target in the
+                # display result using the PROJECT'S language pair
+                # (main_window.source_language / target_language) — not
+                # the SuperLookup From/To dropdowns. The column headers
+                # come from the project's language pair too, so they need
+                # to be the same source of truth. v1.10.171 used the
+                # SuperLookup From/To dropdowns instead, which produced
+                # the wrong swap decision when the dropdowns didn't match
+                # the project direction (e.g. project NL→EN but
+                # dropdowns left at the default EN→NL).
+                proj_src_norm = ''
+                proj_tgt_norm = ''
+                try:
+                    mw = self.main_window
+                    if mw is not None:
+                        raw_proj_src = getattr(mw, 'source_language', None)
+                        raw_proj_tgt = getattr(mw, 'target_language', None)
+                        if raw_proj_src:
+                            proj_src_norm = self._normalize_language_code(raw_proj_src) or ''
+                        if raw_proj_tgt:
+                            proj_tgt_norm = self._normalize_language_code(raw_proj_tgt) or ''
+                except Exception:
+                    pass
+
                 tb_reversed = bool(
-                    source_langs_norm and target_langs_norm
+                    proj_src_norm and proj_tgt_norm
                     and tb_source_norm and tb_target_norm
-                    and tb_source_norm in target_langs_norm
-                    and tb_target_norm in source_langs_norm
+                    and tb_source_norm == proj_tgt_norm
+                    and tb_target_norm == proj_src_norm
                 )
 
                 for term in terms:

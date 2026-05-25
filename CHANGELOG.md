@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.171 (May 25, 2026)
+**Current Version:** v1.10.172 (May 25, 2026)
+
+
+## v1.10.172 – May 25, 2026
+
+### Fixed
+
+- **Termbase result columns still mis-aligned with their headers in some cases (v1.10.171 follow-up).** v1.10.171 used the SuperLookup From / To dropdowns to decide whether a termbase was "reversed" and needed source/target swapped. But the column headers come from the *project's* language pair (`main_window.source_language` / `target_language`), not the SuperLookup search dropdowns — and the two often disagree (e.g. project set to NL→EN in Settings but SuperLookup's From/To dropdowns left at the default English/Dutch). With that mismatch, the swap decision was correct for the search filter but wrong for the headers. `search_termbases` now reads the project's language pair directly and uses it as the single source of truth for the swap, matching what the headers are showing.
 
 
 ## v1.10.171 – May 25, 2026
