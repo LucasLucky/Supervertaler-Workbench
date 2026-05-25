@@ -62566,7 +62566,25 @@ class SuperlookupTab(QWidget):
                 
                 print(f"[DEBUG search_termbases] Searching in '{termbase['name']}'")
                 terms = self.termbase_mgr.get_terms(termbase_id, connection=connection)
-                
+
+                # v1.10.171: detect "reversed" termbases relative to the
+                # project's language pair. If the termbase's native source
+                # is actually the project's TARGET (and vice versa), we
+                # need to swap source/target in every result so the cells
+                # line up with the column headers (which are derived from
+                # the project's source/target language, not the termbase's).
+                # Without this swap, a NL→EN project searching an EN→NL
+                # termbase would see English under the "Dutch" header and
+                # vice versa — the user-reported bug. When direction can't
+                # be inferred (no project language pair set, or termbase
+                # lang missing), leave orientation alone.
+                tb_reversed = bool(
+                    source_langs_norm and target_langs_norm
+                    and tb_source_norm and tb_target_norm
+                    and tb_source_norm in target_langs_norm
+                    and tb_target_norm in source_langs_norm
+                )
+
                 for term in terms:
                     source_term = term.get('source_term', '').lower()
                     target_term = term.get('target_term', '').lower()
@@ -62612,11 +62630,22 @@ class SuperlookupTab(QWidget):
                                 match_found = True
                     
                     if match_found:
+                        # v1.10.171: swap source/target when the termbase
+                        # is oriented backwards relative to the project
+                        # (e.g. EN→NL termbase in an NL→EN project), so
+                        # the cell content lines up with the column header.
+                        if tb_reversed:
+                            display_source = target_term_original
+                            display_target = source_term_original
+                        else:
+                            display_source = source_term_original
+                            display_target = target_term_original
+
                         # Create LookupResult with full metadata
                         from modules.superlookup import LookupResult
                         results.append(LookupResult(
-                            source=source_term_original,
-                            target=target_term_original,
+                            source=display_source,
+                            target=display_target,
                             match_percent=100,
                             source_type='termbase',
                             metadata={

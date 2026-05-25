@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.170 (May 25, 2026)
+**Current Version:** v1.10.171 (May 25, 2026)
+
+
+## v1.10.171 – May 25, 2026
+
+### Fixed
+
+- **SuperLookup termbase results: source/target cells now line up with column headers regardless of termbase direction.** A user with the project set to NL→EN noted that the "Dutch" column showed English terms and the "English" column showed Dutch terms when searching an EN→NL termbase. Root cause: the column headers come from the *project's* source/target language, but the cell content was copied straight from `term.source_term` / `term.target_term` (the *termbase's* native direction). For a "reversed" termbase the two disagreed. `search_termbases` now detects reversed termbases (termbase source matches project target, termbase target matches project source) and swaps source/target in the constructed result so the cells line up with the headers — same behaviour the editor's `_search_termbases_thread_safe` already had via its UNION query. When the project's language pair can't be inferred (no project loaded / no language filter), orientation is left as-is.
 
 
 ## v1.10.170 – May 25, 2026
