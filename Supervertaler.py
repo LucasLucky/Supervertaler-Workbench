@@ -12401,6 +12401,12 @@ class SupervertalerQt(QMainWindow):
         tm_table.setColumnWidth(3, 60)
         tm_table.setColumnWidth(4, 60)
         tm_table.setColumnWidth(5, 150)
+        # v1.10.169: click-header-to-sort on the data columns (TM Name,
+        # Languages, Entries, Last Modified, Description). The Read /
+        # Write columns are checkbox widgets and won't sort meaningfully
+        # — clicking those headers is a visual no-op. Sorting is toggled
+        # off + back on around refresh_tm_list's rebuild loop.
+        tm_table.setSortingEnabled(True)
         
         # Get current project (for lambda closures below)
         current_project = self.current_project if hasattr(self, 'current_project') else None
@@ -12430,20 +12436,23 @@ class SupervertalerQt(QMainWindow):
             refresh_project_id = current_proj.id if (current_proj and hasattr(current_proj, 'id')) else 0  # 0 = global
             
             tms = tm_metadata_mgr.get_all_tms()
+            # v1.10.169: see termbase_table refresh for the same disable/
+            # restore pattern. Sorting during a populating loop reshuffles
+            # rows mid-build and corrupts the row index closures captured
+            # by the per-row checkbox handlers.
+            _prev_tm_sorting = tm_table.isSortingEnabled()
+            tm_table.setSortingEnabled(False)
             tm_table.setRowCount(len(tms))
             
             for row, tm in enumerate(tms):
-                # When no project is loaded, nothing should be selected (user requirement)
-                if current_proj is None:
-                    is_readable = False
-                    is_writable = False
-                else:
-                    # Check if active (Read mode) for current project or global (0)
-                    # Note: is_tm_active now supports project_id=0 for global activations
-                    is_readable = tm_metadata_mgr.is_tm_active(tm['id'], refresh_project_id)
-                    # Default: read-only (Write unchecked) - read_only=True means not writable
-                    # If read_only is not set in database, treat as read-only by default
-                    is_writable = not tm.get('read_only', True)  # Default to True (read-only) if not set
+                # v1.10.169: read the actual DB state regardless of whether
+                # a project is loaded. See the matching comment in the
+                # Termbases-tab refresh for the rationale (in short: the
+                # "no project = force unchecked" override silently wiped
+                # user toggles every refresh, and broke the no-project
+                # SuperLookup workflow).
+                is_readable = tm_metadata_mgr.is_tm_active(tm['id'], refresh_project_id)
+                is_writable = not tm.get('read_only', True)  # Default to True (read-only) if not set
                 
                 # TM Name (bold if readable)
                 name_item = QTableWidgetItem(tm['name'])
@@ -12558,7 +12567,10 @@ class SupervertalerQt(QMainWindow):
                 f"📊 {total_tus:,} translation units across {len(tms)} TM"
                 f"{'s' if len(tms) != 1 else ''}"
             )
-        
+
+            # v1.10.169: re-enable sorting now that the rebuild is done.
+            tm_table.setSortingEnabled(_prev_tm_sorting)
+
         # Store callback as instance attribute so load_project can refresh UI after restoration
         self.tm_tab_refresh_callback = refresh_tm_list
         
@@ -16463,6 +16475,15 @@ class SupervertalerQt(QMainWindow):
         termbase_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         termbase_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         termbase_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Disable inline editing
+        # v1.10.169: click-header-to-sort on the data columns (Type, Name,
+        # Languages, Terms). The checkbox columns (Read / Write / Project /
+        # AI / Voice) can be header-clicked too, but they don't carry sortable
+        # data — Qt's QTableWidget sort orders cellWidgets by their row's
+        # text item, which for those columns is None, so clicking them is
+        # a visual no-op. setSortingEnabled is flipped off + back on around
+        # the rebuild loop (see refresh_termbase_list) so cell population
+        # doesn't trigger re-sorts during insertion.
+        termbase_table.setSortingEnabled(True)
         
         # Enable context menu for termbase table
         termbase_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -17167,18 +17188,26 @@ class SupervertalerQt(QMainWindow):
             self.log(f"📋 Refreshing termbase list (project_id: {refresh_project_id})")
             termbases = termbase_mgr.get_all_termbases()
             self.log(f"  Found {len(termbases)} termbase(s) in database")
+            # Turn sorting off during rebuild — otherwise inserting items
+            # one column at a time triggers a live re-sort after each
+            # setItem call, mangling the row mapping the closures below
+            # rely on. Re-enabled after the loop.
+            _prev_sorting = termbase_table.isSortingEnabled()
+            termbase_table.setSortingEnabled(False)
             termbase_table.setRowCount(len(termbases))
             
             for row, tb in enumerate(termbases):
-                # When no project is loaded, nothing should be selected (user requirement)
-                if current_proj is None:
-                    is_readable = False
-                    is_writable = False
-                else:
-                    # Check if readable (activated) for current project or global (0)
-                    is_readable = termbase_mgr.is_termbase_active(tb['id'], refresh_project_id)
-                    # Check if writable (not read-only)
-                    is_writable = not tb.get('read_only', True)  # Default to True (read-only) if not set
+                # v1.10.169: read the actual DB state regardless of whether
+                # a project is loaded. Previously this block forced both
+                # checkboxes to unchecked when current_proj was None, which
+                # silently wiped the user's selection state every time the
+                # table refreshed in the "no project" use case — and made
+                # the no-project SuperLookup workflow basically uncontrollable
+                # because Read couldn't be ticked: clicking it saved to the
+                # DB then the next refresh undid the visual tick. The DB
+                # is the source of truth in both modes.
+                is_readable = termbase_mgr.is_termbase_active(tb['id'], refresh_project_id)
+                is_writable = not tb.get('read_only', True)  # Default to True (read-only) if not set
                 
                 # Get project glossary flag from termbase_activation table
                 priority = termbase_mgr.get_termbase_priority(tb['id'], refresh_project_id) if is_readable else None
@@ -17398,7 +17427,11 @@ class SupervertalerQt(QMainWindow):
             tb_write_header_checkbox.setChecked(all_tb_write_checked)
             tb_read_header_checkbox.blockSignals(False)
             tb_write_header_checkbox.blockSignals(False)
-        
+
+            # v1.10.169: re-enable sorting now that the rebuild is done.
+            # See the matching disable call at the top of this function.
+            termbase_table.setSortingEnabled(_prev_sorting)
+
         # Store callback as instance attribute so add_term_to_termbase can call it
         self.termbase_tab_refresh_callback = refresh_termbase_list
         
@@ -58747,7 +58780,7 @@ class _SuperLookupSearchWorker(QRunnable):
     """
 
     def __init__(self, tab, text, search_direction, from_lang, to_lang,
-                 selected_tm_ids, tm_search_disabled):
+                 selected_tm_ids, selected_tb_ids, tm_search_disabled):
         super().__init__()
         self.setAutoDelete(False)  # we manage lifetime via tab._active_search_worker
         self.tab = tab
@@ -58756,6 +58789,9 @@ class _SuperLookupSearchWorker(QRunnable):
         self.from_lang = from_lang
         self.to_lang = to_lang
         self.selected_tm_ids = selected_tm_ids
+        # v1.10.169: pre-computed on the main thread before the worker runs,
+        # so the worker doesn't have to call the main-thread sqlite cursor.
+        self.selected_tb_ids = selected_tb_ids
         self.tm_search_disabled = tm_search_disabled
         self.signals = _SuperLookupSearchSignals()
         self.cancel_event = threading.Event()
@@ -58806,6 +58842,7 @@ class _SuperLookupSearchWorker(QRunnable):
                     source_lang=self.from_lang,
                     target_lang=self.to_lang,
                     connection=conn,
+                    selected_tb_ids=self.selected_tb_ids,
                 )
             except Exception as e:
                 print(f"[SuperLookupWorker] Termbase search error: {e}")
@@ -61417,11 +61454,15 @@ class SuperlookupTab(QWidget):
                 except Exception:
                     pass
 
-        # v1.10.168: TM selection now mirrors the TMs-tab Read flag
-        # (tm_metadata.is_active) instead of a SuperLookup-local checkbox
-        # list. Empty list → no TM is currently Read-active → skip TM
-        # search entirely.
+        # v1.10.168: TM + termbase selection both mirror the main TMs /
+        # Termbases tabs' Read flag (tm_metadata.is_active /
+        # termbase_activation.is_active). Compute BOTH lists here on the
+        # main thread — calling them from the worker thread would touch
+        # the main-thread sqlite cursor and trip Python's connection-
+        # affinity check ("SQLite objects created in a thread can only
+        # be used in that same thread").
         selected_tm_ids = self.get_selected_tm_ids()
+        selected_tb_ids = self.get_selected_termbase_ids()
         search_direction = self.get_search_direction()
         from_lang, to_lang = self.get_language_filters()
         tm_search_disabled = not selected_tm_ids
@@ -61452,6 +61493,7 @@ class SuperlookupTab(QWidget):
             from_lang=from_lang,
             to_lang=to_lang,
             selected_tm_ids=selected_tm_ids,
+            selected_tb_ids=selected_tb_ids,
             tm_search_disabled=tm_search_disabled,
         )
         worker.signals.tm_ready.connect(self._on_search_tm_ready)
@@ -62370,7 +62412,8 @@ class SuperlookupTab(QWidget):
     # synchronously and freeze on render).
     SUPERLOOKUP_TERMBASE_RESULT_CAP = 500
 
-    def search_termbases(self, text, source_lang=None, target_lang=None, connection=None):
+    def search_termbases(self, text, source_lang=None, target_lang=None, connection=None,
+                         selected_tb_ids=None):
         """Search Supervertaler termbases for matching terms.
 
         Uses Superlookup's OWN checkbox selections (independent from Resources > Termbases).
@@ -62416,13 +62459,14 @@ class SuperlookupTab(QWidget):
             direction = self.get_search_direction()
             
             # v1.10.168: termbase selection now mirrors the Termbases-tab
-            # Read flag (termbase_activation.is_active) instead of a
-            # SuperLookup-local checkbox list. Empty list → no termbase is
-            # currently Read-active → nothing to search. The old "fall back
-            # to search all if no checkboxes were built yet" branch is gone
-            # because get_selected_termbase_ids() now always returns the
-            # authoritative set from the DB.
-            selected_tb_ids = self.get_selected_termbase_ids()
+            # Read flag (termbase_activation.is_active). v1.10.169:
+            # selected_tb_ids is pre-computed on the main thread by
+            # perform_lookup() and threaded through to here, so this method
+            # can run safely from the search worker thread (sqlite cursor
+            # affinity). If the caller didn't precompute (e.g. an older
+            # call site), fall back to computing now.
+            if selected_tb_ids is None:
+                selected_tb_ids = self.get_selected_termbase_ids()
             if not selected_tb_ids:
                 print("[DEBUG search_termbases] No termbase has Read enabled – skipping termbase search.")
                 return results

@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.168 (May 25, 2026)
+**Current Version:** v1.10.169 (May 25, 2026)
+
+
+## v1.10.169 – May 25, 2026
+
+### Fixed
+
+- **SQLite thread-affinity crash on every SuperLookup search.** v1.10.168 made SuperLookup's `search_termbases()` (which runs in a background worker thread) call `get_selected_termbase_ids()` which in turn used `termbase_mgr.get_all_termbases()` on the main-thread sqlite cursor — Python raised `SQLite objects created in a thread can only be used in that same thread`, dropping every search result. The active TM-ID and termbase-ID lists are now precomputed on the main thread inside `perform_lookup()` and threaded through the worker constructor, so the worker only touches its own reader connection.
+- **Read / Write checkboxes on the Termbases tab + TMs tab were silently uncontrollable when no project was loaded.** A `if current_proj is None: is_readable = False; is_writable = False` block in both tabs' refresh loops hardcoded both checkboxes to unchecked regardless of the DB state. A user spotted the symptom: click Write → it toggles on; click Read → Read stays unchecked AND Write becomes unchecked (because the refresh fires after Read's DB write, repaints both columns from the override instead of from DB, and the just-saved Write tick disappears). Removed the override on both tabs — DB is the source of truth in both project-loaded and no-project modes, which is what the v1.10.168 SuperLookup architecture requires anyway.
+
+### Added
+
+- **Click-header-to-sort on the Termbases tab table and the TMs tab table.** Sortable on the text columns (Type / Name / Languages / Terms on Termbases; TM Name / Languages / Entries / Last Modified / Description on TMs). The checkbox columns (Read / Write / Project / AI / 🎤 Voice) are header-clickable too but the sort is a visual no-op since those columns are cell widgets. Sorting is bracketed around the row-population loop to keep the per-row checkbox handlers' captured row indices stable during a refresh.
 
 
 ## v1.10.168 – May 25, 2026
