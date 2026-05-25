@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.167 (May 24, 2026)
+**Current Version:** v1.10.168 (May 25, 2026)
+
+
+## v1.10.168 – May 25, 2026
+
+### Changed
+
+- **SuperLookup now respects the Termbases tab and TMs tab `Read` flags as the single source of truth.** Previously, SuperLookup had its own separate set of TM and termbase checkboxes (under SuperLookup → ⚙️ SuperLookup Settings → 📖 Translation Memories / 📚 Termbases) that worked independently from the main Termbases and TMs tabs' Read columns. A user spotted the trap: their termbase had `Read = ☐` on the Termbases tab (so no editor terminology matching), but SuperLookup was still returning results from it because the SuperLookup-local checkbox was on. Two parallel switches per resource, no obvious relationship between them. **Now there's one switch per resource, in the obvious place** — toggle `Read` on the Termbases tab to include or exclude a termbase from SuperLookup, same for TMs. The 📖 Translation Memories and 📚 Termbases sub-tabs on SuperLookup Settings have been removed; in their place is a short info note explaining where selection now lives. Bulk "Select All / Clear All" buttons aren't re-implemented yet on the main tabs — if that's missed, the per-row Read checkboxes work for now.
 
 
 ## v1.10.167 – May 24, 2026

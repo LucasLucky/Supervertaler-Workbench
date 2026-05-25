@@ -60787,22 +60787,34 @@ class SuperlookupTab(QWidget):
         landing_outer.addLayout(landing_row)
         layout.addWidget(landing_frame, 0)
 
+        # v1.10.168: Removed the per-SuperLookup Termbase + TM checkbox
+        # sub-tabs. Selection now lives in one place per resource: the
+        # main TMs tab's Read column for translation memories, and the
+        # main Termbases tab's Read column for termbases. A short note
+        # below explains where users should go.
+        resource_info = QLabel(
+            "<b>Translation Memories &amp; Termbases:</b> SuperLookup searches every TM and "
+            "termbase that has its <b>Read</b> flag enabled on the main <b>TMs</b> and "
+            "<b>Termbases</b> tabs. To include or exclude a resource from SuperLookup, "
+            "toggle its Read flag there. There used to be a second set of checkboxes here "
+            "in SuperLookup Settings — they were redundant and confusing, so they're gone."
+        )
+        resource_info.setWordWrap(True)
+        resource_info.setTextFormat(Qt.TextFormat.RichText)
+        resource_info.setStyleSheet(
+            "color: #444; padding: 12px; background-color: #FFF8E1; "
+            "border: 1px solid #FFE082; border-radius: 4px;"
+        )
+        layout.addWidget(resource_info, 0)
+
         # Create sub-tabs for each resource type
         self.settings_subtabs = QTabWidget()
         self.settings_subtabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.settings_subtabs.tabBar().setDrawBase(False)
         self.settings_subtabs.tabBar().setExpanding(False)
-        
-        # TM Settings sub-tab
-        tm_settings_tab = self.create_tm_settings_subtab()
-        self.settings_subtabs.addTab(tm_settings_tab, "📖 Translation Memories")
-        
-        # Termbase Settings sub-tab
-        tb_settings_tab = self.create_termbase_settings_subtab()
-        self.settings_subtabs.addTab(tb_settings_tab, "📚 Termbases")
-        
+
         # Note: MT Settings removed - now in main Settings → MT Settings
-        
+
         # Web Settings sub-tab
         web_settings_tab = self.create_web_settings_subtab()
         self.settings_subtabs.addTab(web_settings_tab, "🌐 Web Resources")
@@ -60846,131 +60858,11 @@ class SuperlookupTab(QWidget):
         except Exception as e:
             print(f"[Superlookup] Could not save landing tab pref: {e}")
 
-    def create_tm_settings_subtab(self):
-        """Create TM settings sub-tab"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
-        
-        # Info section
-        info = QLabel(
-            "All Translation Memories are searched by default. "
-            "Uncheck any you want to exclude. "
-            "Uncheck every TM to disable TM search entirely."
-        )
-        info.setWordWrap(True)
-        info.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(info, 0)
-
-        # TM selection label
-        list_label = QLabel("Select Translation Memories:")
-        list_label.setStyleSheet("font-weight: bold; padding-top: 10px;")
-        layout.addWidget(list_label, 0)
-        
-        # TM selection scroll area with checkboxes
-        self.tm_scroll_area = QScrollArea()
-        self.tm_scroll_area.setWidgetResizable(True)
-        self.tm_scroll_area.setFrameShape(QFrame.Shape.StyledPanel)
-        
-        self.tm_scroll_widget = QWidget()
-        self.tm_scroll_layout = QVBoxLayout(self.tm_scroll_widget)
-        self.tm_scroll_layout.setContentsMargins(5, 5, 5, 5)
-        self.tm_scroll_layout.setSpacing(3)
-        self.tm_scroll_layout.addStretch()
-        
-        self.tm_scroll_area.setWidget(self.tm_scroll_widget)
-        layout.addWidget(self.tm_scroll_area, stretch=1)  # Takes all available space
-        
-        # Store checkboxes for easy access
-        self.tm_checkboxes = []
-        
-        # Info label
-        tm_info = QLabel("💡 Tip: Unchecking every TM disables TM search for SuperLookup.")
-        tm_info.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 5px 0;")
-        layout.addWidget(tm_info, 0)
-        
-        # TM buttons
-        tm_btn_layout = QHBoxLayout()
-        select_all_tm_btn = QPushButton("Select All")
-        select_all_tm_btn.clicked.connect(self.check_all_tms)
-        tm_btn_layout.addWidget(select_all_tm_btn)
-        
-        clear_all_tm_btn = QPushButton("Clear All")
-        clear_all_tm_btn.clicked.connect(self.uncheck_all_tms)
-        tm_btn_layout.addWidget(clear_all_tm_btn)
-        
-        refresh_tm_btn = QPushButton("🔄 Refresh List")
-        refresh_tm_btn.clicked.connect(self.refresh_tm_list)
-        tm_btn_layout.addWidget(refresh_tm_btn)
-        tm_btn_layout.addStretch()
-        
-        layout.addLayout(tm_btn_layout, 0)
-        
-        return tab
-    
-    def create_termbase_settings_subtab(self):
-        """Create Termbase settings sub-tab"""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
-        
-        # Info section
-        info = QLabel(
-            "All termbases are searched by default. "
-            "Uncheck any you want to exclude. "
-            "Uncheck every termbase to disable termbase search entirely."
-        )
-        info.setWordWrap(True)
-        info.setStyleSheet("color: #666; padding: 5px; background-color: #E3F2FD; border-radius: 3px;")
-        layout.addWidget(info, 0)
-
-        # Termbase selection label
-        list_label = QLabel("Select Termbases:")
-        list_label.setStyleSheet("font-weight: bold; padding-top: 10px;")
-        layout.addWidget(list_label, 0)
-        
-        # Termbase selection scroll area with checkboxes
-        self.tb_scroll_area = QScrollArea()
-        self.tb_scroll_area.setWidgetResizable(True)
-        self.tb_scroll_area.setFrameShape(QFrame.Shape.StyledPanel)
-        
-        self.tb_scroll_widget = QWidget()
-        self.tb_scroll_layout = QVBoxLayout(self.tb_scroll_widget)
-        self.tb_scroll_layout.setContentsMargins(5, 5, 5, 5)
-        self.tb_scroll_layout.setSpacing(3)
-        self.tb_scroll_layout.addStretch()
-        
-        self.tb_scroll_area.setWidget(self.tb_scroll_widget)
-        layout.addWidget(self.tb_scroll_area, stretch=1)  # Takes all available space
-        
-        # Store checkboxes for easy access
-        self.tb_checkboxes = []
-        
-        # Info label
-        tb_info = QLabel("💡 Tip: Unchecking every termbase disables termbase search for SuperLookup.")
-        tb_info.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 5px 0;")
-        layout.addWidget(tb_info, 0)
-        
-        # Termbase buttons
-        tb_btn_layout = QHBoxLayout()
-        select_all_tb_btn = QPushButton("Select All")
-        select_all_tb_btn.clicked.connect(self.check_all_tbs)
-        tb_btn_layout.addWidget(select_all_tb_btn)
-        
-        clear_all_tb_btn = QPushButton("Clear All")
-        clear_all_tb_btn.clicked.connect(self.uncheck_all_tbs)
-        tb_btn_layout.addWidget(clear_all_tb_btn)
-        
-        refresh_tb_btn = QPushButton("🔄 Refresh List")
-        refresh_tb_btn.clicked.connect(self.refresh_termbase_list)
-        tb_btn_layout.addWidget(refresh_tb_btn)
-        tb_btn_layout.addStretch()
-        
-        layout.addLayout(tb_btn_layout, 0)
-        
-        return tab
+    # v1.10.168: create_tm_settings_subtab / create_termbase_settings_subtab
+    # were removed. Selection now lives on the main TMs / Termbases tabs
+    # (Read column). The SuperLookup Settings tab still exists (Web
+    # Resources sub-tab + Ctrl+Alt+L landing preference), but no longer
+    # hosts a per-resource checkbox list.
     
     def create_mt_settings_subtab(self):
         """Create MT settings sub-tab"""
@@ -61106,9 +60998,10 @@ class SuperlookupTab(QWidget):
                 quicktrans_index = i
 
         if index == settings_index and settings_index >= 0:
-            print("[Superlookup] Settings tab viewed - refreshing resource lists")
-            self.refresh_tm_list()
-            self.refresh_termbase_list()
+            # v1.10.168: per-SuperLookup TM + Termbase checkbox lists
+            # were removed; selection now mirrors the main TMs / Termbases
+            # tabs' Read flags. Just refresh language dropdowns here.
+            print("[Superlookup] Settings tab viewed - refreshing language dropdowns")
             self.populate_language_dropdowns()
 
         if index == web_index and web_index >= 0:
@@ -61160,124 +61053,53 @@ class SuperlookupTab(QWidget):
                         break
     
     def refresh_tm_list(self):
-        """Refresh the list of available TMs"""
-        # Clear existing checkboxes
-        for checkbox in self.tm_checkboxes:
-            self.tm_scroll_layout.removeWidget(checkbox)
-            checkbox.deleteLater()
-        self.tm_checkboxes.clear()
-        
-        print(f"[Superlookup] refresh_tm_list called")
-        print(f"[Superlookup]   main_window exists: {self.main_window is not None}")
-        
-        # Get TMs from main window's database
-        if self.main_window and hasattr(self.main_window, 'db_manager') and self.main_window.db_manager:
-            try:
-                print(f"[Superlookup]   db_manager found, querying TMs...")
-                cursor = self.main_window.db_manager.cursor
-                cursor.execute("SELECT id, name, tm_id FROM translation_memories ORDER BY name")
-                tms = cursor.fetchall()
-                
-                print(f"[Superlookup]   Query returned {len(tms)} TMs")
-                
-                for db_id, tm_name, tm_id_str in tms:
-                    checkbox = CheckmarkCheckBox(f"{tm_name} (ID: {db_id})")
-                    checkbox.setChecked(True)  # Start checked; user deselects to exclude.
-                    # Unchecking every TM disables TM search entirely.
-                    checkbox.setProperty("tm_id", tm_id_str)  # Store tm_id string for search
-                    checkbox.setProperty("db_id", db_id)  # Store db_id for reference
-                    self.tm_checkboxes.append(checkbox)
-                    # Insert before the stretch at the end
-                    self.tm_scroll_layout.insertWidget(len(self.tm_checkboxes) - 1, checkbox)
-                
-                print(f"[Superlookup] ✓ Loaded {len(tms)} TMs")
-            except Exception as e:
-                print(f"[Superlookup] ✗ Error loading TMs: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[Superlookup]   db_manager not available")
-            # Add placeholder label
-            placeholder = QLabel("No database connection - TMs unavailable")
-            placeholder.setStyleSheet("color: #999; font-style: italic;")
-            self.tm_scroll_layout.insertWidget(0, placeholder)
-    
-    def refresh_termbase_list(self):
-        """Refresh the list of available termbases"""
-        # Clear existing checkboxes
-        for checkbox in self.tb_checkboxes:
-            self.tb_scroll_layout.removeWidget(checkbox)
-            checkbox.deleteLater()
-        self.tb_checkboxes.clear()
-        
-        print(f"[Superlookup] refresh_termbase_list called")
-        print(f"[Superlookup]   main_window exists: {self.main_window is not None}")
-        
-        # Try termbase_mgr first (preferred method)
-        if self.main_window and hasattr(self.main_window, 'termbase_mgr') and self.main_window.termbase_mgr:
-            try:
-                print(f"[Superlookup]   termbase_mgr found, querying termbases...")
-                termbases = self.main_window.termbase_mgr.get_all_termbases()
-                
-                print(f"[Superlookup]   get_all_termbases() returned {len(termbases)} termbases")
-                
-                for tb in termbases:
-                    tb_id = tb.get('id')
-                    tb_name = tb.get('name', 'Unnamed')
-                    checkbox = CheckmarkCheckBox(f"{tb_name} (ID: {tb_id})")
-                    checkbox.setChecked(True)  # Start checked; user deselects to exclude.
-                    # Unchecking every termbase disables termbase search entirely.
-                    checkbox.setProperty("tb_id", tb_id)
-                    self.tb_checkboxes.append(checkbox)
-                    # Insert before the stretch at the end
-                    self.tb_scroll_layout.insertWidget(len(self.tb_checkboxes) - 1, checkbox)
+        """v1.10.168: no-op shim. The per-SuperLookup TM checkbox list was
+        removed; selection now lives on the main TMs tab's Read column.
+        Kept as a stub so any stale caller (e.g. from older session state)
+        doesn't AttributeError."""
+        pass
 
-                print(f"[Superlookup] ✓ Loaded {len(termbases)} termbases via termbase_mgr")
-                return
-            except Exception as e:
-                print(f"[Superlookup] ✗ Error loading termbases via termbase_mgr: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Fallback to direct database query
-        if self.main_window and hasattr(self.main_window, 'db_manager') and self.main_window.db_manager:
-            try:
-                print(f"[Superlookup]   db_manager found, querying termbases...")
-                cursor = self.main_window.db_manager.cursor
-                cursor.execute("SELECT id, name FROM termbases ORDER BY name")
-                termbases = cursor.fetchall()
-                
-                print(f"[Superlookup]   Query returned {len(termbases)} termbases")
-                
-                for tb_id, tb_name in termbases:
-                    checkbox = CheckmarkCheckBox(f"{tb_name} (ID: {tb_id})")
-                    checkbox.setChecked(True)  # Start checked; user deselects to exclude.
-                    # Unchecking every termbase disables termbase search entirely.
-                    checkbox.setProperty("tb_id", tb_id)
-                    self.tb_checkboxes.append(checkbox)
-                    # Insert before the stretch at the end
-                    self.tb_scroll_layout.insertWidget(len(self.tb_checkboxes) - 1, checkbox)
-                
-                print(f"[Superlookup] ✓ Loaded {len(termbases)} termbases via db_manager")
-            except Exception as e:
-                print(f"[Superlookup] ✗ Error loading termbases via db_manager: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[Superlookup]   Neither termbase_mgr nor db_manager available")
-            # Add placeholder label
-            placeholder = QLabel("No database connection - Termbases unavailable")
-            placeholder.setStyleSheet("color: #999; font-style: italic;")
-            self.tb_scroll_layout.insertWidget(0, placeholder)
+    def refresh_termbase_list(self):
+        """v1.10.168: no-op shim — see refresh_tm_list."""
+        pass
     
     def get_selected_tm_ids(self):
-        """Get list of checked TM IDs"""
+        """Get list of TM IDs that SuperLookup should search.
+
+        v1.10.168: changed from "SuperLookup-local checkbox state" to
+        "the Read flag set on the TMs tab in the main window". The
+        per-SuperLookup TM checkbox list was confusing — users would
+        toggle Read on the TMs tab and then wonder why SuperLookup still
+        showed (or didn't show) results. Now there's one switch per
+        resource, in the obvious place. The Termbases tab's Read flag
+        gates termbase search the same way (see get_selected_termbase_ids).
+        Returns an empty list when no TM is active, which signals search
+        code to skip the TM query entirely.
+        """
+        mw = self.main_window
+        if mw is None or not hasattr(mw, 'tm_metadata_mgr') or mw.tm_metadata_mgr is None:
+            return []
+        # project_id = 0 means "global activation" (no project loaded);
+        # mirrors how the TMs-tab Read toggle stores its state.
+        try:
+            curr_proj = getattr(mw, 'current_project', None)
+            project_id = curr_proj.id if (curr_proj is not None and hasattr(curr_proj, 'id')) else 0
+        except Exception:
+            project_id = 0
+
         selected_ids = []
-        for checkbox in self.tm_checkboxes:
-            if checkbox.isChecked():
-                tm_id = checkbox.property("tm_id")
-                if tm_id is not None:
-                    selected_ids.append(tm_id)
+        try:
+            for tm in (mw.tm_metadata_mgr.get_all_tms() or []):
+                tm_id = tm.get('id')
+                if tm_id is None:
+                    continue
+                try:
+                    if mw.tm_metadata_mgr.is_tm_active(tm_id, project_id):
+                        selected_ids.append(tm_id)
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"[Superlookup] get_selected_tm_ids: enumeration failed: {e}")
         return selected_ids
     
     def get_search_direction(self):
@@ -61462,34 +61284,43 @@ class SuperlookupTab(QWidget):
         return lang_code.capitalize() if lang_code else 'Unknown'
     
     def get_selected_termbase_ids(self):
-        """Get list of checked termbase IDs"""
+        """Get list of termbase IDs that SuperLookup should search.
+
+        v1.10.168: changed to query the Termbases-tab Read flag
+        (termbase_activation.is_active) instead of a SuperLookup-local
+        checkbox list. One switch per resource, in the obvious place.
+        See get_selected_tm_ids for the rationale.
+        """
+        mw = self.main_window
+        if mw is None or not hasattr(mw, 'termbase_mgr') or mw.termbase_mgr is None:
+            return []
+        try:
+            curr_proj = getattr(mw, 'current_project', None)
+            project_id = curr_proj.id if (curr_proj is not None and hasattr(curr_proj, 'id')) else 0
+        except Exception:
+            project_id = 0
+
         selected_ids = []
-        for checkbox in self.tb_checkboxes:
-            if checkbox.isChecked():
-                tb_id = checkbox.property("tb_id")
-                if tb_id is not None:
-                    selected_ids.append(tb_id)
+        try:
+            for tb in (mw.termbase_mgr.get_all_termbases() or []):
+                tb_id = tb.get('id')
+                if tb_id is None:
+                    continue
+                try:
+                    if mw.termbase_mgr.is_termbase_active(tb_id, project_id):
+                        selected_ids.append(tb_id)
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"[Superlookup] get_selected_termbase_ids: enumeration failed: {e}")
         return selected_ids
     
-    def check_all_tms(self):
-        """Check all TM checkboxes"""
-        for checkbox in self.tm_checkboxes:
-            checkbox.setChecked(True)
-    
-    def uncheck_all_tms(self):
-        """Uncheck all TM checkboxes"""
-        for checkbox in self.tm_checkboxes:
-            checkbox.setChecked(False)
-    
-    def check_all_tbs(self):
-        """Check all termbase checkboxes"""
-        for checkbox in self.tb_checkboxes:
-            checkbox.setChecked(True)
-    
-    def uncheck_all_tbs(self):
-        """Uncheck all termbase checkboxes"""
-        for checkbox in self.tb_checkboxes:
-            checkbox.setChecked(False)
+    # v1.10.168: check_all_tms / uncheck_all_tms / check_all_tbs /
+    # uncheck_all_tbs were Select All / Clear All buttons on the now-
+    # removed TM + Termbase sub-tabs of SuperLookup Settings. Removed
+    # outright — the buttons that called them are gone. Bulk select /
+    # clear of Read flags can be added to the main TMs / Termbases tabs
+    # in a future iteration if users ask for it.
     
     def __del__(self):
         """Destructor - cleanup AHK process when widget is destroyed"""
@@ -61586,11 +61417,14 @@ class SuperlookupTab(QWidget):
                 except Exception:
                     pass
 
-        # Set enabled TM IDs from Superlookup's own checkboxes (independent selection).
+        # v1.10.168: TM selection now mirrors the TMs-tab Read flag
+        # (tm_metadata.is_active) instead of a SuperLookup-local checkbox
+        # list. Empty list → no TM is currently Read-active → skip TM
+        # search entirely.
         selected_tm_ids = self.get_selected_tm_ids()
         search_direction = self.get_search_direction()
         from_lang, to_lang = self.get_language_filters()
-        tm_search_disabled = bool(self.tm_checkboxes) and not selected_tm_ids
+        tm_search_disabled = not selected_tm_ids
 
         if self.engine:
             self.engine.set_enabled_tm_ids(selected_tm_ids if selected_tm_ids else None)
@@ -62581,25 +62415,20 @@ class SuperlookupTab(QWidget):
             # Get search direction
             direction = self.get_search_direction()
             
-            # Get termbases selected in Superlookup's Settings tab (independent selection).
-            # NEW BEHAVIOUR (all-checked-by-default model): unchecking every
-            # termbase disables termbase search entirely. If the checkbox
-            # list hasn't been built yet (no checkboxes at all), fall back to
-            # searching all termbases so first-use returns results.
+            # v1.10.168: termbase selection now mirrors the Termbases-tab
+            # Read flag (termbase_activation.is_active) instead of a
+            # SuperLookup-local checkbox list. Empty list → no termbase is
+            # currently Read-active → nothing to search. The old "fall back
+            # to search all if no checkboxes were built yet" branch is gone
+            # because get_selected_termbase_ids() now always returns the
+            # authoritative set from the DB.
             selected_tb_ids = self.get_selected_termbase_ids()
-            all_termbases = self.termbase_mgr.get_all_termbases(connection=connection)
-
-            if self.tb_checkboxes and not selected_tb_ids:
-                # User has explicitly unchecked every termbase → disabled.
-                print("[DEBUG search_termbases] All termbases deselected – skipping termbase search.")
+            if not selected_tb_ids:
+                print("[DEBUG search_termbases] No termbase has Read enabled – skipping termbase search.")
                 return results
 
-            if selected_tb_ids:
-                # Filter to only selected termbases
-                termbases_to_search = [tb for tb in all_termbases if tb['id'] in selected_tb_ids]
-            else:
-                # Checkbox list not yet built – search everything.
-                termbases_to_search = all_termbases
+            all_termbases = self.termbase_mgr.get_all_termbases(connection=connection)
+            termbases_to_search = [tb for tb in all_termbases if tb['id'] in selected_tb_ids]
             
             text_lower = text.lower()
             
