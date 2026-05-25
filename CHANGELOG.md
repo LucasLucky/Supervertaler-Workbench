@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.172 (May 25, 2026)
+**Current Version:** v1.10.173 (May 25, 2026)
+
+
+## v1.10.173 – May 25, 2026
+
+### Added
+
+- **Sortable language columns in SuperLookup result tables.** Click the Source / Target column header in the termbase or TM results table to sort A→Z, click again to reverse. Cell rebuilds bracket sort-off/on around the row inserts so they don't shuffle row indices mid-build (the same pattern v1.10.169 used for the Termbases + TMs tabs).
+- **Numeric sort on the Terms count column (Termbases tab) and the Entries column (TMs tab).** Both previously sorted lexically — "100" landed before "2". New `_NumericTableWidgetItem` (a small `QTableWidgetItem` subclass overriding `__lt__` to compare as `float`) is used in those cells.
+- **SuperLookup From / To dropdowns auto-default to the project's language pair on each refresh.** Previously they stayed on "Any/Any" until manually changed, which often disagreed with what the column headers showed. `populate_language_dropdowns()` now matches the project's source/target base language name and selects it — only if the dropdown is currently still on the default "Any" (so a deliberate user override is preserved).
+- **Explicit "Clear All Read" + "Clear All Write" buttons on the Termbases and TMs tabs.** The "Select All Read / Write" checkboxes in the Quick Actions row are bulk toggles, but they read as indicators rather than buttons. The new dedicated buttons make Clear-all a one-click action. The bulk handlers themselves were already hardened against the rebuild-during-iteration crash in v1.10.170, so clicking either button does a single DB-batch write followed by one table refresh.
 
 
 ## v1.10.172 – May 25, 2026

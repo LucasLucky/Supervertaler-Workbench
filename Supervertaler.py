@@ -12380,13 +12380,27 @@ class SupervertalerQt(QMainWindow):
         # Bulk action controls
         bulk_layout = QHBoxLayout()
         bulk_layout.addWidget(QLabel("Quick Actions:"))
-        
+
         read_header_checkbox = CheckmarkCheckBox("Select All Read")
         bulk_layout.addWidget(read_header_checkbox)
-        
+
+        # v1.10.173: explicit "Clear All" button — see Termbases tab
+        # equivalent for the rationale. (Late binding: toggle_all_read
+        # is defined further down in this enclosing scope; by the time
+        # the user clicks the button it'll resolve.)
+        tm_clear_all_read_btn = QPushButton("Clear All Read")
+        tm_clear_all_read_btn.setToolTip("Uncheck the Read flag on every TM")
+        tm_clear_all_read_btn.clicked.connect(lambda: toggle_all_read(False))
+        bulk_layout.addWidget(tm_clear_all_read_btn)
+
         write_header_checkbox = BlueCheckmarkCheckBox("Select All Write")
         bulk_layout.addWidget(write_header_checkbox)
-        
+
+        tm_clear_all_write_btn = QPushButton("Clear All Write")
+        tm_clear_all_write_btn.setToolTip("Uncheck the Write flag on every TM")
+        tm_clear_all_write_btn.clicked.connect(lambda: toggle_all_write(False))
+        bulk_layout.addWidget(tm_clear_all_write_btn)
+
         bulk_layout.addStretch()
         layout.addLayout(bulk_layout)
         
@@ -12496,7 +12510,10 @@ class SupervertalerQt(QMainWindow):
                 tm_table.setItem(row, 1, QTableWidgetItem(langs))
                 
                 # Entry count
-                tm_table.setItem(row, 2, QTableWidgetItem(str(tm['entry_count'])))
+                # v1.10.173: numeric-sort variant so column-header sort
+                # orders by entry count rather than lexically (so "100"
+                # doesn't end up before "2").
+                tm_table.setItem(row, 2, _NumericTableWidgetItem(str(tm['entry_count'])))
                 
                 # Read checkbox (green checkmark)
                 read_checkbox = CheckmarkCheckBox()
@@ -16468,13 +16485,27 @@ class SupervertalerQt(QMainWindow):
         # Bulk action controls
         tb_bulk_layout = QHBoxLayout()
         tb_bulk_layout.addWidget(QLabel("Quick Actions:"))
-        
+
         tb_read_header_checkbox = CheckmarkCheckBox("Select All Read")
         tb_bulk_layout.addWidget(tb_read_header_checkbox)
-        
+
+        # v1.10.173: explicit "Clear All" button next to the checkbox.
+        # The checkbox toggles all-on/all-off, but for users it reads as
+        # an indicator rather than a button — a dedicated Clear All is
+        # easier to spot.
+        tb_clear_all_read_btn = QPushButton("Clear All Read")
+        tb_clear_all_read_btn.setToolTip("Uncheck the Read flag on every termbase")
+        tb_clear_all_read_btn.clicked.connect(lambda: toggle_all_tb_read(False))
+        tb_bulk_layout.addWidget(tb_clear_all_read_btn)
+
         tb_write_header_checkbox = BlueCheckmarkCheckBox("Select All Write")
         tb_bulk_layout.addWidget(tb_write_header_checkbox)
-        
+
+        tb_clear_all_write_btn = QPushButton("Clear All Write")
+        tb_clear_all_write_btn.setToolTip("Uncheck the Write flag on every termbase")
+        tb_clear_all_write_btn.clicked.connect(lambda: toggle_all_tb_write(False))
+        tb_bulk_layout.addWidget(tb_clear_all_write_btn)
+
         tb_bulk_layout.addStretch()
         left_layout.addLayout(tb_bulk_layout)
         
@@ -17302,13 +17333,14 @@ class SupervertalerQt(QMainWindow):
                 langs = f"{tb['source_lang'] or '?'} → {tb['target_lang'] or '?'}"
                 termbase_table.setItem(row, 2, QTableWidgetItem(langs))
                 
-                # Term count
+                # Term count — numeric-sort variant so clicking the
+                # column header orders by count, not by lexical string.
                 try:
                     self.db_manager.cursor.execute("SELECT COUNT(*) FROM termbase_terms WHERE termbase_id = CAST(? AS TEXT)", (tb['id'],))
                     live_count = self.db_manager.cursor.fetchone()[0]
                 except Exception as e:
                     live_count = tb.get('term_count', 0)
-                termbase_table.setItem(row, 3, QTableWidgetItem(str(live_count)))
+                termbase_table.setItem(row, 3, _NumericTableWidgetItem(str(live_count)))
                 
                 # Read checkbox (green)
                 read_checkbox = CheckmarkCheckBox()
@@ -58756,6 +58788,22 @@ class _SearchTermHighlighter(QSyntaxHighlighter):
             start = idx + len(needle)
 
 
+class _NumericTableWidgetItem(QTableWidgetItem):
+    """QTableWidgetItem that sorts numerically rather than lexically.
+
+    v1.10.173. Default Qt comparison falls back to text, so column values
+    like "100" and "2" sort as ['100', '2'] (lexical). Used for the
+    Terms count column on the Termbases tab and the Entries column on the
+    TMs tab — both are integers shown as strings.
+    """
+
+    def __lt__(self, other):
+        try:
+            return float(self.text()) < float(other.text())
+        except (ValueError, TypeError):
+            return super().__lt__(other)
+
+
 class _ReadOnlyHtmlCell(QTextEdit):
     """Read-only QTextEdit for Superlookup results table cells.
 
@@ -59252,6 +59300,10 @@ class SuperlookupTab(QWidget):
         self.tm_results_table.verticalHeader().setVisible(False)  # Hide row numbers
         self.tm_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tm_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # v1.10.173: click-header-to-sort. display_tm_results brackets the
+        # rebuild with setSortingEnabled(False/True) to avoid mid-build
+        # re-sorts. See termbase_results_table for the same pattern.
+        self.tm_results_table.setSortingEnabled(True)
         self.tm_results_table.doubleClicked.connect(self.on_tm_result_double_click)
         self.tm_results_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tm_results_table.customContextMenuRequested.connect(self._tm_table_context_menu)
@@ -59321,6 +59373,14 @@ class SuperlookupTab(QWidget):
         self.termbase_results_table.verticalHeader().setVisible(False)  # Hide row numbers
         self.termbase_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.termbase_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # v1.10.173: click-header-to-sort on every column. Source / Target
+        # cells use a setCellWidget overlay (_ReadOnlyHtmlCell) for HTML
+        # highlighting, but the underlying QTableWidgetItem carries the
+        # plain text — that's what Qt sorts by, and the cell widgets follow
+        # their parent items across reorderings. display_termbase_results
+        # brackets the rebuild with setSortingEnabled(False/True) so the
+        # row inserts don't trigger live re-sorts mid-build.
+        self.termbase_results_table.setSortingEnabled(True)
         self.termbase_results_table.doubleClicked.connect(lambda: self.copy_selected_termbase_target())
         
         # Right-click context menu for termbase results
@@ -61313,7 +61373,34 @@ class SuperlookupTab(QWidget):
             # Store variants list as the data for this item
             self.lang_from_combo.addItem(base_name, variants)
             self.lang_to_combo.addItem(base_name, variants)
-    
+
+        # v1.10.173: auto-default the From / To dropdowns to the project's
+        # language pair (if loaded). Previously they stayed on "Any" which
+        # was surprising — users would change the language pair in
+        # Settings and then expect SuperLookup to follow. Now it does.
+        # Honour any existing user override: if the current dropdown
+        # selection is already a non-"Any" base name AND that name exists
+        # in the new list, leave it alone.
+        try:
+            mw = self.main_window
+            if mw is not None:
+                proj_src_base = self._get_base_language_name(
+                    getattr(mw, 'source_language', None) or '')
+                proj_tgt_base = self._get_base_language_name(
+                    getattr(mw, 'target_language', None) or '')
+                # Only auto-set when the dropdown is currently on "Any"
+                # (index 0) — preserves any deliberate user override.
+                if self.lang_from_combo.currentIndex() == 0 and proj_src_base:
+                    idx = self.lang_from_combo.findText(proj_src_base)
+                    if idx >= 0:
+                        self.lang_from_combo.setCurrentIndex(idx)
+                if self.lang_to_combo.currentIndex() == 0 and proj_tgt_base:
+                    idx = self.lang_to_combo.findText(proj_tgt_base)
+                    if idx >= 0:
+                        self.lang_to_combo.setCurrentIndex(idx)
+        except Exception as e:
+            print(f"[Superlookup] populate_language_dropdowns: auto-default failed: {e}")
+
     def _get_base_language_name(self, lang_code):
         """Extract the base language name from any language code or name.
         
@@ -61764,6 +61851,13 @@ class SuperlookupTab(QWidget):
         # Store results for view toggling
         self._current_tm_results = results
 
+        # v1.10.173: bracket the rebuild with sort-off so insertRow() +
+        # setItem() don't trigger a live re-sort after every cell write
+        # (which would shuffle row indices mid-loop and detach cell
+        # widgets from their items). Sort state is restored at the end.
+        _prev_tm_results_sorting = self.tm_results_table.isSortingEnabled()
+        self.tm_results_table.setSortingEnabled(False)
+
         # Get search term for highlighting
         search_text = self.source_text.currentText().strip().lower()
 
@@ -61876,6 +61970,9 @@ class SuperlookupTab(QWidget):
         
         self.tm_results_vertical.setHtml(html)
 
+        # v1.10.173: restore sortability now that the rebuild is done.
+        self.tm_results_table.setSortingEnabled(_prev_tm_results_sorting)
+
     def _lang_base_name(self, lang):
         """Return the base-language display name for a code or display string.
 
@@ -61965,6 +62062,12 @@ class SuperlookupTab(QWidget):
 
     def display_termbase_results(self, results):
         """Display termbase results with search term highlighting and metadata"""
+        # v1.10.173: bracket the rebuild with sort-off so insertRow() +
+        # setItem() don't trigger a live re-sort after every cell write
+        # (which would shuffle row indices mid-loop and detach cell
+        # widgets from their items). Sort state is restored at the end.
+        _prev_tb_results_sorting = self.termbase_results_table.isSortingEnabled()
+        self.termbase_results_table.setSortingEnabled(False)
         self.termbase_results_table.setRowCount(0)
 
         # Get search term for highlighting
@@ -62060,7 +62163,10 @@ class SuperlookupTab(QWidget):
         self._resize_html_cell_rows(self.termbase_results_table,
                                     cols_with_html=(0, 1),
                                     min_height=24, max_height=120)
-    
+
+        # v1.10.173: restore sortability now that the rebuild is done.
+        self.termbase_results_table.setSortingEnabled(_prev_tb_results_sorting)
+
     def _show_termbase_result_context_menu(self, position):
         """Show context menu for termbase results with option to navigate to term"""
         # Get the row at click position
