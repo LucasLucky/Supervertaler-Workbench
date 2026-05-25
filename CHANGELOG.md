@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.169 (May 25, 2026)
+**Current Version:** v1.10.170 (May 25, 2026)
+
+
+## v1.10.170 – May 25, 2026
+
+### Fixed
+
+- **Hard crash when clicking the "Select All" Read header checkbox on the Termbases tab.** With ≈50 termbases, the bulk-toggle handler called `setChecked()` on every row's per-row checkbox. Each one fired `on_read_toggle` → `deactivate_termbase` → `_build_termbase_index()` → a full `refresh_termbase_list()` rebuild — destroying the very checkboxes the outer loop was about to touch. Qt eventually segfaulted from the cascade of ~50 back-to-back rebuilds operating on freed widgets. Replaced with a direct bulk DB write (one call per termbase) followed by a single `refresh_termbase_list()` at the end. Same hardening applied to the Write header toggle on Termbases, and to both Read + Write header toggles on the TMs tab (where the crash was less likely but the 50× cache-invalidation thrash was still wasteful).
 
 
 ## v1.10.169 – May 25, 2026

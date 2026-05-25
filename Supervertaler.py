@@ -12413,17 +12413,43 @@ class SupervertalerQt(QMainWindow):
         project_id = current_project.id if (current_project and hasattr(current_project, 'id')) else None
         
         # Connect header checkboxes to toggle all
+        # v1.10.170: bulk DB write + single refresh, matching the
+        # Termbases-tab pattern. The TM per-row handler is gentler than
+        # the Termbase one (no per-click table rebuild), so the crash is
+        # much less likely here, but doing 46 invalidate_translation_cache
+        # calls in a row was wasteful and could still spike CPU.
         def toggle_all_read(checked):
-            for row in range(tm_table.rowCount()):
-                checkbox = tm_table.cellWidget(row, 3)
-                if checkbox and isinstance(checkbox, CheckmarkCheckBox):
-                    checkbox.setChecked(checked)
-        
+            curr_proj = self.current_project if hasattr(self, 'current_project') else None
+            curr_proj_id = curr_proj.id if (curr_proj and hasattr(curr_proj, 'id')) else 0
+            try:
+                for tm in (tm_metadata_mgr.get_all_tms() or []):
+                    tm_id = tm.get('id')
+                    if tm_id is None:
+                        continue
+                    if checked:
+                        tm_metadata_mgr.activate_tm(tm_id, curr_proj_id)
+                    else:
+                        tm_metadata_mgr.deactivate_tm(tm_id, curr_proj_id)
+            except Exception as e:
+                self.log(f"⚠️ Bulk TM Read toggle failed mid-way: {e}")
+            try:
+                self.invalidate_translation_cache(smart_invalidation=False)
+            except Exception:
+                pass
+            refresh_tm_list()
+
         def toggle_all_write(checked):
-            for row in range(tm_table.rowCount()):
-                checkbox = tm_table.cellWidget(row, 4)
-                if checkbox and isinstance(checkbox, BlueCheckmarkCheckBox):
-                    checkbox.setChecked(checked)
+            try:
+                for tm in (tm_metadata_mgr.get_all_tms() or []):
+                    tm_id = tm.get('id')
+                    if tm_id is None:
+                        continue
+                    # checked = writable, read_only is the opposite.
+                    if hasattr(tm_metadata_mgr, 'set_tm_read_only'):
+                        tm_metadata_mgr.set_tm_read_only(tm_id, not checked)
+            except Exception as e:
+                self.log(f"⚠️ Bulk TM Write toggle failed mid-way: {e}")
+            refresh_tm_list()
         
         read_header_checkbox.toggled.connect(toggle_all_read)
         write_header_checkbox.toggled.connect(toggle_all_write)
@@ -16512,16 +16538,55 @@ class SupervertalerQt(QMainWindow):
         
         # Connect header checkboxes to toggle all
         def toggle_all_tb_read(checked):
-            for row in range(termbase_table.rowCount()):
-                checkbox = termbase_table.cellWidget(row, 4)
-                if checkbox and isinstance(checkbox, CheckmarkCheckBox):
-                    checkbox.setChecked(checked)
-        
+            # v1.10.170: hardened against the "rebuild-during-iteration"
+            # crash. The old version called setChecked() on every row's
+            # checkbox, which fired on_read_toggle, which called
+            # deactivate_termbase + _build_termbase_index + a full
+            # refresh_termbase_list — destroying the very checkboxes
+            # the outer loop was about to touch. With ≈50 termbases this
+            # back-to-back rebuild thrash hard-crashed Qt.
+            #
+            # Do the DB write directly in a single pass, then trigger
+            # exactly ONE refresh at the end.
+            curr_proj = self.current_project if hasattr(self, 'current_project') else None
+            curr_proj_id = curr_proj.id if (curr_proj and hasattr(curr_proj, 'id')) else 0
+            try:
+                for tb in (termbase_mgr.get_all_termbases() or []):
+                    tb_id = tb.get('id')
+                    if tb_id is None:
+                        continue
+                    if checked:
+                        termbase_mgr.activate_termbase(tb_id, curr_proj_id)
+                    else:
+                        termbase_mgr.deactivate_termbase(tb_id, curr_proj_id)
+            except Exception as e:
+                self.log(f"⚠️ Bulk Read toggle failed mid-way: {e}")
+
+            # Single index rebuild + single table rebuild.
+            with self.termbase_cache_lock:
+                self.termbase_cache.clear()
+            try:
+                self._build_termbase_index()
+            except Exception as e:
+                self.log(f"⚠️ Termbase index rebuild failed: {e}")
+            refresh_termbase_list()
+
         def toggle_all_tb_write(checked):
-            for row in range(termbase_table.rowCount()):
-                checkbox = termbase_table.cellWidget(row, 5)
-                if checkbox and isinstance(checkbox, BlueCheckmarkCheckBox):
-                    checkbox.setChecked(checked)
+            # v1.10.170: same fix as toggle_all_tb_read — bulk DB write +
+            # single refresh at the end, instead of triggering 46 cascading
+            # per-row handlers. Write doesn't refresh per-row in the
+            # per-row handler so the crash is much less likely here, but
+            # the consistent pattern is safer either way.
+            try:
+                for tb in (termbase_mgr.get_all_termbases() or []):
+                    tb_id = tb.get('id')
+                    if tb_id is None:
+                        continue
+                    # checked = writable, so read_only is the opposite.
+                    termbase_mgr.set_termbase_read_only(tb_id, not checked)
+            except Exception as e:
+                self.log(f"⚠️ Bulk Write toggle failed mid-way: {e}")
+            refresh_termbase_list()
         
         tb_read_header_checkbox.toggled.connect(toggle_all_tb_read)
         tb_write_header_checkbox.toggled.connect(toggle_all_tb_write)
