@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.166 (May 24, 2026)
+**Current Version:** v1.10.167 (May 24, 2026)
+
+
+## v1.10.167 – May 24, 2026
+
+### Changed
+
+- **Bilingual Table subtitle URL is now `Supervertaler.com/workbench`** (was the bare `Supervertaler.com`). Pairs with the new "Import / Export" tab in Supervertaler for Trados v4.20.7, which produces files with the identical "Supervertaler Bilingual Table" title but a `Supervertaler.com/trados` subtitle. Both products now emit files that are immediately recognisable as one family, with the subtitle URL as the only visible signal of which product wrote a particular file.
 
 
 ## v1.10.166 – May 24, 2026

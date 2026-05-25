@@ -14128,8 +14128,16 @@ class SupervertalerQt(QMainWindow):
             subtitle.paragraph_format.space_before = Pt(0)
             subtitle.paragraph_format.space_after = Pt(6)
             
-            # Make Supervertaler.com a clickable link
-            url_link = self._add_hyperlink_to_paragraph(subtitle, "https://supervertaler.com/", "Supervertaler.com")
+            # Make Supervertaler.com/workbench a clickable link.
+            # v1.10.167: switched from the bare supervertaler.com to the
+            # product-specific URL so files exported by the Workbench can
+            # be visually distinguished from files exported by Supervertaler
+            # for Trados (which uses supervertaler.com/trados). Both
+            # products keep the same "Supervertaler Bilingual Table" title
+            # so the format remains one recognisable family.
+            url_link = self._add_hyperlink_to_paragraph(
+                subtitle, "https://supervertaler.com/workbench/",
+                "Supervertaler.com/workbench")
             url_link.font.size = Pt(10)
             url_link.font.color.rgb = RGBColor(0, 102, 204)
             url_link.font.underline = True
