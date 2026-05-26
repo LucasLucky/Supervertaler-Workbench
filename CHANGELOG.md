@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.198 (May 26, 2026)
+**Current Version:** v1.10.199 (May 26, 2026)
+
+
+## v1.10.199 – May 26, 2026
+
+### Fixed
+
+- **Source synonyms added via "Similar Term Found → Add as Synonym" weren't being matched against segment text.** A user added "een verdere uitvoering / In a further embodiment" and got the Trados-style merge prompt because the termbase already contained "een verdere uitvoeringsvorm / In a further embodiment". They clicked Add as Synonym — the synonym was correctly persisted to `termbase_synonyms` and the in-memory index was rebuilt — but TermLens still showed no match when the new synonym appeared in a segment. Same complaint for several other terms added the same way.
+- **Root cause:** the in-memory termbase search loop (`_search_termbase_in_memory`) only tested the main `source_term` regex pattern plus the abbreviation-variant patterns against segment text. The synonyms were loaded into each index entry's `source_synonyms` field (since v1.10.73 Tier 2), but only for **display** purposes — the TermLens tooltip / TermBlock chip reads them when the main term hits. They were never *searched* against segment text in their own right. So a segment that used the synonym form but not the main term form silently found no match.
+- **Fix:** mirror the existing `abbreviation_variants` pattern. `_build_termbase_index` now also pre-compiles a `source_synonym_patterns` list (word-boundary regex per synonym, falling back to whitespace-bounded for synonyms containing punctuation), and `_search_termbase_in_memory` iterates that list with the same quick substring-then-regex check it already does for abbreviations. When the main term doesn't match but a source synonym does, the term is registered as a match with the matched synonym as the displayed surface form (the translation remains the entry's main `target_term`). Result: synonyms added via the merge dialog start matching immediately after the index rebuild that the merge path already triggers — no app restart, no manual refresh.
+
+### Notes
+
+- Target synonyms are *not* searched against segment source text (they're per-language; target synonyms live in the target language and would never appear in the source). They continue to drive only the TermLens chip's bullet-list display of alternative translations, unchanged.
+- The fallback per-word SQL path inside `find_termbase_matches_in_source` still doesn't search source synonyms — it only runs during very early startup before the in-memory index has been built. Once the index is up (typically within a second of opening a project), all matching goes through the fixed fast path. The fallback is an edge case scheduled for a future cleanup.
 
 
 ## v1.10.198 – May 26, 2026

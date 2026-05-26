@@ -29504,6 +29504,38 @@ class SupervertalerQt(QMainWindow):
                         except re.error:
                             pass
 
+                # v1.10.199: pre-compile source-synonym patterns so
+                # they're searchable too. Until v1.10.198 the source
+                # synonyms were loaded into the index as metadata but
+                # the search loop only tested the main source_term
+                # pattern + abbreviation patterns — synonyms were
+                # carried along for tooltip display, never matched.
+                # Result: a user who added "een verdere uitvoering" as
+                # a source synonym for the main "een verdere
+                # uitvoeringsvorm" entry got no termbase match when a
+                # segment used the synonym instead of the main form.
+                # Reported via the Trados-style "Similar Term Found"
+                # → "Add as Synonym" flow; fixed by mirroring the
+                # abbreviation_variants pattern for source_synonyms.
+                source_synonym_patterns = []
+                for syn_text in source_synonyms:
+                    if not syn_text:
+                        continue
+                    syn_lower = syn_text.lower().strip()
+                    if len(syn_lower) < 2:
+                        continue
+                    try:
+                        if any(c in syn_lower for c in '.%,/-'):
+                            syn_pattern = re.compile(
+                                r'(?<!\w)' + re.escape(syn_lower) + r'(?!\w)')
+                        else:
+                            syn_pattern = re.compile(
+                                r'\b' + re.escape(syn_lower) + r'\b')
+                        source_synonym_patterns.append(
+                            (syn_text, syn_lower, syn_pattern))
+                    except re.error:
+                        pass
+
                 new_index.append({
                     'term_id': row[0],
                     'source_term': source_term,
@@ -29535,6 +29567,11 @@ class SupervertalerQt(QMainWindow):
                     # variants with pre-compiled regexes for the
                     # abbreviation-as-primary chip rendering.
                     'abbreviation_variants': abbreviation_variants,
+                    # v1.10.199: source-synonym patterns for matching
+                    # (see _search_termbase_in_memory). Built above
+                    # alongside abbreviation_variants for the same
+                    # word-boundary regex reasons.
+                    'source_synonym_patterns': source_synonym_patterns,
                     'pattern': pattern,  # Pre-compiled regex (main source_term)
                 })
 
@@ -29621,7 +29658,25 @@ class SupervertalerQt(QMainWindow):
                 if abbr_pattern.search(source_lower):
                     abbr_hits.append((variant_text, variant_lower))
 
-            if not (main_matched or abbr_hits):
+            # v1.10.199: also try source-synonym patterns. Reported
+            # bug: user added "een verdere uitvoering" as a source
+            # synonym for "een verdere uitvoeringsvorm" via the
+            # Trados-style "Similar Term Found" merge dialog, then
+            # got no termbase match when a segment used the synonym
+            # form. Cause: pre-v1.10.199 the search only tested the
+            # main source_term pattern + abbreviation patterns;
+            # source synonyms were loaded into the index for
+            # tooltip-display purposes but never actually searched.
+            # The fix is symmetric with the abbreviation path —
+            # quick substring check then word-boundary regex.
+            syn_hits = []  # [(syn_text, syn_lower)]
+            for syn_text, syn_lower, syn_pattern in term.get('source_synonym_patterns', []):
+                if syn_lower not in source_lower:
+                    continue
+                if syn_pattern.search(source_lower):
+                    syn_hits.append((syn_text, syn_lower))
+
+            if not (main_matched or abbr_hits or syn_hits):
                 continue
 
             # Term matches! Add to results
@@ -29662,6 +29717,23 @@ class SupervertalerQt(QMainWindow):
                     'source': term['source_term'],
                     'translation': term['target_term'],
                     'matched_via_abbreviation': False,
+                })
+            elif syn_hits:
+                # v1.10.199: main term didn't substring-hit but a
+                # source synonym did. Register the term with the
+                # matched synonym as the displayed surface form. The
+                # translation is still the main term's target. This
+                # mirrors what TermLens already does when displaying
+                # an entry whose main form matched — synonyms appear
+                # in the tooltip; here we just promote one to the
+                # primary "source" field because the segment used
+                # that surface form rather than the main term.
+                first_syn_text, _first_syn_lower = syn_hits[0]
+                matches[term_id] = dict(base, **{
+                    'source': first_syn_text,
+                    'translation': term['target_term'],
+                    'matched_via_abbreviation': False,
+                    'matched_via_synonym': True,
                 })
 
             # v1.10.75 (Tier 3c): one entry per matched abbreviation
