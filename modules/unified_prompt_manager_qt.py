@@ -1233,17 +1233,39 @@ class UnifiedPromptManagerQt:
         left_panel.setMinimumWidth(300)
         main_splitter.addWidget(left_panel)
         
-        # Right: Editor only
+        # Right: stack of Prompt Editor (default) + Image Context viewer.
+        # v1.10.176: the previously-separate "🎯 Image Context" sub-tab
+        # is folded into this right panel via a QStackedWidget. Page 0 is
+        # the Prompt Editor (the canonical view); page 1 holds the
+        # Image Context widget, installed later by the parent app via
+        # set_image_context_widget(). Section 4 on the left has an
+        # "Open ▸" button that switches the stack to the image-context
+        # page; clicking on a prompt in the library tree switches back
+        # to the editor page.
         editor_group = self._create_editor_panel()
         editor_group.setMinimumWidth(400)
         editor_group.setMinimumHeight(300)
-        main_splitter.addWidget(editor_group)
-        
+
+        from PyQt6.QtWidgets import QStackedWidget
+        self._right_stack = QStackedWidget()
+        self._right_stack.addWidget(editor_group)            # page 0
+        self._right_stack_editor_index = 0
+
+        # Page 1 placeholder until the parent app installs the real
+        # Image Context widget via set_image_context_widget(). Empty
+        # placeholder makes the stack well-formed even before the
+        # parent gets around to populating page 1.
+        _placeholder = QWidget()
+        self._right_stack.addWidget(_placeholder)            # page 1
+        self._right_stack_image_index = 1
+
+        main_splitter.addWidget(self._right_stack)
+
         # Set main splitter proportions (40% left, 60% editor)
         main_splitter.setSizes([400, 600])
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setStretchFactor(1, 2)
-        
+
         layout.addWidget(main_splitter, 1)
         
         # Load initial tree content
@@ -2239,12 +2261,32 @@ class UnifiedPromptManagerQt:
         self.image_context_label = QLabel("[None loaded]")
         self.image_context_label.setStyleSheet("color: #999;")
         image_row.addWidget(self.image_context_label, 1)
+
+        # v1.10.176: button that swaps the right-hand panel from the
+        # Prompt Editor to the Image Context viewer (extract + load +
+        # preview). The viewer used to live in its own AI sub-tab; it
+        # now lives inside this Prompt Manager tab on the right.
+        self._image_context_open_btn = QPushButton("Open ▸")
+        self._image_context_open_btn.setToolTip(
+            "Open the Image Context viewer in the right panel (extract images "
+            "from a DOCX, load a folder, preview)."
+        )
+        self._image_context_open_btn.setStyleSheet(
+            "QPushButton { padding: 2px 10px; border-radius: 3px; "
+            "background-color: #4CAF50; color: white; font-weight: bold; } "
+            "QPushButton:hover { background-color: #45a049; } "
+            "QPushButton:focus { outline: none; }"
+        )
+        self._image_context_open_btn.clicked.connect(self.show_image_context_view)
+        image_row.addWidget(self._image_context_open_btn)
+
         image_layout.addLayout(image_row)
 
         image_layout.addWidget(_section_info(
-            "Images loaded via the <i>✨ AI → 🖼️ Image Context</i> tab "
-            "are sent as binary data alongside your prompt when figure "
-            "references (Fig. 1, Figure 2A, …) are detected in a segment."
+            "Images here are sent as binary data alongside your prompt "
+            "when figure references (Fig. 1, Figure 2A, …) are detected "
+            "in a segment. Click <b>Open ▸</b> to extract images from a "
+            "DOCX or load a pre-existing Images folder."
         ))
 
         image_group.setLayout(image_layout)
@@ -2771,12 +2813,47 @@ class UnifiedPromptManagerQt:
                 else:
                     pass  # Prompt file not in library (may have invalid frontmatter)
     
+    # v1.10.176: public API for the right-panel QStackedWidget that
+    # hosts both the Prompt Editor (page 0) and the Image Context viewer
+    # (page 1, installed by the parent app via set_image_context_widget).
+    # See _create_prompt_library_tab for the stack construction.
+
+    def set_image_context_widget(self, widget):
+        """Install the parent app's Image Context widget as page 1 of
+        the right-panel stack. Called once at startup from Supervertaler
+        after the prompt manager is created."""
+        if not hasattr(self, '_right_stack') or self._right_stack is None:
+            return
+        # Replace the placeholder at page 1 with the real widget.
+        try:
+            old = self._right_stack.widget(self._right_stack_image_index)
+            if old is not None:
+                self._right_stack.removeWidget(old)
+                old.deleteLater()
+        except Exception:
+            pass
+        self._right_stack.insertWidget(self._right_stack_image_index, widget)
+
+    def show_prompt_editor_view(self):
+        """Switch the right panel to the Prompt Editor page."""
+        if hasattr(self, '_right_stack') and self._right_stack is not None:
+            self._right_stack.setCurrentIndex(self._right_stack_editor_index)
+
+    def show_image_context_view(self):
+        """Switch the right panel to the Image Context page."""
+        if hasattr(self, '_right_stack') and self._right_stack is not None:
+            self._right_stack.setCurrentIndex(self._right_stack_image_index)
+
     def _on_tree_item_clicked(self, item, column):
         """Handle tree item click"""
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        
+
         if data and data.get('type') == 'prompt':
             self._load_prompt_in_editor(data['path'])
+            # v1.10.176: clicking a prompt always brings the editor back
+            # into view — so the user doesn't lose the prompt's content
+            # behind the image-context viewer.
+            self.show_prompt_editor_view()
     
     def _on_tree_item_double_clicked(self, item, column):
         """Handle tree item double-click - set as primary"""

@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.175 (May 26, 2026)
+**Current Version:** v1.10.176 (May 26, 2026)
+
+
+## v1.10.176 – May 26, 2026
+
+### Changed
+
+- **Image Context tab folded into the Prompt Manager.** The standalone "🎯 Image Context" AI sub-tab is gone; its full UI (extract from DOCX, load existing folder, results list + image preview) now lives inside the Prompt Manager tab as page 1 of a QStackedWidget on the right-hand side (page 0 is the original Prompt Editor). The flow:
+  - **Section 4 — Image Context** on the left of the Prompt Manager gains a green **`Open ▸`** button. Clicking it swaps the right panel to the Image Context viewer.
+  - The viewer's header now has a **`← Back to Prompt Editor`** button that swaps the right panel back.
+  - Clicking any prompt in the **Section 5 — Prompt Library** tree also swaps the right panel back to the Prompt Editor automatically — so opening a prompt always shows its content, even if you were just viewing images.
+- **Wasted vertical space at the top of the Image Context viewer gone.** Replaced the previous multi-line title + word-wrapped description block with a single compact toolbar row (title + tooltip + back button). The results splitter at the bottom now claims every spare pixel via `addWidget(splitter, 1)`, instead of fighting the labels for vertical space and ending up with ridiculous gaps between them (per the user's red-arrow screenshot of v1.10.175).
 
 
 ## v1.10.175 – May 26, 2026

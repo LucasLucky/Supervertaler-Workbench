@@ -10752,12 +10752,16 @@ class SupervertalerQt(QMainWindow):
         self.prompt_manager_qt.create_tab(prompt_widget)
         set_help_topic(prompt_widget, HelpTopics.AI_PROMPT_MANAGER)
 
-        # Add Image Context as a peer to the existing inner sub-tabs.
-        # Exposed as self.ai_subtabs so navigation helpers can target it.
+        # v1.10.176: Image Context is no longer a separate AI sub-tab.
+        # It's now embedded inside the Prompt Manager tab as page 1 of
+        # the right-hand QStackedWidget (page 0 is the Prompt Editor).
+        # Section 4 on the left has an "Open ▸" button that switches
+        # the right panel to the Image Context viewer.
         if hasattr(self.prompt_manager_qt, 'sub_tabs'):
             self.ai_subtabs = self.prompt_manager_qt.sub_tabs
             image_context_widget = self.create_reference_images_tab()
-            self.ai_subtabs.addTab(image_context_widget, "🎯 Image Context")
+            if hasattr(self.prompt_manager_qt, 'set_image_context_widget'):
+                self.prompt_manager_qt.set_image_context_widget(image_context_widget)
         else:
             self.ai_subtabs = None
 
@@ -11004,34 +11008,48 @@ class SupervertalerQt(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(5)
 
-        # v1.10.175: a second layout pass folds the top "Image Context"
-        # section entirely into the bottom Extract section, so the tab
-        # is now one integrated workflow rather than two stacked cards.
-        # The action row at the bottom of the toolbar carries every
-        # button — Extract from DOCX, Load existing folder, Clear loaded —
-        # plus the live status label. The two coloured "①/②" heading
-        # bars from v1.10.174 are gone; the workflow is obvious from
-        # the toolbar layout alone.
-        #
-        # Auto-load after extraction (introduced in v1.10.174) is kept:
-        # after a successful extraction, the resulting folder is
-        # auto-loaded as Image Context, so the common "extract → use
-        # in AI" path is still one click.
+        # v1.10.176: the widget now lives inside the Prompt Manager tab
+        # as page 1 of a right-hand QStackedWidget (page 0 = Prompt
+        # Editor). Header is now a single compact toolbar row containing
+        # the title AND a "← Back to Prompt Editor" button that swaps
+        # the stack back. The wordy multi-line description has been
+        # demoted to a tooltip on the title — saves a chunk of vertical
+        # space the user was rightly complaining about.
 
-        # ── Compact title + one-line description ──────────────────
-        header_title = QLabel("🎯 Image Context for AI Translation")
-        header_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #2c3e50; padding: 2px 0;")
-        main_layout.addWidget(header_title)
+        # ── Single-line compact header (title + tooltip + back btn) ──
+        from PyQt6.QtWidgets import QSizePolicy
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 4)
+        header_row.setSpacing(8)
 
-        header_desc = QLabel(
-            "Pass figure images to the AI alongside your translation — extract them from a DOCX "
-            "below, or load a pre-existing Images folder. When a segment references 'Figure 1' or "
-            "'see fig 2A', the AI sees the image and translates technical descriptions and part "
-            "references more accurately."
+        back_btn = QPushButton("← Back to Prompt Editor")
+        back_btn.setToolTip("Switch the right panel back to the Prompt Editor")
+        back_btn.setStyleSheet(
+            "QPushButton { padding: 2px 10px; border-radius: 3px; "
+            "background-color: #ECEFF1; color: #333; } "
+            "QPushButton:hover { background-color: #CFD8DC; } "
+            "QPushButton:focus { outline: none; }"
         )
-        header_desc.setWordWrap(True)
-        header_desc.setStyleSheet("font-size: 10px; color: #555; padding: 0 0 6px 0;")
-        main_layout.addWidget(header_desc)
+        # Late-binding lambda so prompt_manager_qt doesn't have to exist
+        # at the moment this lambda is wired up. Resolution happens on click.
+        back_btn.clicked.connect(
+            lambda: hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt
+            and self.prompt_manager_qt.show_prompt_editor_view()
+        )
+        header_row.addWidget(back_btn)
+
+        header_title = QLabel("🎯 Image Context for AI Translation")
+        header_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #2c3e50;")
+        header_title.setToolTip(
+            "Pass figure images to the AI alongside your translation. When a segment "
+            "references 'Figure 1' or 'see fig 2A', the AI sees the image and translates "
+            "technical descriptions and part references more accurately."
+        )
+        header_title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        header_row.addWidget(header_title)
+        header_row.addStretch()
+
+        main_layout.addLayout(header_row)
 
         # ── Row 1: input files for extraction + DOCX list ─────────
         inputs_row = QHBoxLayout()
@@ -11245,8 +11263,13 @@ class SupervertalerQt(QMainWindow):
         
         # Set initial splitter sizes (40% left, 60% right)
         results_splitter.setSizes([400, 600])
-        
-        main_layout.addWidget(results_splitter)
+
+        # v1.10.176: explicit stretch=1 so the splitter claims every
+        # pixel of vertical space the labels + toolbar don't need.
+        # Previously the QVBoxLayout was distributing extra space across
+        # the labels too, which left ridiculous gaps between the title,
+        # description, and toolbar (per the user's red-arrow screenshot).
+        main_layout.addWidget(results_splitter, 1)
         
         # Initialize extractor and preview state
         self.image_extractor = ImageExtractor()
