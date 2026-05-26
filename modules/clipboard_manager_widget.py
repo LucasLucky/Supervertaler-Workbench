@@ -1281,45 +1281,101 @@ class ClipboardManagerWidget(QWidget):
                     if main_tabs is not None and prior_tab != main_tabs.currentIndex():
                         main_tabs.setCurrentIndex(prior_tab)
 
-                    # v1.10.202: restore focus to whichever widget had
-                    # it inside Workbench before Ctrl+Alt+C. Without
-                    # this, ``_continue_clipboard`` had already moved
-                    # focus onto the clipboard list when it opened the
-                    # tab, so after switching back to the prior tab
-                    # the focused widget is still the (now hidden)
-                    # clipboard list — the synthetic Ctrl+V then lands
-                    # on nothing useful and the user sees no paste.
+                    # v1.10.202 captured the focused widget here and
+                    # called setFocus on it; that worked for plain
+                    # widget hierarchies but not for QTableWidget cell
+                    # editors, which get committed-and-destroyed when
+                    # focus leaves them. The synthetic Ctrl+V then
+                    # landed on a destroyed reference / wrong widget
+                    # and nothing pasted.
+                    #
+                    # v1.10.203: take a more direct route. Instead of
+                    # restoring focus + relying on synthetic Ctrl+V
+                    # reaching the right widget, INSERT the clipboard
+                    # text directly into the captured widget via Qt
+                    # API. Works whether the widget is currently
+                    # focused or hidden; falls back to focus + send_paste
+                    # for widget types we don't recognise.
                     prior_focus = getattr(
                         parent_app, '_clipboard_prior_focused_widget', None
                     )
-                    if prior_focus is not None:
+                    parent_app._clipboard_prior_workbench_tab = None
+                    parent_app._clipboard_prior_focused_widget = None
+
+                    # Captured clipboard text — used by both the direct
+                    # insert path and the synthetic-paste fallback.
+                    from PyQt6.QtWidgets import (
+                        QApplication, QLineEdit, QTextEdit, QPlainTextEdit,
+                    )
+                    clipboard_text = QApplication.clipboard().text()
+
+                    def _direct_insert_then_focus():
+                        """Schedule on next event-loop turn so the tab
+                        change has settled. Try direct text insertion
+                        on the captured widget. If that fails (widget
+                        destroyed, unknown type), fall through to
+                        synthetic Ctrl+V."""
+                        inserted_directly = False
                         try:
                             from PyQt6.QtCore import Qt as _QtConst
-                            prior_focus.setFocus(_QtConst.FocusReason.OtherFocusReason)
-                        except (RuntimeError, AttributeError):
-                            # Widget may have been destroyed between
-                            # capture and restore (e.g. project closed
-                            # in between). Fall through to the paste —
-                            # whatever has focus now is the user's
-                            # best chance.
-                            pass
-                        parent_app._clipboard_prior_focused_widget = None
+                            target_widget = prior_focus
+                            if target_widget is not None and clipboard_text:
+                                # Bring widget into focus for the visual
+                                # cursor cue, even if we end up inserting
+                                # programmatically below.
+                                try:
+                                    target_widget.setFocus(
+                                        _QtConst.FocusReason.OtherFocusReason
+                                    )
+                                except (RuntimeError, AttributeError):
+                                    pass
 
-                    parent_app._clipboard_prior_workbench_tab = None
+                                # Direct insertion paths per widget type.
+                                # These bypass keystroke routing entirely,
+                                # so the paste lands correctly regardless
+                                # of foreground state, focus state, or
+                                # whether the table's edit session was
+                                # torn down by the tab switch.
+                                try:
+                                    if isinstance(target_widget,
+                                                  (QTextEdit, QPlainTextEdit)):
+                                        target_widget.insertPlainText(clipboard_text)
+                                        inserted_directly = True
+                                    elif isinstance(target_widget, QLineEdit):
+                                        target_widget.insert(clipboard_text)
+                                        inserted_directly = True
+                                except (RuntimeError, AttributeError):
+                                    # Captured widget was destroyed
+                                    # between Ctrl+Alt+C and Enter
+                                    # (project closed, tab rebuilt,
+                                    # etc.). Fall through to synthetic
+                                    # paste as a last resort.
+                                    pass
+                        except Exception as insert_err:
+                            print(
+                                f"[ClipboardManagerWidget] direct-insert "
+                                f"failed, falling back: {insert_err}"
+                            )
 
-                    from PyQt6.QtCore import QTimer
-                    from modules.platform_helpers import CrossPlatformKeySender
+                        if inserted_directly:
+                            return
 
-                    def _send_paste_within_workbench():
+                        # Fallback: synthetic Ctrl+V. Only used when
+                        # the captured widget isn't a QLineEdit /
+                        # QTextEdit / QPlainTextEdit, or was destroyed.
                         try:
+                            from modules.platform_helpers import CrossPlatformKeySender
                             CrossPlatformKeySender().send_paste()
                         except Exception as paste_err:
                             print(
                                 f"[ClipboardManagerWidget] in-Workbench "
-                                f"paste failed: {paste_err}"
+                                f"paste fallback failed: {paste_err}"
                             )
 
-                    QTimer.singleShot(80, _send_paste_within_workbench)
+                    # 80 ms gives the tab switch / focus restore time
+                    # to process Qt events before we touch widgets.
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(80, _direct_insert_then_focus)
             except Exception as e:
                 print(
                     f"[ClipboardManagerWidget] in-Workbench return path "

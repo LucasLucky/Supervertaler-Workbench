@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.202 (May 26, 2026)
+**Current Version:** v1.10.203 (May 26, 2026)
+
+
+## v1.10.203 – May 26, 2026
+
+### Fixed
+
+- **Enter-to-paste from the in-Workbench Clipboard Manager now actually lands the text in the target cell.** v1.10.202 captured the originally-focused widget and restored focus to it before synthesising Ctrl+V, but the user reported "it switches back to the editor, but it does not paste it." Root cause: when Ctrl+Alt+C was pressed inside a `QTableWidget` cell editor and the tab switched to Clipboard, Qt committed/destroyed the transient cell editor delegate. By the time the return path ran, `setFocus()` on the captured widget reference often hit a now-detached or stale editor — and even when the editor was still alive, the synthetic Ctrl+V chord didn't always route to it cleanly.
+- **Fix: insert text directly via the Qt widget API instead of synthesising Ctrl+V.** `ClipboardManagerWidget._activate_source_then_paste` now snapshots the clipboard text up front, then in its 80 ms refocus callback calls `setFocus()` on the captured widget (best-effort) and inserts the text directly: `insertPlainText()` for `QTextEdit` / `QPlainTextEdit`, `insert()` for `QLineEdit`. This bypasses the keyboard event plumbing entirely — the text lands at the cursor position the same way a regular paste would, but without depending on focus actually reaching the widget at exactly the right moment. The synthetic-Ctrl+V path remains as a fallback for unknown widget types or cases where the captured reference has been destroyed.
+- Result: holding Ctrl+Alt+C from a target cell → arrowing to a clipboard entry → Enter now reliably pastes the entry into the cell at the cursor position, and returns focus to the Editor.
 
 
 ## v1.10.202 – May 26, 2026
