@@ -5119,9 +5119,42 @@ class EditableGridTextEditor(QTextEdit):
         # Single segment: copy source to target for current cell
         segment = main_window.current_project.segments[self.row]
         source_text = segment.source
+        old_target = getattr(segment, 'target', '') or ''
+        old_status = getattr(segment, 'status', '') or ''
 
-        # Set the target text
-        self.setPlainText(source_text)
+        # Record undo BEFORE overwriting so Ctrl+Z restores the previous
+        # translation (v1.10.204). Without this, accidentally hitting
+        # Ctrl+Shift+S over a completed translation was unrecoverable.
+        if old_target != source_text and hasattr(main_window, 'record_undo_state'):
+            try:
+                main_window.record_undo_state(
+                    getattr(segment, 'id', None) or getattr(segment, 'segment_id', None),
+                    old_target,
+                    source_text,
+                    old_status,
+                    old_status,
+                )
+            except Exception:
+                pass
+
+        # Use a select-all + insertPlainText so Qt's own per-cell undo stack
+        # is preserved too (setPlainText would clear it). Belt-and-braces with
+        # the app-level undo above.
+        try:
+            cursor = self.textCursor()
+            cursor.select(cursor.SelectionType.Document)
+            cursor.insertText(source_text)
+            self.setTextCursor(cursor)
+        except Exception:
+            # Fallback – worst case, old behaviour (no per-cell undo but
+            # app-level undo above still works).
+            self.setPlainText(source_text)
+
+        # Keep segment object in sync so a focus-out doesn't undo our work
+        try:
+            segment.target = source_text
+        except Exception:
+            pass
 
         if hasattr(main_window, 'log'):
             main_window.log(f"📋 Copied source to target (segment {self.row + 1})")
@@ -6426,7 +6459,11 @@ class PreTranslationWorker(QThread):
         self.glossary_terms = glossary_terms or []  # Pre-fetched from main thread (SQLite is not thread-safe)
         self.success_count = 0
         self.error_count = 0
-    
+        # v1.10.204: collect undo entries so the main thread can push them onto
+        # the app undo stack after completion. Pre-translation can overwrite
+        # 500+ targets in one shot – without this it was irreversible.
+        self.undo_entries = []  # list of (segment_id, old_target, new_target, old_status, new_status)
+
     def run(self):
         """Main translation loop - runs in background thread."""
         import time
@@ -6466,9 +6503,13 @@ class PreTranslationWorker(QThread):
                         elapsed = time.time() - start_time
                         
                         if translation:
+                            old_target = segment.target
+                            old_status = segment.status
                             segment.target = translation
                             segment.status = "draft"
-                            
+                            if old_target != translation or old_status != "draft":
+                                self.undo_entries.append((segment.id, old_target, translation, old_status, "draft"))
+
                             preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
                             message = f"[{idx+1}/{len(self.segments)}] ✓ {preview} ({elapsed:.1f}s)"
                             self.progress_update.emit(idx + 1, len(self.segments), message, True, elapsed)
@@ -6515,9 +6556,13 @@ class PreTranslationWorker(QThread):
                             absolute_idx = start_idx + batch_segments.index((row_index, segment))
                             
                             if translation:
+                                old_target = segment.target
+                                old_status = segment.status
                                 segment.target = translation
                                 segment.status = "draft"
-                                
+                                if old_target != translation or old_status != "draft":
+                                    self.undo_entries.append((segment.id, old_target, translation, old_status, "draft"))
+
                                 preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
                                 message = f"[{absolute_idx+1}/{len(self.segments)}] ✓ {preview}"
                                 self.progress_update.emit(absolute_idx + 1, len(self.segments), message, True, elapsed / len(batch_segments))
@@ -10362,11 +10407,16 @@ class SupervertalerQt(QMainWindow):
         help_menu.addAction(about_action)
     
     def record_undo_state(self, segment_id, old_target, new_target, old_status, new_status):
-        """Record an undo state when grid cells are edited"""
+        """Record an undo state when grid cells are edited.
+
+        For bulk operations (Copy Source to Target, AI batch, TM auto-fill,
+        pre-translation, etc.) prefer ``record_undo_states_batch`` — it makes a
+        single UI/trim pass at the end instead of one per segment.
+        """
         # Don't record if nothing actually changed
         if old_target == new_target and old_status == new_status:
             return
-        
+
         # Add to undo stack
         undo_entry = {
             "segment_id": segment_id,
@@ -10376,15 +10426,62 @@ class SupervertalerQt(QMainWindow):
             "new_status": new_status
         }
         self.undo_stack.append(undo_entry)
-        
+
         # Trim undo stack to max levels
         if len(self.undo_stack) > self.max_undo_levels:
             self.undo_stack.pop(0)
-        
+
         # Clear redo stack (can't redo after new edit)
         self.redo_stack.clear()
-        
+
         # Update menu actions
+        self.update_undo_redo_actions()
+
+    def record_undo_states_batch(self, entries):
+        """Record many undo entries at once with one UI/trim pass at the end.
+
+        ``entries`` is an iterable of dicts shaped like
+        ``{"segment_id", "old_target", "new_target", "old_status", "new_status"}``
+        OR tuples ``(segment_id, old_target, new_target, old_status, new_status)``.
+
+        Entries where neither target nor status changed are silently skipped.
+        Used by bulk operations to avoid N×Qt-action-refresh and N×list.pop(0)
+        overhead when a batch is larger than max_undo_levels.
+        """
+        appended = 0
+        for entry in entries:
+            if isinstance(entry, dict):
+                old_target = entry.get("old_target", "")
+                new_target = entry.get("new_target", "")
+                old_status = entry.get("old_status", "")
+                new_status = entry.get("new_status", "")
+                segment_id = entry.get("segment_id")
+            else:
+                # Tuple form
+                segment_id, old_target, new_target, old_status, new_status = entry
+
+            if old_target == new_target and old_status == new_status:
+                continue
+
+            self.undo_stack.append({
+                "segment_id": segment_id,
+                "old_target": old_target,
+                "new_target": new_target,
+                "old_status": old_status,
+                "new_status": new_status,
+            })
+            appended += 1
+
+        if appended == 0:
+            return
+
+        # Trim once at the end – avoids N pop(0) operations for huge batches
+        overflow = len(self.undo_stack) - self.max_undo_levels
+        if overflow > 0:
+            del self.undo_stack[:overflow]
+
+        # Clear redo stack (can't redo after new edits) and refresh menu once
+        self.redo_stack.clear()
         self.update_undo_redo_actions()
     
     def undo_action_handler(self):
@@ -28137,16 +28234,23 @@ class SupervertalerQt(QMainWindow):
                 target_widget = self.table.cellWidget(row, 3)  # Column 3 is target
                 
                 if target_widget and isinstance(target_widget, QTextEdit):
+                    # Capture pre-edit state for undo
+                    _undo_old_target = segment.target
+                    _undo_old_status = segment.status
                     # Insert text at cursor position
                     cursor = target_widget.textCursor()
                     cursor.insertText(match_text)
-                    
+
                     # Update the segment data
                     new_target = target_widget.toPlainText()
                     # v1.9.306: Strip invisible markers before saving to segment data
                     if hasattr(self, 'reverse_invisible_replacements'):
                         new_target = self.reverse_invisible_replacements(new_target)
                     segment.target = new_target
+                    try:
+                        self.record_undo_state(segment.id, _undo_old_target, new_target, _undo_old_status, _undo_old_status)
+                    except Exception:
+                        pass  # never let undo failure break the actual operation
 
                     # Set focus back to the target editor
                     target_widget.setFocus()
@@ -28154,12 +28258,18 @@ class SupervertalerQt(QMainWindow):
                     self.log(f"✓ Match inserted into segment {segment.id} at cursor position")
                 elif col == 3:
                     # Fallback: If no widget exists, create one or set text directly
+                    _undo_old_target = segment.target
+                    _undo_old_status = segment.status
                     segment.target = match_text
-                    
+                    try:
+                        self.record_undo_state(segment.id, _undo_old_target, match_text, _undo_old_status, _undo_old_status)
+                    except Exception:
+                        pass  # never let undo failure break the actual operation
+
                     # Try to update via cellWidget first
                     if target_widget:
                         target_widget.setPlainText(match_text)
-                    
+
                     self.log(f"✓ Match inserted into segment {row + 1}")
                 else:
                     self.log(f"⚠ Please click on the target cell first to insert match")
@@ -44212,14 +44322,25 @@ class SupervertalerQt(QMainWindow):
         
         count = len(segments)
         cleared_count = 0
-        
+        undo_entries = []  # v1.10.204: batched undo for Clear Translations
+
         for segment in segments:
             if segment.target:  # Only clear if there's something to clear
+                old_target = segment.target
+                old_status = segment.status
                 segment.target = ""
                 if segment.status != 'untranslated':
                     segment.status = 'untranslated'
+                undo_entries.append((segment.id, old_target, "", old_status, segment.status))
                 cleared_count += 1
-        
+
+        # v1.10.204: one batched undo record for the whole Clear Translations action
+        if undo_entries:
+            try:
+                self.record_undo_states_batch(undo_entries)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for clear translations: {undo_err}")
+
         if cleared_count > 0:
             self.project_modified = True
             self.update_window_title()
@@ -44268,12 +44389,16 @@ class SupervertalerQt(QMainWindow):
         
         # Perform the copy
         copied_count = 0
+        undo_entries = []  # v1.10.204: batched undo for bulk Copy Source
         for segment in selected_segments:
             row = self._find_row_for_segment(segment.id)
             if row >= 0:
                 # v1.9.306: Use segment.source (clean text) instead of source widget's display text
                 # which may contain invisible markers (·, →, °, ↵, \u200B)
                 source_text = segment.source
+
+                old_target = segment.target
+                old_status = segment.status
 
                 # Update segment object
                 segment.target = source_text
@@ -44286,12 +44411,21 @@ class SupervertalerQt(QMainWindow):
                     target_widget.setPlainText(target_display)
                     target_widget.blockSignals(False)
 
+                if old_target != source_text:
+                    undo_entries.append((segment.id, old_target, source_text, old_status, old_status))
                 copied_count += 1
+
+        # v1.10.204: one batched undo record for the whole bulk Copy
+        if undo_entries:
+            try:
+                self.record_undo_states_batch(undo_entries)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for bulk copy: {undo_err}")
 
         # Auto-resize rows to fit new content
         self.auto_resize_rows()
         self.update_progress_stats()
-        
+
         self.log(f"✓ Copied source to target for {copied_count} segment(s)")
         QMessageBox.information(self, "Copy Complete", f"Copied source to target for {copied_count} segment(s).")
 
@@ -44375,12 +44509,15 @@ class SupervertalerQt(QMainWindow):
         target_lang = getattr(self.current_project, 'target_language', None)
 
         copied_count = 0
+        undo_entries = []  # v1.10.204: batched undo for non-translatable bulk copy
         for segment in qualifying:
             row = self._find_row_for_segment(segment.id)
             if row < 0:
                 continue
 
             transformed = self._transform_non_translatable(segment.source, source_lang, target_lang)
+            old_target = segment.target
+            old_status = segment.status
 
             # Update segment data
             segment.target = transformed
@@ -44401,7 +44538,16 @@ class SupervertalerQt(QMainWindow):
             # Refresh status icon
             self._refresh_segment_status(segment)
 
+            if old_target != transformed or old_status != 'draft':
+                undo_entries.append((segment.id, old_target, transformed, old_status, 'draft'))
             copied_count += 1
+
+        # v1.10.204: one batched undo record for the whole non-translatable bulk copy
+        if undo_entries:
+            try:
+                self.record_undo_states_batch(undo_entries)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for non-translatable bulk copy: {undo_err}")
 
         self.auto_resize_rows()
         self.update_progress_stats()
@@ -44422,12 +44568,15 @@ class SupervertalerQt(QMainWindow):
         the confirmation dialog for a snappy keyboard-driven workflow.
         """
         copied_count = 0
+        undo_entries = []  # v1.10.204: batched undo for multi-select Ctrl+Shift+S
         for segment in selected_segments:
             row = self._find_row_for_segment(segment.id)
             if row >= 0:
                 # v1.9.306: Use segment.source (clean text) instead of source widget's display text
                 # which may contain invisible markers (·, →, °, ↵, \u200B)
                 source_text = segment.source
+                old_target = segment.target
+                old_status = segment.status
 
                 # Update segment object
                 segment.target = source_text
@@ -44440,7 +44589,16 @@ class SupervertalerQt(QMainWindow):
                     target_widget.setPlainText(target_display)
                     target_widget.blockSignals(False)
 
+                if old_target != source_text:
+                    undo_entries.append((segment.id, old_target, source_text, old_status, old_status))
                 copied_count += 1
+
+        # v1.10.204: batched undo recording for multi-select Ctrl+Shift+S
+        if undo_entries:
+            try:
+                self.record_undo_states_batch(undo_entries)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for multi-select copy: {undo_err}")
 
         if copied_count:
             self.auto_resize_rows()
@@ -46013,13 +46171,20 @@ class SupervertalerQt(QMainWindow):
                             segment = self.current_project.segments[current_row]
                             
                             # Only auto-propagate if segment is empty or untranslated
-                            if (not segment.target or not segment.target.strip() or 
+                            if (not segment.target or not segment.target.strip() or
                                 segment.status in ["untranslated", "not_started", ""]):
-                                
+
                                 # Fill the segment
-                                segment.target = first_match.get('target', '')
+                                _undo_old_target = segment.target
+                                _undo_old_status = segment.status
+                                _undo_new_target = first_match.get('target', '')
+                                segment.target = _undo_new_target
                                 segment.status = "draft"
                                 segment.modified = True
+                                try:
+                                    self.record_undo_state(segment.id, _undo_old_target, _undo_new_target, _undo_old_status, "draft")
+                                except Exception:
+                                    pass  # never let undo failure break the actual operation
                                 self.project_modified = True
                                 
                                 # Update grid (using cell widget)
@@ -46800,17 +46965,31 @@ class SupervertalerQt(QMainWindow):
             
             # Insert translation (using cell widget)
             segment = self.current_project.segments[row]
+            old_target = segment.target
+            old_status = segment.status
             segment.target = translation
             target_widget = self.table.cellWidget(row, 3)
             if target_widget and isinstance(target_widget, EditableGridTextEditor):
                 target_widget.setPlainText(translation)
-            
+
             # Update status
+            new_status = old_status
             if segment.status in (DEFAULT_STATUS.key, 'pretranslated', 'rejected'):
                 segment.status = 'draft'
+                new_status = 'draft'
                 self.update_status_icon(row, 'draft')
             else:
                 self._refresh_segment_status(segment)
+
+            # v1.10.204: record undo for the insertion so Ctrl+Z restores the
+            # previous translation. update_status_icon records its own undo
+            # entry for the status change; we still need this one for the
+            # target text itself.
+            if old_target != translation:
+                try:
+                    self.record_undo_state(segment.id, old_target, translation, old_status, new_status)
+                except Exception as undo_err:
+                    self.log(f"⚠ Undo recording failed for insert_term_translation: {undo_err}")
             
             self.project_modified = True
             self.update_window_title()
@@ -47325,10 +47504,15 @@ class SupervertalerQt(QMainWindow):
                     if field_name == "source":
                         segment.source = new_text
                     else:
+                        _undo_old_status = segment.status
                         segment.target = new_text
-        
+                        try:
+                            self.record_undo_state(segment.id, old_text, new_text, _undo_old_status, _undo_old_status)
+                        except Exception:
+                            pass  # never let undo failure break the actual operation
+
         return count
-    
+
     def find_next_match(self):
         """Find next occurrence of search term, filtering grid to show only matching rows"""
         find_text = self.find_input.text()
@@ -52297,7 +52481,17 @@ class SupervertalerQt(QMainWindow):
             return
 
         segment = self.current_project.segments[current_row]
+        old_target = segment.target
+        old_status = segment.status
         segment.target = segment.source
+
+        # v1.10.204: record undo BEFORE the visible update so Ctrl+Z restores
+        # the previous translation (this single-row menu path was missing it).
+        if old_target != segment.target:
+            try:
+                self.record_undo_state(segment.id, old_target, segment.target, old_status, old_status)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for copy_source_to_grid_target: {undo_err}")
 
         # Update grid cell - target is column 3 (ID=0, Status=1, Source=2, Target=3)
         # v1.9.306: Apply invisible markers for display
@@ -52305,27 +52499,37 @@ class SupervertalerQt(QMainWindow):
         if target_widget and isinstance(target_widget, EditableGridTextEditor):
             display_text = self.apply_invisible_replacements(segment.source) if hasattr(self, 'apply_invisible_replacements') else segment.source
             target_widget.setPlainText(display_text)
-        
+
         self.project_modified = True
         self.log(f"📋 Copied source to target in segment {segment.id}")
-    
+
     def clear_grid_target(self):
         """Clear target in currently selected grid row"""
         if not hasattr(self, 'table') or not self.table:
             return
-        
+
         current_row = self.table.currentRow()
         if current_row < 0 or not self.current_project or current_row >= len(self.current_project.segments):
             return
-        
+
         segment = self.current_project.segments[current_row]
+        old_target = segment.target
+        old_status = segment.status
         segment.target = ""
-        
+
+        # v1.10.204: record undo BEFORE the visible update so Ctrl+Z restores
+        # the cleared text.
+        if old_target:
+            try:
+                self.record_undo_state(segment.id, old_target, "", old_status, old_status)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for clear_grid_target: {undo_err}")
+
         # Update grid cell - target is column 3 (ID=0, Status=1, Source=2, Target=3)
         target_widget = self.table.cellWidget(current_row, 3)
         if target_widget and isinstance(target_widget, EditableGridTextEditor):
             target_widget.clear()
-        
+
         self.project_modified = True
         self.log(f"🗑️ Cleared target in segment {segment.id}")
     
@@ -52718,7 +52922,13 @@ class SupervertalerQt(QMainWindow):
                 cursor.endEditBlock()
 
                 # Store full text (with tags) in segment, but use displayed text if tags are hidden
+                _undo_old_target = segment.target
+                _undo_old_status = segment.status
                 segment.target = new_text  # Keep full text with tags
+                try:
+                    self.record_undo_state(segment.id, _undo_old_target, new_text, _undo_old_status, _undo_old_status)
+                except Exception:
+                    pass  # never let undo failure break the actual operation
                 target_widget.setFocus()
                 target_widget.moveCursor(QTextCursor.MoveOperation.End)
 
@@ -55755,8 +55965,14 @@ class SupervertalerQt(QMainWindow):
             auto_insert_100 = general_prefs.get('auto_insert_100', False)
             if tm_match and auto_insert_100:
                 # Auto-insert the TM match
+                _undo_old_target = segment.target
+                _undo_old_status = segment.status
                 segment.target = tm_match
                 segment.status = "draft"
+                try:
+                    self.record_undo_state(segment.id, _undo_old_target, tm_match, _undo_old_status, "draft")
+                except Exception:
+                    pass  # never let undo failure break the actual operation
                 self.project_modified = True
                 self.update_window_title()
 
@@ -55931,8 +56147,14 @@ class SupervertalerQt(QMainWindow):
             
             if translation:
                 # Update segment
+                _undo_old_target = segment.target
+                _undo_old_status = segment.status
                 segment.target = translation
                 segment.status = "draft"
+                try:
+                    self.record_undo_state(segment.id, _undo_old_target, translation, _undo_old_status, "draft")
+                except Exception:
+                    pass  # never let undo failure break the actual operation
 
                 # Update grid - Column 3 is Target (using cell widget)
                 target_widget = self.table.cellWidget(current_row, 3)
@@ -57150,6 +57372,15 @@ class SupervertalerQt(QMainWindow):
             self.update_window_title()
             self.auto_resize_rows()
             self.update_progress_stats()
+
+            # v1.10.204: push the worker's collected undo entries onto the
+            # app undo stack so Ctrl+Z can roll back a pre-translation batch.
+            try:
+                entries = getattr(worker, 'undo_entries', None) or []
+                if entries:
+                    self.record_undo_states_batch(entries)
+            except Exception as undo_err:
+                self.log(f"⚠ Undo recording failed for batch translation: {undo_err}")
             
             # Check if this is the final pass (no retry pending)
             if not hasattr(self, '_pending_retry'):
@@ -59139,8 +59370,14 @@ class SupervertalerQt(QMainWindow):
             # CRITICAL: Update segment data directly
             # The segment parameter IS a reference to the object in self.current_project.segments
             # No need to look it up - just modify it directly!
+            _undo_old_target = segment.target
+            _undo_old_status = segment.status
             segment.target = target_text
             segment.status = 'draft'  # Mark as draft (needs confirmation)
+            try:
+                self.record_undo_state(segment.id, _undo_old_target, target_text, _undo_old_status, 'draft')
+            except Exception:
+                pass  # never let undo failure break the actual operation
             self.project_modified = True
             self.log(f"🔧 Auto-insert: AFTER - segment.id={segment.id}, segment object ID={id(segment)}, new_target='{segment.target[:30] if segment.target else 'EMPTY'}'")
             self.log(f"🔧 Auto-insert: Updated segment.target, status=draft")

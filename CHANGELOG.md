@@ -2,7 +2,32 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.203 (May 26, 2026)
+**Current Version:** v1.10.204 (May 26, 2026)
+
+
+## v1.10.204 – May 26, 2026
+
+### Fixed
+
+- **Undo (Ctrl+Z) now covers Copy Source to Target, Clear Translations, TM auto-insert, term insertion, find/replace, pre-translation, AI batch translation, compare-panel replace, and other previously-irreversible operations.** A user accidentally hit Ctrl+Shift+S (Copy Source to Target) on a completed translation and lost it — Ctrl+Z did nothing because that path never recorded an undo state. An audit revealed the same gap in **~13 other places** that silently overwrote `segment.target`, including bulk operations that could destroy hundreds of translations in one go.
+- **What now records undo:**
+  - **Copy Source to Target** — single cell (Ctrl+Shift+S), multi-select Ctrl+Shift+S, Edit menu bulk, Bulk non-translatable, single-row grid menu
+  - **Clear Translations** — bulk and single-row variants
+  - **Term insertion** (double-click termbase match)
+  - **TM auto-insert** (100% match auto-fill, single-segment LLM/TM translate)
+  - **Pre-translation / batch translation** (`PreTranslationWorker`) — accumulates undo entries during the worker and flushes them via a single batched call when the run completes
+  - **Find/Replace single-operation path**
+  - **Compare Panel Alt+0 (replace target)**
+  - **Match Panel auto-propagate exact matches**
+  - **Auto-insert TM match on search-results**
+- **New `record_undo_states_batch()` helper** to keep bulk operations cheap: instead of N×Qt-action-refresh and N×`list.pop(0)`, large batches now trim the undo stack and refresh menu actions exactly once at the end. Performance impact is sub-millisecond per call for interactive paths and well under 10 ms for a 500-segment bulk operation — invisible against the work the operations are doing anyway.
+- **Belt-and-braces inside the cell editor:** the single-cell Ctrl+Shift+S path also switched from `setPlainText()` to `cursor.insertText()` over a select-all, so Qt's own per-cell undo stack is preserved as a second safety net. Previously `setPlainText()` wiped both the translation AND the editor's own undo history in one go.
+
+### Notes
+
+- Undo cap is unchanged at 100 entries. Bulk operations push one entry per changed segment, so a 200-segment Copy Source needs more Ctrl+Z presses than you can fit on the stack to fully revert — for very large undoable batches, undo restores the most recent 100 segments. A future change will likely group bulk operations into a single "undo group" so one Ctrl+Z reverts the whole batch.
+- A "OLD BLOCKING IMPLEMENTATION BELOW (DISABLED)" block of dead code in `do_batch_translation` (lines ~57500–58066, five `segment.target = …` assignments) was deliberately not wired — it's unreachable. Should be deleted in a future cleanup pass.
+- Per-keystroke undo in the tab editor was deliberately not pushed onto the global stack — Qt's native QTextEdit undo handles within-cell history. A future enhancement could capture pre-edit state on focusIn and push one entry per focusOut.
 
 
 ## v1.10.203 – May 26, 2026
