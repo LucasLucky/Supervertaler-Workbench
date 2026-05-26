@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.187 (May 26, 2026)
+**Current Version:** v1.10.188 (May 26, 2026)
+
+
+## v1.10.188 – May 26, 2026
+
+### Added
+
+- **Double-click a synonym to promote it to the primary term** in the **Edit Termbase Entry** dialog. Mirrors the Trados plugin's behaviour: in either the source or target synonym list, double-clicking a synonym swaps its text with the corresponding primary term — the chosen synonym becomes the new primary and the old primary drops into the synonym row. The synonym's forbidden flag (🚫) stays with the *slot*, not the *text*, which matches both Trados and the natural editorial intent ("I'm correcting which translation is canonical, not changing whether it's forbidden"). Tooltip on each synonym list now reads *"Double-click to promote to the primary term · Right-click for more options"* so the affordance is discoverable. Empty synonyms are skipped (no-op) and the synonym list's existing context menu actions (mark as forbidden, delete) are untouched.
 
 
 ## v1.10.187 – May 26, 2026

@@ -499,6 +499,19 @@ class TermbaseEntryEditor(QDialog):
         self.source_synonym_list.setStyleSheet("QListWidget { background-color: #ffffff; }")
         self.source_synonym_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.source_synonym_list.customContextMenuRequested.connect(self.show_source_synonym_context_menu)
+        # v1.10.188: double-click promotes a synonym to the primary term
+        # (Trados-style). Swaps the current primary text into the synonym
+        # slot so no information is lost — the old primary becomes a
+        # synonym, the chosen synonym becomes the primary.
+        self.source_synonym_list.itemDoubleClicked.connect(
+            lambda item: self._promote_synonym_to_primary(
+                self.source_synonym_list, self.source_edit, item
+            )
+        )
+        self.source_synonym_list.setToolTip(
+            "Double-click to promote to the primary term\n"
+            "Right-click for more options"
+        )
         source_list_layout.addWidget(self.source_synonym_list)
 
         # Up/Down buttons for source synonyms
@@ -567,6 +580,17 @@ class TermbaseEntryEditor(QDialog):
         self.target_synonym_list.setStyleSheet("QListWidget { background-color: #ffffff; }")
         self.target_synonym_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.target_synonym_list.customContextMenuRequested.connect(self.show_target_synonym_context_menu)
+        # v1.10.188: double-click promotes a synonym to the primary term
+        # (Trados-style). See source_synonym_list above for details.
+        self.target_synonym_list.itemDoubleClicked.connect(
+            lambda item: self._promote_synonym_to_primary(
+                self.target_synonym_list, self.target_edit, item
+            )
+        )
+        self.target_synonym_list.setToolTip(
+            "Double-click to promote to the primary term\n"
+            "Right-click for more options"
+        )
         target_list_layout.addWidget(self.target_synonym_list)
 
         # Up/Down buttons for target synonyms
@@ -732,6 +756,63 @@ class TermbaseEntryEditor(QDialog):
         current_row = self.source_synonym_list.currentRow()
         if current_row >= 0:
             self.source_synonym_list.takeItem(current_row)
+
+    # ========================================================================
+    # SYNONYM PROMOTION (v1.10.188)
+    # ========================================================================
+
+    def _promote_synonym_to_primary(self, synonym_list, primary_edit, item):
+        """Promote a synonym to the primary term and demote the previous
+        primary to the synonym slot.
+
+        Called from itemDoubleClicked on either the source or target
+        synonym list. Mirrors the behaviour of the Trados plugin's
+        TermEntryEditorDialog.PromoteToPrimary (double-click on a row in
+        either synonym list swaps the row's text with the primary
+        term's text, so no information is lost).
+
+        Notes:
+        - Forbidden flag stays with the synonym entry, not with the
+          text — i.e. if the user double-clicks a 🚫-marked synonym,
+          the OLD primary becomes a 🚫-marked synonym after the swap.
+          This matches the Trados behaviour (forbidden is a property of
+          the synonym slot, not of the term) and is almost always what
+          the user wants: they're correcting which translation is the
+          canonical one, not changing whether it's forbidden.
+        - If the previous primary was empty, the swap still happens —
+          an empty string lands in the synonym row. The user can delete
+          the empty row with the ✕ button if they want. This is rare
+          enough (why would you have a synonym for an empty primary?)
+          to not warrant special-case logic.
+        """
+        if item is None:
+            return
+
+        # Pull the synonym data
+        data = item.data(Qt.ItemDataRole.UserRole) or {}
+        syn_text = (data.get('text') or '').strip()
+        if not syn_text:
+            return  # blank synonym — nothing to promote
+
+        # Read and overwrite the primary
+        old_primary = primary_edit.text().strip()
+        primary_edit.setText(syn_text)
+
+        # Put the old primary into the synonym row, keeping the row's
+        # forbidden flag. Re-render the row text to match the new content
+        # (and the existing forbidden indicator).
+        new_data = {
+            'text': old_primary,
+            'forbidden': bool(data.get('forbidden', False)),
+        }
+        display_text = f"{'🚫 ' if new_data['forbidden'] else ''}{old_primary}"
+        item.setData(Qt.ItemDataRole.UserRole, new_data)
+        item.setText(display_text)
+        if new_data['forbidden']:
+            item.setForeground(QColor('#d32f2f'))
+        else:
+            # Clear the red colour if it was set on the previous text
+            item.setForeground(QColor('#000000'))
 
     def show_source_synonym_context_menu(self, position):
         """Show context menu for source synonym list."""
