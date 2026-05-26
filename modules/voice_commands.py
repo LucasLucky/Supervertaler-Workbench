@@ -155,9 +155,22 @@ class VoiceCommandManager(QObject):
         self.commands_file = user_data_path / "workbench" / "settings" / "voice_commands.json"
         self.ahk_script_dir = user_data_path / "workbench" / "voice_scripts"
         self.match_threshold = 0.85  # Minimum similarity for fuzzy matching
-        
+
         # Internal action handlers (mapped to main_window methods)
         self.internal_handlers: Dict[str, Callable] = {}
+
+        # v1.10.197: deferred-keystroke mode for the push-to-talk-for-
+        # commands flow. While ``_defer_keystrokes`` is True, any
+        # keystroke / AHK command goes onto ``_deferred_queue`` instead
+        # of being sent immediately. When the flag flips back to False
+        # (via ``set_defer_keystrokes(False)``) the queue is drained.
+        # Internal-action commands (which call Python methods directly
+        # rather than synthesising keystrokes) execute immediately
+        # regardless of this flag — they don't suffer from the
+        # "user is still holding Ctrl+Alt" interference that keystroke
+        # commands hit during a PTT hold.
+        self._defer_keystrokes: bool = False
+        self._deferred_queue: List = []
         
         # Ensure directories exist
         self.ahk_script_dir.mkdir(parents=True, exist_ok=True)
@@ -309,8 +322,65 @@ class VoiceCommandManager(QObject):
             return (best_match, best_score)
         return None
     
+    # ── v1.10.197: deferred-keystroke control (for command PTT) ──
+
+    def set_defer_keystrokes(self, on: bool) -> None:
+        """Toggle the keystroke-deferral mode.
+
+        While ``on=True``, keystroke / AHK voice commands are queued
+        rather than executed — used by the command push-to-talk path
+        so the synthetic Ctrl+A doesn't collide with the user's still-
+        held Ctrl+Alt+V modifier keys. When called with ``on=False``,
+        the queue is drained immediately (callers wanting a delay
+        should schedule the call via QTimer.singleShot).
+
+        Internal-action commands (Python method calls) are unaffected
+        by this flag — they execute immediately in both modes.
+        """
+        was_on = self._defer_keystrokes
+        self._defer_keystrokes = bool(on)
+        if was_on and not self._defer_keystrokes:
+            self._drain_deferred_queue()
+
+    def _drain_deferred_queue(self) -> None:
+        """Execute everything queued during a deferral window, in order."""
+        queue = self._deferred_queue
+        self._deferred_queue = []
+        for command in queue:
+            try:
+                self._execute_command_real(command)
+            except Exception as e:
+                if self.main_window and hasattr(self.main_window, 'log'):
+                    self.main_window.log(
+                        f"❌ Deferred voice command failed ({command.phrase!r}): {e}"
+                    )
+
     def execute_command(self, command: VoiceCommand) -> bool:
-        """Execute a voice command. Returns True on success."""
+        """Execute a voice command. Returns True on success.
+
+        v1.10.197: when ``_defer_keystrokes`` is on, keystroke / AHK
+        commands are queued for later execution and this returns True
+        (the queueing was successful). Internal commands run
+        immediately regardless of the flag — they don't synthesise
+        keystrokes so they're safe to fire even with modifier keys
+        held physically by the user.
+        """
+        if self._defer_keystrokes and command.action_type in (
+            "keystroke", "ahk_inline", "ahk_script"
+        ):
+            self._deferred_queue.append(command)
+            if self.main_window and hasattr(self.main_window, 'log'):
+                self.main_window.log(
+                    f"🎙️ Voice command queued for after PTT release: "
+                    f"{command.phrase!r}"
+                )
+            return True
+        return self._execute_command_real(command)
+
+    def _execute_command_real(self, command: VoiceCommand) -> bool:
+        """Actual execution path. Split from :meth:`execute_command` in
+        v1.10.197 so deferred commands can re-enter the same logic
+        without going back through the defer-check."""
         try:
             if command.action_type == "internal":
                 return self._execute_internal(command)

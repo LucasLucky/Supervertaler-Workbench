@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.196 (May 26, 2026)
+**Current Version:** v1.10.197 (May 26, 2026)
+
+
+## v1.10.197 – May 26, 2026
+
+### Fixed
+
+- **Voice commands fired during a Ctrl+Alt+V hold no longer collide with the held modifier keys.** A user reported saying "select all" during a Ctrl+Alt+V hold and seeing "absolutely nothing" happen — even though the Workbench log clearly showed Vosk recognising the phrase, matching the command, and sending Ctrl+A to the foreground window. Root cause traced from the log line `⌨️ Keystroke: Sending 'ctrl+a' to foreground window`: the synthetic Ctrl+A was being delivered while the user's *physical* Ctrl+Alt+V keys were still held down. The OS combines synthetic + physical key state at delivery, so the receiving window saw `Ctrl+Alt+Ctrl+A` — normalised to `Ctrl+Alt+A`, which is the Always-On toggle binding, not the Select All shortcut. Affected every keystroke / AHK voice command issued during a PTT hold.
+- **Fix: deferred-keystroke mode in the voice command manager.** While the PTT chord is held, keystroke / AHK commands are queued instead of being sent immediately. On release, the queue is drained 200 ms later — enough time for the user's physical key-up events to propagate through the OS before the synthetic ones fire. Internal-action commands (Python method calls into the main window — segment navigation, confirm, copy source, etc.) are unaffected by the deferral, since they don't synthesise keystrokes and so don't suffer from the held-modifier interference.
+- **Architecture: `VoiceCommandManager` gains `set_defer_keystrokes(on: bool)` plus an internal `_deferred_queue`.** Splitting `execute_command` into a public defer-aware shell + a `_execute_command_real` body lets the queue drain re-use the same execution path without going round the defer check again. The main app calls `set_defer_keystrokes(True)` on PTT press, schedules `set_defer_keystrokes(False)` via `QTimer.singleShot(200, …)` on PTT release. No keypress monitoring required on the command side — just a flag flip and a Qt timer.
 
 
 ## v1.10.196 – May 26, 2026

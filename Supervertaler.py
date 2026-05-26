@@ -51360,6 +51360,26 @@ class SupervertalerQt(QMainWindow):
         # listening_started → _update_alwayson_ui) will then see PTT
         # mode and skip the big "ALWAYS-ON" / "REC" indicator chrome.
         self._voice_command_ptt_owned = True
+
+        # v1.10.197: tell the voice-command manager to queue keystroke
+        # / AHK commands instead of firing them immediately. Reason:
+        # while the user is physically holding Ctrl+Alt+V, the system
+        # has those modifier keys down at the OS level. If a voice
+        # command tries to send a synthetic Ctrl+A right now, the OS
+        # sees Ctrl+Alt held + synthetic Ctrl+A added on top → the
+        # net chord is Ctrl+Alt+A, not Ctrl+A, and the foreground
+        # window misinterprets it (or in your case, matches the
+        # Ctrl+Alt+A global hotkey for Always-On toggle). Queueing
+        # the keystrokes and draining the queue ~200 ms after release
+        # gives the OS time to register the user's physical key-up
+        # events before the synthetic ones fire.
+        try:
+            if hasattr(self, 'voice_command_manager') and self.voice_command_manager:
+                if hasattr(self.voice_command_manager, 'set_defer_keystrokes'):
+                    self.voice_command_manager.set_defer_keystrokes(True)
+        except Exception as e:
+            self.log(f"⚠ Could not enable PTT keystroke deferral: {e}")
+
         try:
             self._toggle_alwayson_listening()
             self.status_bar.showMessage(
@@ -51368,6 +51388,14 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"⚠ Command PTT press failed: {e}")
             self._voice_command_ptt_owned = False
+            # If startup failed, drop the keystroke-defer too.
+            try:
+                if self.voice_command_manager and hasattr(
+                    self.voice_command_manager, 'set_defer_keystrokes'
+                ):
+                    self.voice_command_manager.set_defer_keystrokes(False)
+            except Exception:
+                pass
 
     def _on_voice_command_ptt_release(self):
         """Hotkey released — stop the listener iff we were the ones who
@@ -51394,6 +51422,21 @@ class SupervertalerQt(QMainWindow):
                 self.status_bar.clearMessage()
         except Exception as e:
             self.log(f"⚠ Command PTT release failed: {e}")
+
+        # v1.10.197: drain any keystroke commands that were queued
+        # during the hold. Delayed via QTimer so the user's physical
+        # Ctrl+Alt+V key-up events have time to propagate through the
+        # OS first (otherwise the synthetic keystrokes get OR'd with
+        # the still-held modifiers). 200 ms is generous; the
+        # responsive feel is still well under noticeable latency.
+        try:
+            if hasattr(self, 'voice_command_manager') and self.voice_command_manager:
+                if hasattr(self.voice_command_manager, 'set_defer_keystrokes'):
+                    from PyQt6.QtCore import QTimer
+                    mgr = self.voice_command_manager
+                    QTimer.singleShot(200, lambda: mgr.set_defer_keystrokes(False))
+        except Exception as e:
+            self.log(f"⚠ Could not schedule PTT keystroke flush: {e}")
 
     def _get_voice_hotkey_listener(self):
         """Lazy-create the global push-to-talk hotkey listener.
