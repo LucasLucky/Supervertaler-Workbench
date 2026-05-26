@@ -2,7 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.195 (May 26, 2026)
+**Current Version:** v1.10.196 (May 26, 2026)
+
+
+## v1.10.196 – May 26, 2026
+
+### Fixed
+
+- **Command push-to-talk (Ctrl+Alt+V) no longer dictates unmatched speech into the focused field, and no longer flashes "ALWAYS-ON" / "🔴 REC" indicators across the status bar.** A user reported three related problems after the v1.10.195 crash fix:
+  - The big status-bar indicator showed "🎤 ALWAYS-ON" during the hold, then "🔴 REC" when VAD detected speech, then disappeared — visually noisy for a momentary hotkey hold.
+  - The grid-toolbar Always-On button also flashed colour/text changes alongside it.
+  - Spoken phrases that didn't exactly match a defined voice command were being typed into the focused widget as dictation. So saying "next" with no matching command would type "next" into the segment's target box, "select all" would type "select all" and replace any selection — directly destructive.
+  - **Root cause:** the PTT-for-commands path reused the always-on listener's full UI machinery, including the same `_update_alwayson_ui` chrome and the same `_on_alwayson_dictation` fall-through-to-typing behaviour. Both behaviours are correct for the *toggle* always-on mode (user explicitly enables continuous listening, expects feedback and dictation), but wrong for the PTT mode (user holds a hotkey for a moment, expects commands only).
+  - **Three-part fix:**
+    1. **`_voice_command_ptt_owned` flag is now set BEFORE `_toggle_alwayson_listening()` is called**, so UI-update signals emitted during listener startup (`listening_started`) see the correct mode.
+    2. **`_update_alwayson_ui` short-circuits when PTT-owned** — no `alwayson_indicator_label` updates, no toolbar button colour changes, no settings-panel label churn. The status-bar message *"🎙️ Listening for command…"* set on press is the only visual feedback during the hold.
+    3. **`_on_alwayson_dictation` silently drops unmatched speech when PTT-owned** — logged for debugging, never typed.
+  - **Race fix:** the PTT-owned flag is now kept set until the listener confirms it has fully stopped (cleared inside `_update_alwayson_ui` on the `"stopped"` event), not cleared immediately on key release. This handles transcriptions that arrive *after* release for audio captured *before* release — a user's "next" command arriving 100 ms after release would otherwise have leaked through to dictation.
+
+### Note on voice commands not firing
+
+If a phrase you speak during command PTT doesn't trigger anything (rather than being typed), it means the phrase isn't matching any defined voice command exactly. Open the **Voice** tab to see/edit your command list and their aliases — the listener matches the *exact* phrase / alias text. "next" is not the same as "next segment" unless you've configured "next" as an alias. v1.10.196 just stops unmatched speech from doing harm; it doesn't change which phrases match.
 
 
 ## v1.10.195 – May 26, 2026

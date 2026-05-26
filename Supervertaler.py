@@ -23632,6 +23632,28 @@ class SupervertalerQt(QMainWindow):
 
     def _update_alwayson_ui(self, status: str):
         """Update the always-on UI elements"""
+        # v1.10.196: if the listener was started by the command-PTT
+        # chord (Ctrl+Alt+V by default), suppress all the big indicator
+        # chrome. PTT is transient — the user is holding a hotkey for a
+        # moment and doesn't want the status bar flashing "ALWAYS-ON" →
+        # "REC" → "stopped" → … in their face. The status-bar message
+        # set in _on_voice_command_ptt_press is the only visual feedback
+        # we want during a PTT session.
+        is_ptt = getattr(self, '_voice_command_ptt_owned', False)
+        if is_ptt:
+            # Make sure no leftover chrome is showing.
+            if hasattr(self, 'alwayson_indicator_label'):
+                self.alwayson_indicator_label.hide()
+            # When the listener confirms it has fully stopped, clear
+            # the PTT-owned flag so subsequent non-PTT sessions
+            # (manual Ctrl+Alt+A toggle) get the regular UI back.
+            # Holding it until *now* also lets _on_alwayson_dictation
+            # suppress any late transcription that arrived after the
+            # release (see _on_voice_command_ptt_release docstring).
+            if status == "stopped":
+                self._voice_command_ptt_owned = False
+            return
+
         # Update settings panel UI (if visible)
         if hasattr(self, 'alwayson_status_label'):
             if status == "listening" or status == "waiting":
@@ -23900,11 +23922,26 @@ class SupervertalerQt(QMainWindow):
         push-to-talk, and the Voice global hotkey all behave the same
         way regardless of which app has focus.
 
-        Skipped entirely when the user has set Always-On to commands-only
-        mode (Voice tab → "Listen for commands only"). In that mode
-        unmatched speech is logged but not typed – dictation is reserved
-        for the explicit push-to-talk path (hold the dictation hotkey).
+        Skipped entirely in two cases:
+
+        1. v1.10.196 — when the listener was started by Ctrl+Alt+V
+           (command push-to-talk). The user explicitly held a hotkey
+           to issue a *command*, not to dictate text; if their phrase
+           didn't match a defined command we silently drop it rather
+           than typing "next" / "select all" / etc. into the focused
+           field. The flag is kept set until the listener fully stops
+           (see ``_update_alwayson_ui`` for the clearing logic) so
+           late transcriptions arriving after release are also dropped.
+
+        2. When the user has set Always-On to commands-only mode
+           (Voice tab → "Listen for commands only"). Same effect:
+           unmatched speech is logged but not typed – dictation is
+           reserved for the explicit dictation push-to-talk path
+           (hold Ctrl+Shift+Space).
         """
+        if getattr(self, '_voice_command_ptt_owned', False):
+            self.log(f"💬 Command PTT mode, dropping unmatched speech: {text!r}")
+            return
         try:
             settings = self.load_dictation_settings()
             if settings.get('alwayson_commands_only', False):
@@ -51300,6 +51337,11 @@ class SupervertalerQt(QMainWindow):
 
         If the user already had always-on toggled on, the press is a
         no-op (we don't restart what's already going).
+
+        v1.10.196: the PTT-owned flag is set BEFORE the toggle call so
+        any UI-update signals emitted during listener startup (e.g.
+        ``listening_started``) see the correct mode and suppress their
+        chrome (see ``_update_alwayson_ui``).
         """
         listener_already_running = (
             self.voice_listener is not None
@@ -51307,18 +51349,21 @@ class SupervertalerQt(QMainWindow):
         )
         if listener_already_running:
             # User explicitly toggled always-on. Don't fight them — the
-            # release won't tear it down either.
+            # release won't tear it down either, and dictation
+            # suppression won't kick in either (always-on dictates as
+            # configured by the user).
             self._voice_command_ptt_owned = False
             return
 
+        # v1.10.196: set the flag *before* toggling. Any signal-driven
+        # UI updates that run during _toggle_alwayson_listening (e.g.
+        # listening_started → _update_alwayson_ui) will then see PTT
+        # mode and skip the big "ALWAYS-ON" / "REC" indicator chrome.
+        self._voice_command_ptt_owned = True
         try:
             self._toggle_alwayson_listening()
-            # _toggle_alwayson_listening is symmetric: if listener was
-            # off, it now starts. Mark that the PTT chord owns this
-            # session so release knows to shut it down.
-            self._voice_command_ptt_owned = True
             self.status_bar.showMessage(
-                "🎙️ Command listening… (release hotkey to stop)", 0
+                "🎙️ Listening for command… (release hotkey to stop)", 0
             )
         except Exception as e:
             self.log(f"⚠ Command PTT press failed: {e}")
@@ -51328,18 +51373,25 @@ class SupervertalerQt(QMainWindow):
         """Hotkey released — stop the listener iff we were the ones who
         started it on the matching press. If the user manually toggled
         always-on either before or during the hold, leave it running.
+
+        v1.10.196: the ``_voice_command_ptt_owned`` flag is NOT cleared
+        here. It's cleared later in ``_update_alwayson_ui`` once the
+        listener confirms it has fully stopped. Reason: the listener
+        may still emit one final ``text_for_dictation`` or
+        ``command_detected`` for audio captured before the user
+        released the key. While the flag is True, that pending dictation
+        is dropped (see ``_on_alwayson_dictation``), so a user's "next"
+        command can't leak into the document as typed text just because
+        transcription happened to finish a few ms after release.
         """
         if not getattr(self, '_voice_command_ptt_owned', False):
             return
-        self._voice_command_ptt_owned = False
         try:
             if self.voice_listener is not None and getattr(
                 self.voice_listener, 'is_listening', False
             ):
                 self._toggle_alwayson_listening()
-                self.status_bar.showMessage(
-                    "🔇 Command listening stopped", 2000
-                )
+                self.status_bar.clearMessage()
         except Exception as e:
             self.log(f"⚠ Command PTT release failed: {e}")
 
