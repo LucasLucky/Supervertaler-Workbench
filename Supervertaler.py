@@ -2030,6 +2030,25 @@ class _DoubleTapShiftEventFilter(QObject):
                 self._shift_was_used = True
             return False
 
+        # v1.10.185: also count a *mouse click while Shift is held* as a
+        # "use" of the Shift hold. The v1.10.154 fix only covered keyboard
+        # activity, which left a real false-positive uncovered: a user
+        # making a term-pair selection with Shift+Click on the source
+        # cell then Shift+Click on the target cell within 350 ms produced
+        # two "bare" Shift releases (no other key in between), tripping
+        # the double-tap detector and popping the context menu just as
+        # they were about to press Alt+Down to add the term. Treating a
+        # Shift+Click during the hold the same as a Shift+Key during the
+        # hold closes that gap. Uses event.modifiers() rather than a
+        # tracked "Shift currently down" flag — cheaper and equivalent.
+        if event_type == QEvent.Type.MouseButtonPress:
+            try:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    self._shift_was_used = True
+            except Exception:
+                pass
+            return False
+
         if event_type != QEvent.Type.KeyRelease:
             return False
 

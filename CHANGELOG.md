@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.184 (May 26, 2026)
+**Current Version:** v1.10.185 (May 26, 2026)
+
+
+## v1.10.185 – May 26, 2026
+
+### Fixed
+
+- **Double-tap Shift context menu false-positive on Shift+Click → Shift+Click selection of a term pair.** A user reported that the context menu was popping up just before they pressed Alt+Down to quick-add a source/target term pair to the termbase. Root cause: making the selection with **Shift+Click in the source cell, then Shift+Click in the target cell** within 350 ms produced two "bare" Shift releases — the v1.10.154 fix that consumed Shift releases bookending a *keyboard* key press didn't extend to *mouse clicks*. The user never pressed Shift twice on its own; the filter just couldn't tell the two Shift+Click holds apart from a real double-tap-Shift gesture. The event filter now treats a `MouseButtonPress` arriving while the Shift modifier is held the same way it treats a non-Shift `KeyPress` during the hold: marks the Shift as "used", consumes its release, and resets the tap timer so the next genuine bare Shift tap doesn't get spuriously paired with it.
 
 
 ## v1.10.184 – May 26, 2026
