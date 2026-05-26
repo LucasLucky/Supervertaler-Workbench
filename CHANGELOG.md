@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.179 (May 26, 2026)
+**Current Version:** v1.10.180 (May 26, 2026)
+
+
+## v1.10.180 – May 26, 2026
+
+### Added
+
+- **Contextual help button on the Image Context viewer.** The header row of the in-Prompt-Manager Image Context viewer now carries the standard circular `?` HelpButton, matching the convention already used by the Prompt Manager panel itself. Clicking it opens the Image Context help page in your default browser, deep-linked to the `#how-loaded-images-reach-the-ai` anchor so you land on the practical "what does this actually do" section instead of having to scroll past the where-to-find-it preamble.
+
+### Fixed
+
+- **AutoPrompt "Include loaded figure images" checkbox now renders a proper green tick.** v1.10.178 used a plain PyQt6 `QCheckBox` for the new opt-in, which on Windows renders as a tiny light-blue square that's barely visible — easy to miss whether it was actually ticked. Switched to the project-standard `CheckmarkCheckBox` (used everywhere else in the app, e.g. the SuperLookup status filters, the match-rate gate, the segment-status filters), so the box now shows a clear green check ✓ when on and an empty box when off. Same widget contract; no behaviour change.
 
 
 ## v1.10.179 – May 26, 2026

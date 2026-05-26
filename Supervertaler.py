@@ -11049,6 +11049,21 @@ class SupervertalerQt(QMainWindow):
         header_row.addWidget(header_title)
         header_row.addStretch()
 
+        # v1.10.180: contextual help button — opens the Image Context help
+        # page directly at the "How loaded images reach the AI" section,
+        # so the user lands on the practical "what does this actually do"
+        # explanation instead of having to scroll past the where-to-find-it
+        # preamble.
+        try:
+            from modules.styled_widgets import HelpButton
+            image_help_btn = HelpButton(
+                "workbench/ai-translation/image-context/#how-loaded-images-reach-the-ai",
+                tooltip="Open the Image Context help page",
+            )
+            header_row.addWidget(image_help_btn)
+        except Exception as e:
+            self.log(f"[Image Context] Could not add help button: {e}")
+
         main_layout.addLayout(header_row)
 
         # ── Row 1: input files for extraction + DOCX list ─────────

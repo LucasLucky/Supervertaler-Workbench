@@ -2210,8 +2210,11 @@ class UnifiedPromptManagerQt:
         # ~$0.05–$0.30 to the run cost depending on figure count and
         # provider. Only useful when the project has figures loaded in
         # Section 4 AND the active model supports vision.
-        from PyQt6.QtWidgets import QCheckBox
-        self._autoprompt_include_images = QCheckBox(
+        # v1.10.180: switched from plain QCheckBox to the project-
+        # standard CheckmarkCheckBox so the box renders a proper green
+        # checkmark when ticked instead of the platform's default
+        # light-blue square (which on Windows was barely visible).
+        self._autoprompt_include_images = CheckmarkCheckBox(
             "🖼️ Include loaded figure images"
         )
         self._autoprompt_include_images.setChecked(False)
@@ -2229,9 +2232,6 @@ class UnifiedPromptManagerQt:
             "Sonnet-class model and 10–20 figures; more with Opus-class.\n"
             "Negligible vs. the project's translation value, but off by\n"
             "default so you opt in deliberately."
-        )
-        self._autoprompt_include_images.setStyleSheet(
-            "QCheckBox { color: #333; font-size: 9pt; }"
         )
         right_col.addWidget(self._autoprompt_include_images)
 
