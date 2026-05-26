@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.182 (May 26, 2026)
+**Current Version:** v1.10.183 (May 26, 2026)
+
+
+## v1.10.183 – May 26, 2026
+
+### Fixed
+
+- **Bilingual Table re-import now picks up comment edits.** A user reported that editing the proofreader-style notes column in an exported Supervertaler Bilingual Table and re-importing the file silently discarded those edits. Root cause: the change-detection loop only registered a row as a "change to apply" if its *target* text differed from the project — a row whose only difference was the proofreader adding, editing, or clearing a comment was treated as identical to the project and skipped. The diff now also compares the comments column (whitespace-normalised on both sides) and a comments-only edit registers as a change. New comments added to segments that had none in Workbench round-trip correctly; cleared comments clear the segment's comments.
+- **Bilingual Table re-import no longer wraps comments as `[Review: …]` or appends to existing notes.** Even on the path where comments *were* being imported (target-changed rows), the previous code wrapped the proofreader's text as `"[Review: <text>]"` and *appended* it to any existing notes string. Result: round-tripping the same file twice produced nested `[Review: [Review: …]]` markers and ballooning comment content. The proofreader's text now **replaces** the segment's existing comments verbatim, which is the correct round-trip behaviour.
+- **Bilingual Table re-import now uses the proper Comments API.** Pre-fix code wrote directly to `seg.notes` (the legacy mirror string) and left `seg.comments[]` (the structured source of truth since v1.10.57) untouched — producing an inconsistent state where the change could vanish on next save/reload. Comments now go through `Segment.replace_all_comments_with_text()`, which rewrites `seg.comments[]` and keeps `seg.notes` in sync via `_joined_comment_text()`.
+
+### Changed
+
+- **"Notes" column in Bilingual Table exports renamed to "Comments"** to match the in-app terminology (Segment > Comments panel, etc.). The re-importer accepts both the new "Comments" header (current exports) and the legacy "Notes" header (files exported by v1.10.182 and earlier) — back-compat preserved indefinitely so old proofreader files keep round-tripping.
+- **Re-import preview dialog itemises target vs comment changes separately.** The "Found N change(s)" summary now reads "Found N segment(s) with changes (X target change(s), Y comment change(s))" and the per-segment preview lists target old/new and comment old/new on separate lines so the reviewer can see what's about to change. Cleared comments show as `(empty — comment will be cleared)`.
+- **Success dialog rephrased to count target vs comment changes separately** and to spell out the new "comments replace verbatim" semantics: *"X translation change(s) — status reset to Not Started for translator review. Y comment change(s) — the proofreader's text replaces the segment's existing comments verbatim."*
 
 
 ## v1.10.182 – May 26, 2026

@@ -14390,7 +14390,7 @@ class SupervertalerQt(QMainWindow):
             else:
                 notice.add_run("Note: This version shows applied formatting and is for client delivery or archiving. It cannot be re-imported.").italic = True
             
-            # Create table with 5 columns: #, Source Language, Target Language, Status, Notes
+            # Create table with 5 columns: #, Source Language, Target Language, Status, Comments
             table = doc.add_table(rows=1, cols=5)
             table.style = 'Table Grid'
             table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -14449,9 +14449,13 @@ class SupervertalerQt(QMainWindow):
                     tcW.set(qn('w:w'), str(tw))
                     tcW.set(qn('w:type'), 'dxa')
             
-            # Add header row with actual language names
+            # Add header row with actual language names.
+            # v1.10.183: "Notes" → "Comments" to match the in-app
+            # terminology (Segment > Comments panel, etc.). The
+            # re-importer accepts both headers for back-compat with
+            # files exported by older versions.
             header_cells = table.rows[0].cells
-            headers = ['#', source_lang, target_lang, 'Status', 'Notes']
+            headers = ['#', source_lang, target_lang, 'Status', 'Comments']
             for i, header in enumerate(headers):
                 header_cells[i].text = header
                 # Make header bold and shaded
@@ -14608,9 +14612,14 @@ class SupervertalerQt(QMainWindow):
                         elif status in ('draft', 'needs_review'):
                             run.font.color.rgb = RGBColor(200, 100, 0)  # Orange
                 
-                # Notes column - populate with segment notes if available
-                notes_text = seg.notes if hasattr(seg, 'notes') else ''
-                cells[4].text = notes_text
+                # Comments column - populate with segment comments if any.
+                # v1.10.183: keeps reading seg.notes (the legacy mirror) —
+                # which is kept in sync with the structured seg.comments[]
+                # list automatically by Segment.__post_init__ and the
+                # add_comment / update_comment / replace_all_comments_with_text
+                # APIs. Re-importer uses the proper API to write back.
+                comments_text = seg.notes if hasattr(seg, 'notes') else ''
+                cells[4].text = comments_text
                 for para in cells[4].paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(8)
@@ -38042,12 +38051,12 @@ class SupervertalerQt(QMainWindow):
                     self, "Invalid Format",
                     "No table found in the document.\n\n"
                     "Expected a Supervertaler Bilingual Table with columns:\n"
-                    "#, Source, Target, Status, Notes"
+                    "#, Source, Target, Status, Comments"
                 )
                 return
-            
+
             table = doc.tables[0]
-            
+
             # Check header row
             if len(table.rows) < 2:
                 QMessageBox.warning(
@@ -38055,29 +38064,29 @@ class SupervertalerQt(QMainWindow):
                     "The table appears to be empty or has no data rows."
                 )
                 return
-            
+
             header_row = table.rows[0]
             headers = [cell.text.strip().lower() for cell in header_row.cells]
-            
-            # Validate headers
-            expected_headers = ['#', 'source', 'target', 'status', 'notes']
+
+            # Validate headers. v1.10.183 accepts both "Comments" (current)
+            # and "Notes" (legacy export) in the 5th column.
             if len(headers) < 3:  # At minimum we need #, source, target
                 QMessageBox.warning(
                     self, "Invalid Format",
-                    f"Expected columns: #, Source, Target, Status, Notes\n"
+                    f"Expected columns: #, Source, Target, Status, Comments\n"
                     f"Found: {', '.join(headers)}"
                 )
                 return
-            
+
             # Parse table rows
             imported_data = []
             parse_errors = []
-            
+
             for row_idx, row in enumerate(table.rows[1:], start=1):
                 cells = row.cells
                 if len(cells) < 3:
                     continue
-                
+
                 try:
                     seg_num_text = cells[0].text.strip()
                     if not seg_num_text:
@@ -38085,63 +38094,85 @@ class SupervertalerQt(QMainWindow):
                     seg_num = int(seg_num_text)
                     source_text = cells[1].text.strip()
                     target_text = cells[2].text.strip()
-                    
+
                     # Optional fields
                     status_text = cells[3].text.strip() if len(cells) > 3 else ''
-                    notes_text = cells[4].text.strip() if len(cells) > 4 else ''
-                    
+                    # v1.10.183: comments column. Field name stays as
+                    # 'comments' internally (the legacy 'notes' label
+                    # used in code is just the mirror string on
+                    # Segment.notes; the structured data is
+                    # Segment.comments).
+                    comments_text = cells[4].text.strip() if len(cells) > 4 else ''
+
                     imported_data.append({
                         'segment_num': seg_num,
                         'source': source_text,
                         'target': target_text,
                         'status': status_text,
-                        'notes': notes_text,
+                        'comments': comments_text,
                         'row_idx': row_idx
                     })
                 except ValueError as e:
                     parse_errors.append(f"Row {row_idx}: Could not parse segment number")
-            
+
             if not imported_data:
                 QMessageBox.warning(
                     self, "No Data Found",
                     "No valid segment data found in the bilingual table."
                 )
                 return
-            
-            # Compare with current project and find changes
+
+            # Compare with current project and find changes.
+            # v1.10.183: detect target changes AND comments changes
+            # independently. Previously a comments-only edit was silently
+            # discarded — the importer only registered a row as a "change"
+            # if the target text differed, so a proofreader who edited or
+            # added comments without changing the translation got their
+            # work thrown away on re-import.
             current_segments = list(self.current_project.segments)
             changes = []
             mismatches = []
-            
+
             for data in imported_data:
                 seg_num = data['segment_num']
                 seg_idx = seg_num - 1  # Convert to 0-based index
-                
+
                 if seg_idx < 0 or seg_idx >= len(current_segments):
                     mismatches.append(f"Segment {seg_num}: Not found in project (project has {len(current_segments)} segments)")
                     continue
-                
+
                 current_seg = current_segments[seg_idx]
                 current_source = current_seg.source if hasattr(current_seg, 'source') else ''
                 current_target = current_seg.target if hasattr(current_seg, 'target') else ''
-                
+                current_comments = (current_seg.notes if hasattr(current_seg, 'notes') else '') or ''
+
                 # Check if source matches (sanity check)
                 if data['source'] != current_source:
                     # Allow for minor whitespace differences
                     if data['source'].strip() != current_source.strip():
                         mismatches.append(f"Segment {seg_num}: Source text mismatch")
                         continue
-                
-                # Check if target changed
-                if data['target'] != current_target:
+
+                target_changed = (data['target'] != current_target)
+                # Comments are compared after stripping outer whitespace
+                # on both sides — Word sometimes pads cells with trailing
+                # newlines that the proofreader didn't intend to add.
+                imported_comments = (data['comments'] or '').strip()
+                current_comments_norm = (current_comments or '').strip()
+                comments_changed = (imported_comments != current_comments_norm)
+
+                if target_changed or comments_changed:
                     changes.append({
                         'segment_num': seg_num,
                         'segment_idx': seg_idx,
                         'old_target': current_target,
                         'new_target': data['target'],
-                        'notes': data['notes']
+                        'target_changed': target_changed,
+                        'old_comments': current_comments_norm,
+                        'new_comments': imported_comments,
+                        'comments_changed': comments_changed,
                     })
-            
+
             if not changes and not mismatches:
                 # v1.10.153: build the termbase index and prefetch
                 # TM/MT/LLM matches for the first 50 segments —
@@ -38155,16 +38186,39 @@ class SupervertalerQt(QMainWindow):
                 )
                 return
             
-            # Show preview dialog for changes
-            preview_text = f"Found {len(changes)} change(s) to apply:\n\n"
-            
+            # v1.10.183: preview text now itemises target changes and
+            # comments changes separately so the user can see at a glance
+            # how the round-trip touched each segment.
+            target_change_count = sum(1 for c in changes if c['target_changed'])
+            comment_change_count = sum(1 for c in changes if c['comments_changed'])
+            summary_bits = []
+            if target_change_count:
+                summary_bits.append(f"{target_change_count} target change(s)")
+            if comment_change_count:
+                summary_bits.append(f"{comment_change_count} comment change(s)")
+            preview_text = (
+                f"Found {len(changes)} segment(s) with changes "
+                f"({', '.join(summary_bits)}):\n\n"
+            )
+
             for i, change in enumerate(changes[:10]):  # Show first 10
                 preview_text += f"Segment {change['segment_num']}:\n"
-                old_preview = change['old_target'][:50] + ('...' if len(change['old_target']) > 50 else '')
-                new_preview = change['new_target'][:50] + ('...' if len(change['new_target']) > 50 else '')
-                preview_text += f"  Old: {old_preview}\n"
-                preview_text += f"  New: {new_preview}\n\n"
-            
+                if change['target_changed']:
+                    old_preview = change['old_target'][:50] + ('...' if len(change['old_target']) > 50 else '')
+                    new_preview = change['new_target'][:50] + ('...' if len(change['new_target']) > 50 else '')
+                    preview_text += f"  Target old: {old_preview}\n"
+                    preview_text += f"  Target new: {new_preview}\n"
+                if change['comments_changed']:
+                    old_c = change['old_comments'][:50] + ('...' if len(change['old_comments']) > 50 else '')
+                    new_c = change['new_comments'][:50] + ('...' if len(change['new_comments']) > 50 else '')
+                    if not change['old_comments']:
+                        old_c = '(empty)'
+                    if not change['new_comments']:
+                        new_c = '(empty — comment will be cleared)'
+                    preview_text += f"  Comment old: {old_c}\n"
+                    preview_text += f"  Comment new: {new_c}\n"
+                preview_text += "\n"
+
             if len(changes) > 10:
                 preview_text += f"... and {len(changes) - 10} more changes\n\n"
             
@@ -38187,28 +38241,49 @@ class SupervertalerQt(QMainWindow):
                 self.log("Bilingual table import cancelled by user")
                 return
             
-            # Apply changes
+            # Apply changes.
+            # v1.10.183: comments now go through the proper Segment API
+            # (replace_all_comments_with_text). The pre-v1.10.183 code
+            # was wrong in two ways:
+            #   1. It wrote directly to seg.notes, leaving seg.comments[]
+            #      (the actual source of truth since v1.10.57) untouched.
+            #      The notes string was a derived mirror; mutating it
+            #      directly produced an inconsistent state and the change
+            #      could vanish on the next refresh / save / reload.
+            #   2. It wrapped the proofreader's text as "[Review: …]" and
+            #      *appended* it to existing notes — so a round-trip
+            #      "open exported file → save → re-import" would balloon
+            #      the comment with nested "[Review: [Review: …]]" each
+            #      cycle. Replacing with the proofreader's verbatim text
+            #      is the correct round-trip behaviour.
             applied_count = 0
+            target_applied = 0
+            comments_applied = 0
             for change in changes:
                 seg_idx = change['segment_idx']
-                current_segments[seg_idx].target = change['new_target']
-                
-                # Reset status to 'not_started' - flags segment for translator review
-                # This matches the behavior when manually editing a segment
-                if hasattr(current_segments[seg_idx], 'status'):
-                    current_segments[seg_idx].status = 'not_started'
-                
-                # Add note if provided
-                if change['notes']:
-                    if hasattr(current_segments[seg_idx], 'notes'):
-                        existing_notes = current_segments[seg_idx].notes or ''
-                        if existing_notes:
-                            current_segments[seg_idx].notes = f"{existing_notes}\n[Review: {change['notes']}]"
-                        else:
-                            current_segments[seg_idx].notes = f"[Review: {change['notes']}]"
+                seg = current_segments[seg_idx]
+
+                if change['target_changed']:
+                    seg.target = change['new_target']
+                    # Reset status to 'not_started' — flags segment for
+                    # translator review, matches the manual-edit behaviour.
+                    if hasattr(seg, 'status'):
+                        seg.status = 'not_started'
+                    target_applied += 1
+
+                if change['comments_changed']:
+                    new_text = change['new_comments']
+                    if hasattr(seg, 'replace_all_comments_with_text'):
+                        # Proper API: rewrites seg.comments[] AND keeps
+                        # seg.notes in sync via _joined_comment_text().
+                        # Empty string clears the comments list.
+                        seg.replace_all_comments_with_text(new_text)
                     else:
-                        current_segments[seg_idx].notes = f"[Review: {change['notes']}]"
-                
+                        # Fallback for legacy segments without the API.
+                        # Shouldn't happen in v1.10.57+ but kept defensive.
+                        seg.notes = new_text
+                    comments_applied += 1
+
                 applied_count += 1
             
             # Mark project as modified and refresh UI
@@ -38225,13 +38300,19 @@ class SupervertalerQt(QMainWindow):
             ) as _prog:
                 self.load_segments_to_grid(progress_callback=_prog.grid_callback)
             
-            self.log(f"✓ Applied {applied_count} change(s) from bilingual table: {Path(file_path).name}")
-            
+            self.log(
+                f"✓ Applied {applied_count} change(s) from bilingual table: "
+                f"{Path(file_path).name} "
+                f"({target_applied} target, {comments_applied} comments)"
+            )
+
             QMessageBox.information(
                 self, "Import Complete",
-                f"Successfully applied {applied_count} change(s) from the bilingual table.\n\n"
-                f"Changed segments set to 'Not Started' for translator review.\n"
-                f"Comments from the review have been added to segment comments."
+                f"Successfully applied changes to {applied_count} segment(s).\n\n"
+                f"• {target_applied} translation change(s) — status reset to "
+                f"'Not Started' for translator review.\n"
+                f"• {comments_applied} comment change(s) — the proofreader's "
+                f"text replaces the segment's existing comments verbatim."
             )
             
         except ImportError:
