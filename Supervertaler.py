@@ -8547,14 +8547,14 @@ class SupervertalerQt(QMainWindow):
             QApplication.instance().installEventFilter(self._lone_ctrl_event_filter)
 
         # v1.10.97 — Ctrl+Shift tap event filter removed. Originally
-        # added in v1.10.90 to give the Term Picker an ergonomic
+        # added in v1.10.90 to give TermPicker an ergonomic
         # modifier-chord trigger; turned out to clash with AltGr (which
         # emits Ctrl+Alt key events on Windows for users on Dutch /
         # German / other layouts) and to flood the session log with
         # diagnostic chatter for every chord attempt. User feedback:
         # "can we remove the Ctrl+Shift shortcut and just use
         # Ctrl+Shift+B?" The QShortcut below remains as the canonical
-        # Term Picker trigger; the lone-Ctrl tap above remains the
+        # TermPicker trigger; the lone-Ctrl tap above remains the
         # canonical TermLens-popup trigger.
 
         # Ctrl+Shift+Q - MT Quick Lookup (GT4T-style popup)
@@ -8562,10 +8562,12 @@ class SupervertalerQt(QMainWindow):
         # Use ApplicationShortcut context so it works even when focus is in QTextEdit widgets
         mt_quick_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
-        # Ctrl+Shift+B - TermLens Term Picker (v1.10.87 — Trados parity).
+        # Ctrl+Shift+B - TermPicker (v1.10.87 — Trados parity, renamed v1.10.205).
         # Modal tabular dialog listing all matches for the current segment
-        # with synonym expand/collapse + digit quick-pick. Complements the
-        # lone-Ctrl TermLens-mirror popup: same data, different ergonomics.
+        # with synonym expand/collapse + digit quick-pick. Sibling surface to
+        # TermLens: same data (termbase matches), different ergonomics —
+        # TermLens shows matches inline in context, TermPicker offers a
+        # keyboard-driven flat list for quick insertion.
         # v1.10.89: switched from Ctrl+Shift+P to Ctrl+Shift+B because the
         # Scratchpad menu action already binds Ctrl+Shift+P; the conflict
         # silently dropped the term_picker shortcut. B = termBase picker.
@@ -9164,18 +9166,23 @@ class SupervertalerQt(QMainWindow):
         popup.setFocus()
 
     def show_term_picker_dialog(self):
-        """Show the TermLens Term Picker modal dialog (Ctrl+Shift+B).
+        """Show the TermPicker modal dialog (Ctrl+Shift+B).
 
-        v1.10.87 — parity with the Trados TermPickerDialog. A tabular
-        grid of all matches for the current segment with synonym
-        expand/collapse and number-key quick-pick. Use cases:
+        v1.10.87 — parity with the Trados TermPickerDialog. Renamed
+        in v1.10.205 from "TermLens – Term Picker" to just "TermPicker"
+        to clarify it's a sibling surface to TermLens (both consume
+        termbase matches), not a sub-mode of TermLens.
+
+        A tabular grid of all matches for the current segment with
+        synonym expand/collapse and number-key quick-pick. Use cases:
           - Comparing many alternatives at once when several termbases
-            return overlapping hits and the chip grid feels crowded.
+            return overlapping hits and the TermLens chip grid feels
+            crowded.
           - Keyboard-only insertion via 0-9 when ≤9 matches (auto-
             inserts on digit press); otherwise digit selects + Enter
             inserts.
         """
-        # v1.10.97 — diagnostic [Term Picker] logs removed now that the
+        # v1.10.97 — diagnostic [TermPicker] logs removed now that the
         # Ctrl+Shift tap chord (which they were added to triage) is gone.
         if not self.current_project:
             return

@@ -96,7 +96,7 @@ class TermPickerDialog(QDialog):
         self._settings = settings
         self.selected_target_term: Optional[str] = None
 
-        self.setWindowTitle("TermLens – Term Picker")
+        self.setWindowTitle("TermPicker")
         self.setModal(True)
         self.setMinimumSize(420, 260)
         self.resize(620, 420)
@@ -162,7 +162,7 @@ class TermPickerDialog(QDialog):
         self._help_btn.setFixedSize(22, 22)
         self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._help_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._help_btn.setToolTip("Open help for the Term Picker (F1)")
+        self._help_btn.setToolTip("Open help for TermPicker (F1)")
         self._help_btn.setStyleSheet(
             """
             QPushButton {
@@ -204,7 +204,7 @@ class TermPickerDialog(QDialog):
             pass
 
     def _open_help(self):
-        """Open the Term Picker help page in the default browser."""
+        """Open the TermPicker help page in the default browser."""
         try:
             from modules.help_system import open_help, Topics
             open_help(Topics.GLOSSARY_TERM_PICKER)
@@ -423,7 +423,7 @@ def build_picker_matches(
         key = source.lower()
         termbase_name = m.get('termbase_name', '') or ''
         # v1.10.88 — unpack each entry's target_synonyms into synonym
-        # sub-rows so the Term Picker's ▸/▾ expansion shows them too.
+        # sub-rows so TermPicker's ▸/▾ expansion shows them too.
         # Pre-v1.10.88 the picker only treated "multiple termbase
         # entries that share the same source word" as synonyms; actual
         # ``target_synonyms`` on a single entry (the canonical "this

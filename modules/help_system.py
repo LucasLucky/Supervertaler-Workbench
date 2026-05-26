@@ -128,7 +128,9 @@ class Topics:
     # the help repo when the Workbench Ctrl-tap popup + Ctrl+Shift+B
     # picker reached feature parity with the Trados side.
     GLOSSARY_TERMLENS_POPUP = "workbench/termbases/termlens-popup/"
-    GLOSSARY_TERM_PICKER    = "workbench/termbases/term-picker/"
+    # Renamed v1.10.205: page slug term-picker/ → termpicker/ (old slug
+    # 301-redirects to the new one via public/_redirects on the help site).
+    GLOSSARY_TERM_PICKER    = "workbench/termbases/termpicker/"
     GLOSSARY_EXTRACTION     = "workbench/termbases/extraction/"
 
     # Import & Export (folder is workbench/import-export/ on disk)

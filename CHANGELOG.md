@@ -2,7 +2,31 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.204 (May 26, 2026)
+**Current Version:** v1.10.205 (May 26, 2026)
+
+
+## v1.10.205 – May 26, 2026
+
+### Changed
+
+- **"Term Picker" renamed to "TermPicker"** (one word, Pascal-cased, no hyphen, no space). Naming cleanup after a conversation about how the two surfaces relate to each other.
+- **Architecture clarification:** TermLens and TermPicker are now treated as **sibling surfaces** sitting on top of termbases, rather than the old "TermLens – Term Picker" framing where the picker felt like a sub-mode of TermLens. Underneath both sits the termbase layer; TermLens shows matches *in context* (inline chips anchored to source terms — the invention), TermPicker shows them as a flat sortable list with keyboard-driven Enter-to-insert. Same data, different ergonomics.
+- **Window title** `TermLens – Term Picker` → `TermPicker`.
+- **Help pages renamed:** `workbench/termbases/term-picker/` → `workbench/termbases/termpicker/` and `trados/termlens/term-picker/` → `trados/termlens/termpicker/`. Old URLs 301-redirect to the new ones via `public/_redirects` on the help site, so bookmarks and external links keep working.
+- **All user-facing mentions** of "Term Picker" (in tooltips, help docs, the Trados landing page, the keyboard-shortcuts reference) updated to "TermPicker".
+
+### Kept (internal, deliberately not renamed to avoid breaking user data/bookmarks)
+
+- File `modules/term_picker_dialog.py` — class name `TermPickerDialog` was already correct camelcase
+- Method `show_term_picker_dialog`
+- Settings keys `term_picker_width`, `term_picker_height`, `term_picker_column_widths` — would wipe user preferences
+- Shortcut action ID `term_picker` (the binding for Ctrl+Shift+B) — would break custom keymaps
+- Enum key `Topics.GLOSSARY_TERM_PICKER` (only its URL value changed)
+- Historical CHANGELOG and release-note files reference "Term Picker" — left as-is, they are historical record
+
+### Notes
+
+The rename is mostly text — no behaviour changes. F1 from the dialog still opens the help page (now under the new slug); old bookmarks still work via the redirect rules; existing custom shortcut bindings for `term_picker` still trigger the same code path. If you've been using "Term Picker" verbally with us, "TermPicker" is what we'll call it from here on. The Trados help site picks up the rename on its next Cloudflare Pages auto-deploy.
 
 
 ## v1.10.204 – May 26, 2026
