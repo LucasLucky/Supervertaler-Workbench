@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.176 (May 26, 2026)
+**Current Version:** v1.10.177 (May 26, 2026)
+
+
+## v1.10.177 – May 26, 2026
+
+### Added
+
+- **Tooltips on the four primary buttons in the Image Context viewer.** "📄 Add DOCX", "📁 Add Folder", "🖼️ Extract Images", and "📁 Load Folder" now each carry an explanatory hover tooltip. The two folder buttons are the confusing pair — "Add Folder" queues a folder of *Word documents* to extract images from, "Load Folder" loads a folder that already contains *image files*. The tooltips spell out the difference and cross-reference each other so the distinction is clear without needing to read the help docs.
+
+### Fixed
+
+- **"📁 Load Folder" now also populates the preview list + image preview pane.** Previously, only the post-extract path populated `extracted_image_files`, the "Extracted Files (click to preview)" list, and the right-hand image preview — so when a user loaded a pre-existing folder of images (e.g. one they extracted in an earlier session), the AI context was wired up but the preview area below stayed empty. `_load_image_context_from_path()` now scans the loaded folder for image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.tif`, `.webp`), populates the file list, enables the prev/next preview buttons, and shows the first image — same as if you'd just clicked Extract Images.
 
 
 ## v1.10.176 – May 26, 2026

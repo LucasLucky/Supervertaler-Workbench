@@ -11057,11 +11057,23 @@ class SupervertalerQt(QMainWindow):
         add_file_btn = QPushButton("📄 Add DOCX")
         add_file_btn.clicked.connect(self._on_add_docx_file_for_extraction)
         add_file_btn.setMaximumWidth(110)
+        add_file_btn.setToolTip(
+            "Add a single DOCX file to the extraction queue below.\n"
+            "Use this when you want to pull images OUT of a Word document.\n"
+            "Click '🖼️ Extract Images' once the queue is ready."
+        )
         inputs_row.addWidget(add_file_btn)
 
         add_folder_btn = QPushButton("📁 Add Folder")
         add_folder_btn.clicked.connect(self._on_add_docx_folder_for_extraction)
         add_folder_btn.setMaximumWidth(110)
+        add_folder_btn.setToolTip(
+            "Add EVERY DOCX file in a folder to the extraction queue below.\n"
+            "Useful for batch-extracting images from many Word documents at once.\n"
+            "Click '🖼️ Extract Images' once the queue is ready.\n\n"
+            "Note: this is for adding *Word documents* to extract from.\n"
+            "If you already have an Images folder ready, use '📁 Load Folder' instead."
+        )
         inputs_row.addWidget(add_folder_btn)
 
         clear_list_btn = QPushButton("🗑️")
@@ -11119,6 +11131,13 @@ class SupervertalerQt(QMainWindow):
             QPushButton:focus { outline: none; }
         """)
         extract_btn.clicked.connect(self._on_extract_images)
+        extract_btn.setToolTip(
+            "Extract images from the DOCX files listed above.\n"
+            "Images are saved to the Output directory (or an 'Images' folder\n"
+            "next to each DOCX when 'Auto-folder' is ticked) and the resulting\n"
+            "folder is automatically loaded as AI context for figure-aware\n"
+            "translation."
+        )
         action_row.addWidget(extract_btn)
 
         # Visual separator between the "extract from DOCX" path and
@@ -11141,7 +11160,13 @@ class SupervertalerQt(QMainWindow):
             QPushButton:hover { background-color: #45a049; }
             QPushButton:focus { outline: none; border: none; }
         """)
-        load_context_btn.setToolTip("Load images from a pre-existing Images folder (skip the extract step)")
+        load_context_btn.setToolTip(
+            "Load images from a folder that already contains image files\n"
+            "(e.g. one you extracted in a previous session, or a folder\n"
+            "you assembled by hand). Skips the DOCX extraction step.\n\n"
+            "Note: '📁 Add Folder' (above) queues a folder of *Word documents*\n"
+            "to extract from. This button loads a folder of *images* directly."
+        )
         load_context_btn.clicked.connect(self._on_load_image_context_folder)
         action_row.addWidget(load_context_btn)
 
@@ -11638,6 +11663,45 @@ class SupervertalerQt(QMainWindow):
                 self.image_context_status_label.setToolTip(folder)
                 origin = "just-extracted folder" if source == "just-extracted" else folder
                 self.log(f"[Image Context] Loaded {count} images from {origin}")
+
+                # v1.10.177: also populate the preview list + image preview
+                # pane so the user can actually SEE what they just loaded.
+                # Previously only _on_extract_images() did this, so loading
+                # an existing folder left the preview area blank.
+                try:
+                    image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp'}
+                    discovered = []
+                    for name in sorted(os.listdir(folder)):
+                        full = os.path.join(folder, name)
+                        if os.path.isfile(full) and os.path.splitext(name)[1].lower() in image_exts:
+                            discovered.append(full)
+
+                    if discovered and hasattr(self, 'image_extractor_files_list'):
+                        self.extracted_image_files = discovered
+                        self.current_preview_index = 0
+
+                        self.image_extractor_files_list.clear()
+                        for i, file_path in enumerate(discovered, 1):
+                            item = QListWidgetItem(f"{i}. {os.path.basename(file_path)}")
+                            item.setData(Qt.ItemDataRole.UserRole, file_path)
+                            item.setToolTip(file_path)
+                            self.image_extractor_files_list.addItem(item)
+
+                        if hasattr(self, 'preview_prev_btn'):
+                            self.preview_prev_btn.setEnabled(len(discovered) > 1)
+                        if hasattr(self, 'preview_next_btn'):
+                            self.preview_next_btn.setEnabled(len(discovered) > 1)
+
+                        self.image_extractor_files_list.setCurrentRow(0)
+                        self._update_preview()
+
+                        if hasattr(self, 'image_extractor_status'):
+                            self.image_extractor_status.append(
+                                f"📁 Loaded {len(discovered)} image{'s' if len(discovered) != 1 else ''} "
+                                f"from: {folder}"
+                            )
+                except Exception as preview_err:
+                    self.log(f"[Image Context] Could not populate preview list: {preview_err}")
 
                 # Update Prompt Manager display
                 if hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
