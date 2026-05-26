@@ -9739,8 +9739,12 @@ class SupervertalerQt(QMainWindow):
         """Create application menus"""
         menubar = self.menuBar()
         
-        # File Menu
-        file_menu = menubar.addMenu("&File")
+        # v1.10.182: renamed from "&File" to "&Project" — every action
+        # in this menu acts on the *project* (new / open / save / import
+        # source docs into the project / export the translated project),
+        # not on bare files. "&Project" matches the user's mental model.
+        # Variable name kept as file_menu to minimise patch surface.
+        file_menu = menubar.addMenu("&Project")
         
         new_action = QAction("&New Project", self)
         new_action.setShortcut(QKeySequence.StandardKey.New)
@@ -17529,19 +17533,29 @@ class SupervertalerQt(QMainWindow):
                 write_checkbox.setChecked(is_writable)
                 write_checkbox.setToolTip("Write: Termbase is updated with new terms")
                 
-                def on_write_toggle(checked, tb_id=tb['id'], row_idx=row):
+                def on_write_toggle(checked, tb_id=tb['id']):
                     # Invert logic: checked = writable, so set read_only to NOT checked
                     success = termbase_mgr.set_termbase_read_only(tb_id, not checked)
                     if success:
                         status = "writable" if checked else "read-only"
                         self.log(f"✅ Termbase {tb_id} set to {status}")
                     else:
-                        # Revert on failure
-                        sender = termbase_table.cellWidget(row_idx, 5)
-                        if sender:
-                            sender.blockSignals(True)
-                            sender.setChecked(not checked)
-                            sender.blockSignals(False)
+                        # v1.10.182: revert on failure — find the row dynamically
+                        # by tb_id (not the captured cell-creation index, which
+                        # goes stale the moment the user sorts the table). Same
+                        # bug class as on_project_toggle pre-v1.10.181: rare here
+                        # because it only fires on DB write failure, but a fix
+                        # is essentially free since the lookup pattern is the
+                        # same one used everywhere else now.
+                        for r in range(termbase_table.rowCount()):
+                            name_item = termbase_table.item(r, 1)
+                            if name_item and name_item.data(Qt.ItemDataRole.UserRole) == tb_id:
+                                sender = termbase_table.cellWidget(r, 5)
+                                if sender:
+                                    sender.blockSignals(True)
+                                    sender.setChecked(not checked)
+                                    sender.blockSignals(False)
+                                break
                 
                 write_checkbox.toggled.connect(on_write_toggle)
                 termbase_table.setCellWidget(row, 5, write_checkbox)
@@ -30871,7 +30885,7 @@ class SupervertalerQt(QMainWindow):
             "The file will be extracted via the Okapi sidecar – the same "
             "round-trip pipeline used for every supported format. You can "
             "later export back to the original format via "
-            "<i>File → Export → Export Translated Document…</i>."
+            "<i>Project → Export → Export Translated Document…</i>."
         )
         info_label.setWordWrap(True)
         info_label.setTextFormat(Qt.TextFormat.RichText)
@@ -30992,7 +31006,7 @@ class SupervertalerQt(QMainWindow):
             f"<b>{Path(file_path).name}</b><br><br>"
             f"Supervertaler will use the Okapi sidecar to extract translatable "
             f"content from this file. When you later export via "
-            f"<i>File → Export → Original format (via Okapi)…</i>, the same "
+            f"<i>Project → Export → Original format (via Okapi)…</i>, the same "
             f"sidecar reconstructs the file in its original format, byte-for-byte."
         )
         info_label.setWordWrap(True)
@@ -31080,7 +31094,7 @@ class SupervertalerQt(QMainWindow):
             QMessageBox.warning(
                 self, "Not an Okapi project",
                 "This menu entry only works for projects imported via "
-                "<i>File → Import → Other format (via Okapi)…</i> (or DOCX, "
+                "<i>Project → Import → Other format (via Okapi)…</i> (or DOCX, "
                 "but DOCX has its own dedicated export entry).<br><br>"
                 "The current project was imported through a different path."
             )
@@ -33369,7 +33383,7 @@ class SupervertalerQt(QMainWindow):
                 "Single-File Project",
                 "This feature is for multi-file projects only.\n\n"
                 "Multi-file projects are created via:\n"
-                "File → Import → Folder (Multiple Files)..."
+                "Project → Import → Folder (Multiple Files)..."
             )
             return
         
@@ -33505,7 +33519,7 @@ class SupervertalerQt(QMainWindow):
                 "This is a single-file project.\n\n"
                 "Use the regular export options (Target Only DOCX, Simple Text, etc.) instead.\n\n"
                 "Folder export is for multi-file projects imported via:\n"
-                "File → Import → Folder (Multiple Files)..."
+                "Project → Import → Folder (Multiple Files)..."
             )
             return
         
@@ -33781,7 +33795,7 @@ class SupervertalerQt(QMainWindow):
                 f"\n\n⚠️ {len(files_missing_originals)} file(s) exported without original formatting "
                 f"(source files not found).\n\n"
                 f"To preserve formatting, use:\n"
-                f"File → Export → Relocate Source Folder..."
+                f"Project → Export → Relocate Source Folder..."
             )
             self.log(f"   ⚠️ {len(files_missing_originals)} files without original formatting")
         

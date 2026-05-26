@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.181 (May 26, 2026)
+**Current Version:** v1.10.182 (May 26, 2026)
+
+
+## v1.10.182 – May 26, 2026
+
+### Changed
+
+- **"File" menu renamed to "Project".** Every action in the menu acts on the project — New Project, Open Project, Save Project, Import (source documents *into* the project), Export (the project's translated output), Recent Projects — never on bare files. "Project" matches the mental model. Keyboard shortcut is now **Alt+P** instead of Alt+F. All user-visible dialog strings inside Supervertaler.py that referenced "File → Import → …" / "File → Export → …" are updated to "Project → …" to match. Code-internal comments + the `file_menu` variable name are unchanged to keep the patch minimal.
+- **Help docs updated to match the menu rename.** 32 occurrences of `File → ` / `**File** →` / `File menu` across 16 Workbench help pages (Get Started, CAT-tool workflows, Import & Export, Editor → Comments, Troubleshooting) are now `Project → ` / `Project menu`. No URL changes — just in-page wording.
+
+### Fixed
+
+- **Latent stale-row bug in the Write checkbox's revert-on-failure path.** Same closure-captured-index issue as the v1.10.181 Project-termbase fix, but in `on_write_toggle`: if the DB write fails AND the user has previously sorted the Termbases table, the original code called `cellWidget(row_idx, 5)` with the now-stale index, reverting the wrong row's tick. Vanishingly rare in practice (only fires on a `set_termbase_read_only` SQL error) but a free fix since the dynamic-lookup-by-tb_id pattern is already in use elsewhere in the same function — paste it in, move on. The other two toggles in this table (`on_ai_toggle`, `on_voice_toggle`) were already safe by construction.
 
 
 ## v1.10.181 – May 26, 2026
