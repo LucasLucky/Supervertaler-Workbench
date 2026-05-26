@@ -51197,6 +51197,33 @@ class SupervertalerQt(QMainWindow):
         self._voice_release_poller = poller
         return poller
 
+    def _get_command_ptt_release_poller(self):
+        """Lazy-create the release poller for the v1.10.193 voice-
+        command push-to-talk chord. Sibling of
+        :meth:`_get_voice_release_poller` — separate poller instance so
+        the two chords have independent release tracking and don't
+        cross-fire each other's stop handlers.
+        """
+        existing = getattr(self, '_command_ptt_release_poller', None)
+        if existing is not None:
+            return existing
+        try:
+            from modules.voice_release_poller import KeyReleasePoller, IS_WINDOWS
+        except Exception as e:
+            self.log(f"⚠ Command-PTT release poller unavailable: {e}")
+            self._command_ptt_release_poller = None
+            return None
+        if not IS_WINDOWS:
+            # Non-Windows: no release polling. The listener stays on
+            # until the user toggles always-on off manually. Graceful
+            # degradation rather than a broken feature.
+            self._command_ptt_release_poller = None
+            return None
+        poller = KeyReleasePoller(parent=self)
+        poller.released.connect(self._on_voice_command_ptt_release)
+        self._command_ptt_release_poller = poller
+        return poller
+
     def _register_voice_pushtotalk_deferred(self, qt_shortcut: str):
         """Install the push-to-talk keyboard listener and bind a shortcut.
 
@@ -51214,6 +51241,82 @@ class SupervertalerQt(QMainWindow):
             self.log(f"🎤 Push-to-talk armed: {qt_shortcut} (hold to dictate, release to transcribe)")
         else:
             self.log(f"⚠ Could not parse push-to-talk shortcut: {qt_shortcut!r}")
+
+    # ── Voice COMMANDS push-to-talk (v1.10.193) ─────────────────────
+
+    def _register_voice_command_ptt_deferred(self, qt_shortcut: str):
+        """Install / re-install the push-to-talk-for-commands chord.
+
+        Sibling of :meth:`_register_voice_pushtotalk_deferred` but for
+        the v1.10.193 ``voice_command_ptt`` binding. Same low-level
+        keyboard listener (single pynput hook handles both chords). On
+        press, the held-by-us always-on listener is started; on release
+        it's torn down again unless the user explicitly toggled
+        always-on while we were holding.
+        """
+        listener = self._get_voice_hotkey_listener()
+        if listener is None:
+            return
+        listener.unregister('voice_command_ptt')
+        if not qt_shortcut:
+            return  # user cleared the binding — nothing to register
+        if listener.register('voice_command_ptt', qt_shortcut):
+            self.log(
+                f"🎙️ Command push-to-talk armed: {qt_shortcut} "
+                f"(hold to listen for voice commands)"
+            )
+        else:
+            self.log(f"⚠ Could not parse command-PTT shortcut: {qt_shortcut!r}")
+
+    def _on_voice_command_ptt_press(self):
+        """Hotkey pressed — start the always-on command listener if it
+        isn't already running, and remember that we (not the user) were
+        the one who started it so we can tear it down on release.
+
+        If the user already had always-on toggled on, the press is a
+        no-op (we don't restart what's already going).
+        """
+        listener_already_running = (
+            self.voice_listener is not None
+            and getattr(self.voice_listener, 'is_listening', False)
+        )
+        if listener_already_running:
+            # User explicitly toggled always-on. Don't fight them — the
+            # release won't tear it down either.
+            self._voice_command_ptt_owned = False
+            return
+
+        try:
+            self._toggle_alwayson_listening()
+            # _toggle_alwayson_listening is symmetric: if listener was
+            # off, it now starts. Mark that the PTT chord owns this
+            # session so release knows to shut it down.
+            self._voice_command_ptt_owned = True
+            self.status_bar.showMessage(
+                "🎙️ Command listening… (release hotkey to stop)", 0
+            )
+        except Exception as e:
+            self.log(f"⚠ Command PTT press failed: {e}")
+            self._voice_command_ptt_owned = False
+
+    def _on_voice_command_ptt_release(self):
+        """Hotkey released — stop the listener iff we were the ones who
+        started it on the matching press. If the user manually toggled
+        always-on either before or during the hold, leave it running.
+        """
+        if not getattr(self, '_voice_command_ptt_owned', False):
+            return
+        self._voice_command_ptt_owned = False
+        try:
+            if self.voice_listener is not None and getattr(
+                self.voice_listener, 'is_listening', False
+            ):
+                self._toggle_alwayson_listening()
+                self.status_bar.showMessage(
+                    "🔇 Command listening stopped", 2000
+                )
+        except Exception as e:
+            self.log(f"⚠ Command PTT release failed: {e}")
 
     def _get_voice_hotkey_listener(self):
         """Lazy-create the global push-to-talk hotkey listener.
@@ -51235,10 +51338,18 @@ class SupervertalerQt(QMainWindow):
         def _on_chord_pressed(binding_id):
             if binding_id == 'voice_dictate':
                 self.start_voice_dictation()
+            elif binding_id == 'voice_command_ptt':
+                # v1.10.193: push-to-talk for COMMANDS (separate from
+                # the dictate chord above). Start the always-on
+                # listener on press; the release handler tears it
+                # down again if WE started it.
+                self._on_voice_command_ptt_press()
 
         def _on_chord_released(binding_id):
             if binding_id == 'voice_dictate':
                 self.stop_voice_dictation_if_recording()
+            elif binding_id == 'voice_command_ptt':
+                self._on_voice_command_ptt_release()
 
         listener.chord_pressed.connect(_on_chord_pressed)
         listener.chord_released.connect(_on_chord_released)
@@ -63665,6 +63776,9 @@ class SuperlookupTab(QWidget):
             cb_shortcut = sm.get_shortcut('sidekick_open_clipboard').lower()
             pt_shortcut = sm.get_shortcut('voice_dictate').lower()
             ao_shortcut = sm.get_shortcut('voice_alwayson_toggle').lower()
+            # v1.10.193: push-to-talk for voice COMMANDS — separate
+            # from the dictate chord and the always-on toggle.
+            cmd_ptt_shortcut = (sm.get_shortcut('voice_command_ptt') or '').lower()
 
             # Honour the per-shortcut enabled flag and the `global` field:
             # if disabled, or if the entry is no longer flagged global, skip
@@ -63677,12 +63791,20 @@ class SuperlookupTab(QWidget):
             if _skip('sidekick_open_clipboard'):      cb_shortcut = ''
             if _skip('voice_dictate'):                pt_shortcut = ''
             if _skip('voice_alwayson_toggle'):  ao_shortcut = ''
+            # Defensive — voice_command_ptt may not be present in
+            # older settings files; the helper raises on unknown ids
+            # in some versions, so wrap in try.
+            try:
+                if _skip('voice_command_ptt'):        cmd_ptt_shortcut = ''
+            except Exception:
+                pass
         else:
             sl_shortcut = 'ctrl+alt+l'
             qt_shortcut = 'ctrl+alt+q'
             cb_shortcut = 'ctrl+shift+c'
             pt_shortcut = 'ctrl+shift+space'
             ao_shortcut = 'ctrl+alt+a'
+            cmd_ptt_shortcut = 'ctrl+alt+v'
 
         # No platform-specific rewrite needed: GlobalHotkeyManager's macOS
         # NSEvent backend now follows Qt's Mac convention internally
@@ -63725,6 +63847,7 @@ class SuperlookupTab(QWidget):
                     (cb_shortcut, self._on_pynput_clipboard),
                     (pt_shortcut, self._on_pynput_pushtotalk),
                     (ao_shortcut, self._on_pynput_alwayson_toggle),
+                    (cmd_ptt_shortcut, self._on_pynput_command_ptt),
                 ]
                 _to_register = [(s, cb) for s, cb in _bindings if s]
                 if not _to_register:
@@ -63948,6 +64071,23 @@ class SuperlookupTab(QWidget):
         except Exception as e:
             print(f"[Voice] Error signaling main thread: {e}")
 
+    def _on_pynput_command_ptt(self):
+        """Voice COMMAND push-to-talk hotkey press – fires on the
+        pynput background thread.
+
+        v1.10.193: companion to ``_on_pynput_pushtotalk`` (which
+        handles the dictate chord). This one is for the COMMAND
+        listener: while the chord is held, the always-on listener is
+        spun up; on release the release-poller stops it again.
+
+        IMPORTANT: Do NO work here – see _on_pynput_superlookup docstring.
+        """
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self._handle_command_ptt_press_hotkey)
+        except Exception as e:
+            print(f"[Voice] Error signaling main thread: {e}")
+
     @pyqtSlot()
     def _handle_alwayson_toggle_hotkey(self):
         """Runs on Qt main thread – toggle Always-On listening on/off.
@@ -63965,6 +64105,38 @@ class SuperlookupTab(QWidget):
                 print("[Voice] Workbench unavailable for Always-On toggle")
         except Exception as e:
             print(f"[Voice] Error in Always-On toggle handler: {e}")
+
+    @pyqtSlot()
+    def _handle_command_ptt_press_hotkey(self):
+        """Runs on Qt main thread – voice-command push-to-talk PRESS.
+
+        v1.10.193: starts the always-on listener for the duration of
+        the hotkey hold, then arms a KeyReleasePoller to stop it again
+        on release. Mirrors the dictate-PTT pattern (press via
+        GlobalHotkeyManager / pynput, release via GetAsyncKeyState
+        polling on Windows). On non-Windows the release poller is
+        absent, so the listener stays running until the user explicitly
+        toggles always-on off — graceful degradation rather than a
+        broken feature.
+        """
+        try:
+            mw = self.main_window or self.window()
+            if mw is None or not hasattr(mw, '_on_voice_command_ptt_press'):
+                print("[Voice] Workbench unavailable for command PTT")
+                return
+            mw._on_voice_command_ptt_press()
+            # Arm release-detection. Cheap to call repeatedly:
+            # set_chord re-parses the current shortcut binding so a
+            # rebind picked up between presses is honoured.
+            if hasattr(mw, '_get_command_ptt_release_poller'):
+                poller = mw._get_command_ptt_release_poller()
+                if poller is not None:
+                    sm = getattr(mw, 'shortcut_manager', None)
+                    chord_str = sm.get_shortcut('voice_command_ptt') if sm else ''
+                    if chord_str and poller.set_chord(chord_str):
+                        poller.start()
+        except Exception as e:
+            print(f"[Voice] Error in command-PTT press handler: {e}")
 
     def _try_ahk_library_method(self):
         """Try to register hotkey using ahk Python library

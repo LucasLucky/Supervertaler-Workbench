@@ -175,6 +175,19 @@ class ShortcutManager:
             "action": "start_voice_dictation",
             "global": True,
         },
+        # v1.10.193: push-to-talk for voice COMMANDS (next segment, add
+        # term, etc.) so users can pair Supervertaler's command listener
+        # with an external dictation app (Wispr Flow, etc.) without the
+        # always-on mic open all the time. Holding the chord temporarily
+        # starts the ContinuousVoiceListener; releasing stops it. Same
+        # code path as the Ctrl+Alt+A toggle, just gated by a hold.
+        "voice_command_ptt": {
+            "category": "Special",
+            "description": "Voice commands push-to-talk (hold to listen for commands)",
+            "default": "Ctrl+Alt+V",
+            "action": "voice_command_ptt",
+            "global": True,
+        },
 
         # Match Insertion (Direct)
         "match_insert_1": {

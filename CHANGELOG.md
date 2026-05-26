@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.192 (May 26, 2026)
+**Current Version:** v1.10.193 (May 26, 2026)
+
+
+## v1.10.193 – May 26, 2026
+
+### Added
+
+- **Voice — push-to-talk for COMMANDS (Ctrl+Alt+V by default).** A third voice mode that sits between the two existing ones. Hold the hotkey to temporarily activate the command listener for the duration of the hold; release to stop it again. The mic is genuinely closed the rest of the time, leaving the audio stream free for external dictation apps (Wispr Flow, Dragon, macOS Dictation, etc.). Reported by a user whose Wispr Flow sessions were being polluted with `[unk] [unk] [unk]` artefacts whenever Supervertaler's always-on listener happened to grab chunks of the audio stream during a Wispr Flow press.
+  - **Three modes now coexist:**
+    - **Push-to-talk DICTATION** (Ctrl+Shift+Space, hold) — single utterance, transcribed into the focused field.
+    - **Always-On COMMANDS** (Ctrl+Alt+A, toggle) — mic open continuously, command vocabulary listened for all day.
+    - **Push-to-talk COMMANDS** (Ctrl+Alt+V, hold) — *(new)* mic open only while the chord is held.
+  - **Coexists cleanly with the toggle.** If always-on was already running when the PTT chord is pressed, the chord is a no-op (no restart). On release the listener is only stopped if we were the ones who started it on the matching press — so a user who toggles always-on on manually mid-hold keeps it running after release. No surprise teardown.
+  - **Same code path as Ctrl+Alt+A.** Internally the press handler calls `_toggle_alwayson_listening` and marks the session as PTT-owned; the release handler calls the same toggle to stop the listener iff the session is still PTT-owned. No new listener class, no model re-loading per hold — first press warms the Vosk model into memory, subsequent press/release cycles are cheap.
+  - **Press detection** uses the same `GlobalHotkeyManager` mechanism as the dictate PTT (RegisterHotKey on Windows / pynput on macOS+Linux). **Release detection** uses a dedicated `KeyReleasePoller` instance with `GetAsyncKeyState` polling on Windows (separate poller from the dictate one so the two chords have independent release tracking). On macOS / Linux release polling isn't implemented yet, so the listener stays running until manually toggled off — graceful degradation rather than a broken feature.
+  - **Configurable shortcut.** Default Ctrl+Alt+V was previously unbound. Rebind in **Settings → Keyboard Shortcuts → Voice commands push-to-talk**.
 
 
 ## v1.10.192 – May 26, 2026
