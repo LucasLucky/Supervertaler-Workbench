@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.194 (May 26, 2026)
+**Current Version:** v1.10.195 (May 26, 2026)
+
+
+## v1.10.195 – May 26, 2026
+
+### Fixed
+
+- **Crash when pressing the v1.10.193 command push-to-talk hotkey.** A user reported that pressing Ctrl+Alt+V showed the always-on indicator flash on, then change to "🔴 REC" (the always-on VAD-recording state, normal), then crashed the program. Root cause: cross-thread Qt access. The `KeyReleasePoller.released` signal is emitted from its polling worker thread, but both sender (poller, parented to the main window) and receiver (main window) live on the main thread, so PyQt's default `Qt.AutoConnection` picks `DirectConnection` — meaning the slot ran in the **worker thread** rather than the GUI thread. The slot called `_toggle_alwayson_listening()`, which touches QWidgets (status labels, indicator label, tray icon visibility) from a non-GUI thread → instant crash. Fix: connect the signal with `Qt.ConnectionType.QueuedConnection` so the slot always runs on the main event loop. Same fix applied to the **dictation** release poller as a defensive measure — it was thread-safe by coincidence (its slot only called thread-safe methods), but the contract was fragile and any future change to that slot would have hit the same trap.
 
 
 ## v1.10.194 – May 26, 2026

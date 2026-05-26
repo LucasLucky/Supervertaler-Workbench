@@ -51193,7 +51193,19 @@ class SupervertalerQt(QMainWindow):
             self._voice_release_poller = None
             return None
         poller = KeyReleasePoller(parent=self)
-        poller.released.connect(self.stop_voice_dictation_if_recording)
+        # v1.10.195: explicit QueuedConnection. emit() runs on the
+        # poller worker thread; AutoConnection would pick
+        # DirectConnection (both QObjects live on the main thread)
+        # and the slot would run on the worker thread. The current
+        # slot is thread-safe by coincidence (only calls thread-safe
+        # methods), but the contract is fragile — pin to queued so
+        # any future change to the slot doesn't quietly start
+        # touching widgets from the wrong thread. Companion fix lives
+        # in _get_command_ptt_release_poller below.
+        poller.released.connect(
+            self.stop_voice_dictation_if_recording,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._voice_release_poller = poller
         return poller
 
@@ -51203,6 +51215,16 @@ class SupervertalerQt(QMainWindow):
         :meth:`_get_voice_release_poller` — separate poller instance so
         the two chords have independent release tracking and don't
         cross-fire each other's stop handlers.
+
+        v1.10.195: the ``released`` signal is connected with
+        ``Qt.QueuedConnection``. The poller's emit() fires from its
+        polling worker thread, and PyQt's default AutoConnection
+        picks DirectConnection here (both QObjects live on the main
+        thread), which would run the slot in the worker thread. The
+        slot calls ``_toggle_alwayson_listening`` which touches QWidgets
+        (status labels, indicator, tray icon) → cross-thread crash.
+        Forcing QueuedConnection routes the slot through the main
+        event loop instead.
         """
         existing = getattr(self, '_command_ptt_release_poller', None)
         if existing is not None:
@@ -51220,7 +51242,10 @@ class SupervertalerQt(QMainWindow):
             self._command_ptt_release_poller = None
             return None
         poller = KeyReleasePoller(parent=self)
-        poller.released.connect(self._on_voice_command_ptt_release)
+        poller.released.connect(
+            self._on_voice_command_ptt_release,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._command_ptt_release_poller = poller
         return poller
 
