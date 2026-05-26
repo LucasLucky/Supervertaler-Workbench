@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.174 (May 26, 2026)
+**Current Version:** v1.10.175 (May 26, 2026)
+
+
+## v1.10.175 – May 26, 2026
+
+### Changed
+
+- **Image Context tab fully integrated into one toolbar — wasted space gone.** The v1.10.174 layout still had two coloured ① / ② section bars and a separate "Currently loaded" card. v1.10.175 collapses everything into one continuous toolbar at the top of the tab:
+  - **Row 1** — DOCX input list: `[📄 Add DOCX]` `[📁 Add Folder]` `[🗑️]` `<list>`.
+  - **Row 2** — extraction settings + every action button on one line: `[☑ Auto-folder]` `[Output directory…]` `[Browse…]` `Prefix: [Fig.]` `[🖼️ Extract Images]` `or` `[📁 Load Folder]`.
+  - **Row 3** — thin live-status line: `Loaded for AI: ✅ 19 images from Images` `[🗑️ Clear loaded]`.
+  
+  Below the toolbar, the results / preview splitter stays exactly the same — that part was working fine.
+- The blue Extract path and the green Load-Folder path now sit beside each other as alternative ways to populate the same "Loaded for AI" state. The post-extract auto-load from v1.10.174 still does its job, so the typical extract → AI flow remains one click.
 
 
 ## v1.10.174 – May 26, 2026

@@ -11004,45 +11004,89 @@ class SupervertalerQt(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(5)
 
-        # v1.10.174: layout rework. Previously the top "Image Context"
-        # QGroupBox was a tall card with just a description + one button
-        # in it (lots of wasted vertical space), and the connection to
-        # the Extract section below wasn't visible. New layout reflects
-        # the actual workflow:
-        #   ① Extract images from your DOCX (optional)
-        #   ② Currently loaded for AI — status + load/clear
-        # After a successful extraction, the resulting folder is auto-
-        # loaded as Image Context so the common case (extract → use in
-        # AI) is one click. Users with pre-extracted images still hit
-        # "Load Images Folder" manually.
+        # v1.10.175: a second layout pass folds the top "Image Context"
+        # section entirely into the bottom Extract section, so the tab
+        # is now one integrated workflow rather than two stacked cards.
+        # The action row at the bottom of the toolbar carries every
+        # button — Extract from DOCX, Load existing folder, Clear loaded —
+        # plus the live status label. The two coloured "①/②" heading
+        # bars from v1.10.174 are gone; the workflow is obvious from
+        # the toolbar layout alone.
+        #
+        # Auto-load after extraction (introduced in v1.10.174) is kept:
+        # after a successful extraction, the resulting folder is
+        # auto-loaded as Image Context, so the common "extract → use
+        # in AI" path is still one click.
 
-        # ── Short title + one-line description ────────────────────
+        # ── Compact title + one-line description ──────────────────
         header_title = QLabel("🎯 Image Context for AI Translation")
         header_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #2c3e50; padding: 2px 0;")
         main_layout.addWidget(header_title)
 
         header_desc = QLabel(
-            "Pass figure images to the AI alongside your translation. When a segment references "
-            "'Figure 1' or 'see fig 2A', the AI sees the image and translates technical descriptions "
-            "and part references more accurately."
+            "Pass figure images to the AI alongside your translation — extract them from a DOCX "
+            "below, or load a pre-existing Images folder. When a segment references 'Figure 1' or "
+            "'see fig 2A', the AI sees the image and translates technical descriptions and part "
+            "references more accurately."
         )
         header_desc.setWordWrap(True)
         header_desc.setStyleSheet("font-size: 10px; color: #555; padding: 0 0 6px 0;")
         main_layout.addWidget(header_desc)
 
-        # ── Step 1 heading: Extract from DOCX (optional) ──────────
-        step1_label = QLabel("①  Extract images from a DOCX  (optional — skip if your images are already in a folder)")
-        step1_label.setStyleSheet(
-            "font-size: 11px; font-weight: bold; color: #2c3e50; "
-            "background-color: #ECEFF1; padding: 4px 8px; border-radius: 3px; margin-top: 2px;"
-        )
-        main_layout.addWidget(step1_label)
+        # ── Row 1: input files for extraction + DOCX list ─────────
+        inputs_row = QHBoxLayout()
 
-        # Compact header with extract button on the right
-        header_layout = QHBoxLayout()
-        header_layout.addStretch()
-        
-        # Extract button (moved to top)
+        add_file_btn = QPushButton("📄 Add DOCX")
+        add_file_btn.clicked.connect(self._on_add_docx_file_for_extraction)
+        add_file_btn.setMaximumWidth(110)
+        inputs_row.addWidget(add_file_btn)
+
+        add_folder_btn = QPushButton("📁 Add Folder")
+        add_folder_btn.clicked.connect(self._on_add_docx_folder_for_extraction)
+        add_folder_btn.setMaximumWidth(110)
+        inputs_row.addWidget(add_folder_btn)
+
+        clear_list_btn = QPushButton("🗑️")
+        clear_list_btn.clicked.connect(lambda: self.image_extractor_file_list.clear())
+        clear_list_btn.setMaximumWidth(40)
+        clear_list_btn.setToolTip("Clear DOCX input list")
+        inputs_row.addWidget(clear_list_btn)
+
+        self.image_extractor_file_list = QListWidget()
+        self.image_extractor_file_list.setMaximumHeight(40)
+        self.image_extractor_file_list.setStyleSheet("font-size: 9px;")
+        inputs_row.addWidget(self.image_extractor_file_list, 1)
+
+        main_layout.addLayout(inputs_row)
+
+        # ── Row 2: extraction settings + all action buttons ───────
+        # All four buttons (Extract, Load Folder, Clear loaded) live on
+        # the same row as the extraction settings — one integrated
+        # toolbar instead of the v1.10.174 two-section split.
+        action_row = QHBoxLayout()
+
+        self.image_extractor_auto_folder = CheckmarkCheckBox("Auto-folder")
+        self.image_extractor_auto_folder.setChecked(False)
+        self.image_extractor_auto_folder.setToolTip("Create an 'Images' folder next to each DOCX file")
+        self.image_extractor_auto_folder.toggled.connect(self._on_auto_folder_toggled)
+        action_row.addWidget(self.image_extractor_auto_folder)
+
+        self.image_extractor_output_dir = QLineEdit()
+        self.image_extractor_output_dir.setPlaceholderText("Output directory…")
+        self.image_extractor_output_dir.setMaximumWidth(220)
+        action_row.addWidget(self.image_extractor_output_dir)
+
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self._on_browse_output_dir_for_extraction)
+        browse_btn.setMaximumWidth(80)
+        action_row.addWidget(browse_btn)
+
+        action_row.addWidget(QLabel("Prefix:"))
+        self.image_extractor_prefix = QLineEdit("Fig.")
+        self.image_extractor_prefix.setMaximumWidth(60)
+        action_row.addWidget(self.image_extractor_prefix)
+
+        # Extract button — primary action for the DOCX path.
         extract_btn = QPushButton("🖼️ Extract Images")
         extract_btn.setStyleSheet("""
             QPushButton {
@@ -11050,86 +11094,22 @@ class SupervertalerQt(QMainWindow):
                 color: white;
                 font-weight: bold;
                 font-size: 12px;
-                padding: 6px 12px;
+                padding: 6px 14px;
                 border-radius: 3px;
             }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:focus {
-                outline: none;
-            }
+            QPushButton:hover { background-color: #2980b9; }
+            QPushButton:focus { outline: none; }
         """)
         extract_btn.clicked.connect(self._on_extract_images)
-        header_layout.addWidget(extract_btn)
-        
-        main_layout.addLayout(header_layout)
-        
-        # Compact controls in a single row
-        controls_layout = QHBoxLayout()
-        
-        # Input files
-        add_file_btn = QPushButton("📄 Add File")
-        add_file_btn.clicked.connect(self._on_add_docx_file_for_extraction)
-        add_file_btn.setMaximumWidth(100)
-        controls_layout.addWidget(add_file_btn)
-        
-        add_folder_btn = QPushButton("📁 Folder")
-        add_folder_btn.clicked.connect(self._on_add_docx_folder_for_extraction)
-        add_folder_btn.setMaximumWidth(80)
-        controls_layout.addWidget(add_folder_btn)
-        
-        clear_list_btn = QPushButton("🗑️")
-        clear_list_btn.clicked.connect(lambda: self.image_extractor_file_list.clear())
-        clear_list_btn.setMaximumWidth(40)
-        clear_list_btn.setToolTip("Clear file list")
-        controls_layout.addWidget(clear_list_btn)
-        
-        # File list (compact, inline)
-        self.image_extractor_file_list = QListWidget()
-        self.image_extractor_file_list.setMaximumHeight(60)
-        self.image_extractor_file_list.setStyleSheet("font-size: 9px;")
-        controls_layout.addWidget(self.image_extractor_file_list, 1)
-        
-        # Auto-folder checkbox
-        self.image_extractor_auto_folder = CheckmarkCheckBox("📁 Auto-folder")
-        self.image_extractor_auto_folder.setChecked(False)
-        self.image_extractor_auto_folder.setToolTip("Create 'Images' folder next to each DOCX file")
-        self.image_extractor_auto_folder.toggled.connect(self._on_auto_folder_toggled)
-        controls_layout.addWidget(self.image_extractor_auto_folder)
-        
-        # Output directory
-        self.image_extractor_output_dir = QLineEdit()
-        self.image_extractor_output_dir.setPlaceholderText("Output directory...")
-        self.image_extractor_output_dir.setMaximumWidth(200)
-        controls_layout.addWidget(self.image_extractor_output_dir)
-        
-        browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(self._on_browse_output_dir_for_extraction)
-        browse_btn.setMaximumWidth(80)
-        controls_layout.addWidget(browse_btn)
-        
-        # Filename prefix
-        controls_layout.addWidget(QLabel("Prefix:"))
-        self.image_extractor_prefix = QLineEdit("Fig.")
-        self.image_extractor_prefix.setMaximumWidth(60)
-        controls_layout.addWidget(self.image_extractor_prefix)
-        
-        main_layout.addLayout(controls_layout)
+        action_row.addWidget(extract_btn)
 
-        # ── Step 2: Currently loaded for AI context ──────────────
-        # After extraction this row gets auto-populated; users with
-        # pre-extracted images use the Load Folder button directly.
-        step2_label = QLabel("②  Currently loaded for AI context")
-        step2_label.setStyleSheet(
-            "font-size: 11px; font-weight: bold; color: #2c3e50; "
-            "background-color: #E8F5E9; padding: 4px 8px; border-radius: 3px; margin-top: 6px;"
-        )
-        main_layout.addWidget(step2_label)
+        # Visual separator between the "extract from DOCX" path and
+        # the "load a pre-existing folder" path.
+        sep_label = QLabel("  or  ")
+        sep_label.setStyleSheet("color: #999; font-style: italic;")
+        action_row.addWidget(sep_label)
 
-        loaded_row = QHBoxLayout()
-
-        load_context_btn = QPushButton("📁 Load Images Folder")
+        load_context_btn = QPushButton("📁 Load Folder")
         load_context_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
@@ -11143,17 +11123,31 @@ class SupervertalerQt(QMainWindow):
             QPushButton:hover { background-color: #45a049; }
             QPushButton:focus { outline: none; border: none; }
         """)
+        load_context_btn.setToolTip("Load images from a pre-existing Images folder (skip the extract step)")
         load_context_btn.clicked.connect(self._on_load_image_context_folder)
-        loaded_row.addWidget(load_context_btn)
+        action_row.addWidget(load_context_btn)
 
-        clear_context_btn = QPushButton("🗑️ Clear")
-        clear_context_btn.clicked.connect(self._on_clear_image_context)
-        clear_context_btn.setMaximumWidth(80)
-        loaded_row.addWidget(clear_context_btn)
+        action_row.addStretch()
+
+        main_layout.addLayout(action_row)
+
+        # ── Row 3: live status of what's currently loaded for AI ──
+        # One thin row instead of v1.10.174's full section card.
+        loaded_row = QHBoxLayout()
+        loaded_row.setContentsMargins(0, 4, 0, 4)
+
+        loaded_caption = QLabel("Loaded for AI:")
+        loaded_caption.setStyleSheet("font-size: 11px; color: #555; font-weight: bold;")
+        loaded_row.addWidget(loaded_caption)
 
         self.image_context_status_label = QLabel("No images loaded")
-        self.image_context_status_label.setStyleSheet("color: #999; font-size: 11px; padding: 5px;")
+        self.image_context_status_label.setStyleSheet("color: #999; font-size: 11px;")
         loaded_row.addWidget(self.image_context_status_label, 1)
+
+        clear_context_btn = QPushButton("🗑️ Clear loaded")
+        clear_context_btn.clicked.connect(self._on_clear_image_context)
+        clear_context_btn.setMaximumWidth(110)
+        loaded_row.addWidget(clear_context_btn)
 
         main_layout.addLayout(loaded_row)
 
