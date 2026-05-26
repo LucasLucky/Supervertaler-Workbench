@@ -1980,135 +1980,6 @@ class _GridArrowKeyEventFilter(QObject):
         return False
 
 
-class _DoubleTapShiftEventFilter(QObject):
-    """App-level event filter to detect double-tap Shift for context menu.
-
-    Replaces the AutoHotkey double-shift detection that was previously in
-    supervertaler_hotkeys.ahk.  Only fires when the Supervertaler window
-    is active.  Two **bare** Shift releases within 350 ms opens the context
-    menu of whatever widget currently has focus.
-
-    v1.10.154: a Shift release that ended a shifted-character entry (i.e.
-    Shift+letter, Shift+symbol, etc.) is no longer counted as a tap. This
-    fixes a false-positive that fired the context menu while the user was
-    typing two consecutive capitalised characters quickly enough that the
-    two Shift releases landed within 350 ms — common when touch-typing
-    words like ``"AB"``, ``"OK"``, ``"BRANTS"``. The filter now tracks
-    whether any non-Shift key was pressed during the current Shift hold;
-    if so, that release is consumed and ignored for tap-detection
-    purposes (and the tap timer is reset so the *next* genuine bare tap
-    doesn't get spuriously paired with it).
-    """
-
-    THRESHOLD_MS = 350
-
-    def __init__(self, main_window):
-        super().__init__(main_window)
-        self._main_window = main_window
-        self._last_shift_release = 0
-        # v1.10.154: True if any non-Shift key has been pressed since the
-        # most recent fresh Shift press. Set by KeyPress, reset on a fresh
-        # Shift press.
-        self._shift_was_used = False
-
-    def eventFilter(self, obj, event):
-        from PyQt6.QtCore import QEvent
-
-        event_type = event.type()
-
-        # v1.10.154: track "did anything ride on this Shift hold?".
-        # We watch KeyPress (not Release) so we know about a shifted
-        # character as soon as it goes down, before its Shift's Release
-        # fires. Auto-repeat events are ignored — they're a single
-        # logical press from the user's perspective.
-        if event_type == QEvent.Type.KeyPress and not event.isAutoRepeat():
-            if event.key() == Qt.Key.Key_Shift:
-                # Fresh Shift press — start a new hold window.
-                self._shift_was_used = False
-            else:
-                # Any other key going down during the hold "uses" the Shift.
-                self._shift_was_used = True
-            return False
-
-        # v1.10.185: also count a *mouse click while Shift is held* as a
-        # "use" of the Shift hold. The v1.10.154 fix only covered keyboard
-        # activity, which left a real false-positive uncovered: a user
-        # making a term-pair selection with Shift+Click on the source
-        # cell then Shift+Click on the target cell within 350 ms produced
-        # two "bare" Shift releases (no other key in between), tripping
-        # the double-tap detector and popping the context menu just as
-        # they were about to press Alt+Down to add the term. Treating a
-        # Shift+Click during the hold the same as a Shift+Key during the
-        # hold closes that gap. Uses event.modifiers() rather than a
-        # tracked "Shift currently down" flag — cheaper and equivalent.
-        if event_type == QEvent.Type.MouseButtonPress:
-            try:
-                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    self._shift_was_used = True
-            except Exception:
-                pass
-            return False
-
-        if event_type != QEvent.Type.KeyRelease:
-            return False
-
-        if event.key() != Qt.Key.Key_Shift:
-            return False
-
-        # Only when our window is active
-        mw = self._main_window
-        if not mw or not mw.isActiveWindow():
-            return False
-
-        # Ignore auto-repeat
-        if event.isAutoRepeat():
-            return False
-
-        # v1.10.154: if this Shift was used to type a shifted character,
-        # it's not a "tap". Reset both the used-flag and the tap timer so
-        # the next genuine bare Shift tap doesn't get paired with this
-        # consumed release.
-        if self._shift_was_used:
-            self._shift_was_used = False
-            self._last_shift_release = 0
-            return False
-
-        now = time.time() * 1000  # ms
-        elapsed = now - self._last_shift_release
-        self._last_shift_release = now
-
-        if 0 < elapsed <= self.THRESHOLD_MS:
-            # Reset to prevent triple-tap
-            self._last_shift_release = 0
-            # Open the focus widget's context menu. We send a real
-            # QContextMenuEvent rather than a synthetic Shift+F10 key press:
-            # Qt only translates the Shift+F10/Menu key into a context-menu
-            # event at the windowing layer (QWidgetWindow), so a fake key
-            # event delivered via sendEvent never reaches contextMenuEvent()
-            # or customContextMenuRequested and the menu never appears.
-            from PyQt6.QtWidgets import QApplication
-            from PyQt6.QtGui import QContextMenuEvent
-            focus = QApplication.focusWidget()
-            if focus:
-                # Anchor the menu at the text cursor where available,
-                # otherwise the centre of the widget.
-                pos = None
-                try:
-                    pos = focus.cursorRect().center()
-                except Exception:
-                    pos = None
-                if pos is None:
-                    pos = focus.rect().center()
-                global_pos = focus.mapToGlobal(pos)
-                ctx_event = QContextMenuEvent(
-                    QContextMenuEvent.Reason.Keyboard, pos, global_pos
-                )
-                QApplication.sendEvent(focus, ctx_event)
-            return True
-
-        return False
-
-
 class _WheelGuard(QObject):
     """Stops a hovered slider / spinbox / combo from eating the mouse wheel.
 
@@ -8523,11 +8394,18 @@ class SupervertalerQt(QMainWindow):
             self._grid_arrow_key_event_filter = _GridArrowKeyEventFilter(self)
             QApplication.instance().installEventFilter(self._grid_arrow_key_event_filter)
 
-        # Double-tap Shift for context menu (cross-platform, replaces AHK detection)
-        if not hasattr(self, '_double_shift_event_filter'):
-            from PyQt6.QtWidgets import QApplication
-            self._double_shift_event_filter = _DoubleTapShiftEventFilter(self)
-            QApplication.instance().installEventFilter(self._double_shift_event_filter)
+        # v1.10.187: double-tap-Shift → context menu detector REMOVED.
+        # Originally an AutoHotkey replacement (cross-platform shim);
+        # accumulated false-positive fixes in v1.10.154 (shifted-character
+        # typing), v1.10.185 (Shift+Click chords) and v1.10.186 (any
+        # non-Shift modifier still held at Shift release) and still
+        # tripped during normal term-pair selection workflows. Native
+        # Shift+F10 (Windows/Linux) and the Menu key on most keyboards
+        # already open the context menu of the focused widget — exactly
+        # what the gesture did — so we drop the custom event filter
+        # entirely rather than playing whack-a-mole with edge cases.
+        # The _DoubleTapShiftEventFilter class is also removed from the
+        # module-level definitions just above.
 
         # Hold-to-talk release detection is now handled by the global
         # GlobalHotkeyListener (single low-level keyboard hook delivers

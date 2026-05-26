@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.185 (May 26, 2026)
+**Current Version:** v1.10.187 (May 26, 2026)
+
+
+## v1.10.187 – May 26, 2026
+
+### Removed
+
+- **Double-tap Shift → context menu gesture removed entirely.** Originally an AutoHotkey replacement (cross-platform shim, v1.9.x era) so users on macOS / Linux could still open a context menu from the keyboard. Over time the false-positive surface kept growing: v1.10.154 had to suppress Shift releases after typing a capital letter, v1.10.185 had to suppress them after Shift+Click chords, and a user on v1.10.186 reported the menu *still* firing when releasing Ctrl+Shift after selecting source-side text. Rather than ship a fourth defensive patch, the gesture has been deleted: the `_DoubleTapShiftEventFilter` class and its application-level event-filter installation are both gone. Users can still open the context menu of the focused widget via the standard platform shortcuts — **Shift+F10** on Windows/Linux, the dedicated **Menu key** on most keyboards, or a regular right-click. Nothing in the docs documented the gesture, so there's nothing to retract publicly. Net effect: less code, zero false positives, identical reachability of the context menu.
+
+### Removed (continued — code-level)
+
+- `class _DoubleTapShiftEventFilter` (156 lines).
+- The `QApplication.instance().installEventFilter(self._double_shift_event_filter)` call site and surrounding initialisation block in the main window constructor.
+
+
+## v1.10.186 – May 26, 2026
+
+(Skipped — replaced by v1.10.187, which removes the double-tap-Shift gesture entirely rather than patching another edge case. No public artefacts shipped.)
 
 
 ## v1.10.185 – May 26, 2026
