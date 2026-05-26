@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.173 (May 25, 2026)
+**Current Version:** v1.10.174 (May 26, 2026)
+
+
+## v1.10.174 – May 26, 2026
+
+### Changed
+
+- **Image Context tab redesigned around the actual workflow.** A user pointed out two problems with the old layout: (1) the top "🎯 Image Context - Load Images for AI Translation" QGroupBox card wasted a huge amount of vertical space — just a description and a single button inside a big padded box; (2) it wasn't clear that the tab does two related things: first **extract** images from your DOCX, then **load** the resulting folder as visual context for the AI. The new layout makes the flow explicit:
+  - Compact title + one-line explanation at the top (no more giant card).
+  - **① Extract images from a DOCX (optional)** — coloured-bar heading + the existing extract controls.
+  - **② Currently loaded for AI context** — coloured-bar heading + the existing Load Folder / Clear buttons + status label.
+- **Auto-load after extraction.** After a successful extraction the resulting Images folder is automatically loaded as Image Context — the common case is one click instead of two. Users who want to load a different folder still hit "Load Images Folder" manually. The post-extract auto-load is silent (no extra popup); the existing "Extraction Complete" dialog already confirms success.
 
 
 ## v1.10.173 – May 25, 2026

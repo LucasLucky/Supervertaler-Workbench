@@ -10998,75 +10998,48 @@ class SupervertalerQt(QMainWindow):
     def create_reference_images_tab(self) -> QWidget:
         """Create the Image Context tab - Load images as visual context for AI translation"""
         from modules.image_extractor import ImageExtractor
-        
+
         tab = QWidget()
         main_layout = QVBoxLayout(tab)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(5)
-        
-        # === IMAGE CONTEXT SECTION (TOP) ===
-        context_group = QGroupBox("🎯 Image Context - Load Images for AI Translation")
-        context_layout = QVBoxLayout()
-        
-        # Description
-        context_desc = QLabel(
-            "Load figure images to automatically include with AI translations when text references them (e.g., 'Figure 1', 'see fig 2A').\n"
-            "The AI will 'see' the images and better translate technical descriptions and part references."
+
+        # v1.10.174: layout rework. Previously the top "Image Context"
+        # QGroupBox was a tall card with just a description + one button
+        # in it (lots of wasted vertical space), and the connection to
+        # the Extract section below wasn't visible. New layout reflects
+        # the actual workflow:
+        #   ① Extract images from your DOCX (optional)
+        #   ② Currently loaded for AI — status + load/clear
+        # After a successful extraction, the resulting folder is auto-
+        # loaded as Image Context so the common case (extract → use in
+        # AI) is one click. Users with pre-extracted images still hit
+        # "Load Images Folder" manually.
+
+        # ── Short title + one-line description ────────────────────
+        header_title = QLabel("🎯 Image Context for AI Translation")
+        header_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #2c3e50; padding: 2px 0;")
+        main_layout.addWidget(header_title)
+
+        header_desc = QLabel(
+            "Pass figure images to the AI alongside your translation. When a segment references "
+            "'Figure 1' or 'see fig 2A', the AI sees the image and translates technical descriptions "
+            "and part references more accurately."
         )
-        context_desc.setWordWrap(True)
-        context_desc.setStyleSheet("font-size: 10px; padding: 5px; border-radius: 3px;")
-        context_layout.addWidget(context_desc)
-        
-        # Context controls row
-        context_controls = QHBoxLayout()
-        
-        load_context_btn = QPushButton("📁 Load Images Folder")
-        load_context_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                font-weight: bold;
-                padding: 8px 16px;
-                border-radius: 3px;
-                border: none;
-                outline: none;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:focus {
-                outline: none;
-                border: none;
-            }
-        """)
-        load_context_btn.clicked.connect(self._on_load_image_context_folder)
-        context_controls.addWidget(load_context_btn)
-        
-        clear_context_btn = QPushButton("🗑️ Clear")
-        clear_context_btn.clicked.connect(self._on_clear_image_context)
-        clear_context_btn.setMaximumWidth(80)
-        context_controls.addWidget(clear_context_btn)
-        
-        # Status label
-        self.image_context_status_label = QLabel("No images loaded")
-        self.image_context_status_label.setStyleSheet("color: #999; font-size: 11px; padding: 5px;")
-        context_controls.addWidget(self.image_context_status_label, 1)
-        
-        context_layout.addLayout(context_controls)
-        context_group.setLayout(context_layout)
-        main_layout.addWidget(context_group)
-        
-        # === IMAGE EXTRACTOR SECTION (BOTTOM) ===
-        extractor_group = QGroupBox("🛠️ Image Extractor - Extract Images from DOCX Files")
-        extractor_layout = QVBoxLayout()
-        
-        # Compact header with title and extract button in one row
+        header_desc.setWordWrap(True)
+        header_desc.setStyleSheet("font-size: 10px; color: #555; padding: 0 0 6px 0;")
+        main_layout.addWidget(header_desc)
+
+        # ── Step 1 heading: Extract from DOCX (optional) ──────────
+        step1_label = QLabel("①  Extract images from a DOCX  (optional — skip if your images are already in a folder)")
+        step1_label.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #2c3e50; "
+            "background-color: #ECEFF1; padding: 4px 8px; border-radius: 3px; margin-top: 2px;"
+        )
+        main_layout.addWidget(step1_label)
+
+        # Compact header with extract button on the right
         header_layout = QHBoxLayout()
-        
-        title = QLabel("Extract images to save them for later use as context")
-        title.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;")
-        header_layout.addWidget(title)
-        
         header_layout.addStretch()
         
         # Extract button (moved to top)
@@ -11143,7 +11116,48 @@ class SupervertalerQt(QMainWindow):
         controls_layout.addWidget(self.image_extractor_prefix)
         
         main_layout.addLayout(controls_layout)
-        
+
+        # ── Step 2: Currently loaded for AI context ──────────────
+        # After extraction this row gets auto-populated; users with
+        # pre-extracted images use the Load Folder button directly.
+        step2_label = QLabel("②  Currently loaded for AI context")
+        step2_label.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #2c3e50; "
+            "background-color: #E8F5E9; padding: 4px 8px; border-radius: 3px; margin-top: 6px;"
+        )
+        main_layout.addWidget(step2_label)
+
+        loaded_row = QHBoxLayout()
+
+        load_context_btn = QPushButton("📁 Load Images Folder")
+        load_context_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                padding: 6px 14px;
+                border-radius: 3px;
+                border: none;
+                outline: none;
+            }
+            QPushButton:hover { background-color: #45a049; }
+            QPushButton:focus { outline: none; border: none; }
+        """)
+        load_context_btn.clicked.connect(self._on_load_image_context_folder)
+        loaded_row.addWidget(load_context_btn)
+
+        clear_context_btn = QPushButton("🗑️ Clear")
+        clear_context_btn.clicked.connect(self._on_clear_image_context)
+        clear_context_btn.setMaximumWidth(80)
+        loaded_row.addWidget(clear_context_btn)
+
+        self.image_context_status_label = QLabel("No images loaded")
+        self.image_context_status_label.setStyleSheet("color: #999; font-size: 11px; padding: 5px;")
+        loaded_row.addWidget(self.image_context_status_label, 1)
+
+        main_layout.addLayout(loaded_row)
+
+        # ── Results & preview ────────────────────────────────────
         # Main horizontal splitter (left: operations, right: preview)
         results_splitter = QSplitter(Qt.Orientation.Horizontal)
         
@@ -11459,11 +11473,25 @@ class SupervertalerQt(QMainWindow):
                 if len(self.extracted_image_files) > 0:
                     self.preview_prev_btn.setEnabled(len(self.extracted_image_files) > 1)
                     self.preview_next_btn.setEnabled(len(self.extracted_image_files) > 1)
-                    
+
                     # Select and show first image
                     self.image_extractor_files_list.setCurrentRow(0)
                     self._update_preview()
-            
+
+                # v1.10.174: auto-load the freshly-extracted folder as
+                # Image Context for AI. The whole point of extracting
+                # is usually to use them in the AI translation pipeline,
+                # so doing this in one step removes the second click
+                # from the common workflow. Users who want to load a
+                # DIFFERENT folder can still use the "Load Images Folder"
+                # button to override.
+                try:
+                    auto_load_folder = self._guess_extracted_folder(all_extracted_files)
+                    if auto_load_folder:
+                        self._load_image_context_from_path(auto_load_folder, source="just-extracted")
+                except Exception as e:
+                    self.log(f"[Image Context] Auto-load after extraction failed: {e}")
+
             # Success message
             QMessageBox.information(
                 self,
@@ -11546,29 +11574,61 @@ class SupervertalerQt(QMainWindow):
     def _on_load_image_context_folder(self):
         """Load a folder of figure images for AI translation context"""
         from PyQt6.QtWidgets import QFileDialog
-        
+
         folder = QFileDialog.getExistingDirectory(
             self,
             "Select Folder with Figure Images",
             "",
             QFileDialog.Option.ShowDirsOnly
         )
-        
+
         if folder:
-            try:
-                count = self.figure_context.load_from_folder(folder)
-                
-                if count > 0:
-                    self.image_context_status_label.setText(
-                        f"✅ {count} image{'s' if count != 1 else ''} loaded from: {os.path.basename(folder)}"
-                    )
-                    self.image_context_status_label.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 11px; padding: 5px;")
-                    self.log(f"[Image Context] Loaded {count} images from {folder}")
-                    
-                    # Update Prompt Manager display
-                    if hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
-                        self.prompt_manager_qt.update_image_context_display()
-                    
+            self._load_image_context_from_path(folder, source="user-picked")
+
+    def _guess_extracted_folder(self, extracted_files):
+        """v1.10.174: from a list of paths returned by the extractor,
+        infer the single 'Images' folder they live in. Returns the
+        folder path if all files share one parent directory; None
+        otherwise (e.g. when the user did 'Folder' → multiple DOCXes
+        with Auto-folder OFF, files might be spread across dirs).
+        Used by the post-extract auto-load workflow."""
+        if not extracted_files:
+            return None
+        parents = {os.path.dirname(p) for p in extracted_files if p}
+        if len(parents) == 1:
+            only = parents.pop()
+            if only and os.path.isdir(only):
+                return only
+        return None
+
+    def _load_image_context_from_path(self, folder, source="user-picked"):
+        """Shared implementation for loading an Images folder. Used by
+        the manual "Load Images Folder" button AND the post-extract
+        auto-load. The `source` parameter only affects the toast / log
+        wording: "user-picked" shows a confirmation dialog; "just-
+        extracted" is silent (the extraction already showed its own
+        success popup, no need for a second one)."""
+        if not folder:
+            return
+        try:
+            count = self.figure_context.load_from_folder(folder)
+
+            if count > 0:
+                self.image_context_status_label.setText(
+                    f"✅ {count} image{'s' if count != 1 else ''} loaded from: {os.path.basename(folder)}"
+                )
+                self.image_context_status_label.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 11px; padding: 5px;")
+                self.image_context_status_label.setToolTip(folder)
+                origin = "just-extracted folder" if source == "just-extracted" else folder
+                self.log(f"[Image Context] Loaded {count} images from {origin}")
+
+                # Update Prompt Manager display
+                if hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
+                    self.prompt_manager_qt.update_image_context_display()
+
+                # No popup on auto-load — the Extraction Complete dialog
+                # the user just clicked through already confirms success.
+                if source == "user-picked":
                     QMessageBox.information(
                         self,
                         "Images Loaded",
@@ -11576,9 +11636,10 @@ class SupervertalerQt(QMainWindow):
                         f"These images will automatically be included with AI translations when the text "
                         f"references figures (e.g., 'Figure 1', 'see fig 2A')."
                     )
-                else:
-                    self.image_context_status_label.setText("⚠️ No valid images found in folder")
-                    self.image_context_status_label.setStyleSheet("color: #FF9800; font-size: 11px; padding: 5px;")
+            else:
+                self.image_context_status_label.setText("⚠️ No valid images found in folder")
+                self.image_context_status_label.setStyleSheet("color: #FF9800; font-size: 11px; padding: 5px;")
+                if source == "user-picked":
                     QMessageBox.warning(
                         self,
                         "No Images Found",
@@ -11586,10 +11647,11 @@ class SupervertalerQt(QMainWindow):
                         "Supported formats: .png, .jpg, .jpeg, .gif, .bmp, .tiff\n"
                         "Filename examples: 'Figure 1.png', 'fig2a.jpg', 'Fig. 3-B.png'"
                     )
-            except Exception as e:
-                self.image_context_status_label.setText(f"❌ Error loading images")
-                self.image_context_status_label.setStyleSheet("color: #F44336; font-size: 11px; padding: 5px;")
-                self.log(f"[Image Context] Error loading images: {e}")
+        except Exception as e:
+            self.image_context_status_label.setText(f"❌ Error loading images")
+            self.image_context_status_label.setStyleSheet("color: #F44336; font-size: 11px; padding: 5px;")
+            self.log(f"[Image Context] Error loading images: {e}")
+            if source == "user-picked":
                 QMessageBox.critical(
                     self,
                     "Error Loading Images",
