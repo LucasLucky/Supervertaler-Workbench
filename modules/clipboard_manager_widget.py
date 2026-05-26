@@ -1280,6 +1280,31 @@ class ClipboardManagerWidget(QWidget):
                     main_tabs = getattr(parent_app, 'main_tabs', None)
                     if main_tabs is not None and prior_tab != main_tabs.currentIndex():
                         main_tabs.setCurrentIndex(prior_tab)
+
+                    # v1.10.202: restore focus to whichever widget had
+                    # it inside Workbench before Ctrl+Alt+C. Without
+                    # this, ``_continue_clipboard`` had already moved
+                    # focus onto the clipboard list when it opened the
+                    # tab, so after switching back to the prior tab
+                    # the focused widget is still the (now hidden)
+                    # clipboard list — the synthetic Ctrl+V then lands
+                    # on nothing useful and the user sees no paste.
+                    prior_focus = getattr(
+                        parent_app, '_clipboard_prior_focused_widget', None
+                    )
+                    if prior_focus is not None:
+                        try:
+                            from PyQt6.QtCore import Qt as _QtConst
+                            prior_focus.setFocus(_QtConst.FocusReason.OtherFocusReason)
+                        except (RuntimeError, AttributeError):
+                            # Widget may have been destroyed between
+                            # capture and restore (e.g. project closed
+                            # in between). Fall through to the paste —
+                            # whatever has focus now is the user's
+                            # best chance.
+                            pass
+                        parent_app._clipboard_prior_focused_widget = None
+
                     parent_app._clipboard_prior_workbench_tab = None
 
                     from PyQt6.QtCore import QTimer

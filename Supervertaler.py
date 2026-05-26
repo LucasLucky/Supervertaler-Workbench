@@ -28620,6 +28620,18 @@ class SupervertalerQt(QMainWindow):
                     self.main_tabs.setCurrentIndex(prior)
                 except Exception:
                     pass
+                # v1.10.202: also restore focus to the widget that
+                # held it when Ctrl+Alt+C was pressed. Without this,
+                # the user lands on the Editor tab but focus stays
+                # on the (now off-screen) clipboard list, so they
+                # can't immediately type or use shortcuts.
+                prior_focus = getattr(self, '_clipboard_prior_focused_widget', None)
+                if prior_focus is not None:
+                    try:
+                        prior_focus.setFocus(Qt.FocusReason.OtherFocusReason)
+                    except (RuntimeError, AttributeError):
+                        pass
+                    self._clipboard_prior_focused_widget = None
                 self._clipboard_prior_workbench_tab = None
                 return
 
@@ -64339,9 +64351,25 @@ class SuperlookupTab(QWidget):
                             tabs = getattr(mw, 'main_tabs', None)
                             prior = tabs.currentIndex() if tabs else None
                             mw._clipboard_prior_workbench_tab = prior
+                            # v1.10.202: also capture the widget that
+                            # had focus inside Workbench before
+                            # Ctrl+Alt+C. After the user picks a
+                            # clipboard entry and we switch back to
+                            # the prior tab, focus has drifted to the
+                            # clipboard list (which is now off-screen);
+                            # if we just send Ctrl+V it lands on
+                            # nothing visible. Re-focusing the
+                            # captured widget first ensures the
+                            # synthetic paste reaches the cell /
+                            # text-edit / etc. the user was actually
+                            # editing when they invoked the clipboard
+                            # manager.
+                            from PyQt6.QtWidgets import QApplication as _QApp
+                            mw._clipboard_prior_focused_widget = _QApp.focusWidget()
                             source_win = None
                         else:
                             mw._clipboard_prior_workbench_tab = None
+                            mw._clipboard_prior_focused_widget = None
                     except Exception:
                         # winId() / int() can fail in headless test
                         # environments; fall back to the original

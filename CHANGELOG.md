@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.201 (May 26, 2026)
+**Current Version:** v1.10.202 (May 26, 2026)
+
+
+## v1.10.202 – May 26, 2026
+
+### Fixed
+
+- **Pasting a clipboard entry back into the Editor (Ctrl+Alt+C → Enter from inside Workbench) actually pastes now.** v1.10.201 fixed the Esc-to-tray side and prepared the Enter path, but the user reported "nothing gets pasted" on Enter. Root cause: after the tab switch, the focused widget was still the (now-hidden) clipboard text list — `_continue_clipboard` had explicitly called `_focus_list` on it when the tab opened. The synthetic Ctrl+V then went to whichever widget Qt routed it to, which wasn't the target cell.
+- **Fix: also capture and restore the originally-focused widget.** `_open_clipboard_after_copy` now snapshots `QApplication.focusWidget()` at the same moment it parks the prior tab on `_clipboard_prior_workbench_tab`. The return path (both the Esc-back-to-tab path in `_on_esc_quick_lookup_dismiss` and the Enter-paste-then-back path in `ClipboardManagerWidget._activate_source_then_paste`) then calls `setFocus()` on that captured widget after switching tabs. `RuntimeError` / `AttributeError` are caught defensively — the widget may have been destroyed between Ctrl+Alt+C and the return (e.g. project closed mid-clipboard-session).
+- Result: holding Ctrl+Alt+C from a target cell → arrowing to a clipboard entry → Enter now lands the paste in that target cell. Esc back to the editor leaves you with focus on the cell you were editing, ready to keep typing.
 
 
 ## v1.10.201 – May 26, 2026
