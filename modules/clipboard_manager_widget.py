@@ -1261,7 +1261,46 @@ class ClipboardManagerWidget(QWidget):
         """
         source = self._source_window
         if source is None:
-            return  # No source – user is in Workbench by choice; stay.
+            # v1.10.201: in-Workbench return path. When Ctrl+Alt+C was
+            # pressed from inside Workbench (e.g. the user was on the
+            # Editor tab), ``_open_clipboard_after_copy`` detects that
+            # the captured source HWND matches Workbench's own and
+            # passes None as source_window so the standard activate-
+            # and-hide flow doesn't fire (it would hide Workbench
+            # entirely). Instead, the prior tab index is parked on
+            # the parent app as ``_clipboard_prior_workbench_tab``.
+            # Here we honour that: switch back to the prior tab and
+            # synthesise Ctrl+V so the now-foreground widget receives
+            # the paste. The 80 ms delay gives Qt time to re-focus the
+            # restored tab before the keystroke goes out.
+            try:
+                parent_app = self._parent_app
+                prior_tab = getattr(parent_app, '_clipboard_prior_workbench_tab', None)
+                if prior_tab is not None:
+                    main_tabs = getattr(parent_app, 'main_tabs', None)
+                    if main_tabs is not None and prior_tab != main_tabs.currentIndex():
+                        main_tabs.setCurrentIndex(prior_tab)
+                    parent_app._clipboard_prior_workbench_tab = None
+
+                    from PyQt6.QtCore import QTimer
+                    from modules.platform_helpers import CrossPlatformKeySender
+
+                    def _send_paste_within_workbench():
+                        try:
+                            CrossPlatformKeySender().send_paste()
+                        except Exception as paste_err:
+                            print(
+                                f"[ClipboardManagerWidget] in-Workbench "
+                                f"paste failed: {paste_err}"
+                            )
+
+                    QTimer.singleShot(80, _send_paste_within_workbench)
+            except Exception as e:
+                print(
+                    f"[ClipboardManagerWidget] in-Workbench return path "
+                    f"failed: {e}"
+                )
+            return  # No external source – we're done here.
 
         # One-shot: clear after we've used it. The next activation
         # without a fresh hotkey trip just sets the clipboard and

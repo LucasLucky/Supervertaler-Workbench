@@ -28607,6 +28607,22 @@ class SupervertalerQt(QMainWindow):
             self.hide()
             return
 
+        # v1.10.201: in-Workbench Ctrl+Alt+C return path. If the user
+        # summoned the Clipboard tab from another Workbench tab
+        # (Editor etc.) instead of from a different app, Esc should
+        # switch back to that prior tab — not hide Workbench. The
+        # prior tab index is set by _open_clipboard_after_copy when
+        # it detects the captured source HWND matches Workbench's own.
+        if (clipboard_idx is not None and current == clipboard_idx):
+            prior = getattr(self, '_clipboard_prior_workbench_tab', None)
+            if prior is not None and prior != current:
+                try:
+                    self.main_tabs.setCurrentIndex(prior)
+                except Exception:
+                    pass
+                self._clipboard_prior_workbench_tab = None
+                return
+
         # Clipboard / Voice: focus-aware hide.
         focus_aware_indices = {clipboard_idx, voice_idx}
         focus_aware_indices.discard(None)
@@ -46393,6 +46409,29 @@ class SupervertalerQt(QMainWindow):
                 index_built = getattr(self, '_termbase_index_built', False)
                 has_terms = bool(self.termbase_index)
 
+            # v1.10.200: if the in-memory index hasn't been built yet
+            # (rare — only hit during the brief startup window before
+            # the batch worker has run, or after an aborted load that
+            # left the build flag unset), force a synchronous build
+            # right now rather than falling through to the legacy
+            # per-word SQL path. The legacy path doesn't search source
+            # synonyms (only the main source_term is matched), so on
+            # a project that uses synonyms heavily the user would
+            # silently get fewer matches on early cell-clicks than on
+            # later ones — inconsistent and confusing. Cost of the
+            # build is well under a second on real-world termbase
+            # sizes (5,686 terms in the reporting user's project →
+            # ~0.7 s); same cost the post-load worker would have paid
+            # anyway, just moved a few hundred ms forward in time.
+            if not index_built:
+                try:
+                    self._build_termbase_index()
+                    with self.termbase_index_lock:
+                        index_built = getattr(self, '_termbase_index_built', False)
+                        has_terms = bool(self.termbase_index)
+                except Exception as e:
+                    self.log(f"⚠ On-demand termbase index build failed: {e}")
+
             if index_built:
                 if not has_terms:
                     return {}
@@ -46400,8 +46439,13 @@ class SupervertalerQt(QMainWindow):
                 matches = self._search_termbase_in_memory(source_text)
                 return self._deduplicate_termbase_matches(matches)
 
-            # Fallback: original per-word database query approach
-            # (only used if index not yet built, e.g., during startup)
+            # True fallback: the index couldn't be built (no project,
+            # DB unavailable, etc.). The per-word SQL path below
+            # doesn't search source synonyms — synonyms in the
+            # database go through ``_search_termbase_in_memory`` only.
+            # This path is now exceedingly rare in practice (a build
+            # was attempted just above), so the documented synonym
+            # gap is acceptable.
             source_lang = self.current_project.source_lang if self.current_project else None
             target_lang = self.current_project.target_lang if self.current_project else None
 
@@ -64267,11 +64311,43 @@ class SuperlookupTab(QWidget):
         """Continuation of _handle_clipboard_hotkey, called 250ms
         after send_copy() so the synthetic Ctrl+C has had time to
         populate the clipboard. Kept as a separate method (rather
-        than a closure) so tracebacks are readable."""
+        than a closure) so tracebacks are readable.
+
+        v1.10.201: detect when Ctrl+Alt+C was pressed from INSIDE
+        Workbench (e.g. user is on the Editor tab). In that case the
+        captured source_win is Workbench's own HWND, and treating it
+        as a "return-to-source" target leads to the paste-and-hide
+        path firing on Workbench itself — i.e. Workbench hides itself
+        to tray instead of returning to the Editor. So we detect the
+        match, remember the tab the user was on, and pass None as
+        source_window. ``_on_esc_quick_lookup_dismiss`` and the
+        widget paste path both check the remembered prior-tab to
+        switch back to it instead of hiding.
+        """
         try:
             mw = self.main_window or self.window()
             if mw and hasattr(mw, 'open_workbench_to_clipboard'):
                 try:
+                    # v1.10.201: detect in-Workbench summon. Compare
+                    # captured source against Workbench's HWND. If they
+                    # match, store the prior tab index for the return-
+                    # path handlers and clear the source so the widget
+                    # treats this as "no external return required".
+                    try:
+                        own_hwnd = int(mw.winId())
+                        if source_win is not None and int(source_win) == own_hwnd:
+                            tabs = getattr(mw, 'main_tabs', None)
+                            prior = tabs.currentIndex() if tabs else None
+                            mw._clipboard_prior_workbench_tab = prior
+                            source_win = None
+                        else:
+                            mw._clipboard_prior_workbench_tab = None
+                    except Exception:
+                        # winId() / int() can fail in headless test
+                        # environments; fall back to the original
+                        # external-source path on any error.
+                        pass
+
                     mw.open_workbench_to_clipboard(source_window=source_win)
                     return
                 except Exception as e:

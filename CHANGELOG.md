@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.199 (May 26, 2026)
+**Current Version:** v1.10.201 (May 26, 2026)
+
+
+## v1.10.201 – May 26, 2026
+
+### Fixed
+
+- **Ctrl+Alt+C from inside Workbench no longer hides Workbench to tray on Esc or Enter.** A user reported that pressing Ctrl+Alt+C while in the Editor switched to the Clipboard tab as expected, but pressing **Esc** to dismiss hid Workbench entirely (back to the system tray, when the user wanted to return to the Editor), and pressing **Enter** on a clipboard entry pasted nothing visible while also hiding Workbench. Root cause: the press handler's foreground-window capture grabbed Workbench's own HWND, and the widget's "activate source, hide Workbench" paste-and-return flow then operated on Workbench itself — activating then hiding it. Same flow was correct when Ctrl+Alt+C was pressed from another app (the user's *normal* use case), so the path didn't get its in-Workbench case until now.
+- **Detection in `_open_clipboard_after_copy`.** The hotkey handler now compares the captured source-window HWND against Workbench's own `winId()`. If they match, the captured "source" is replaced with `None` and the previous main-tab index is parked on `_clipboard_prior_workbench_tab`.
+- **Esc behaviour:** when on the Clipboard tab and `_clipboard_prior_workbench_tab` is set, `_on_esc_quick_lookup_dismiss` now switches back to that tab (Editor, typically) instead of hiding Workbench. The hide-to-tray behaviour is preserved for the original use case where Ctrl+Alt+C came from another app — the prior-tab attribute is cleared after the switch so subsequent dismissals from non-Workbench summons keep working as before.
+- **Enter behaviour:** the clipboard widget's `_activate_source_then_paste` now checks `_clipboard_prior_workbench_tab` when `_source_window` is `None`. If set, it switches the main tab back to the prior index and synthesises Ctrl+V (via `CrossPlatformKeySender.send_paste`) after an 80 ms refocus delay — so the clipboard content actually lands in the Editor's active widget. The external-app paste-and-return flow is unchanged.
+
+### Fixed (earlier in same version)
+
+- **Source-synonym fallback path now builds the in-memory termbase index on demand.** v1.10.199 fixed `_search_termbase_in_memory` to match against source synonyms, but the legacy per-word SQL path in `find_termbase_matches_in_source` (used during the brief startup window before the index has been built) still only matched the main `source_term` field. v1.10.200 closes that gap by triggering a synchronous `_build_termbase_index()` whenever the fast path is requested before the index exists, so all matching goes through the unified synonym-aware path. The per-word SQL fallback is now genuinely a last-resort safety net for cases where the index build itself fails (no project loaded, DB unavailable, etc.).
 
 
 ## v1.10.199 – May 26, 2026
