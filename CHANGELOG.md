@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.183 (May 26, 2026)
+**Current Version:** v1.10.184 (May 26, 2026)
+
+
+## v1.10.184 – May 26, 2026
+
+### Fixed
+
+- **Match Panel zoom level (View → Match Panel → Zoom In / Out / Reset) now persists across restart.** A user reported that the zoom level reset to 10pt every restart, despite the menu having been used. The save mechanism already wrote to global `general_settings.match_panel_font_size`, but the save was wrapped in a silent `try / except: pass` so any failure on the way to disk left no trace. Two fixes:
+  - **Mirrored into the project's `ui_settings`** alongside `results_match_font_size` and `results_compare_font_size`, which already round-tripped per-project. The project value overrides the global default on project open, so zoom now follows the document and survives restart with belt-and-braces persistence (global settings file AND project `.svproj`).
+  - **Silent exception in `save_current_font_sizes` now logs** the error instead of swallowing it. Any future regression here surfaces in the log on first failure, which is exactly the diagnostic line that was missing this time.
 
 
 ## v1.10.183 – May 26, 2026

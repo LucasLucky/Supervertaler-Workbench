@@ -28905,7 +28905,7 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self.current_project, 'ui_settings') and self.current_project.ui_settings:
                 match_size = self.current_project.ui_settings.get('results_match_font_size')
                 compare_size = self.current_project.ui_settings.get('results_compare_font_size')
-                
+
                 if match_size and 7 <= match_size <= 16:
                     from modules.translation_results_panel import CompactMatchItem
                     CompactMatchItem.set_font_size(match_size)
@@ -28913,7 +28913,7 @@ class SupervertalerQt(QMainWindow):
                         for panel in self.results_panels:
                             if hasattr(panel, 'set_font_size'):
                                 panel.set_font_size(match_size)
-                
+
                 if compare_size and 7 <= compare_size <= 14:
                     from modules.translation_results_panel import TranslationResultsPanel
                     TranslationResultsPanel.compare_box_font_size = compare_size
@@ -28921,6 +28921,17 @@ class SupervertalerQt(QMainWindow):
                         for panel in self.results_panels:
                             if hasattr(panel, 'set_compare_box_font_size'):
                                 panel.set_compare_box_font_size(compare_size)
+
+                # v1.10.184: also restore Match Panel zoom (View → Match
+                # Panel → Zoom In/Out/Reset) from the project. Project
+                # value overrides the global default loaded earlier from
+                # general_settings. Same accepted range as the View menu
+                # (7-18pt). If missing or out of range, the previously-
+                # loaded global value stays in effect.
+                mp_size = self.current_project.ui_settings.get('match_panel_font_size')
+                if mp_size and 7 <= mp_size <= 18:
+                    SupervertalerQt.match_panel_font_size = mp_size
+                    self._apply_match_panel_font_size()
             
             # Set Superlookup language dropdowns to match project languages
             if hasattr(self, 'lookup_tab') and self.lookup_tab and self.current_project:
@@ -30294,6 +30305,19 @@ class SupervertalerQt(QMainWindow):
                     self.current_project.ui_settings['results_match_font_size'] = CompactMatchItem.font_size_pt
                 if hasattr(TranslationResultsPanel, 'compare_box_font_size'):
                     self.current_project.ui_settings['results_compare_font_size'] = TranslationResultsPanel.compare_box_font_size
+
+            # v1.10.184: persist Match Panel zoom (View → Match Panel →
+            # Zoom In/Out/Reset) to the project's ui_settings, matching
+            # the pattern used above for the results-pane fonts. Pre-
+            # v1.10.184 this lived in global general_settings only,
+            # which silently failed to round-trip for at least one user
+            # — symptom was that the zoom reset to 10pt on every restart
+            # despite the menu having been used. Project-side save also
+            # follows the per-project mental model better (different
+            # documents want different zoom levels).
+            if not self.current_project.ui_settings:
+                self.current_project.ui_settings = {}
+            self.current_project.ui_settings['match_panel_font_size'] = SupervertalerQt.match_panel_font_size
             
             # Save activated termbase IDs and priorities for this project
             if hasattr(self, 'termbase_mgr') and self.termbase_mgr and hasattr(self.current_project, 'id'):
@@ -41747,7 +41771,7 @@ class SupervertalerQt(QMainWindow):
             text_edit.document().setDefaultFont(doc_font)
     
     def save_current_font_sizes(self):
-        """Save current font sizes to preferences"""
+        """Save current font sizes to preferences (global general_settings)."""
         try:
             from modules.translation_results_panel import CompactMatchItem, TranslationResultsPanel
             general_settings = self.load_general_settings()
@@ -41769,9 +41793,34 @@ class SupervertalerQt(QMainWindow):
             if 'restore_last_project' not in general_settings:
                 general_settings['restore_last_project'] = False
             self.save_general_settings(general_settings)
+
+            # v1.10.184: mirror Match Panel zoom into the current
+            # project's ui_settings so the value round-trips per-
+            # project as well as globally. The next .svproj save
+            # picks it up via save_project's existing ui_settings
+            # write; the per-project load on project open restores it
+            # in preference to the global default. Pre-v1.10.184 this
+            # was global-only and a user reported it not surviving
+            # restart at all — by also writing through the project
+            # path we get a second persistence layer, so the zoom
+            # survives even if the global settings file is somehow
+            # not being written (which the silent except below used
+            # to mask).
+            if hasattr(self, 'current_project') and self.current_project is not None:
+                if not getattr(self.current_project, 'ui_settings', None):
+                    self.current_project.ui_settings = {}
+                self.current_project.ui_settings['match_panel_font_size'] = SupervertalerQt.match_panel_font_size
         except Exception as e:
-            # Silently fail - don't interrupt user workflow
-            pass
+            # v1.10.184: was a silent `pass`. Hidden failures here are
+            # exactly what caused the recurring "match-panel zoom
+            # doesn't survive restart" bug to go undiagnosed — without
+            # a log line there's nothing to point at. Keep the error
+            # non-fatal (font-size save shouldn't take down the app)
+            # but surface it in the log so the user can paste it.
+            try:
+                self.log(f"⚠ Could not save font sizes: {e}")
+            except Exception:
+                pass
     
     def load_general_settings(self) -> Dict[str, Any]:
         """Load general application settings"""
