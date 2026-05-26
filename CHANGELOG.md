@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.190 (May 26, 2026)
+**Current Version:** v1.10.191 (May 26, 2026)
+
+
+## v1.10.191 – May 26, 2026
+
+### Fixed
+
+- **Image Extractor's caption detection was sometimes pulling the *previous* figure's caption.** A user reported that in their 19-figure patent, figure 17 was incorrectly named `FIG. 16 (2).png` — i.e. the extractor thought it was a second panel of FIG. 16. Root cause: when a Caption-styled paragraph sat directly before the image (the previous figure's caption) AND the image's own caption (immediately after it) wasn't Caption-styled, the v1.10.190 logic preferred any Caption-styled paragraph over a pattern-matched body paragraph regardless of position — so the wrong, earlier "FIG. 16" caption won. The fix has two parts:
+  - **Skip the previous paragraph as a caption candidate when the paragraph before it contains an image.** Patent-style layouts emit ``[image][caption][image][caption]…``, so the paragraph immediately before an image is the previous image's caption, not the current image's. Checking two paragraphs back lets us recognise that pattern and discard the wrong candidate.
+  - **Position now beats style.** The priority order is `same paragraph → next paragraph → previous paragraph (if allowed)`, and at each position we try pattern match first, then Caption-styled-with-leading-text fallback, then move on. A literal `FIG. N` match in the right *position* beats a Caption-styled `FIG. M` from the wrong position. Verified against the reporting user's DOCX: all 19 figures now land in their correct slots.
 
 
 ## v1.10.190 – May 26, 2026

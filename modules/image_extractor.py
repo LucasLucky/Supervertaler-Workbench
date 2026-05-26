@@ -209,46 +209,84 @@ def _detect_label_in_text(text: str) -> Optional[str]:
 def _detect_label(paragraphs: List[dict], p_idx: int) -> Optional[str]:
     """Try to find a label for the image in paragraphs[p_idx].
 
-    Order of preference:
-      1. Caption-styled paragraph at same position, then next, then prev.
-      2. Pattern match in same paragraph's body text.
-      3. Pattern match in next paragraph's body text (caption below image).
-      4. Pattern match in previous paragraph's body text (caption above).
+    Detection rules (v1.10.191 — position dominates style):
+
+    - The **previous** paragraph is only a valid caption candidate when
+      the paragraph BEFORE it doesn't itself contain an image. Patent-
+      style layouts emit ``[image][caption][image][caption]…`` — in
+      that case the paragraph immediately before an image is the
+      previous image's caption, not the current image's. We detect
+      this by peeking two paragraphs back.
+
+    - Within the allowed candidates, position order is
+      ``same → next → prev``. At each position we prefer
+      Caption-styled paragraphs (they're authoritative for that
+      position), then fall back to pattern matching in body text.
+
+    Previous versions promoted ANY Caption-styled paragraph (same /
+    next / prev) above any pattern-matched body text, which mis-
+    attributed cases like this:
+        p[N-1]  "FIG. 16"  [Caption-styled, belongs to image N-2]
+        p[N]    <image of FIG. 17>
+        p[N+1]  "FIG. 17"  [NOT Caption-styled]
+    The previous code labelled the image at p[N] as "FIG. 16" because
+    p[N-1] won on style. v1.10.191 ignores p[N-1] entirely here
+    (since p[N-2] is an image), and finds the correct "FIG. 17" by
+    pattern-matching p[N+1].
     """
     same = paragraphs[p_idx]
     nxt = paragraphs[p_idx + 1] if p_idx + 1 < len(paragraphs) else None
     prv = paragraphs[p_idx - 1] if p_idx > 0 else None
+    prv_prv = paragraphs[p_idx - 2] if p_idx >= 2 else None
 
-    # 1. Caption-styled neighbours first — these are the canonical
-    # source of label text in well-structured documents. Even if the
-    # caption text isn't pattern-matchable (e.g. "Hydraulic system
-    # overview" with no "Figure N" prefix), we'll fall back to using
-    # the leading portion of the caption text as the label.
-    for cand_p in (same, nxt, prv):
-        if cand_p is None or not cand_p['is_caption']:
+    # Suppress previous-paragraph candidacy when it sits between two
+    # images — it belongs to the earlier image, not this one. A None
+    # prv_prv (start of document) is fine; an empty rids list at
+    # prv_prv is also fine (just regular text leading into the image).
+    prev_belongs_to_us = (prv is not None) and (
+        prv_prv is None or not prv_prv.get('rids')
+    )
+
+    # Build the candidate list in position priority order.
+    candidates: List[dict] = [same]
+    if nxt is not None:
+        candidates.append(nxt)
+    if prev_belongs_to_us:
+        candidates.append(prv)
+
+    # At each position, run all three strategies in order before
+    # moving to the next position:
+    #   (a) Caption-styled + pattern match  →  best signal
+    #   (b) Caption-styled + leading-text fallback (capped at 80 chars)
+    #   (c) Body-text pattern match
+    # The early-return inside the loop guarantees that closer
+    # paragraphs always beat farther ones, regardless of style.
+    for cand in candidates:
+        if cand is None:
             continue
-        text = cand_p['text']
+        text = cand.get('text') or ''
         if not text:
             continue
-        # Prefer pattern-match inside the caption.
+
+        is_cap = cand.get('is_caption', False)
+
+        # (a) Pattern match — works for both caption-styled and body
+        # text. The match itself is the strongest possible signal
+        # (the literal label string is right there), so we accept it
+        # at any position regardless of style.
         label = _detect_label_in_text(text)
         if label:
             return label
-        # No pattern matched but it IS a Caption-styled paragraph —
-        # use the leading portion up to the first sentence delimiter
-        # so a long descriptive caption becomes a short filename.
-        leading = re.split(r'[.,:;\n]', text)[0].strip()
-        if leading:
-            # Hard cap so a runaway sentence doesn't become a filename.
-            return leading[:80].strip()
 
-    # 2-4. Body-text pattern matching, same paragraph first.
-    for cand_p in (same, nxt, prv):
-        if cand_p is None:
-            continue
-        label = _detect_label_in_text(cand_p['text'])
-        if label:
-            return label
+        # (b) Caption-styled but no pattern match — use the leading
+        # sentence as the filename ("Hydraulic system overview" rather
+        # than "Fig. 7"). Only applied to Caption-styled paragraphs;
+        # plain body text without a recognisable label pattern is too
+        # unreliable.
+        if is_cap:
+            leading = re.split(r'[.,:;\n]', text)[0].strip()
+            if leading:
+                return leading[:80].strip()
 
     return None
 
