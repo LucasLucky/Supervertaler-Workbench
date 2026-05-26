@@ -213,6 +213,51 @@ class VoiceTab(QWidget):
         sens_row.addWidget(self._sensitivity_combo, stretch=1)
         ao_layout.addLayout(sens_row)
 
+        # v1.10.194: parallel hotkey-display row for the v1.10.193
+        # command-PTT chord. Mirrors the dictation-hotkey row below
+        # (read-only label + "Change in Settings…" link) so the user
+        # can see which hotkey holds command listening open without
+        # diving into Settings. Refreshed on every showEvent via
+        # _refresh_hotkey_label so a rebind picked up between two
+        # Sidekick opens is reflected immediately.
+        cmd_ptt_row = QHBoxLayout()
+        cmd_ptt_row.addWidget(QLabel("Push-to-talk hotkey:"))
+        self._cmd_ptt_hotkey_label = QLabel("Ctrl+Alt+V")
+        self._cmd_ptt_hotkey_label.setTextFormat(Qt.TextFormat.RichText)
+        self._cmd_ptt_hotkey_label.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace; "
+            "font-size: 9pt; padding: 2px 6px; "
+            "background-color: #F5F5F5; border: 1px solid #DDD; border-radius: 3px;"
+        )
+        self._cmd_ptt_hotkey_label.setToolTip(
+            "Hold this hotkey to temporarily activate the command "
+            "listener — without leaving Always-On enabled all the time. "
+            "Useful when an external dictation app (Wispr Flow etc.) needs "
+            "the microphone the rest of the time."
+        )
+        cmd_ptt_row.addWidget(self._cmd_ptt_hotkey_label)
+        cmd_ptt_row.addStretch()
+        cmd_ptt_hint = QLabel(
+            "<a href='change-cmd-ptt-hotkey' style='color: #1976D2;'>"
+            "Change in Settings → Keyboard Shortcuts</a>"
+        )
+        cmd_ptt_hint.setTextFormat(Qt.TextFormat.RichText)
+        cmd_ptt_hint.setStyleSheet("font-size: 8pt;")
+        cmd_ptt_hint.linkActivated.connect(
+            lambda _: self._open_keyboard_shortcuts_settings()
+        )
+        cmd_ptt_row.addWidget(cmd_ptt_hint)
+        ao_layout.addLayout(cmd_ptt_row)
+
+        cmd_ptt_info = QLabel(
+            "Hold the hotkey to listen for voice commands; release to stop. "
+            "Always-On stays off the rest of the time so other dictation "
+            "apps (Wispr Flow, Dragon, etc.) have the microphone to themselves."
+        )
+        cmd_ptt_info.setWordWrap(True)
+        cmd_ptt_info.setStyleSheet("font-size: 8pt; color: #666;")
+        ao_layout.addWidget(cmd_ptt_info)
+
         # "Listen for commands only" checkbox has been removed in v1.9.493:
         # Always-On now always uses Vosk, which is grammar-constrained
         # ("commands only" is its only mode). Kept as a hidden attribute
@@ -988,25 +1033,43 @@ class VoiceTab(QWidget):
         self._sync_engine_dependent_widgets()
 
     def _refresh_hotkey_label(self):
-        """Update the read-only hotkey display from shortcut_manager.
+        """Update the read-only hotkey displays from shortcut_manager.
 
         Called on showEvent so the user always sees their current
-        binding without having to dismiss + re-summon Sidekick after
+        bindings without having to dismiss + re-summon Sidekick after
         rebinding in Settings → Keyboard Shortcuts.
+
+        v1.10.194: also refreshes the command-PTT chord label (added
+        alongside the dictate label in the Voice-commands group).
         """
         try:
             sm = getattr(self._parent_app, 'shortcut_manager', None)
             if sm is None:
                 return
-            shortcut = sm.get_shortcut('voice_dictate') or 'Ctrl+Shift+Space'
-            # Use the platform-aware display formatter so macOS sees
-            # ⌃⇧Space rather than literal "Ctrl+Shift+Space".
+
             try:
                 from modules.shortcut_display import format_shortcut_for_display
-                display = format_shortcut_for_display(shortcut)
             except Exception:
-                display = shortcut
-            self._hotkey_label.setText(display)
+                format_shortcut_for_display = lambda s: s  # noqa: E731
+
+            # Dictation push-to-talk
+            try:
+                shortcut = sm.get_shortcut('voice_dictate') or 'Ctrl+Shift+Space'
+                self._hotkey_label.setText(format_shortcut_for_display(shortcut))
+            except Exception:
+                pass
+
+            # v1.10.194: command push-to-talk (the new v1.10.193 chord).
+            # Defensive — older settings files may not have this binding,
+            # in which case fall back to the documented default.
+            try:
+                cmd_shortcut = sm.get_shortcut('voice_command_ptt') or 'Ctrl+Alt+V'
+                if hasattr(self, '_cmd_ptt_hotkey_label'):
+                    self._cmd_ptt_hotkey_label.setText(
+                        format_shortcut_for_display(cmd_shortcut)
+                    )
+            except Exception:
+                pass
         except Exception:
             pass
 

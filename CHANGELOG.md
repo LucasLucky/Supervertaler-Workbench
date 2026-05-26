@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.193 (May 26, 2026)
+**Current Version:** v1.10.194 (May 26, 2026)
+
+
+## v1.10.194 – May 26, 2026
+
+### Added
+
+- **Hotkey display for the v1.10.193 command push-to-talk chord in the Voice tab.** The Voice tab's "Voice commands (Always-On listening)" group now shows the current command-PTT hotkey (default `Ctrl+Alt+V`) in the same read-only label style as the existing dictation hotkey display below it. Includes a "Change in Settings → Keyboard Shortcuts" link that bounces straight to the rebind page. Both labels refresh on showEvent so a rebind made in Settings is reflected the next time the Voice tab is opened. Reported by a user who'd noticed the dictation chord had visible UI but the new command-PTT chord didn't.
 
 
 ## v1.10.193 – May 26, 2026
