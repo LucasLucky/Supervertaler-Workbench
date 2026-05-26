@@ -2,7 +2,23 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.189 (May 26, 2026)
+**Current Version:** v1.10.190 (May 26, 2026)
+
+
+## v1.10.190 – May 26, 2026
+
+### Added
+
+- **Image Extractor now auto-detects each image's caption and uses it as the filename.** Previously every image was numbered sequentially as `Fig. 1.png`, `Fig. 2.png`, …, regardless of how the document actually labelled it. The new code parses `word/document.xml` paragraph-by-paragraph; for every image it inspects (1) the image's own paragraph, (2) the next paragraph, and (3) the previous paragraph, looking for either Word's built-in **Caption** paragraph style (`<w:pStyle w:val="Caption"/>`) or a recognised label pattern. The detected label is preserved verbatim in the filename — `FIG. 7` stays `FIG. 7.png`, `Figure 7` stays `Figure 7.png`, `Table 3` stays `Table 3.png`. Verified against a 19-figure patent: all 19 filenames now match the captions visible in the document, instead of being sequentially numbered.
+- **Recognised label vocabularies** (case-insensitive throughout): `FIG. N` / `FIGS. N` (patent figures), `Figure N` / `Figs N` (academic / general), `Fig. N`, `Table N`, `Diagram N`, `Chart N`, `Photo N` / `Photograph N`, `Scheme N` (chemistry), `Plate N` or `Plate IV` (botany / older scientific work — Roman numerals supported), `Exhibit A` (legal documents). The ID portion accepts `N`, `Na` and `NB` shapes (e.g. `FIG. 6a`, `Table 3B`).
+- **Multi-panel figures handled gracefully.** When two images carry the same caption (e.g. FIG. 16 has two panels both labelled "FIG. 16"), the second becomes `FIG. 16 (2).png`, the third `FIG. 16 (3).png`, etc. No images are dropped; the user can manually rename to `FIG. 16a` / `FIG. 16b` if they prefer.
+- **Caption-styled paragraphs without a recognised pattern** (e.g. a Caption paragraph reading "Hydraulic system overview — sectional view") still get sensible filenames: the leading portion before the first sentence delimiter is used, capped at 80 characters.
+- **Sequential fallback unchanged.** Images for which no caption can be detected continue to receive `Fig. N.png` names with a separate counter, so existing workflows that don't use captions keep working. The new behaviour is purely additive — better when captions are present, identical when they aren't.
+
+### Known limitations / follow-ups
+
+- **The figure-context AI matcher only auto-attaches images labelled `Figure N` / `Fig. N`.** Filenames like `Table 3.png`, `Plate IV.png` and `Diagram 1.png` are correctly produced by the extractor but won't auto-flow into AI translation requests when a segment mentions "Table 3" because `figure_context_manager.normalize_figure_ref()` only recognises the figure/figuur/fig keywords. Extending it to handle the full label vocabulary is straightforward but deferred to a follow-up version.
+- **Vision-AI label detection (Option B from the design conversation) is not in this release.** The text-pattern + Caption-style approach handles the vast majority of documents (patents, academic papers, technical specifications, business reports) for free. AI fallback for documents where captions aren't pattern-matchable can be added later as an opt-in checkbox.
 
 
 ## v1.10.189 – May 26, 2026

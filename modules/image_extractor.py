@@ -4,98 +4,356 @@ Image Extractor Module for Supervertaler
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose:
-    Extract images from DOCX files and save them as sequentially numbered PNG
-    files in **document order** (Fig. 1.png is the first image that appears
-    when you scroll the document top-to-bottom).
+    Extract images from DOCX files and save them as PNG files. Where possible,
+    detect each image's label from the document (Figure 7, Table 3, FIG. 6a,
+    Plate IV, …) and use that as the filename. Falls back to sequential
+    numbering when no label is detectable.
 
-Features:
-    - Extract all body-content images from DOCX in document order
-    - Skip header/footer images (logos, banners — not figures)
-    - Skip duplicates (same image referenced twice in body → one PNG)
-    - Save as PNG with sequential naming (Fig. 1.png, Fig. 2.png, …)
+How labels are detected (Option A, v1.10.190):
+    1. The image's own paragraph is inspected. If it carries Word's built-in
+       **Caption** paragraph style (`<w:pStyle w:val="Caption"/>`), its text
+       is used directly.
+    2. Failing that, the next paragraph (most common caption position) is
+       checked the same way — Caption-styled wins, otherwise pattern match.
+    3. The previous paragraph is checked last (less common, but happens for
+       documents where the caption sits *above* the figure).
+    4. If none of those produce a label, the image gets a sequential fallback
+       filename (``Fig. N.png``) and the file is still extracted, just less
+       informatively named.
 
-v1.10.189 fix:
-    The previous implementation walked ``word/media/`` in ZIP namelist order,
-    which on most systems is **lexical**: image1, image10, image11, …, image19,
-    image2, image3, …, image9. With 19 figures this produced ``Fig. 7.png``
-    containing the document's 15th image instead of FIG. 7. The extractor now
-    parses ``word/document.xml`` for ``r:embed`` / ``r:link`` references in the
-    order they appear in the body, maps each rId through
-    ``word/_rels/document.xml.rels`` to its media file, and emits the figures
-    in that order. Header/footer references (e.g. company logos in
-    ``word/header*.xml``) are excluded — they're not figures and were
-    previously polluting the figure numbering.
+    Pattern detection matches the common label vocabularies:
+
+        FIG. 7 / FIGS. 6-8       — patent figures
+        Figure 7 / Figs 7-8      — academic / general figures
+        Table 3                  — tables
+        Diagram 4                — engineering diagrams
+        Chart 2                  — business charts
+        Photo 5 / Photograph 5   — photography
+        Scheme 1                 — chemistry reaction schemes
+        Plate IV / Plate 12      — botany / older scientific work
+        Exhibit A / Exhibit 3    — legal documents
+
+    The matched label is preserved verbatim — "FIG. 7" stays "FIG. 7.png",
+    "Figure 7" stays "Figure 7.png" — so the filename matches what the
+    reader sees in the document.
+
+v1.10.189 (previous): switched from ZIP namelist order (broken lexical sort
+that produced ``Fig. 7.png`` containing the document's 15th image) to
+document order via word/document.xml + relationship parsing.
 
 Author: Supervertaler Development Team
 Created: 2025-11-17
-Last Modified: 2026-05-26 (v1.10.189)
+Last Modified: 2026-05-26 (v1.10.190)
 
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
 import os
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from zipfile import ZipFile
 from io import BytesIO
 from PIL import Image
 
 
-# Match any image-bearing relationship attribute in document XML.
-# - r:embed = embedded DrawingML image (modern Word)
-# - r:link  = linked DrawingML image (less common)
-# Both reference an entry in word/_rels/document.xml.rels by rId.
-_EMBED_RE = re.compile(r'r:(?:embed|link)="([^"]+)"')
+# ── XML namespace tags ──────────────────────────────────────────────────
+# Pre-bound for speed and readability inside the parser.
+_NS_W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+_NS_R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
+_NS_A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+_NS_V = '{urn:schemas-microsoft-com:vml}'
 
-# Parse Relationship entries from a rels XML file.
+_TAG_P    = _NS_W + 'p'
+_TAG_T    = _NS_W + 't'
+_TAG_PPR  = _NS_W + 'pPr'
+_TAG_PSTYLE = _NS_W + 'pStyle'
+_ATTR_W_VAL = _NS_W + 'val'
+_TAG_BLIP = _NS_A + 'blip'
+_ATTR_R_EMBED = _NS_R + 'embed'
+_ATTR_R_LINK  = _NS_R + 'link'
+_ATTR_R_ID    = _NS_R + 'id'
+_TAG_IMAGEDATA = _NS_V + 'imagedata'
+
+# Paragraph style names that count as "caption" (matched case-insensitively).
+# Word's English UI ships "Caption"; non-English Words use localised
+# style names but the underlying styleId is usually still "Caption".
+# A few documents use custom styles like "FigureLegend" / "TableLegend".
+_CAPTION_STYLE_IDS = {
+    'caption', 'figurecaption', 'figurelegend',
+    'tablecaption', 'tablelegend',
+}
+
+# Relationship-file regex. Used only on the rels XML, not document.xml.
 _REL_RE = re.compile(r'<Relationship\s+[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"')
 
 
-def _get_body_images_in_document_order(zip_ref: ZipFile) -> List[str]:
-    """Return the list of media-file paths (inside the ZIP) referenced from
-    word/document.xml, in the order they appear in the document body.
+# ── Label-detection patterns ────────────────────────────────────────────
+# Each pattern captures the full label text (e.g. "Figure 7", "FIG. 6a")
+# so we can preserve the document's exact spelling/capitalisation in the
+# filename. Ordered roughly by specificity — patent FIG. first, then
+# academic Figure, then tables, etc.
+#
+# Pattern shape:
+#   \b(<kind>(\.|\s)+<id>)\b
+# where <id> is one or more digits optionally followed by a single
+# letter (1, 7, 6a, 12B), OR — for Plate — Roman numerals.
+_LABEL_PATTERNS = [
+    # Patent style: FIG. 7, FIGS. 6, FIG.7, FIG 7
+    re.compile(r'\b(FIGS?\.?\s*\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Academic / generic: Figure 7, Figures 6-8 (we capture "Figure 6"),
+    # Fig 7, Fig. 7
+    re.compile(r'\b(Figures?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    re.compile(r'\b(Fig\.?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Tables
+    re.compile(r'\b(Tables?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Engineering diagrams
+    re.compile(r'\b(Diagrams?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Business charts
+    re.compile(r'\b(Charts?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Photos / photographs
+    re.compile(r'\b(Photo(?:graph)?s?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Chemistry schemes
+    re.compile(r'\b(Schemes?\s+\d+[A-Za-z]?)\b', re.IGNORECASE),
+    # Plates — accept Roman numerals (older scientific tradition) or digits
+    re.compile(r'\b(Plates?\s+(?:\d+|[IVXLCM]+))\b', re.IGNORECASE),
+    # Legal exhibits — letter-or-digit ID
+    re.compile(r'\b(Exhibits?\s+[A-Za-z]?\d*[A-Za-z]?)\b', re.IGNORECASE),
+]
 
-    Duplicates are collapsed — if the same image is referenced twice in the
-    body, only its first occurrence makes the list. Header / footer
-    references are excluded by construction (we only walk document.xml,
-    not header*.xml / footer*.xml).
+# Characters not allowed in Windows / cross-platform filenames.
+_FS_ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
-    Returns ``[]`` on any parse error so the caller can fall back to the
-    naïve ZIP-namelist scan.
+
+# ────────────────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────────────────
+
+def _direct_paragraph_text(p) -> str:
+    """Return the text of paragraph ``p`` excluding text from any nested
+    ``<w:p>`` (text boxes, embedded paragraphs). Word allows paragraphs
+    inside textboxes that themselves live inside paragraphs; if we just
+    used ``itertext()`` on the outer paragraph we'd pick up the textbox
+    paragraph's text too and pollute the outer's label-detection
+    candidates. This walker visits only descendants that don't sit under
+    a nested ``<w:p>`` ancestor.
     """
+    parts: List[str] = []
+
+    def _walk(el):
+        for child in el:
+            if child.tag == _TAG_P:
+                continue  # skip nested paragraphs entirely
+            if child.tag == _TAG_T and child.text:
+                parts.append(child.text)
+            _walk(child)
+
+    if p.text:
+        parts.append(p.text)
+    _walk(p)
+    return ''.join(parts).strip()
+
+
+def _paragraph_image_rids(p) -> List[str]:
+    """Return image relationship IDs (``r:embed``, ``r:link``, ``r:id``
+    from VML ``v:imagedata``) referenced by paragraph ``p``. As with
+    ``_direct_paragraph_text`` we skip references that sit inside a
+    nested ``<w:p>``."""
+    rids: List[str] = []
+
+    def _walk(el):
+        for child in el:
+            if child.tag == _TAG_P:
+                continue
+            if child.tag == _TAG_BLIP:
+                rid = child.get(_ATTR_R_EMBED) or child.get(_ATTR_R_LINK)
+                if rid:
+                    rids.append(rid)
+            elif child.tag == _TAG_IMAGEDATA:
+                rid = child.get(_ATTR_R_ID)
+                if rid:
+                    rids.append(rid)
+            _walk(child)
+
+    _walk(p)
+    return rids
+
+
+def _paragraph_is_caption(p) -> bool:
+    """Does paragraph ``p`` carry the Word built-in Caption paragraph
+    style (or one of the common synonyms)?"""
+    ppr = p.find(_TAG_PPR)
+    if ppr is None:
+        return False
+    pstyle = ppr.find(_TAG_PSTYLE)
+    if pstyle is None:
+        return False
+    val = (pstyle.get(_ATTR_W_VAL) or '').strip().lower()
+    return val in _CAPTION_STYLE_IDS
+
+
+def _detect_label_in_text(text: str) -> Optional[str]:
+    """Search ``text`` for any of the figure / table / etc. label
+    patterns. Returns the first matched label string, verbatim, or None.
+    """
+    if not text:
+        return None
+    for pat in _LABEL_PATTERNS:
+        m = pat.search(text)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def _detect_label(paragraphs: List[dict], p_idx: int) -> Optional[str]:
+    """Try to find a label for the image in paragraphs[p_idx].
+
+    Order of preference:
+      1. Caption-styled paragraph at same position, then next, then prev.
+      2. Pattern match in same paragraph's body text.
+      3. Pattern match in next paragraph's body text (caption below image).
+      4. Pattern match in previous paragraph's body text (caption above).
+    """
+    same = paragraphs[p_idx]
+    nxt = paragraphs[p_idx + 1] if p_idx + 1 < len(paragraphs) else None
+    prv = paragraphs[p_idx - 1] if p_idx > 0 else None
+
+    # 1. Caption-styled neighbours first — these are the canonical
+    # source of label text in well-structured documents. Even if the
+    # caption text isn't pattern-matchable (e.g. "Hydraulic system
+    # overview" with no "Figure N" prefix), we'll fall back to using
+    # the leading portion of the caption text as the label.
+    for cand_p in (same, nxt, prv):
+        if cand_p is None or not cand_p['is_caption']:
+            continue
+        text = cand_p['text']
+        if not text:
+            continue
+        # Prefer pattern-match inside the caption.
+        label = _detect_label_in_text(text)
+        if label:
+            return label
+        # No pattern matched but it IS a Caption-styled paragraph —
+        # use the leading portion up to the first sentence delimiter
+        # so a long descriptive caption becomes a short filename.
+        leading = re.split(r'[.,:;\n]', text)[0].strip()
+        if leading:
+            # Hard cap so a runaway sentence doesn't become a filename.
+            return leading[:80].strip()
+
+    # 2-4. Body-text pattern matching, same paragraph first.
+    for cand_p in (same, nxt, prv):
+        if cand_p is None:
+            continue
+        label = _detect_label_in_text(cand_p['text'])
+        if label:
+            return label
+
+    return None
+
+
+def _sanitize_label(label: str) -> str:
+    """Strip filesystem-illegal characters and trailing punctuation /
+    whitespace from a candidate filename stem."""
+    cleaned = _FS_ILLEGAL.sub('', label)
+    cleaned = cleaned.strip()
+    # Trailing punctuation other than balanced brackets, parens
+    cleaned = re.sub(r'[\.\,\;\:\-\s]+$', '', cleaned)
+    return cleaned
+
+
+def _unique_filename(base_stem: str, used: set, ext: str = '.png') -> str:
+    """Return ``base_stem + ext`` if unused; otherwise append (2), (3) …"""
+    name = base_stem + ext
+    if name not in used:
+        used.add(name)
+        return name
+    n = 2
+    while f"{base_stem} ({n}){ext}" in used:
+        n += 1
+    name = f"{base_stem} ({n}){ext}"
+    used.add(name)
+    return name
+
+
+def _natural_key(s: str):
+    """Sort key that treats embedded digits as integers — keeps
+    image2.png before image10.png. Used for the fallback path when
+    document-order parsing fails."""
+    return [int(x) if x.isdigit() else x.lower()
+            for x in re.split(r'(\d+)', s)]
+
+
+def _parse_paragraphs(doc_xml_bytes: bytes) -> List[dict]:
+    """Parse document.xml into an ordered list of paragraph dicts:
+
+        {'text': str, 'is_caption': bool, 'rids': [str]}
+
+    Order is document order. Nested paragraphs (inside textboxes etc)
+    are included as their own entries, but their text/rids don't bleed
+    into their ancestor paragraph (see ``_direct_paragraph_text``)."""
+    root = ET.fromstring(doc_xml_bytes)
+    paragraphs: List[dict] = []
+    # iter() walks depth-first in document order.
+    for p in root.iter(_TAG_P):
+        paragraphs.append({
+            'text': _direct_paragraph_text(p),
+            'is_caption': _paragraph_is_caption(p),
+            'rids': _paragraph_image_rids(p),
+        })
+    return paragraphs
+
+
+def _build_rel_map(rels_xml_bytes: bytes) -> Dict[str, str]:
+    """Parse a relationships file and return {rId: media_path} (only
+    entries whose Target is under ``media/``). The returned path is
+    ZIP-rooted, e.g. ``word/media/image3.png``."""
+    rels_text = rels_xml_bytes.decode('utf-8', errors='replace')
+    rel_map: Dict[str, str] = {}
+    for rid, target in _REL_RE.findall(rels_text):
+        t = target.lstrip('./')
+        if t.startswith('media/'):
+            rel_map[rid] = 'word/' + t
+    return rel_map
+
+
+def _get_body_images_with_labels(zip_ref: ZipFile) -> List[Tuple[str, Optional[str]]]:
+    """Return list of (media_path, detected_label) in document order.
+
+    The label may be ``None`` if no label could be detected — caller
+    should fall back to sequential numbering for those images. Duplicate
+    media files (same image referenced multiple times) are collapsed by
+    first occurrence."""
     try:
-        # 1. Build rId → media-file mapping from the document's rels file.
         rels_bytes = zip_ref.read('word/_rels/document.xml.rels')
-        rels_text = rels_bytes.decode('utf-8', errors='replace')
-        rel_map = {}
-        for rid, target in _REL_RE.findall(rels_text):
-            # Targets are relative to word/ — normalise to full ZIP path.
-            # Examples seen in real DOCX: "media/image3.png", "../media/image3.png".
-            t = target.lstrip('./')
-            if t.startswith('media/'):
-                rel_map[rid] = 'word/' + t
-
-        # 2. Walk document.xml in order, collect distinct media paths.
+        rel_map = _build_rel_map(rels_bytes)
         doc_bytes = zip_ref.read('word/document.xml')
-        doc_text = doc_bytes.decode('utf-8', errors='replace')
-
-        ordered = []
-        seen = set()
-        for rid in _EMBED_RE.findall(doc_text):
-            media = rel_map.get(rid)
-            if not media:
-                continue
-            if media in seen:
-                continue
-            seen.add(media)
-            ordered.append(media)
-        return ordered
-    except KeyError:
-        # word/document.xml or its rels file is missing — atypical DOCX.
+        paragraphs = _parse_paragraphs(doc_bytes)
+    except (KeyError, ET.ParseError):
         return []
     except Exception:
         return []
+
+    out: List[Tuple[str, Optional[str]]] = []
+    seen_media = set()
+
+    for p_idx, p in enumerate(paragraphs):
+        if not p['rids']:
+            continue
+        # Detect label once per paragraph — all images in this paragraph
+        # share the same caption context. If the paragraph has multiple
+        # images, they'll be disambiguated downstream via the (2), (3) …
+        # suffix collision handler.
+        label = _detect_label(paragraphs, p_idx)
+        for rid in p['rids']:
+            media = rel_map.get(rid)
+            if not media or media in seen_media:
+                continue
+            seen_media.add(media)
+            out.append((media, label))
+
+    return out
 
 
 def _process_image_bytes(img_bytes: bytes) -> Optional[Image.Image]:
@@ -107,7 +365,10 @@ def _process_image_bytes(img_bytes: bytes) -> Optional[Image.Image]:
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'P':
                 img = img.convert('RGBA')
-            background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+            background.paste(
+                img,
+                mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None
+            )
             img = background
         elif img.mode != 'RGB':
             img = img.convert('RGB')
@@ -116,21 +377,26 @@ def _process_image_bytes(img_bytes: bytes) -> Optional[Image.Image]:
         return None
 
 
+# ────────────────────────────────────────────────────────────────────────
+# Public API
+# ────────────────────────────────────────────────────────────────────────
+
 class ImageExtractor:
-    """Extract images from DOCX files and save as PNG, in document order."""
+    """Extract images from DOCX files and save as PNG, in document order,
+    with detected captions used as filenames where possible."""
 
     def __init__(self):
         self.supported_formats = ['.docx']
 
     def extract_images_from_docx(self, docx_path: str, output_dir: str,
                                  prefix: str = "Fig.") -> Tuple[int, List[str]]:
-        """Extract all body-content images from a single DOCX in document
-        order.
+        """Extract images from a single DOCX in document order.
 
         Args:
             docx_path: Path to the DOCX file
             output_dir: Directory where images will be saved
-            prefix: Prefix for output filenames (default: "Fig.")
+            prefix: Fallback filename prefix when no caption is detected
+                (default ``"Fig."`` → ``Fig. 1.png``, ``Fig. 2.png`` …)
 
         Returns:
             (number of images extracted, list of output file paths)
@@ -145,32 +411,39 @@ class ImageExtractor:
         extracted_files: List[str] = []
         try:
             with ZipFile(docx_path, 'r') as zip_ref:
-                ordered_media = _get_body_images_in_document_order(zip_ref)
+                ordered = _get_body_images_with_labels(zip_ref)
 
-                # Fallback: if document-order parsing produced nothing
-                # (corrupt rels file, exotic DOCX flavour) we don't want
-                # to silently extract zero figures, so fall back to the
-                # legacy scan. Sort with a natural-key so image1, image2,
-                # …, image10 doesn't go lexical.
-                if not ordered_media:
+                # Fallback when document-order parsing produced nothing.
+                if not ordered:
                     raw = [f for f in zip_ref.namelist()
                            if f.startswith('word/media/')]
-                    ordered_media = sorted(raw, key=_natural_key)
+                    ordered = [(p, None) for p in sorted(raw, key=_natural_key)]
 
-                for fig_num, img_file in enumerate(ordered_media, start=1):
+                used_names: set = set()
+                # Track sequential fallback counter independently of
+                # detected labels — both end up in `used_names` to
+                # prevent collisions.
+                fallback_counter = 0
+                for media, label in ordered:
                     try:
-                        img_bytes = zip_ref.read(img_file)
+                        img_bytes = zip_ref.read(media)
                     except KeyError:
                         continue
                     img = _process_image_bytes(img_bytes)
                     if img is None:
-                        print(f"Warning: Could not process image {img_file}")
+                        print(f"Warning: Could not process image {media}")
                         continue
 
-                    output_filename = f"{prefix} {fig_num}.png"
-                    output_path = os.path.join(output_dir, output_filename)
-                    img.save(output_path, 'PNG', optimize=True)
-                    extracted_files.append(output_path)
+                    if label:
+                        stem = _sanitize_label(label)
+                    else:
+                        fallback_counter += 1
+                        stem = f"{prefix} {fallback_counter}"
+
+                    out_name = _unique_filename(stem, used_names)
+                    out_path = os.path.join(output_dir, out_name)
+                    img.save(out_path, 'PNG', optimize=True)
+                    extracted_files.append(out_path)
         except Exception as e:
             raise Exception(f"Error extracting images: {e}")
 
@@ -178,29 +451,32 @@ class ImageExtractor:
 
     def extract_from_multiple_docx(self, docx_paths: List[str], output_dir: str,
                                    prefix: str = "Fig.") -> Tuple[int, List[str]]:
-        """Extract images from multiple DOCX files with continuous
-        numbering across them (Fig. 1 .. Fig. N where N spans all files).
+        """Extract images from multiple DOCX files into one folder.
 
-        Each file's images are emitted in its own document order; the
-        global counter advances across file boundaries.
+        Per-file label detection runs independently — labels and the
+        fallback counter both restart for each file, but the global
+        filename-uniqueness set is shared. If the same label appears in
+        two files (e.g. both have a "Figure 1"), the second one becomes
+        "Figure 1 (2).png".
         """
         os.makedirs(output_dir, exist_ok=True)
 
         all_extracted_files: List[str] = []
-        current_number = 1
+        used_names: set = set()
 
         for docx_path in docx_paths:
             try:
                 with ZipFile(docx_path, 'r') as zip_ref:
-                    ordered_media = _get_body_images_in_document_order(zip_ref)
-                    if not ordered_media:
+                    ordered = _get_body_images_with_labels(zip_ref)
+                    if not ordered:
                         raw = [f for f in zip_ref.namelist()
                                if f.startswith('word/media/')]
-                        ordered_media = sorted(raw, key=_natural_key)
+                        ordered = [(p, None) for p in sorted(raw, key=_natural_key)]
 
-                    for img_file in ordered_media:
+                    fallback_counter = 0
+                    for media, label in ordered:
                         try:
-                            img_bytes = zip_ref.read(img_file)
+                            img_bytes = zip_ref.read(media)
                         except KeyError:
                             continue
                         img = _process_image_bytes(img_bytes)
@@ -208,25 +484,21 @@ class ImageExtractor:
                             print(f"Warning: Could not process image from {docx_path}")
                             continue
 
-                        output_filename = f"{prefix} {current_number}.png"
-                        output_path = os.path.join(output_dir, output_filename)
-                        img.save(output_path, 'PNG', optimize=True)
-                        all_extracted_files.append(output_path)
-                        current_number += 1
+                        if label:
+                            stem = _sanitize_label(label)
+                        else:
+                            fallback_counter += 1
+                            stem = f"{prefix} {fallback_counter}"
+
+                        out_name = _unique_filename(stem, used_names)
+                        out_path = os.path.join(output_dir, out_name)
+                        img.save(out_path, 'PNG', optimize=True)
+                        all_extracted_files.append(out_path)
             except Exception as e:
                 print(f"Warning: Could not process file {docx_path}: {e}")
                 continue
 
         return len(all_extracted_files), all_extracted_files
-
-
-# Natural-key sort for the fallback path — keeps "image2.png" before
-# "image10.png" instead of after. Only used when document-order parsing
-# fails, but worth getting right because the alternative is the bug we
-# just fixed.
-def _natural_key(s: str):
-    return [int(x) if x.isdigit() else x.lower()
-            for x in re.split(r'(\d+)', s)]
 
 
 # Standalone usage example
