@@ -17553,7 +17553,23 @@ class SupervertalerQt(QMainWindow):
                     project_checkbox.setChecked(is_project_glossary)
                     project_checkbox.setToolTip("Set as Project Termbase (highest priority, pink)")
 
-                    def on_project_toggle(checked, tb_id=tb['id'], row_idx=row):
+                    def on_project_toggle(checked, tb_id=tb['id']):
+                        # v1.10.181: do NOT capture row_idx as a closure
+                        # parameter. The Termbases table has sorting enabled
+                        # (setSortingEnabled(True) on line 16701) — as soon
+                        # as the user clicks a column header, the visual row
+                        # order changes but the captured row_idx still points
+                        # at the position the row was at when the cell was
+                        # created. Result: the handler set the *wrong* row to
+                        # checked, then hit `elif checked: setChecked(False)`
+                        # for every OTHER row (including the actually-clicked
+                        # one), so the clicked checkbox was immediately reset
+                        # to unchecked. The user reported clicking the Project
+                        # box over and over with no visible change despite
+                        # the DB log line confirming success each time.
+                        #
+                        # Fix: look up the current row index dynamically by
+                        # tb_id (stored in column 1's UserRole at line 17481).
                         curr_proj = self.current_project if hasattr(self, 'current_project') else None
                         curr_proj_id = curr_proj.id if (curr_proj and hasattr(curr_proj, 'id')) else None
                         if not curr_proj_id:
@@ -17562,28 +17578,44 @@ class SupervertalerQt(QMainWindow):
 
                         new_priority = 1 if checked else None
                         success = termbase_mgr.set_termbase_priority(tb_id, curr_proj_id, new_priority)
-                        if success:
-                            label = "Project termbase" if checked else "Background"
-                            self.log(f"✅ Set termbase {tb_id} as {label}")
+                        if not success:
+                            return
 
-                            # Update all rows: uncheck others if this was checked (exclusive)
-                            for r in range(termbase_table.rowCount()):
-                                type_widget = termbase_table.cellWidget(r, 0)
-                                proj_widget = termbase_table.cellWidget(r, 6)
-                                name_item = termbase_table.item(r, 1)
-                                if not type_widget or not isinstance(proj_widget, PinkCheckmarkCheckBox):
-                                    continue
+                        label = "Project termbase" if checked else "Background"
+                        self.log(f"✅ Set termbase {tb_id} as {label}")
 
-                                proj_widget.blockSignals(True)
-                                if r == row_idx:
-                                    proj_widget.setChecked(checked)
-                                elif checked:
-                                    # Exclusive: uncheck all other rows
-                                    proj_widget.setChecked(False)
-                                is_proj = proj_widget.isChecked()
-                                proj_widget.blockSignals(False)
+                        # Find the clicked row's CURRENT visual position by
+                        # scanning column 1 for the matching tb_id. -1 means
+                        # the row isn't in the table any more (e.g. it was
+                        # filtered out by a search) — the exclusive uncheck
+                        # of other rows still happens, just no row matches
+                        # 'this is the project row'.
+                        target_row = -1
+                        for r in range(termbase_table.rowCount()):
+                            name_item = termbase_table.item(r, 1)
+                            if name_item and name_item.data(Qt.ItemDataRole.UserRole) == tb_id:
+                                target_row = r
+                                break
 
-                                # Update Type column styling
+                        # Update all rows: tick target, untick others.
+                        for r in range(termbase_table.rowCount()):
+                            type_widget = termbase_table.cellWidget(r, 0)
+                            proj_widget = termbase_table.cellWidget(r, 6)
+                            name_item = termbase_table.item(r, 1)
+                            if not isinstance(proj_widget, PinkCheckmarkCheckBox):
+                                continue
+
+                            proj_widget.blockSignals(True)
+                            if r == target_row:
+                                proj_widget.setChecked(checked)
+                            elif checked:
+                                # Exclusive: uncheck all other rows
+                                proj_widget.setChecked(False)
+                            is_proj = proj_widget.isChecked()
+                            proj_widget.blockSignals(False)
+
+                            # Update Type column styling
+                            if type_widget is not None:
                                 if is_proj:
                                     type_widget.setText("📌 Project")
                                     type_widget.setStyleSheet("color: #FF69B4; font-weight: bold;")
@@ -17595,9 +17627,9 @@ class SupervertalerQt(QMainWindow):
                                     if name_item:
                                         name_item.setForeground(QColor("#000"))
 
-                            # Clear cache for termbase matching
-                            with self.termbase_cache_lock:
-                                self.termbase_cache.clear()
+                        # Clear cache for termbase matching
+                        with self.termbase_cache_lock:
+                            self.termbase_cache.clear()
 
                     project_checkbox.toggled.connect(on_project_toggle)
                     termbase_table.setCellWidget(row, 6, project_checkbox)

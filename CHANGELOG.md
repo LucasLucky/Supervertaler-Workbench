@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.180 (May 26, 2026)
+**Current Version:** v1.10.181 (May 26, 2026)
+
+
+## v1.10.181 – May 26, 2026
+
+### Fixed
+
+- **"Set as Project termbase" tick was instantly undoing itself after sorting the Termbases table.** A user reported clicking the Project column checkbox over and over with no visible change despite the log line `✅ Set termbase 56 as Project termbase` confirming the DB write succeeded each time. Root cause: `on_project_toggle` captured `row_idx=row` as a closure parameter at cell-creation time, but the Termbases table has `setSortingEnabled(True)`, so any column-header sort (or auto-sort during refresh) reorders the rows while the closure still points at the *original* row index. The handler then iterated all rows and hit `elif checked: proj_widget.setChecked(False)` for the actually-clicked row (because its new visual index didn't match the stale `row_idx`), instantly undoing the user's tick. Every subsequent click did the same thing. Fix: drop `row_idx` from the closure entirely, instead look up the clicked row's current position by scanning column 1 for the matching `tb_id` (the row's UserRole data, already stored at table-build time). The exclusive-uncheck pass over the other rows still happens, just keyed off the current visual position instead of the stale captured one.
 
 
 ## v1.10.180 – May 26, 2026
