@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.188 (May 26, 2026)
+**Current Version:** v1.10.189 (May 26, 2026)
+
+
+## v1.10.189 – May 26, 2026
+
+### Fixed
+
+- **Image Extractor produced wrong figure numbers on documents with 10+ figures.** A user reported that `Fig. 7.png` in the extracted folder contained an entirely different figure than FIG. 7 in the source document (a patent with 19 figures). Root cause: `modules/image_extractor.py` walked `word/media/` files in ZIP namelist order, which on most systems is **lexical** — for a document with 19 images Word stores them as `image1.png … image19.png` and lexical order interleaves the two-digit names with the one-digit ones (`image1, image10, image11, …, image19, image2, image3, …, image9`). So extractor-side `Fig. 2.png` actually contained `image10` (the 10th image in the document), `Fig. 7.png` contained `image15` (the 15th), and only `Fig. 1.png` was accidentally correct. The extractor now parses `word/document.xml` for `r:embed` / `r:link` references in the order they appear in the body, maps each rId through `word/_rels/document.xml.rels` to its media file path, and numbers figures in that **document order**. Verified against the reporting user's DOCX: all 19 figures now land in slots `Fig. 1.png … Fig. 19.png` matching the visual order.
+- **Header / footer images (logos, banners) are no longer counted as figures.** Because the new parser walks `word/document.xml` exclusively, anything referenced only from `word/header*.xml` or `word/footer*.xml` is automatically excluded — the previous code grabbed everything from `word/media/` so a company logo in the header would have polluted the figure numbering by one.
+- **Same image referenced multiple times in the body produces one PNG, not several.** Previously each `<w:drawing>` got its own output file even when they all pointed at the same `r:embed`. The new parser tracks seen media files and emits each one once at its first occurrence position.
+- **Natural-key sort on the fallback path.** When the new document-order parser fails (exotic DOCX flavour, missing rels file) the code now falls back to scanning `word/media/` directly but with a natural-key sort (`image2` before `image10`) instead of the broken lexical sort. So even the degraded path is correct now.
 
 
 ## v1.10.188 – May 26, 2026
