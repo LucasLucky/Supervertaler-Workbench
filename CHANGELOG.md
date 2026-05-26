@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.178 (May 26, 2026)
+**Current Version:** v1.10.179 (May 26, 2026)
+
+
+## v1.10.179 – May 26, 2026
+
+### Changed
+
+- **Help page renamed: "Image Extractor (Superimage)" → "Image Context", moved out of Tools.** The help system was still calling the viewer by its very old "Superimage" working name and filing it under the Tools section, both of which were wrong: the viewer hasn't been a standalone tool since v1.10.176 (it lives inside the Prompt Manager now) and the page's job is "Image Context for AI translation", not "extract images from DOCX". The page is now at `/workbench/ai-translation/image-context/` next to the Prompt Manager and AutoPrompt pages, with the old URL redirecting cleanly via Cloudflare Pages. `modules/help_system.py` keeps the original `TOOL_IMAGE_EXTRACT` alias pointing at the new slug for backward compatibility, and a new `AI_IMAGE_CONTEXT` constant is added so future callsites can pick the more accurate name.
+- **Image Context help page fully rewritten.** The old page led with "pulls embedded images out of DOCX files" — true but secondary; the primary purpose is feeding figure images to the AI. The new page leads with the AI-context use case, then explains the DOCX extraction as the most common way to populate it, then walks through the load-existing-folder path, then explains how the loaded images reach (a) per-segment translations and (b) the new v1.10.178 vision-aware AutoPrompt. Adds a filename → figure-reference matching reference table and a project-persistence note.
 
 
 ## v1.10.178 – May 26, 2026
