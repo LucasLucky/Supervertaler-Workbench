@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.177 (May 26, 2026)
+**Current Version:** v1.10.178 (May 26, 2026)
+
+
+## v1.10.178 – May 26, 2026
+
+### Added
+
+- **Vision-aware AutoPrompt — opt-in.** Section 2 of the Prompt Manager now has a new checkbox under the **✨ AutoPrompt** button: **"🖼️ Include loaded figure images"**. When ticked, the figure images you have loaded in Section 4 are sent to the LLM alongside the AutoPrompt meta-prompt, so it can visually ground its terminology decisions — labelled parts, reference numerals, captions, visible components, figure cross-references. The generated prompt's terminology table benefits from anchors the LLM could actually *see*, instead of having to infer everything from text. Off by default — opting in is a deliberate per-project choice.
+  - **Pre-flight gates.** Before sending: (1) checkbox ticked? (2) images loaded in Section 4? (3) active model supports vision (Claude Sonnet/Opus 4.x, GPT-4o or newer, Gemini)? If figures are missing or the model is text-only, you get a friendly message and AutoPrompt either runs text-only or asks if you want to abort and switch models.
+  - **Cost confirmation dialog.** Pops up before the request showing image count, model, and a rough ballpark estimate (Sonnet: ~$0.05–$0.30 for 10–20 figures; Opus: ~$0.25–$1.50; GPT-4o: ~$0.04–$0.20; Gemini: cents). Cancel here aborts AutoPrompt cleanly.
+  - **Meta-prompt directive.** When images are attached, the meta-prompt gains an `## ATTACHED FIGURE IMAGES` section telling the LLM exactly how to use them: identify labelled parts and reference numerals, cross-check textual figure references against actual depictions, weave the visual anchors into the generated terminology table, and crucially **do not translate text inside the figures** (they stay source-language for patents and technical specs).
+  - **Provider-aware encoding.** Gemini gets PIL images directly; Claude / OpenAI / others get base64 PNG — same pipeline the per-segment translator already uses (`figure_context_manager.pil_image_to_base64_png`).
+  - **Worker thread plumbing.** `_AutoPromptWorker` now accepts an optional `images` list and forwards it through `chat_backend.send_ai_request` → `llm_client.translate_with_usage(images=…)`. No changes needed in `chat_backend` or `llm_clients` — both already accepted images and just weren't being given any from the AutoPrompt path.
 
 
 ## v1.10.177 – May 26, 2026

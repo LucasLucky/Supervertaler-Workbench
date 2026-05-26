@@ -68,16 +68,22 @@ class _AutoPromptWorker(QThread):
     finished_ok = pyqtSignal(str, dict)
     failed = pyqtSignal(str)
 
-    def __init__(self, chat_backend, prompt: str, system_prompt: str):
+    def __init__(self, chat_backend, prompt: str, system_prompt: str,
+                 images=None):
         super().__init__()
         self._chat_backend = chat_backend
         self._prompt = prompt
         self._system_prompt = system_prompt
+        # v1.10.178: optional list of figure images to ship with the
+        # AutoPrompt request when the user has opted into vision-aware
+        # analysis. None / empty list means text-only as before.
+        self._images = images
 
     def run(self):
         try:
             response_text, metadata = self._chat_backend.send_ai_request(
-                self._prompt, self._system_prompt, is_analysis=True
+                self._prompt, self._system_prompt, is_analysis=True,
+                images=self._images
             )
             self.finished_ok.emit(response_text or "", metadata or {})
         except Exception as e:
@@ -2198,6 +2204,37 @@ class UnifiedPromptManagerQt:
         )
         btn_autoprompt.clicked.connect(self._analyze_and_generate)
         right_col.addWidget(btn_autoprompt)
+
+        # v1.10.178: opt-in to ship the loaded figure images with the
+        # AutoPrompt meta-prompt. Off by default — turning it on adds
+        # ~$0.05–$0.30 to the run cost depending on figure count and
+        # provider. Only useful when the project has figures loaded in
+        # Section 4 AND the active model supports vision.
+        from PyQt6.QtWidgets import QCheckBox
+        self._autoprompt_include_images = QCheckBox(
+            "🖼️ Include loaded figure images"
+        )
+        self._autoprompt_include_images.setChecked(False)
+        self._autoprompt_include_images.setToolTip(
+            "When ticked, the figure images loaded in Section 4 are sent\n"
+            "alongside the AutoPrompt meta-prompt so the LLM can visually\n"
+            "ground its terminology decisions (labelled parts, captions,\n"
+            "visible components, etc.).\n\n"
+            "Requirements:\n"
+            "  • Figure images must already be loaded in Section 4.\n"
+            "  • The active model must support vision (Claude Sonnet/Opus,\n"
+            "    GPT-4o and later, Gemini). Text-only models silently skip\n"
+            "    the images.\n\n"
+            "Cost impact: roughly +$0.05–$0.30 per AutoPrompt run with a\n"
+            "Sonnet-class model and 10–20 figures; more with Opus-class.\n"
+            "Negligible vs. the project's translation value, but off by\n"
+            "default so you opt in deliberately."
+        )
+        self._autoprompt_include_images.setStyleSheet(
+            "QCheckBox { color: #333; font-size: 9pt; }"
+        )
+        right_col.addWidget(self._autoprompt_include_images)
+
         right_col.addStretch()
 
         columns_row.addLayout(right_col, 2)
@@ -4047,8 +4084,211 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             patent_markers_detected=patent_markers_detected,
         )
 
-        self._send_ai_request(analysis_prompt, is_analysis=True)
-    
+        # v1.10.178: optional vision-aware AutoPrompt. If the user has
+        # ticked "Include loaded figure images" in Section 2 AND there
+        # are images loaded in Section 4 AND the active model supports
+        # vision, attach the figure images to the meta-prompt so the
+        # LLM can ground its terminology decisions visually.
+        autoprompt_images = self._collect_autoprompt_images(analysis_prompt)
+        if autoprompt_images is None:
+            # User didn't opt in (or pre-conditions failed silently) —
+            # run text-only as before.
+            self._send_ai_request(analysis_prompt, is_analysis=True)
+        elif not autoprompt_images.get("images"):
+            # Sentinel: user explicitly cancelled in the confirmation
+            # dialog. Abort AutoPrompt entirely.
+            self.log_message("[AI Assistant] AutoPrompt aborted by user (image-context confirmation cancelled).")
+            self._add_chat_message(
+                "system",
+                "⚠ AutoPrompt cancelled. Re-run after switching to a vision-capable "
+                "model, or untick 'Include loaded figure images' to run text-only."
+            )
+        else:
+            # Augment the meta-prompt with a section telling the LLM
+            # that the images are present and how to use them.
+            analysis_prompt = self._inject_image_context_directive(
+                analysis_prompt, autoprompt_images["refs"]
+            )
+            self._send_ai_request(
+                analysis_prompt, is_analysis=True,
+                images=autoprompt_images["images"]
+            )
+
+    def _collect_autoprompt_images(self, analysis_prompt: str):
+        """v1.10.178: Gather figure images for vision-aware AutoPrompt.
+
+        Returns ``None`` if the user hasn't opted in, no images are
+        loaded, or the active model can't see images. Otherwise returns
+        a dict ``{"images": [...], "refs": [...]}`` with the payload in
+        the provider-appropriate format and a sorted list of figure
+        references for the meta-prompt directive.
+
+        The user-facing flow:
+        - User ticks the "🖼️ Include loaded figure images" checkbox in
+          Section 2 (off by default).
+        - User clicks "✨ AutoPrompt".
+        - Before the LLM call, this method runs and surfaces a single
+          confirmation dialog summarising what's about to be sent (image
+          count, vision model name, rough cost ballpark). Cancel here
+          aborts AutoPrompt entirely; OK proceeds with images attached.
+
+        On any pre-condition failure (no parent_app, no figure_context,
+        no images loaded, no llm_client, non-vision model) we silently
+        return None and let AutoPrompt run text-only as before.
+        """
+        # Gate 1: user opted in?
+        try:
+            checkbox = getattr(self, "_autoprompt_include_images", None)
+            if checkbox is None or not checkbox.isChecked():
+                return None
+        except Exception:
+            return None
+
+        # Gate 2: Section 4 has images loaded?
+        parent_app = getattr(self, "parent_app", None)
+        figure_context = getattr(parent_app, "figure_context", None) if parent_app else None
+        if not figure_context or not figure_context.has_images():
+            QMessageBox.information(
+                self.main_widget,
+                "No Figure Images Loaded",
+                "The 'Include loaded figure images' option is ticked but no "
+                "images are currently loaded.\n\n"
+                "Use Section 4 → 'Open ▸' to load images first, or untick "
+                "the option to run AutoPrompt text-only."
+            )
+            return None
+
+        # Gate 3: active model supports vision?
+        try:
+            from modules.llm_clients import LLMClient
+            llm_client = getattr(self.chat_backend, "llm_client", None)
+            if not llm_client:
+                return None
+            provider = llm_client.provider
+            model = llm_client.model
+            if not LLMClient.model_supports_vision(provider, model):
+                resp = QMessageBox.warning(
+                    self.main_widget,
+                    "Active model doesn't support vision",
+                    f"The active AI model — <b>{provider} / {model}</b> — does "
+                    "not accept image input.\n\n"
+                    "AutoPrompt will run text-only (images skipped).\n\n"
+                    "To send images, switch to a vision-capable model "
+                    "(Claude Sonnet/Opus 4.x, GPT-4o or newer, Gemini) in "
+                    "Settings first, then re-run AutoPrompt.",
+                    QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+                )
+                if resp == QMessageBox.StandardButton.Cancel:
+                    # User wants to abort and switch models first.
+                    return {"images": [], "refs": []}  # sentinel: don't run at all
+                return None  # proceed text-only
+        except Exception as e:
+            self.log_message(f"[AI Assistant] Vision-model check failed: {e} — running text-only")
+            return None
+
+        # Collect images in provider-appropriate format.
+        try:
+            image_map = figure_context.figure_context_map  # ref -> PIL.Image
+            refs = sorted(image_map.keys(), key=lambda r: (len(r), r))
+            if not refs:
+                return None
+
+            if provider == "gemini":
+                # Gemini accepts PIL.Image directly.
+                images_payload = [(ref, image_map[ref]) for ref in refs]
+            else:
+                # OpenAI / Claude: base64 PNG.
+                from modules.figure_context_manager import pil_image_to_base64_png
+                images_payload = [
+                    (ref, pil_image_to_base64_png(image_map[ref]))
+                    for ref in refs
+                ]
+        except Exception as e:
+            self.log_message(f"[AI Assistant] Could not encode figure images: {e} — running text-only")
+            return None
+
+        # Confirmation dialog with a rough cost ballpark. Image-token
+        # cost varies by provider — these are realistic order-of-
+        # magnitude figures, not invoices.
+        n = len(refs)
+        # Per-image input-token estimate × per-million input price.
+        # Sonnet ~1.5k tok/img @ $3/M → $0.0045/img.
+        # Opus  ~1.5k tok/img @ $15/M → $0.0225/img.
+        # GPT-4o ~1.2k tok/img @ $2.50/M → $0.0030/img.
+        # Gemini Pro very cheap.
+        provider_lc = provider.lower() if provider else ""
+        model_lc = model.lower() if model else ""
+        if "opus" in model_lc:
+            per_img_cost = 0.0225
+        elif "sonnet" in model_lc or "claude" in provider_lc:
+            per_img_cost = 0.0045
+        elif "gemini" in provider_lc:
+            per_img_cost = 0.001
+        else:  # GPT-4o family + generic fallback
+            per_img_cost = 0.0030
+        est_lo = max(0.01, per_img_cost * n * 0.7)
+        est_hi = per_img_cost * n * 1.5
+        cost_blurb = f"${est_lo:.2f}–${est_hi:.2f}"
+
+        confirm = QMessageBox.question(
+            self.main_widget,
+            "Include figure images in AutoPrompt?",
+            f"<p>About to send <b>{n} figure image{'s' if n != 1 else ''}</b> "
+            f"to <b>{provider} / {model}</b> alongside the AutoPrompt meta-prompt.</p>"
+            f"<p><b>Extra cost (approximate):</b> {cost_blurb}<br>"
+            f"<small>On top of the regular AutoPrompt text-token cost. "
+            f"Real cost depends on image resolution and provider pricing.</small></p>"
+            f"<p>The LLM will use the images to visually ground its terminology "
+            f"decisions — labelled parts, captions, visible components, "
+            f"figure cross-references.</p>"
+            f"<p>Continue?</p>",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Ok
+        )
+        if confirm != QMessageBox.StandardButton.Ok:
+            return {"images": [], "refs": []}  # sentinel: user cancelled
+
+        self.log_message(
+            f"[AI Assistant] Vision-aware AutoPrompt: shipping {n} image(s) "
+            f"to {provider}/{model} (est. extra ~{cost_blurb})"
+        )
+        return {"images": images_payload, "refs": refs}
+
+    def _inject_image_context_directive(self, analysis_prompt: str, refs: list) -> str:
+        """v1.10.178: prepend a section to the meta-prompt telling the
+        LLM that figure images are attached and how to use them. Goes
+        near the top so the model reads it before getting deep into the
+        textual analysis instructions.
+        """
+        ref_list = ", ".join(f"Figure {r.upper()}" for r in refs[:10])
+        if len(refs) > 10:
+            ref_list += f", … ({len(refs)} total)"
+        directive = (
+            "\n\n## ATTACHED FIGURE IMAGES\n\n"
+            f"The user has attached **{len(refs)} figure image(s)** from this "
+            f"document to the request: {ref_list}.\n\n"
+            "When generating the translation prompt, use the visual content of "
+            "these figures to ground your terminology decisions:\n\n"
+            "- **Identify labelled parts and reference numerals** visible in the "
+            "drawings; weave any unambiguous component-name → reference-numeral "
+            "anchors into the generated prompt's terminology table.\n"
+            "- **Cross-check the textual figure references** in the source "
+            "(Figure 1, Fig. 2A, …) against what each figure actually depicts. "
+            "If the source describes 'the cylindrical sleeve (7)' and Figure 1 "
+            "labels item 7 as a sleeve, lock that mapping in the generated prompt.\n"
+            "- **Use figure captions and visible text** as a source of "
+            "authoritative terminology for the generated prompt's domain "
+            "vocabulary.\n"
+            "- **Do NOT translate text inside the figures** — figures stay in "
+            "the source language. The generated prompt should reflect this if "
+            "the document type warrants it (patents, technical specifications).\n\n"
+            "If a figure is ambiguous or unreadable, ignore it and rely on the "
+            "textual analysis below.\n"
+        )
+        # Inject right after the first heading, or at the very top if
+        # the prompt has no obvious anchor.
+        return directive + analysis_prompt
+
     def _build_project_context(self) -> str:
         """Build context from current project"""
         context_parts = []
@@ -5697,7 +5937,8 @@ IMPORTANT:
                 f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details.",
             )
 
-    def _send_ai_request(self, prompt: str, is_analysis: bool = False):
+    def _send_ai_request(self, prompt: str, is_analysis: bool = False,
+                         images=None):
         """Send request to AI and handle response.
 
         Used by _analyze_and_generate (AutoPrompt) and legacy code paths.
@@ -5708,6 +5949,12 @@ IMPORTANT:
         synchronously on the main thread. The non-analysis path stays
         synchronous \u2014 those calls are short enough (seconds, not minutes)
         that worker-thread overhead would be net-negative.
+
+        v1.10.178: ``images`` (optional) is the list of figure images
+        the user opted into via the new "Include loaded figure images"
+        checkbox in Section 2. Forwarded to the AutoPrompt worker so the
+        LLM can see the document's figures during meta-prompt analysis.
+        Non-analysis chat calls ignore it (text-only).
         """
         if not self.llm_client:
             self._add_chat_message(
@@ -5718,7 +5965,7 @@ IMPORTANT:
 
         if is_analysis:
             # AutoPrompt path: long, blocking, worth a worker thread.
-            self._run_autoprompt_with_progress(prompt)
+            self._run_autoprompt_with_progress(prompt, images=images)
             return
 
         # Non-analysis path: keep synchronous (existing behaviour).
@@ -5757,11 +6004,15 @@ IMPORTANT:
                 f"\u26A0 Error communicating with AI: {e}\n\nCheck the log for details."
             )
 
-    def _run_autoprompt_with_progress(self, prompt: str):
+    def _run_autoprompt_with_progress(self, prompt: str, images=None):
         """Run the AutoPrompt LLM call in a worker thread with a progress dialog.
 
         v1.10.157: replaces the previous synchronous main-thread call that
         froze the window for 1-3 minutes with reasoning-capable models.
+
+        v1.10.178: ``images`` (optional) is forwarded to the worker so
+        vision-aware AutoPrompt runs ship the figure images as part of
+        the request.
         """
         ai_system_prompt = (
             "You are a prompt engineering specialist for professional translation. "
@@ -5802,7 +6053,10 @@ IMPORTANT:
         progress.show()
         QApplication.processEvents()
 
-        worker = _AutoPromptWorker(self.chat_backend, prompt, ai_system_prompt)
+        worker = _AutoPromptWorker(
+            self.chat_backend, prompt, ai_system_prompt,
+            images=images
+        )
         # Hold a reference so the worker isn't GC'd mid-flight.
         self._autoprompt_worker = worker
         self._autoprompt_progress = progress
