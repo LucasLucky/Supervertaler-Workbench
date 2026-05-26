@@ -9,10 +9,10 @@ tabular grid (#, source, target, termbase). Mirrors the Trados
 in feature set: synonym expand/collapse, 0-9 quick-pick, pink/blue/yellow
 row colours, persisted size + column widths.
 
-Triggered by Ctrl+Shift+B (Workbench) — the corresponding Trados shortcut
-is Ctrl+Down. (Originally bound to Ctrl+Shift+P in v1.10.87; moved to
-Ctrl+Shift+B in v1.10.89 once we discovered Scratchpad already owned
-Ctrl+Shift+P at the menu level.)
+Triggered by Ctrl+Shift+P (Workbench, v1.10.206+) — matches the Trados
+plugin convention exactly. (Originally bound to Ctrl+Shift+P in v1.10.87;
+moved to Ctrl+Shift+B in v1.10.89 because Scratchpad owned Ctrl+Shift+P;
+reclaimed Ctrl+Shift+P in v1.10.206 once Scratchpad was moved to Alt+S.)
 
 Usage
 ─────

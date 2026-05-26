@@ -8562,16 +8562,18 @@ class SupervertalerQt(QMainWindow):
         # Use ApplicationShortcut context so it works even when focus is in QTextEdit widgets
         mt_quick_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
-        # Ctrl+Shift+B - TermPicker (v1.10.87 — Trados parity, renamed v1.10.205).
+        # Ctrl+Shift+P - TermPicker (v1.10.87 — Trados parity, renamed v1.10.205).
         # Modal tabular dialog listing all matches for the current segment
         # with synonym expand/collapse + digit quick-pick. Sibling surface to
         # TermLens: same data (termbase matches), different ergonomics —
         # TermLens shows matches inline in context, TermPicker offers a
         # keyboard-driven flat list for quick insertion.
-        # v1.10.89: switched from Ctrl+Shift+P to Ctrl+Shift+B because the
-        # Scratchpad menu action already binds Ctrl+Shift+P; the conflict
-        # silently dropped the term_picker shortcut. B = termBase picker.
-        term_picker_shortcut = create_shortcut("term_picker", "Ctrl+Shift+B", self.show_term_picker_dialog)
+        # v1.10.89: was switched from Ctrl+Shift+P to Ctrl+Shift+B because
+        # Scratchpad held Ctrl+Shift+P at the time.
+        # v1.10.206: reclaimed Ctrl+Shift+P for TermPicker, matching the
+        # Trados plugin exactly (P = Picker, VS Code-style command-palette
+        # convention). Scratchpad simultaneously moved to Alt+S.
+        term_picker_shortcut = create_shortcut("term_picker", "Ctrl+Shift+P", self.show_term_picker_dialog)
         term_picker_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
     def add_comment_from_selection(self):
@@ -9166,7 +9168,7 @@ class SupervertalerQt(QMainWindow):
         popup.setFocus()
 
     def show_term_picker_dialog(self):
-        """Show the TermPicker modal dialog (Ctrl+Shift+B).
+        """Show the TermPicker modal dialog (Ctrl+Shift+P).
 
         v1.10.87 — parity with the Trados TermPickerDialog. Renamed
         in v1.10.205 from "TermLens – Term Picker" to just "TermPicker"
@@ -10315,8 +10317,13 @@ class SupervertalerQt(QMainWindow):
         image_extractor_action.setToolTip("Extract images from DOCX files")
         tools_menu.addAction(image_extractor_action)
         
+        # v1.10.206: moved from Ctrl+Shift+P → Alt+S to free Ctrl+Shift+P for
+        # TermPicker (matching the Trados plugin's "P = Picker" convention).
+        # Alt+S is collision-free against top-level menu mnemonics (&Project,
+        # &Edit, &Bulk, &View, &Tools, &Help — none owns S) and other in-app
+        # Alt+letter shortcuts (currently only Alt+D and Alt+K are bound).
         scratchpad_action = QAction("📝 Scratch&pad...", self)
-        scratchpad_action.setShortcut("Ctrl+Shift+P")
+        scratchpad_action.setShortcut("Alt+S")
         scratchpad_action.triggered.connect(self.show_scratchpad)
         scratchpad_action.setToolTip("Private notes for this project (never exported to CAT tools)")
         tools_menu.addAction(scratchpad_action)

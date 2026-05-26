@@ -125,7 +125,7 @@ class Topics:
     GLOSSARY_HIGHLIGHT      = "workbench/termbases/highlighting/"
     GLOSSARY_TERMLENS       = "workbench/termbases/termlens/"
     # v1.10.99 — sub-pages for the on-demand TermLens views, added to
-    # the help repo when the Workbench Ctrl-tap popup + Ctrl+Shift+B
+    # the help repo when the Workbench Ctrl-tap popup + Ctrl+Shift+P
     # picker reached feature parity with the Trados side.
     GLOSSARY_TERMLENS_POPUP = "workbench/termbases/termlens-popup/"
     # Renamed v1.10.205: page slug term-picker/ → termpicker/ (old slug

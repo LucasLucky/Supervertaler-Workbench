@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.205 (May 26, 2026)
+**Current Version:** v1.10.206 (May 26, 2026)
+
+
+## v1.10.206 – May 26, 2026
+
+### Changed
+
+- **TermPicker default shortcut: `Ctrl+Shift+B` → `Ctrl+Shift+P`.** Aligns the Workbench with the Trados plugin (which has always been on Ctrl+Shift+P) and follows the VS Code-style command-palette convention (P = Picker). When TermPicker was first added in v1.10.87 it was bound to Ctrl+Shift+P; v1.10.89 had to move it to Ctrl+Shift+B because Scratchpad already owned Ctrl+Shift+P at the menu level. v1.10.206 reclaims the original combo now that Scratchpad has moved.
+- **Scratchpad default shortcut: `Ctrl+Shift+P` → `Alt+S`.** Frees Ctrl+Shift+P for TermPicker (above) and gives Scratchpad a single-modifier mnemonic ("S for Scratchpad"). Alt+S is collision-free against top-level menu mnemonics in Workbench — none of `&Project` (Alt+P), `&Edit` (Alt+E), `&Bulk` (Alt+B), `&View` (Alt+V), `&Tools` (Alt+T), or `&Help` (Alt+H) owns S — and the only other in-app Alt+letter bindings are Alt+D (add to dictionary) and Alt+K (Sidekick), so nothing inside Workbench fights for the combo. The user can still rebind both via Settings → Keyboard Shortcuts if they prefer different keys; only the out-of-the-box defaults changed.
+
+### Notes
+
+If you've previously customised either of these shortcuts via the in-app shortcut manager, **your custom binding still takes precedence** — these changes only affect the factory defaults. If you've never touched them, you'll see the new defaults on next launch. The Trados plugin's TermPicker shortcut is unchanged (it was already on Ctrl+Shift+P); this brings the Workbench in line with that.
+
+The help site (`workbench/termbases/termpicker.md`, `termlens.md`, `termlens-popup.md`) and the in-code docstrings/comments have been updated to reflect the new defaults.
 
 
 ## v1.10.205 – May 26, 2026
