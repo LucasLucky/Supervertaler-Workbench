@@ -23964,8 +23964,27 @@ class SupervertalerQt(QMainWindow):
         QMessageBox.warning(self, "Always-On Error", f"Voice listener error:\n\n{error}")
 
     def _on_alwayson_vad_status(self, status: str):
-        """Handle VAD status changes (waiting/recording/processing)"""
+        """Handle VAD status changes (waiting/recording/processing).
+
+        v1.10.198: also tracks the last-seen state into
+        ``_voice_command_ptt_last_vad_state`` so the PTT release
+        handler can decide whether to stop immediately or defer.
+        Drives the deferred-stop path: when the user released the
+        chord while an utterance was mid-flight, we wait for VAD to
+        signal it's back to an idle state before tearing down the
+        listener — gives Vosk time to finalise the transcription so
+        longer phrases like "select all" don't get chopped off.
+        """
+        self._voice_command_ptt_last_vad_state = status
         self._update_alwayson_ui(status)
+
+        # If a PTT release scheduled a deferred stop and VAD has now
+        # returned to idle, the utterance has drained — safe to stop.
+        # 'listening' and 'waiting' are both valid idle states
+        # depending on listener version.
+        if getattr(self, '_voice_command_ptt_pending_stop', False):
+            if status in ('listening', 'waiting'):
+                self._do_voice_command_ptt_stop()
 
     def _toggle_alwayson_from_statusbar(self):
         """Toggle always-on listening when clicking the status bar indicator"""
@@ -51402,18 +51421,77 @@ class SupervertalerQt(QMainWindow):
         started it on the matching press. If the user manually toggled
         always-on either before or during the hold, leave it running.
 
+        v1.10.198: stop is now DEFERRED until the current utterance
+        finishes transcribing. If the user releases mid-phrase (the
+        listener is still in 'recording' or 'processing' VAD state),
+        we wait for VAD to return to idle before tearing down the
+        listener. Hard timeout at 1500 ms in case VAD never signals
+        idle (recovery from a stuck transcription). If no speech was
+        in flight on release (VAD already idle), the stop fires
+        immediately so a tap-without-speaking still feels responsive.
+
+        Reason: longer phrases like "select all" take ~700-900 ms of
+        speech + Vosk's silence-detection window to finalise. v1.10.197
+        tore the listener down the instant the key released, which
+        chopped off any utterance mid-stream. Vosk emitted nothing,
+        no command_detected fired, the user got no action.
+
         v1.10.196: the ``_voice_command_ptt_owned`` flag is NOT cleared
         here. It's cleared later in ``_update_alwayson_ui`` once the
         listener confirms it has fully stopped. Reason: the listener
         may still emit one final ``text_for_dictation`` or
         ``command_detected`` for audio captured before the user
-        released the key. While the flag is True, that pending dictation
-        is dropped (see ``_on_alwayson_dictation``), so a user's "next"
-        command can't leak into the document as typed text just because
-        transcription happened to finish a few ms after release.
+        released the key. While the flag is True, that pending
+        dictation is dropped (see ``_on_alwayson_dictation``).
         """
         if not getattr(self, '_voice_command_ptt_owned', False):
             return
+
+        # If we already scheduled a deferred stop and the release fires
+        # again (e.g. autorepeat artefact), just ignore the second one.
+        if getattr(self, '_voice_command_ptt_pending_stop', False):
+            return
+
+        # v1.10.198: inspect VAD state. If there's an active utterance
+        # being captured or transcribed, defer the stop. Otherwise
+        # stop right away.
+        current_vad = getattr(self, '_voice_command_ptt_last_vad_state', '')
+        actively_processing = current_vad in ('recording', 'processing')
+
+        if not actively_processing:
+            # No active speech - stop right now.
+            self._do_voice_command_ptt_stop()
+            return
+
+        # Active utterance in flight. Mark pending and wait for the
+        # listener's VAD to transition back to idle (see
+        # _on_alwayson_vad_status), or for a 1500 ms hard timeout.
+        self._voice_command_ptt_pending_stop = True
+        self.status_bar.showMessage("🎙️ Finishing transcription…", 0)
+        try:
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(1500, self._do_voice_command_ptt_stop)
+        except Exception as e:
+            self.log(f"⚠ Could not schedule PTT stop timeout: {e}")
+            # Fall back to immediate stop on scheduling failure.
+            self._do_voice_command_ptt_stop()
+
+    def _do_voice_command_ptt_stop(self):
+        """Actually tear down the PTT listener. Called either immediately
+        (from release when VAD was already idle), from the hard-timeout
+        QTimer (set in release when an utterance was in flight), or
+        from ``_on_alwayson_vad_status`` when VAD returns to idle after
+        a deferred release. Idempotent — safe to call multiple times;
+        the second + later invocations short-circuit on the
+        ``_voice_command_ptt_pending_stop`` / ``_voice_command_ptt_owned``
+        flag state.
+        """
+        # Idempotent guard: if neither pending nor owned, we already ran.
+        if not getattr(self, '_voice_command_ptt_pending_stop', False) and \
+           not getattr(self, '_voice_command_ptt_owned', False):
+            return
+        self._voice_command_ptt_pending_stop = False
+
         try:
             if self.voice_listener is not None and getattr(
                 self.voice_listener, 'is_listening', False
@@ -51421,7 +51499,7 @@ class SupervertalerQt(QMainWindow):
                 self._toggle_alwayson_listening()
                 self.status_bar.clearMessage()
         except Exception as e:
-            self.log(f"⚠ Command PTT release failed: {e}")
+            self.log(f"⚠ Command PTT stop failed: {e}")
 
         # v1.10.197: drain any keystroke commands that were queued
         # during the hold. Delayed via QTimer so the user's physical

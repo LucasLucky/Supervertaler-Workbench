@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.197 (May 26, 2026)
+**Current Version:** v1.10.198 (May 26, 2026)
+
+
+## v1.10.198 – May 26, 2026
+
+### Fixed
+
+- **Longer voice commands (e.g. "select all") no longer get chopped off when releasing Ctrl+Alt+V.** A user reported that "next" worked reliably under PTT, but "select all" sporadically failed — Vosk would emit nothing, no command fired. Investigation showed that v1.10.197 was tearing down the listener the instant the key released, which interrupted any utterance still mid-flight (Vosk capturing audio or running its silence-detection window). Short phrases finalised in time; phrases that ran past the release moment did not.
+- **Fix: deferred listener teardown on PTT release.** When the release fires, the handler now inspects the listener's VAD state. If it's actively recording or processing speech, the stop is deferred until VAD transitions back to idle (signalling the utterance has finished transcribing). A 1500 ms hard timeout backstops the deferral so a stuck listener can't keep the listener alive indefinitely. If VAD was already idle on release (tap-without-speaking case), the stop fires immediately for snappy feel — no delay penalty when nothing's in flight.
+- **Status-bar message during the drain.** While waiting for the utterance to finalise, the status bar shows *"🎙️ Finishing transcription…"* so the user knows the system is still working on what they said rather than wondering if their release didn't register.
+- **Result:** longer phrases — "select all", "go to the top", "previous segment", etc. — now reliably finalise and execute even with a snappy key release. Internal commands keep their immediate-execution behaviour; keystroke commands still go through the v1.10.197 deferred-keystroke queue that drains 200 ms after the listener stops.
 
 
 ## v1.10.197 – May 26, 2026
