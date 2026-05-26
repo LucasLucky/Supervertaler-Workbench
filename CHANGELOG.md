@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.191 (May 26, 2026)
+**Current Version:** v1.10.192 (May 26, 2026)
+
+
+## v1.10.192 – May 26, 2026
+
+### Added
+
+- **Vision-AI fallback for Image Extractor labels — opt-in.** The Image Context viewer's toolbar gains a new checkbox: **"🤖 AI label"**. When ticked, images that the free text-pattern detector (v1.10.190/191) couldn't label are sent to the active vision AI alongside a snippet of surrounding text from the document, with a request to identify the figure's label. Useful for documents that don't follow the standard caption vocabularies — marketing copy, blog posts, cookbooks, photo essays, foreign-language documents, internal templates with custom label conventions, etc. Off by default.
+  - **Pre-flight gates.** Before any API call: (1) chat backend + LLM client present? (2) active model supports vision? (3) peek every queued DOCX to count how many images would actually need the AI step. If zero — silently skip the AI step (no dialog, no cost). If non-zero — show a single cost-estimate dialog covering the whole job:
+    > *"Out of 50 images across the queued DOCX files, 7 couldn't be labelled by the text-pattern detector and would benefit from AI labelling. Provider: claude / claude-sonnet-4.6. Estimated extra cost: $0.02–$0.05. Continue?"*
+  - **Provider-aware encoding.** Gemini gets PIL images directly; Claude / OpenAI / others get base64 PNG — same pipeline as the AutoPrompt vision feature (v1.10.178).
+  - **Defensive prompt + response parsing.** The AI is asked to reply with *only* the label text, with explicit examples of valid replies (`Figure 7`, `FIG. 6a`, `Table 3`, `Plate IV`, `Photograph 12`, `Illustration 4`) and an explicit "unlabelled" sentinel. Responses are stripped, length-capped at 80 chars, multi-line responses are truncated to the first line, and obvious refusals (`"I cannot identify…"`, empty replies, the sentinel) fall through to the sequential `Fig. N.png` form. So the AI step is **purely additive** — it can only improve filenames, never make them worse.
+  - **Per-provider cost estimates** reuse the same heuristic as the v1.10.178 vision-aware AutoPrompt: ~$0.0045/image with Sonnet, ~$0.0225/image with Opus, ~$0.0030/image with GPT-4o, ~$0.001/image with Gemini.
+
+- **New public methods on `ImageExtractor`:**
+  - `peek_labels(docx_path)` — returns `[(media_path, label_or_none, surrounding_text), …]` without writing anything. Use this for cost estimation before extraction.
+  - `peek_labels_multiple(docx_paths)` — multi-file convenience wrapper.
+
+- **`extract_images_from_docx` / `extract_from_multiple_docx` now accept an `ai_label_fn=` callback.** Signature: `fn(image_bytes, surrounding_text, media_path) -> Optional[str]`. Called for every image that the text-pattern step couldn't label; returning `None` keeps the sequential fallback name, returning a non-empty string uses that string as the filename (sanitised + dedupe-suffixed as usual).
 
 
 ## v1.10.191 – May 26, 2026

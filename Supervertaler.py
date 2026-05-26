@@ -11032,6 +11032,34 @@ class SupervertalerQt(QMainWindow):
         self.image_extractor_prefix.setMaximumWidth(60)
         action_row.addWidget(self.image_extractor_prefix)
 
+        # v1.10.192: opt-in vision-AI fallback for images that the
+        # text-pattern detector can't label. When ticked, each
+        # unlabelled image (after the v1.10.190 pattern + Caption-style
+        # scan) is sent to the active vision model with surrounding
+        # text and asked to identify its label. Off by default — a
+        # confirmation dialog with cost estimate appears before each
+        # extraction run.
+        self.image_extractor_ai_label = CheckmarkCheckBox("🤖 AI label")
+        self.image_extractor_ai_label.setChecked(False)
+        self.image_extractor_ai_label.setToolTip(
+            "Use AI to label images that the text-pattern detector can't.\n"
+            "Useful for documents that don't follow the standard label\n"
+            "vocabularies (Figure / FIG. / Table / Diagram / Plate / Photo /\n"
+            "Scheme / Exhibit) — marketing copy, blog posts, foreign-language\n"
+            "documents, photo essays, cookbooks, etc.\n\n"
+            "Requirements:\n"
+            "  • Vision-capable model in Settings (Claude Sonnet/Opus 4.x,\n"
+            "    GPT-4o or newer, Gemini)\n"
+            "  • Internet connection\n\n"
+            "Cost: ~$0.005–$0.02 per AI-labelled image depending on provider.\n"
+            "Only used for images the free text-pattern detector missed —\n"
+            "documents with conventional labels (patents, academic papers)\n"
+            "use the cheaper path and never trigger an API call.\n\n"
+            "A confirmation dialog shows the estimated cost before any\n"
+            "API call is made."
+        )
+        action_row.addWidget(self.image_extractor_ai_label)
+
         # Extract button — primary action for the DOCX path.
         extract_btn = QPushButton("🖼️ Extract Images")
         extract_btn.setStyleSheet("""
@@ -11325,6 +11353,223 @@ class SupervertalerQt(QMainWindow):
             self.current_preview_index = self.extracted_image_files.index(file_path)
             self._update_preview()
     
+    # ────────────────────────────────────────────────────────────────
+    # v1.10.192: vision-AI fallback for the Image Extractor
+    # ────────────────────────────────────────────────────────────────
+
+    def _build_image_extract_ai_callback(self, docx_files):
+        """Return a callback (signature ``(image_bytes, surrounding_text,
+        media_path) -> Optional[str]``) suitable for passing as
+        ``ai_label_fn=`` to the Image Extractor.
+
+        Returns:
+            - ``None`` if the user didn't tick "🤖 AI label", or if all
+              pre-conditions silently failed (no vision model, no chat
+              backend, etc.). In that case extraction proceeds with the
+              free text-pattern detection only.
+            - ``False`` if the user explicitly cancelled at the
+              confirmation dialog. The caller aborts the whole
+              extraction in that case.
+            - A callable on success. The callable is called once per
+              image that the text-pattern detector couldn't label.
+        """
+        # Gate 1: checkbox ticked?
+        checkbox = getattr(self, 'image_extractor_ai_label', None)
+        if checkbox is None or not checkbox.isChecked():
+            return None
+
+        # Gate 2: chat backend + LLM client available?
+        prompt_mgr = getattr(self, 'prompt_manager_qt', None)
+        chat_backend = getattr(prompt_mgr, 'chat_backend', None) if prompt_mgr else None
+        llm_client = getattr(chat_backend, 'llm_client', None) if chat_backend else None
+        if llm_client is None:
+            QMessageBox.warning(
+                self,
+                "AI label unavailable",
+                "AI label detection requires a configured AI provider, but "
+                "no chat backend is available.\n\n"
+                "Configure your API keys in Settings → API Keys and try again, "
+                "or untick '🤖 AI label' to run the free text-pattern detector "
+                "on its own."
+            )
+            return False
+
+        provider = getattr(llm_client, 'provider', '')
+        model = getattr(llm_client, 'model', '')
+
+        # Gate 3: model supports vision?
+        try:
+            from modules.llm_clients import LLMClient
+            if not LLMClient.model_supports_vision(provider, model):
+                resp = QMessageBox.question(
+                    self,
+                    "Active model doesn't support vision",
+                    f"The active AI model — <b>{provider} / {model}</b> — does "
+                    "not accept image input, so the 🤖 AI label step can't run.\n\n"
+                    "Switch to a vision-capable model (Claude Sonnet/Opus 4.x, "
+                    "GPT-4o or newer, Gemini) in Settings and try again, or "
+                    "click <b>OK</b> to proceed with text-pattern detection only.",
+                    QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Ok,
+                )
+                if resp == QMessageBox.StandardButton.Cancel:
+                    return False
+                return None  # proceed text-only
+        except Exception as e:
+            self.log(f"[Image Extractor] AI vision-model check failed: {e}")
+            return None
+
+        # Gate 4: peek all DOCXes to count how many images would need AI.
+        # Doing this BEFORE the extraction loop means we can show one
+        # cost-estimate dialog covering the whole job, rather than
+        # surprising the user mid-extract.
+        try:
+            all_peeks = self.image_extractor.peek_labels_multiple(docx_files)
+        except Exception as e:
+            self.log(f"[Image Extractor] Peek failed: {e}")
+            return None
+
+        unlabelled_count = 0
+        total_count = 0
+        for _path, peek in all_peeks:
+            for _media, label, _surrounding in peek:
+                total_count += 1
+                if not label:
+                    unlabelled_count += 1
+
+        if unlabelled_count == 0:
+            # Every image already has a text-detected label — no AI work
+            # needed. Skip the dialog and silently return None so the
+            # extraction proceeds text-only (which is what would happen
+            # anyway, but this saves a no-op confirmation).
+            return None
+
+        # Cost estimate — same per-image rates as the AutoPrompt vision
+        # feature uses (see _collect_autoprompt_images for the same
+        # heuristic). These are order-of-magnitude figures, not
+        # invoices.
+        model_lc = (model or '').lower()
+        provider_lc = (provider or '').lower()
+        if 'opus' in model_lc:
+            per_img = 0.0225
+        elif 'sonnet' in model_lc or 'claude' in provider_lc:
+            per_img = 0.0045
+        elif 'gemini' in provider_lc:
+            per_img = 0.001
+        else:  # GPT-4o family / generic fallback
+            per_img = 0.0030
+        est_lo = max(0.01, per_img * unlabelled_count * 0.7)
+        est_hi = per_img * unlabelled_count * 1.5
+        cost_blurb = f"${est_lo:.2f}–${est_hi:.2f}"
+
+        # Gate 5: confirmation dialog.
+        confirm = QMessageBox.question(
+            self,
+            "Run AI label detection?",
+            f"<p>Out of <b>{total_count}</b> images across the queued DOCX "
+            f"files, <b>{unlabelled_count}</b> couldn't be labelled by the "
+            f"text-pattern detector and would benefit from AI labelling.</p>"
+            f"<p><b>Provider:</b> {provider} / {model}<br>"
+            f"<b>Estimated extra cost:</b> {cost_blurb}<br>"
+            f"<small>One vision API call per unlabelled image. The remaining "
+            f"{total_count - unlabelled_count} image(s) already have text-"
+            f"detected labels and won't trigger an API call.</small></p>"
+            f"<p>Continue with AI labelling?</p>",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Ok,
+        )
+        if confirm != QMessageBox.StandardButton.Ok:
+            return False
+
+        self.log(
+            f"[Image Extractor] AI label fallback: will call {provider}/{model} "
+            f"for {unlabelled_count} image(s) (est. extra ~{cost_blurb})"
+        )
+
+        # Build and return the actual callback. Closes over chat_backend
+        # and provider so each call ships an image in the correct format
+        # for the provider (PIL for Gemini, base64 PNG for the rest).
+        def _ai_label_fn(image_bytes: bytes, surrounding_text: str,
+                         media_path: str):
+            try:
+                from io import BytesIO
+                from PIL import Image as _PILImage
+                from modules.figure_context_manager import pil_image_to_base64_png
+
+                pil_img = _PILImage.open(BytesIO(image_bytes))
+                # Normalise to RGB for predictable encoding.
+                if pil_img.mode not in ('RGB', 'RGBA'):
+                    pil_img = pil_img.convert('RGB')
+
+                if provider == 'gemini':
+                    images_payload = [('figure', pil_img)]
+                else:
+                    images_payload = [
+                        ('figure', pil_image_to_base64_png(pil_img))
+                    ]
+
+                snippet = (surrounding_text or '').strip()
+                if len(snippet) > 1500:
+                    snippet = snippet[:1500] + '…'
+
+                prompt = (
+                    "The following image appears in a document. Some text "
+                    "from the paragraphs immediately around the image is "
+                    "shown below for context.\n\n"
+                    "--- surrounding text ---\n"
+                    f"{snippet}\n"
+                    "--- end surrounding text ---\n\n"
+                    "Question: what label or caption does this figure carry "
+                    "in the document?\n\n"
+                    "Reply with ONLY the label text, nothing else. Examples "
+                    "of valid replies:\n"
+                    "  Figure 7\n"
+                    "  FIG. 6a\n"
+                    "  Table 3\n"
+                    "  Plate IV\n"
+                    "  Diagram 2\n"
+                    "  Photograph 12\n"
+                    "  Illustration 4\n\n"
+                    "If you genuinely cannot see or infer a label, reply "
+                    "with exactly: unlabelled"
+                )
+                system_prompt = (
+                    "You are an expert at identifying figure labels and "
+                    "captions in documents. Reply with just the label, no "
+                    "preamble, no explanation, no quotation marks."
+                )
+
+                response_text, _meta = chat_backend.send_ai_request(
+                    prompt, system_prompt, is_analysis=False,
+                    images=images_payload,
+                )
+
+                if not response_text:
+                    return None
+                resp = response_text.strip().strip('"\'').strip()
+                # Strip any single trailing period.
+                if resp.endswith('.') and not resp.endswith('..'):
+                    pass  # keep — common in "FIG. 6"
+                # Reject obvious "I can't" responses.
+                if not resp:
+                    return None
+                low = resp.lower()
+                if low == 'unlabelled' or low.startswith('i cannot') or \
+                   low.startswith("i can't") or low.startswith('no label'):
+                    return None
+                # Cap length.
+                if len(resp) > 80:
+                    resp = resp[:80].strip()
+                # Reject multi-line / contains newlines.
+                if '\n' in resp:
+                    resp = resp.split('\n', 1)[0].strip()
+                return resp or None
+            except Exception as e:
+                self.log(f"[Image Extractor] AI label call failed for {media_path}: {e}")
+                return None
+
+        return _ai_label_fn
+
     def _on_extract_images(self):
         """Extract images from all DOCX files in the list"""
         # Validate inputs
@@ -11352,11 +11597,23 @@ class SupervertalerQt(QMainWindow):
         prefix = self.image_extractor_prefix.text().strip()
         if not prefix:
             prefix = "Fig."
-        
+
         # Get list of files
-        docx_files = [self.image_extractor_file_list.item(i).text() 
+        docx_files = [self.image_extractor_file_list.item(i).text()
                      for i in range(self.image_extractor_file_list.count())]
-        
+
+        # v1.10.192: build the optional AI-label-fallback callback. If
+        # the user ticked the checkbox we peek at all DOCXes first to
+        # see how many images would actually need the AI step, then
+        # show a confirmation dialog with an estimated cost before any
+        # API call is made.
+        ai_label_fn = self._build_image_extract_ai_callback(docx_files)
+        if ai_label_fn is False:
+            # User cancelled at the confirmation dialog — abort the
+            # entire extraction (they were expecting AI labels and
+            # we'd surprise them with sequential numbering otherwise).
+            return
+
         # Clear status, file list, and preview
         self.image_extractor_status.clear()
         self.image_extractor_status.append("🔄 Starting image extraction...\n")
@@ -11384,7 +11641,8 @@ class SupervertalerQt(QMainWindow):
                     count, files = self.image_extractor.extract_images_from_docx(
                         docx_file,
                         auto_output_dir,
-                        prefix
+                        prefix,
+                        ai_label_fn=ai_label_fn,
                     )
                     
                     total_count += count
@@ -11404,9 +11662,10 @@ class SupervertalerQt(QMainWindow):
                 self.image_extractor_status.append(f"📁 Output directory: {output_dir}\n")
                 
                 total_count, all_extracted_files = self.image_extractor.extract_from_multiple_docx(
-                    docx_files, 
-                    output_dir, 
-                    prefix
+                    docx_files,
+                    output_dir,
+                    prefix,
+                    ai_label_fn=ai_label_fn,
                 )
                 
                 output_msg = output_dir

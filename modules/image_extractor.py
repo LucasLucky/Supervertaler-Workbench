@@ -356,13 +356,40 @@ def _build_rel_map(rels_xml_bytes: bytes) -> Dict[str, str]:
     return rel_map
 
 
-def _get_body_images_with_labels(zip_ref: ZipFile) -> List[Tuple[str, Optional[str]]]:
-    """Return list of (media_path, detected_label) in document order.
+def _collect_surrounding_text(paragraphs: List[dict], p_idx: int,
+                              window: int = 2) -> str:
+    """Return up to ``window`` paragraphs of text on either side of the
+    given paragraph, joined with newlines. Used as the surrounding-text
+    snippet fed to the vision AI fallback. Empty paragraphs are skipped
+    but still count against the window so we don't drift arbitrarily
+    far from the image."""
+    start = max(0, p_idx - window)
+    end = min(len(paragraphs), p_idx + window + 1)
+    parts = []
+    for i in range(start, end):
+        t = (paragraphs[i].get('text') or '').strip()
+        if t:
+            parts.append(t)
+    return '\n'.join(parts)
 
-    The label may be ``None`` if no label could be detected — caller
-    should fall back to sequential numbering for those images. Duplicate
-    media files (same image referenced multiple times) are collapsed by
-    first occurrence."""
+
+def _get_body_images_with_labels(
+    zip_ref: ZipFile,
+) -> List[Tuple[str, Optional[str], str]]:
+    """Return list of (media_path, detected_label, surrounding_text) in
+    document order.
+
+    ``detected_label`` may be ``None`` if no label could be detected from
+    pattern + Caption-style scanning — caller should fall back to either
+    a vision-AI label step (v1.10.192) or sequential numbering for those
+    images. ``surrounding_text`` is a ±2-paragraph snippet around each
+    image's paragraph; it's always populated (even if empty string) so
+    the caller can feed it into an AI prompt without re-parsing the DOCX.
+
+    Duplicate media files (same image referenced multiple times) are
+    collapsed by first occurrence — the first-occurrence position
+    determines the label.
+    """
     try:
         rels_bytes = zip_ref.read('word/_rels/document.xml.rels')
         rel_map = _build_rel_map(rels_bytes)
@@ -373,7 +400,7 @@ def _get_body_images_with_labels(zip_ref: ZipFile) -> List[Tuple[str, Optional[s
     except Exception:
         return []
 
-    out: List[Tuple[str, Optional[str]]] = []
+    out: List[Tuple[str, Optional[str], str]] = []
     seen_media = set()
 
     for p_idx, p in enumerate(paragraphs):
@@ -384,12 +411,16 @@ def _get_body_images_with_labels(zip_ref: ZipFile) -> List[Tuple[str, Optional[s
         # images, they'll be disambiguated downstream via the (2), (3) …
         # suffix collision handler.
         label = _detect_label(paragraphs, p_idx)
+        # Surrounding-text snippet, computed once per paragraph for the
+        # same reason. v1.10.192: passed to the optional AI-label
+        # callback when text-pattern detection produced no label.
+        surrounding = _collect_surrounding_text(paragraphs, p_idx)
         for rid in p['rids']:
             media = rel_map.get(rid)
             if not media or media in seen_media:
                 continue
             seen_media.add(media)
-            out.append((media, label))
+            out.append((media, label, surrounding))
 
     return out
 
@@ -421,20 +452,76 @@ def _process_image_bytes(img_bytes: bytes) -> Optional[Image.Image]:
 
 class ImageExtractor:
     """Extract images from DOCX files and save as PNG, in document order,
-    with detected captions used as filenames where possible."""
+    with detected captions used as filenames where possible.
+
+    v1.10.192: optional vision-AI label detection. Pass an
+    ``ai_label_fn`` callback into either extract method to have it
+    invoked for each image that text-pattern detection couldn't label.
+    The callback receives the image bytes, the image's MIME type
+    (inferred from extension), and a snippet of surrounding text from
+    the document; it returns a label string or ``None`` (meaning "AI
+    couldn't tell either — use sequential fallback").
+    """
 
     def __init__(self):
         self.supported_formats = ['.docx']
 
+    # ── New v1.10.192 helpers ────────────────────────────────────────
+
+    def peek_labels(self, docx_path: str) -> List[Tuple[str, Optional[str], str]]:
+        """Return ``[(media_internal_path, detected_label, surrounding_text), …]``
+        for a single DOCX without extracting anything. Use this to
+        count how many images would need AI fallback (for cost
+        estimation) before deciding whether to enable it.
+        """
+        if not os.path.exists(docx_path):
+            raise FileNotFoundError(f"DOCX file not found: {docx_path}")
+        with ZipFile(docx_path, 'r') as zip_ref:
+            ordered = _get_body_images_with_labels(zip_ref)
+            if ordered:
+                return ordered
+            # Fallback path (when document.xml parsing fails) — no
+            # surrounding text available for the AI step but we still
+            # populate the slot with an empty string so the tuple
+            # arity is stable.
+            raw = [f for f in zip_ref.namelist()
+                   if f.startswith('word/media/')]
+            return [(p, None, '') for p in sorted(raw, key=_natural_key)]
+
+    def peek_labels_multiple(self, docx_paths: List[str]
+                             ) -> List[Tuple[str, List[Tuple[str, Optional[str], str]]]]:
+        """Multi-file peek. Returns a list of (docx_path, peek_result)
+        tuples in input order. Missing files / unreadable DOCX entries
+        are silently dropped — the caller's totals naturally reflect
+        only the readable subset."""
+        results = []
+        for path in docx_paths:
+            try:
+                results.append((path, self.peek_labels(path)))
+            except Exception:
+                continue
+        return results
+
+    # ── Extraction methods ───────────────────────────────────────────
+
     def extract_images_from_docx(self, docx_path: str, output_dir: str,
-                                 prefix: str = "Fig.") -> Tuple[int, List[str]]:
+                                 prefix: str = "Fig.",
+                                 ai_label_fn=None) -> Tuple[int, List[str]]:
         """Extract images from a single DOCX in document order.
 
         Args:
             docx_path: Path to the DOCX file
             output_dir: Directory where images will be saved
             prefix: Fallback filename prefix when no caption is detected
+                AND no AI fallback resolves the label
                 (default ``"Fig."`` → ``Fig. 1.png``, ``Fig. 2.png`` …)
+            ai_label_fn: Optional callback invoked for every image that
+                text-pattern detection couldn't label. Signature:
+                    ``fn(image_bytes: bytes, surrounding_text: str,
+                         media_path: str) -> Optional[str]``
+                Returning ``None`` keeps the sequential fallback name;
+                returning a non-empty string uses that string as the
+                filename (sanitised + dedupe-suffixed as usual).
 
         Returns:
             (number of images extracted, list of output file paths)
@@ -455,14 +542,14 @@ class ImageExtractor:
                 if not ordered:
                     raw = [f for f in zip_ref.namelist()
                            if f.startswith('word/media/')]
-                    ordered = [(p, None) for p in sorted(raw, key=_natural_key)]
+                    ordered = [(p, None, '') for p in sorted(raw, key=_natural_key)]
 
                 used_names: set = set()
                 # Track sequential fallback counter independently of
                 # detected labels — both end up in `used_names` to
                 # prevent collisions.
                 fallback_counter = 0
-                for media, label in ordered:
+                for media, label, surrounding in ordered:
                     try:
                         img_bytes = zip_ref.read(media)
                     except KeyError:
@@ -471,6 +558,18 @@ class ImageExtractor:
                     if img is None:
                         print(f"Warning: Could not process image {media}")
                         continue
+
+                    # v1.10.192: if text-pattern detection gave us no
+                    # label AND the caller passed an AI fallback,
+                    # let the AI have a go before falling back to
+                    # sequential numbering.
+                    if not label and ai_label_fn is not None:
+                        try:
+                            ai_label = ai_label_fn(img_bytes, surrounding, media)
+                            if ai_label and isinstance(ai_label, str):
+                                label = ai_label.strip()
+                        except Exception as e:
+                            print(f"Warning: AI label callback failed for {media}: {e}")
 
                     if label:
                         stem = _sanitize_label(label)
@@ -488,7 +587,8 @@ class ImageExtractor:
         return len(extracted_files), extracted_files
 
     def extract_from_multiple_docx(self, docx_paths: List[str], output_dir: str,
-                                   prefix: str = "Fig.") -> Tuple[int, List[str]]:
+                                   prefix: str = "Fig.",
+                                   ai_label_fn=None) -> Tuple[int, List[str]]:
         """Extract images from multiple DOCX files into one folder.
 
         Per-file label detection runs independently — labels and the
@@ -496,7 +596,9 @@ class ImageExtractor:
         filename-uniqueness set is shared. If the same label appears in
         two files (e.g. both have a "Figure 1"), the second one becomes
         "Figure 1 (2).png".
-        """
+
+        ``ai_label_fn`` works the same as in :meth:`extract_images_from_docx`
+        and is invoked across files."""
         os.makedirs(output_dir, exist_ok=True)
 
         all_extracted_files: List[str] = []
@@ -509,10 +611,10 @@ class ImageExtractor:
                     if not ordered:
                         raw = [f for f in zip_ref.namelist()
                                if f.startswith('word/media/')]
-                        ordered = [(p, None) for p in sorted(raw, key=_natural_key)]
+                        ordered = [(p, None, '') for p in sorted(raw, key=_natural_key)]
 
                     fallback_counter = 0
-                    for media, label in ordered:
+                    for media, label, surrounding in ordered:
                         try:
                             img_bytes = zip_ref.read(media)
                         except KeyError:
@@ -521,6 +623,14 @@ class ImageExtractor:
                         if img is None:
                             print(f"Warning: Could not process image from {docx_path}")
                             continue
+
+                        if not label and ai_label_fn is not None:
+                            try:
+                                ai_label = ai_label_fn(img_bytes, surrounding, media)
+                                if ai_label and isinstance(ai_label, str):
+                                    label = ai_label.strip()
+                            except Exception as e:
+                                print(f"Warning: AI label callback failed for {media}: {e}")
 
                         if label:
                             stem = _sanitize_label(label)
