@@ -2,7 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.207 (May 27, 2026)
+**Current Version:** v1.10.208 (May 27, 2026)
+
+
+## v1.10.208 – May 27, 2026
+
+### Changed
+
+- **Translation files migrated from Qt Linguist `.ts` to XLIFF 1.2 (`.xlf`).** v1.10.207 shipped the i18n scaffold using the conventional PyQt format (`.ts`), but `.ts` is essentially a Qt-only format — translators outside Qt circles have never heard of it. Switched to XLIFF 1.2, which **every CAT tool in regular use eats natively**: Trados Studio, memoQ, Phrase, OmegaT, Wordfast, and Supervertaler Workbench itself. Translators can now open the `.xlf` in their normal CAT environment with their normal TMs and termbases and translate Supervertaler Workbench the same way they'd handle any other XLIFF job.
+- **The 23 sanity Chinese translations from v1.10.207 were migrated cleanly** into the new XLIFF; no work lost.
+- **New `tools/extract_strings.py`** replaces `pylupdate6` for string extraction. An AST-based walker that finds every `self.tr(...)` call and emits XLIFF 1.2 directly, with per-string source-file/line references and Qt context (class name) preserved in `<context-group>` elements.
+- **`modules/i18n.py` `TsTranslator` → `XliffTranslator`.** Same `QTranslator` subclass approach, just reads XLIFF 1.2 instead of `.ts`. The runtime mechanism — `self.tr()` calls going through `QCoreApplication`'s installed translators — is unchanged. No source code changes needed for any of the 180 already-wrapped strings; the format swap is transparent to the rest of the codebase.
+- **`translations/TRANSLATING.md` rewritten** for the XLIFF workflow with per-CAT-tool instructions (Trados, memoQ, Phrase, OmegaT, Workbench).
+- **README's Translations section** updated to call out the XLIFF format and the "any CAT tool, including Workbench itself" angle.
+
+### Notes
+
+- File extension is `.xlf` (the OASIS-recommended extension for XLIFF 1.2 and what most CAT tools emit on save). The longer `.xliff` extension would also be valid but is less common.
+- XLIFF 2.0/2.1 also exist with a cleaner structure but less ubiquitous CAT-tool support. 1.2 is the lowest-common-denominator that works everywhere.
+- The Qt locale code convention (underscore, e.g. `zh_CN`) is kept for file names and settings keys; the XLIFF metadata internally uses the hyphenated form (`target-language="zh-CN"`) per the XLIFF 1.2 spec.
+- **The conventional PyQt `lrelease` compilation step is still avoided**: the loader reads `.xlf` XML directly at startup. Adds <10ms to launch time for the current string count.
+- **Future work flagged separately**: adding `.po` (gettext) as an *importable* file format inside Workbench would let translators take on Linux/Django/WordPress software-l10n jobs from inside Workbench. Spawned as a separate task on the chip rail; not in scope for v1.10.208.
 
 
 ## v1.10.207 – May 27, 2026

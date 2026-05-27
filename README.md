@@ -78,7 +78,9 @@ python Supervertaler.py
 
 ### Translations
 
-Supervertaler Workbench has an early-stage i18n system (v1.10.207+). The menu bar, Settings tabs, and key group titles are translatable; dialog bodies and error messages remain in English for now.
+Supervertaler Workbench has an early-stage i18n system (v1.10.208+). The menu bar, Settings tabs, and key group titles are translatable; dialog bodies and error messages remain in English for now.
+
+Translation files are **XLIFF 1.2**, so translators can open them in **Trados, memoQ, Phrase, OmegaT, or Supervertaler Workbench itself** – any CAT tool that handles XLIFF (all of them do).
 
 | Locale  | Language                          | Status                |
 | ------- | --------------------------------- | --------------------- |
@@ -87,7 +89,7 @@ Supervertaler Workbench has an early-stage i18n system (v1.10.207+). The menu ba
 | `zh_TW` | 繁體中文 — Traditional Chinese    | scaffold (untranslated) |
 | `pl`    | Polski — Polish                   | scaffold (untranslated) |
 
-Want to contribute a translation? See [`translations/TRANSLATING.md`](translations/TRANSLATING.md). The workflow is: open the locale's `.ts` in Qt Linguist, translate, send a PR. No build step on your end.
+Want to contribute a translation? See [`translations/TRANSLATING.md`](translations/TRANSLATING.md). Workflow: open the locale's `.xlf` in your normal CAT tool, translate, PR back. No build step on your end.
 
 ---
 

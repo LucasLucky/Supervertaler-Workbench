@@ -22087,9 +22087,13 @@ class SupervertalerQt(QMainWindow):
         # respond to QEvent.LanguageChange; live re-translation is a
         # follow-up project. The dropdown is populated from
         # modules.i18n.SUPPORTED_LOCALES, which is the canonical list of
-        # locale codes the app recognises (regardless of whether a .ts
+        # locale codes the app recognises (regardless of whether a .xlf
         # file actually exists for each).
-        from modules.i18n import SUPPORTED_LOCALES, translations_dir
+        from modules.i18n import (
+            SUPPORTED_LOCALES,
+            TRANSLATION_FILE_SUFFIX,
+            translations_dir,
+        )
         from PyQt6.QtWidgets import QComboBox
 
         language_group = QGroupBox(self.tr("🌐 Language"))
@@ -22115,23 +22119,26 @@ class SupervertalerQt(QMainWindow):
         )
         # "System" entry is the implicit default for new installs – uses
         # whatever QLocale.system() reports, falling back to English when
-        # no .ts file exists for that locale.
+        # no .xlf file exists for that locale.
         language_combo.addItem("System default", "system")
 
-        # Discover which .ts files actually exist on disk so we can mark
+        # Discover which .xlf files actually exist on disk so we can mark
         # locales without a translation file as "[no translation yet]".
-        _ts_dir = translations_dir()
-        _available_ts_codes = set()
-        if _ts_dir.exists():
-            for _ts in _ts_dir.glob("supervertaler_*.ts"):
-                _code = _ts.stem.replace("supervertaler_", "")
-                _available_ts_codes.add(_code)
+        # v1.10.208 migrated from .ts (Qt Linguist) to .xlf (XLIFF 1.2) for
+        # broader CAT-tool compatibility – Trados / memoQ / Phrase / OmegaT
+        # / Workbench itself all eat XLIFF natively, where .ts is Qt-only.
+        _xlf_dir = translations_dir()
+        _available_xlf_codes = set()
+        if _xlf_dir.exists():
+            for _xlf in _xlf_dir.glob(f"supervertaler_*{TRANSLATION_FILE_SUFFIX}"):
+                _code = _xlf.stem.replace("supervertaler_", "")
+                _available_xlf_codes.add(_code)
 
         for _code, _label in SUPPORTED_LOCALES:
             if _code == "en":
-                # English needs no .ts file – it's the source language.
+                # English needs no .xlf file – it's the source language.
                 language_combo.addItem(_label, _code)
-            elif _code in _available_ts_codes:
+            elif _code in _available_xlf_codes:
                 language_combo.addItem(_label, _code)
             else:
                 language_combo.addItem(f"{_label}  [no translation yet]", _code)
