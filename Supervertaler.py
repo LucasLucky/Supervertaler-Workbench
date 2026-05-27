@@ -12821,12 +12821,13 @@ class SupervertalerQt(QMainWindow):
             "💡 <b>Translation Memories</b><br>"
             "• <b>Read</b> (green ✓): TM is used for matching segments<br>"
             "• <b>Write</b> (blue ✓): TM is updated with new translations<br>"
+            "• <b>Bridge</b> (orange ✓): TM is visible to the Supervertaler for Trados plugin (Phase 2)<br>"
             "• <b>Typical Setup</b>: Main TM (Read + Write) + Reference TMs (Read only)"
         )
         help_msg.setWordWrap(True)
         help_msg.setStyleSheet("background-color: #e3f2fd; padding: 8px; border-radius: 4px; color: #1976d2;")
         layout.addWidget(help_msg)
-        
+
         # Bulk action controls
         bulk_layout = QHBoxLayout()
         bulk_layout.addWidget(QLabel("Quick Actions:"))
@@ -12851,20 +12852,37 @@ class SupervertalerQt(QMainWindow):
         tm_clear_all_write_btn.clicked.connect(lambda: toggle_all_write(False))
         bulk_layout.addWidget(tm_clear_all_write_btn)
 
+        # v1.10.212: Bridge bulk toggles. Mirrors the Read/Write button
+        # pair – "Select All Bridge" turns the flag on for every TM,
+        # "Clear All Bridge" off. Late-binding via the toggle_all_bridge
+        # closure defined further down with toggle_all_read/write.
+        bridge_header_checkbox = CheckmarkCheckBox("Select All Bridge")
+        bridge_header_checkbox.setStyleSheet("QCheckBox::indicator:checked { background-color: #FF8C00; }")
+        bulk_layout.addWidget(bridge_header_checkbox)
+
+        tm_clear_all_bridge_btn = QPushButton("Clear All Bridge")
+        tm_clear_all_bridge_btn.setToolTip("Uncheck the Bridge flag on every TM (hide all TMs from the Trados plugin)")
+        tm_clear_all_bridge_btn.clicked.connect(lambda: toggle_all_bridge(False))
+        bulk_layout.addWidget(tm_clear_all_bridge_btn)
+
         bulk_layout.addStretch()
         layout.addLayout(bulk_layout)
-        
+
         # TM list with table
         tm_table = QTableWidget()
-        tm_table.setColumnCount(7)
-        tm_table.setHorizontalHeaderLabels(["TM Name", "Languages", "Entries", "Read", "Write", "Last Modified", "Description"])
+        # v1.10.212: 8 columns now – Bridge added at index 5, between Write
+        # and Last Modified, so the three per-TM toggles cluster together
+        # visually. Last Modified moves to 6, Description to 7.
+        tm_table.setColumnCount(8)
+        tm_table.setHorizontalHeaderLabels(["TM Name", "Languages", "Entries", "Read", "Write", "Bridge", "Last Modified", "Description"])
         tm_table.horizontalHeader().setStretchLastSection(True)
         tm_table.setColumnWidth(0, 250)
         tm_table.setColumnWidth(1, 120)
         tm_table.setColumnWidth(2, 80)
         tm_table.setColumnWidth(3, 60)
         tm_table.setColumnWidth(4, 60)
-        tm_table.setColumnWidth(5, 150)
+        tm_table.setColumnWidth(5, 60)   # Bridge
+        tm_table.setColumnWidth(6, 150)  # Last Modified
         # v1.10.169: click-header-to-sort on the data columns (TM Name,
         # Languages, Entries, Last Modified, Description). The Read /
         # Write columns are checkbox widgets and won't sort meaningfully
@@ -12914,9 +12932,23 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 self.log(f"⚠️ Bulk TM Write toggle failed mid-way: {e}")
             refresh_tm_list()
-        
+
+        # v1.10.212: bulk Bridge toggle (Trados visibility for the whole list).
+        def toggle_all_bridge(checked):
+            try:
+                for tm in (tm_metadata_mgr.get_all_tms() or []):
+                    tm_id = tm.get('id')
+                    if tm_id is None:
+                        continue
+                    if hasattr(tm_metadata_mgr, 'set_bridged_to_trados'):
+                        tm_metadata_mgr.set_bridged_to_trados(tm_id, bool(checked))
+            except Exception as e:
+                self.log(f"⚠️ Bulk TM Bridge toggle failed mid-way: {e}")
+            refresh_tm_list()
+
         read_header_checkbox.toggled.connect(toggle_all_read)
         write_header_checkbox.toggled.connect(toggle_all_write)
+        bridge_header_checkbox.toggled.connect(toggle_all_bridge)
         
         # Populate TM list
         def refresh_tm_list():
@@ -13027,7 +13059,40 @@ class SupervertalerQt(QMainWindow):
                 
                 write_checkbox.toggled.connect(on_write_toggle)
                 tm_table.setCellWidget(row, 4, write_checkbox)
-                
+
+                # v1.10.212: Bridge checkbox (Trados visibility).
+                # Orange-checkmark variant to distinguish from Read (green)
+                # and Write (blue) at a glance. Default off – freelancers
+                # with multiple-client TM libraries opt in per TM.
+                is_bridged = bool(tm.get('bridged_to_trados', False))
+                bridge_checkbox = CheckmarkCheckBox()
+                bridge_checkbox.setStyleSheet(
+                    "QCheckBox::indicator:checked { background-color: #FF8C00; }"
+                )
+                bridge_checkbox.setChecked(is_bridged)
+                bridge_checkbox.setToolTip(
+                    "Bridge: TM is visible to the Supervertaler for Trados plugin "
+                    "(Trados-side wiring lands in a follow-up release)"
+                )
+
+                def on_bridge_toggle(checked, tm_id=tm['id'], row_idx=row):
+                    if hasattr(tm_metadata_mgr, 'set_bridged_to_trados'):
+                        success = tm_metadata_mgr.set_bridged_to_trados(tm_id, bool(checked))
+                        if success:
+                            self.log(
+                                f"✅ TM {tm_id} {'now visible to' if checked else 'hidden from'} Trados plugin"
+                            )
+                        else:
+                            # Revert on failure
+                            sender = tm_table.cellWidget(row_idx, 5)
+                            if sender:
+                                sender.blockSignals(True)
+                                sender.setChecked(not checked)
+                                sender.blockSignals(False)
+
+                bridge_checkbox.toggled.connect(on_bridge_toggle)
+                tm_table.setCellWidget(row, 5, bridge_checkbox)
+
                 # Last modified
                 modified = tm['modified_date'] or tm['created_date'] or ''
                 if modified:
@@ -13038,21 +13103,25 @@ class SupervertalerQt(QMainWindow):
                         modified = dt.strftime("%Y-%m-%d %H:%M")
                     except:
                         pass
-                tm_table.setItem(row, 5, QTableWidgetItem(modified))
-                
+                tm_table.setItem(row, 6, QTableWidgetItem(modified))
+
                 # Description
                 desc_text = tm['description'] or ''
-                tm_table.setItem(row, 6, QTableWidgetItem(desc_text))
-            
+                tm_table.setItem(row, 7, QTableWidgetItem(desc_text))
+
             # Update header checkbox states based on current selection
             read_header_checkbox.blockSignals(True)
             write_header_checkbox.blockSignals(True)
+            bridge_header_checkbox.blockSignals(True)
             all_read_checked = all(tm_table.cellWidget(r, 3).isChecked() if tm_table.cellWidget(r, 3) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             all_write_checked = all(tm_table.cellWidget(r, 4).isChecked() if tm_table.cellWidget(r, 4) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
+            all_bridge_checked = all(tm_table.cellWidget(r, 5).isChecked() if tm_table.cellWidget(r, 5) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             read_header_checkbox.setChecked(all_read_checked)
             write_header_checkbox.setChecked(all_write_checked)
+            bridge_header_checkbox.setChecked(all_bridge_checked)
             read_header_checkbox.blockSignals(False)
             write_header_checkbox.blockSignals(False)
+            bridge_header_checkbox.blockSignals(False)
 
             # Summary line: total TUs across N TMs
             total_tus = sum((tm.get('entry_count') or 0) for tm in tms)

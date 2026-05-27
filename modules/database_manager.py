@@ -329,6 +329,24 @@ class DatabaseManager:
                 self.cursor.execute("ALTER TABLE translation_memories ADD COLUMN external_last_mtime REAL")
                 print("✓ Added external_last_mtime column to translation_memories")
 
+            # v1.10.212: bridged_to_trados flag. When TRUE the Trados plugin's
+            # SupervertalerTmProvider (Phase 2 of the Shared TM work, tracked
+            # in Trados issue #31) exposes this TM as an attachable
+            # translation provider inside Trados Studio. Both products read
+            # and write to the same `supervertaler.db` already – the flag
+            # just controls which TMs are user-opted-in for cross-product
+            # visibility, so a freelancer with client-A and client-B TMs in
+            # the same DB doesn't see client-A hits leak into a Trados
+            # session opened on a client-B project.
+            #
+            # Default 0 (NOT bridged) so existing users see no change in
+            # Trados-side visibility until they actively opt in per TM.
+            if 'bridged_to_trados' not in columns:
+                self.cursor.execute(
+                    "ALTER TABLE translation_memories ADD COLUMN bridged_to_trados BOOLEAN DEFAULT 0"
+                )
+                print("✓ Added bridged_to_trados column to translation_memories")
+
             self.connection.commit()
         except Exception as e:
             print(f"Migration info: {e}")

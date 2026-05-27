@@ -2,7 +2,27 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.211 (May 27, 2026)
+**Current Version:** v1.10.212 (May 27, 2026)
+
+
+## v1.10.212 – May 27, 2026
+
+### Added (Shared TM, Phase 1: Workbench-side opt-in flag)
+
+- **Per-TM "Bridge" flag** (Settings → TMs tab → new orange-tick column between Write and Last Modified). Toggles whether the TM should be visible to the Supervertaler for Trados plugin once Phase 2 lands. Defaults to OFF for every TM so existing freelancer libraries don't suddenly leak across product boundaries on upgrade.
+- **Bulk Bridge controls** alongside the existing Read / Write bulk buttons: "Select All Bridge" / "Clear All Bridge". Same UX as Read and Write – orange checkmark distinguishes Bridge from the green (Read) and blue (Write) toggles.
+- **Schema migration** adds a `bridged_to_trados` column to the `translation_memories` table (default 0). Runs once on the next startup.
+- **`tm_metadata_manager.set_bridged_to_trados(tm_db_id, bridged)`** API method for the toggle handler.
+
+### Why this is in this release on its own
+
+Phase 1 lays the foundation for the **Shared TM bridge** discussed in [Trados #31](https://github.com/Supervertaler/Supervertaler-for-Trados/issues/31). Both Workbench and the Trados plugin already read/write the same `D:\Supervertaler\resources\supervertaler.db` SQLite file (Workbench for everything, Trados for termbases). Workbench's TMs are already in that file too – the Trados plugin just doesn't read them yet. Phase 2 adds a `TmReader.cs` parallel to the existing `TermbaseReader.cs` and a `SupervertalerTmProvider : ITranslationProvider` implementation; once that lands, every TM flagged "Bridge" in Workbench will appear as an attachable translation provider inside Trados Studio.
+
+### Notes
+
+- **No behaviour change today.** The Bridge column is a flag only; nothing reads it yet. Users who flip the toggle will see the UI persist their choice across restarts but won't see anything in Trados until Phase 2 ships.
+- **No data migration of existing TMs.** Every existing TM gets `bridged_to_trados = 0`. Users opt in per TM – this is deliberate so a freelancer with TMs from multiple clients doesn't accidentally expose Client A's TM during a Trados session opened on Client B's project.
+- Phase 2 (Trados-side `ITranslationProvider`) is non-trivial – probably 3–5 hours of focused work for a polished v1, plus another 1–2 hours for write-back in Phase 3. Tracking on the chip rail and against Trados #31.
 
 
 ## v1.10.211 – May 27, 2026

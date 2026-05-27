@@ -133,19 +133,22 @@ class TMMetadataManager:
         try:
             cursor = self.db_manager.cursor
             
-            # Get TM metadata with actual entry counts from translation_units
+            # Get TM metadata with actual entry counts from translation_units.
+            # v1.10.212: added ``bridged_to_trados`` to the projection so the
+            # TMs tab can show the per-TM "visible to Trados" checkbox.
             cursor.execute("""
-                SELECT 
+                SELECT
                     tm.id, tm.name, tm.tm_id, tm.source_lang, tm.target_lang,
                     tm.description, tm.created_date, tm.modified_date, tm.last_used,
                     COUNT(tu.id) as actual_count,
-                    tm.is_project_tm, tm.read_only, tm.project_id
+                    tm.is_project_tm, tm.read_only, tm.project_id,
+                    COALESCE(tm.bridged_to_trados, 0) as bridged_to_trados
                 FROM translation_memories tm
                 LEFT JOIN translation_units tu ON tm.tm_id = tu.tm_id
                 GROUP BY tm.id
                 ORDER BY tm.is_project_tm DESC, tm.name ASC
             """)
-            
+
             tms = []
             for row in cursor.fetchall():
                 tms.append({
@@ -161,7 +164,8 @@ class TMMetadataManager:
                     'entry_count': row[9],
                     'is_project_tm': bool(row[10]) if len(row) > 10 else False,
                     'read_only': bool(row[11]) if len(row) > 11 else False,
-                    'project_id': row[12] if len(row) > 12 else None
+                    'project_id': row[12] if len(row) > 12 else None,
+                    'bridged_to_trados': bool(row[13]) if len(row) > 13 else False,
                 })
             
             return tms
@@ -618,17 +622,48 @@ class TMMetadataManager:
         """Set whether a TM is read-only (cannot be updated)"""
         try:
             cursor = self.db_manager.cursor
-            
+
             cursor.execute("""
-                UPDATE translation_memories 
+                UPDATE translation_memories
                 SET read_only = ?
                 WHERE id = ?
             """, (read_only, tm_db_id))
-            
+
             self.db_manager.connection.commit()
             status = "read-only" if read_only else "writable"
             self.log(f"✓ Set TM {tm_db_id} as {status}")
             return True
         except Exception as e:
             self.log(f"✗ Error setting read-only status: {e}")
+            return False
+
+    def set_bridged_to_trados(self, tm_db_id: int, bridged: bool) -> bool:
+        """Set whether a TM is visible to the Trados plugin (v1.10.212+).
+
+        The Trados plugin reads the shared ``supervertaler.db`` (same file
+        Workbench writes to) and exposes only those TMs whose
+        ``bridged_to_trados`` flag is True as attachable translation
+        providers. Defaults to False for every existing and newly-created
+        TM so a freelancer's existing TM library doesn't suddenly leak
+        across product boundaries on upgrade – users opt in per TM.
+
+        Read-side wiring lands in the Trados plugin in a follow-up
+        release (Phase 2 of Trados issue #31); this Workbench-side flag
+        is the foundation.
+        """
+        try:
+            cursor = self.db_manager.cursor
+
+            cursor.execute("""
+                UPDATE translation_memories
+                SET bridged_to_trados = ?
+                WHERE id = ?
+            """, (1 if bridged else 0, tm_db_id))
+
+            self.db_manager.connection.commit()
+            status = "bridged" if bridged else "not bridged"
+            self.log(f"✓ Set TM {tm_db_id} as {status} (Trados visibility)")
+            return True
+        except Exception as e:
+            self.log(f"✗ Error setting bridged_to_trados status: {e}")
             return False
