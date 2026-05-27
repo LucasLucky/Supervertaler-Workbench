@@ -21,6 +21,14 @@ All notable changes to Supervertaler Workbench are documented in this file.
 - This release contains no functional change for English-only users.
 - For translators: nothing about the workflow on your end changes from v1.10.208 – the `.xlf` files in `translations/` are unchanged, the format is unchanged, the loading logic is unchanged. This release is purely about making sure the next Windows build actually ships the files you'll be working against.
 
+### Added (tooling, dev-only)
+
+- **`tools/merge_template.py`** propagates an updated XLIFF template into every existing locale file while preserving completed translations. Per-release routine is now:
+  1. `python tools/extract_strings.py` – regenerate the template
+  2. `python tools/merge_template.py` – propagate new entries into every locale's `.xlf`, preserving translations that match unchanged source strings
+  3. `git add translations/ && git commit`
+  The merge step drops obsolete entries (source strings that no longer appear in code) and adds new entries as `needs-translation`. Source-string changes count as deletion + addition – existing translations for the *old* form are dropped, the *new* form becomes `needs-translation`.
+
 
 ## v1.10.208 – May 27, 2026
 
