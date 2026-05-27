@@ -2,7 +2,24 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.208 (May 27, 2026)
+**Current Version:** v1.10.209 (May 27, 2026)
+
+
+## v1.10.209 – May 27, 2026
+
+### Added
+
+- **Translation files now ship inside the Windows build.** v1.10.207/208 wired up the i18n system but the `.xlf` files weren't actually included in the PyInstaller bundle – so an end user picking Chinese in Settings → 🌐 Language on a v1.10.208 build would have found no `.xlf` files on disk and silently fallen back to English. Fixed three ways for robustness:
+  - **`Supervertaler.spec`** now includes `('translations', 'translations')` in the `datas` tuple so PyInstaller bundles the folder into the runtime resources path.
+  - **`build_windows_release.ps1`** now also mirrors `translations/` next to `Supervertaler.exe` after the build, so end users (and translators) can see and edit the `.xlf` files without re-extracting the bundled copies. New locales can be added by dropping a `.xlf` into this folder and restarting – no reinstall required.
+  - **`modules/i18n.py` `translations_dir()`** now resolves in three steps: source-tree → next-to-exe → `sys._MEIPASS` (bundled resources). Any combination of the above layouts now finds the files.
+- **Help page: [Language (UI Translation)](https://help.supervertaler.com/workbench/settings/language/)** in the Workbench Settings docs. Covers the Language dropdown, where `.xlf` files live across platforms (Windows / source / macOS), a full XLIFF entry example, per-CAT-tool workflow (Workbench / Trados / memoQ / Phrase / OmegaT / Poedit), troubleshooting, and how partial translation coverage falls through to English. Added to SUMMARY.md between General Settings and View Settings.
+- **F1-help wiring on the Settings → 🌐 Language group.** Pressing F1 with focus inside the group opens the new help page. Topic key: `SETTINGS_LANGUAGE` (`workbench/settings/language/`).
+
+### Notes
+
+- This release contains no functional change for English-only users.
+- For translators: nothing about the workflow on your end changes from v1.10.208 – the `.xlf` files in `translations/` are unchanged, the format is unchanged, the loading logic is unchanged. This release is purely about making sure the next Windows build actually ships the files you'll be working against.
 
 
 ## v1.10.208 – May 27, 2026

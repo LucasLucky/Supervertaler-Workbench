@@ -116,6 +116,21 @@ if (Test-Path "$userDataSrc\voice_scripts") {
   }
 }
 
+# Copy translations/ folder next to the .exe so the Language dropdown
+# in Settings → General finds the .xlf files. v1.10.208+ Workbench i18n.
+# PyInstaller already bundles a copy via the spec file's `datas` (into
+# _internal/translations), but mirroring it next to the exe makes the
+# folder visible to end users — a technically-inclined translator can
+# drop in additional locale .xlf files without re-extracting the bundle.
+Write-Host "=== Copying translations next to the EXE ===" -ForegroundColor Cyan
+if (Test-Path "translations") {
+  Copy-Item -Recurse "translations" "$distDir\translations"
+  $xlfCount = (Get-ChildItem "$distDir\translations" -Filter "*.xlf" | Measure-Object).Count
+  Write-Host "  - Copied translations/ ($xlfCount .xlf files)"
+} else {
+  Write-Host "  - WARNING: translations/ folder missing in source tree" -ForegroundColor Yellow
+}
+
 # Copy Start Menu shortcut creation script + double-clickable wrapper.
 # End users see the friendly "Add Supervertaler to Start Menu.cmd" in the
 # extracted ZIP — double-clicking it runs the .ps1 with -ExecutionPolicy

@@ -110,9 +110,14 @@ TRANSLATION_FILE_SUFFIX = ".xlf"
 def translations_dir() -> Path:
     """Resolve the translations folder regardless of how Workbench is invoked.
 
-    Looks in two places (in order):
+    Looks in (in order):
         1. ``<repo_root>/translations`` for source-tree runs
-        2. ``<exe_dir>/translations`` for PyInstaller bundles
+        2. ``<exe_dir>/translations`` for PyInstaller ONEDIR bundles where
+           the build script copies the folder next to the .exe (the most
+           end-user-discoverable location – translators can drop a new
+           locale's .xlf into this folder without re-running PyInstaller)
+        3. ``<_MEIPASS>/translations`` for PyInstaller-bundled data
+           (the spec file's ``datas`` parameter puts files here)
 
     Returns the first folder that exists. Falls back to the source-tree
     path even when the folder is missing so callers can ``mkdir`` against
@@ -124,13 +129,24 @@ def translations_dir() -> Path:
     if candidate.exists():
         return candidate
 
-    # PyInstaller frozen-exe path: try alongside the exe
     import sys
+
+    # PyInstaller frozen-exe path
     if getattr(sys, "frozen", False):
+        # 1. Next to the .exe (the build script puts a copy here for
+        # end-user visibility – they can drop new .xlf files in
+        # without re-extracting the bundled copies).
         exe_dir = Path(sys.executable).resolve().parent
         bundled = exe_dir / "translations"
         if bundled.exists():
             return bundled
+
+        # 2. Inside _MEIPASS (where the spec file's ``datas`` lands).
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            internal = Path(meipass) / "translations"
+            if internal.exists():
+                return internal
 
     # Default – may not exist yet
     return candidate

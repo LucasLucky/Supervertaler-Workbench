@@ -38,6 +38,13 @@ a = Analysis(
         ('README.md', '.'),
         ('CHANGELOG.md', '.'),
         ('FAQ.md', '.'),
+        # UI translation files (XLIFF 1.2). v1.10.208+ Workbench i18n MVP:
+        # the .xlf files ship inside the bundle so the Language dropdown
+        # in Settings → General finds them. The build script ALSO mirrors
+        # them next to the .exe for end-user discoverability (so a
+        # technically-inclined translator can drop a new locale's .xlf
+        # in without re-running PyInstaller).
+        ('translations', 'translations'),
         # Okapi sidecar (Java-based file filter service)
         ('okapi-sidecar/dist/okapi-sidecar.jar', 'okapi-sidecar'),
         ('okapi-sidecar/dist/jre', 'okapi-sidecar/jre'),
