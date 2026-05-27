@@ -812,8 +812,17 @@ class DatabaseManager:
             overwrite: If True, delete existing entries with same source before inserting
                       (implements "Save only latest translation" mode)
 
-        Returns: ID of inserted/updated entry
+        Returns: ID of inserted/updated entry, or None if rejected/failed
         """
+        # v1.10.213: phantom-TM write guard. Without this, callers that pass
+        # a tm_id whose row no longer exists in translation_memories (e.g.
+        # because the TM was deleted from the tab but a stale activation /
+        # cached id is still floating around) would silently create orphan
+        # rows that the UI can never surface. Refuse the insert instead.
+        if not self._tm_id_exists(tm_id):
+            self.log(f"⚠️ Refusing to add TU: tm_id '{tm_id}' has no row in translation_memories (orphan write blocked)")
+            return None
+
         # Generate hash from NORMALIZED source for consistent exact matching
         # This handles invisible differences like Unicode normalization, whitespace variations
         normalized_source = _normalize_for_matching(source)
@@ -845,6 +854,26 @@ class DatabaseManager:
         except Exception as e:
             self.log(f"Error adding translation unit: {e}")
             return None
+
+    def _tm_id_exists(self, tm_id: str) -> bool:
+        """
+        Cheap existence check on translation_memories.tm_id.
+        Used by add_translation_unit / add_translation_units_batch to refuse
+        writes to phantom TMs (tm_id no longer in metadata).
+        """
+        if not tm_id:
+            return False
+        try:
+            self.cursor.execute(
+                "SELECT 1 FROM translation_memories WHERE tm_id = ? LIMIT 1",
+                (tm_id,)
+            )
+            return self.cursor.fetchone() is not None
+        except Exception:
+            # If the check itself fails, fall back to permissive behaviour –
+            # we'd rather risk an occasional orphan than block a real write
+            # because of a transient cursor problem.
+            return True
     
     def add_translation_units_batch(self, entries: list, source_lang: str,
                                     target_lang: str, tm_id: str = 'project') -> int:
@@ -863,6 +892,13 @@ class DatabaseManager:
         Returns: Number of entries inserted
         """
         if not entries:
+            return 0
+
+        # v1.10.213: same phantom-TM guard as add_translation_unit. Check
+        # once up-front rather than per-row – a batch always writes to a
+        # single tm_id, so one existence check suffices.
+        if not self._tm_id_exists(tm_id):
+            self.log(f"⚠️ Refusing batch insert: tm_id '{tm_id}' has no row in translation_memories (orphan write blocked)")
             return 0
 
         inserted = 0

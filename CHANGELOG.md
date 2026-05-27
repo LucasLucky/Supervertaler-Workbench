@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.212 (May 27, 2026)
+**Current Version:** v1.10.213 (May 27, 2026)
+
+
+## v1.10.213 – May 27, 2026
+
+### Fixed (three TM bugs surfaced while a user was actively translating)
+
+- **Bulk "Update Active TMs" / segment-confirm now invalidates the match-panel cache.** After a bulk write to a TM, the in-memory `translation_matches_cache` was not cleared. Segments the translator had already navigated to continued to show their *pre-write* match set – so newly-confirmed translations did not appear as matches until the project was closed and reopened. `send_segments_to_tm_dialog` now calls `invalidate_translation_cache(smart_invalidation=False)` after the write loop.
+- **Belt-and-braces guard against writes to phantom TMs.** `database_manager.add_translation_unit` and `add_translation_units_batch` now check that the target `tm_id` exists in `translation_memories` before inserting; orphan writes are refused with a log warning instead of silently creating rows the UI can never surface. Closes off a class of failure that put thousands of TUs under tm_ids the user could not see in the TMs tab.
+- **Project load no longer silently flips global Write toggles.** `translation_memories.read_only` is a *global* column (per-TM, not per-project), but the project-load code was eagerly re-applying each project's saved `tm_read_only_status` via `set_read_only` whenever the project opened – so opening project B silently inverted the Write state on any shared TM that project A had saved differently. The restore code now warns when the saved state disagrees with the current global state, leaves the global state alone, and lets the user decide via the TMs tab.
+
+### Known caveats from the fix
+
+- The "Write" toggle is still a global per-TM flag in this release. Per-project Write needs a proper schema change (move `read_only` to `tm_activation`) and isn't in v1.10.213 – the change here just stops the silent overwriting on project load, which was the actual symptom users were hitting. Per-project Write will land in a later release.
+- Any TUs already written to phantom TMs (orphan tm_ids with no row in `translation_memories`) remain in the DB. A one-time cleanup utility may ship in a later release; in the meantime they're inaccessible from the UI but harmless.
 
 
 ## v1.10.212 – May 27, 2026

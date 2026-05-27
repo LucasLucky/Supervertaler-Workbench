@@ -29359,19 +29359,36 @@ class SupervertalerQt(QMainWindow):
                     if hasattr(self.current_project, 'tm_settings') and self.current_project.tm_settings:
                         activated_tm_ids = self.current_project.tm_settings.get('activated_tm_ids', [])
                         if activated_tm_ids:
-                            # Activate the saved TMs and restore read_only status
+                            # v1.10.213: do NOT auto-apply saved read_only.
+                            # translation_memories.read_only is a GLOBAL column
+                            # (per-TM, not per-project). Re-applying it on
+                            # every project load silently flipped a user's
+                            # Write toggles whenever they switched between
+                            # projects that had saved different states for
+                            # the same shared TM. Activation (Read) is fine
+                            # to restore – it's already per-project. Just
+                            # warn if the saved Write disagrees with the
+                            # current global state so the user can notice.
                             tm_read_only_status = self.current_project.tm_settings.get('tm_read_only_status', {})
                             for tm_id in activated_tm_ids:
                                 # Find TM by tm_id (not db id)
                                 tm = next((t for t in all_tms if t['tm_id'] == tm_id), None)
                                 if tm:
                                     self.tm_metadata_mgr.activate_tm(tm['id'], project_id)
-                                    # Restore read_only status if saved
                                     if tm_id in tm_read_only_status:
-                                        read_only = tm_read_only_status[tm_id]
-                                        self.tm_metadata_mgr.set_read_only(tm['id'], read_only)
-                                        status = "read-only" if read_only else "writable"
-                                        self.log(f"✓ Restored TM: {tm['name']} (activated, {status})")
+                                        saved_ro = bool(tm_read_only_status[tm_id])
+                                        current_ro = bool(tm.get('read_only', False))
+                                        if saved_ro != current_ro:
+                                            saved_label = "read-only" if saved_ro else "writable"
+                                            current_label = "read-only" if current_ro else "writable"
+                                            self.log(
+                                                f"ℹ️ Restored activated TM: {tm['name']} "
+                                                f"(project saved {saved_label}, current global is {current_label}; "
+                                                f"keeping global – set Write manually in the TMs tab if you want it different)"
+                                            )
+                                        else:
+                                            status = "read-only" if current_ro else "writable"
+                                            self.log(f"✓ Restored TM: {tm['name']} (activated, {status})")
                                     else:
                                         self.log(f"✓ Restored activated TM: {tm['name']}")
                                 else:
@@ -45868,7 +45885,21 @@ class SupervertalerQt(QMainWindow):
                 self.refresh_tm_list()
             except:
                 pass
-        
+
+        # v1.10.213: invalidate the match-panel cache so the newly-written
+        # TUs surface as matches without needing a project reopen. The bulk
+        # write commits to SQLite but the in-memory translation_matches_cache
+        # is segment-keyed and stale – without this call, segments the user
+        # already visited continue to show their pre-bulk-write match set.
+        # Full invalidation (smart_invalidation=False) – cheaper than
+        # walking the cache, and a bulk write usually touches enough
+        # segments to make a partial clear pointless.
+        if hasattr(self, 'invalidate_translation_cache'):
+            try:
+                self.invalidate_translation_cache(smart_invalidation=False)
+            except Exception as e:
+                self.log(f"⚠ Could not invalidate match cache: {e}")
+
         # Report results
         self.log(f"✓ Sent {sent_count} segments to TM '{target_tm_name}'")
         if skipped_count > 0:
