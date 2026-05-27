@@ -857,16 +857,26 @@ class DatabaseManager:
 
     def _tm_id_exists(self, tm_id: str) -> bool:
         """
-        Cheap existence check on translation_memories.tm_id.
+        Cheap existence check on translation_memories.
         Used by add_translation_unit / add_translation_units_batch to refuse
-        writes to phantom TMs (tm_id no longer in metadata).
+        writes to phantom TMs.
+
+        v1.10.214: the codebase carries TWO tm_id conventions in active use:
+          - string tm_id like 'patents' / 'brants_ursu_008_be_ep'
+            (save-on-confirm path passes this form)
+          - integer PK of translation_memories stringified, like '42' / '86'
+            (bulk "Update Active TMs" path passes THIS form, because its
+            dropdown stores translation_memories.id as the combo data)
+        Both forms are legitimate; rejecting one of them broke real writes
+        in v1.10.213. We accept either.
         """
         if not tm_id:
             return False
         try:
             self.cursor.execute(
-                "SELECT 1 FROM translation_memories WHERE tm_id = ? LIMIT 1",
-                (tm_id,)
+                "SELECT 1 FROM translation_memories "
+                "WHERE tm_id = ? OR CAST(id AS TEXT) = ? LIMIT 1",
+                (tm_id, tm_id)
             )
             return self.cursor.fetchone() is not None
         except Exception:

@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.213 (May 27, 2026)
+**Current Version:** v1.10.214 (May 27, 2026)
+
+
+## v1.10.214 – May 27, 2026
+
+### Fixed (hotfix: v1.10.213's phantom-write guard was rejecting real writes)
+
+- **`_tm_id_exists` now accepts both tm_id conventions in the codebase.** The guard introduced in v1.10.213 only matched `translation_memories.tm_id` (the string identifier, e.g. `'patents'`), so it rejected every write from the bulk "Update Active TMs" path – which passes `translation_memories.id` stringified (e.g. `'42'` for PATENTS, `'86'` for BRANTS) because its dropdown stores the integer PK as the combo data. Users who ran a bulk update on v1.10.213 saw a flood of `⚠️ Refusing to add TU: tm_id '42' ...` warnings and zero rows actually written, even though the success banner reported "Sent N segments". The guard now matches `tm_id = ? OR CAST(id AS TEXT) = ?` so either form passes.
+
+### Postmortem note
+
+- v1.10.213's accompanying one-off DB cleanup (`DELETE FROM translation_units WHERE tm_id NOT IN (SELECT tm_id FROM translation_memories)`) was based on the same misdiagnosis and deleted **legitimate** TUs stored under the integer-PK-as-string convention. Affected users with a `supervertaler.db.backup-*` snapshot can roll back; future versions will normalise the two conventions instead of treating one as orphan.
 
 
 ## v1.10.213 – May 27, 2026
