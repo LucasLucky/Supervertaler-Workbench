@@ -45718,8 +45718,16 @@ class SupervertalerQt(QMainWindow):
         tm_combo = QComboBox()
         for tm in writable_tms:
             entry_count = tm.get('entry_count', 0)
-            tm_combo.addItem(f"{tm['name']} ({entry_count} entries)", tm['id'])
-        
+            # v1.10.215: store the STRING tm_id (e.g. 'patents') as combo data,
+            # not the integer PK (`tm['id']`, e.g. 86). The match-panel read
+            # path queries translation_units by string tm_id; writing under
+            # the integer-PK form makes the bulk-written rows invisible to it.
+            # Same bug surfaced as "segment 306 won't show TM matches even
+            # after Update Active TMs" – the row existed, just under the
+            # wrong key. update_entry_count and add_translation_unit both
+            # expect the string form, so this aligns the entire write path.
+            tm_combo.addItem(f"{tm['name']} ({entry_count} entries)", tm['tm_id'])
+
         tm_layout.addWidget(tm_combo)
         
         # Note about multiple writable TMs

@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.214 (May 27, 2026)
+**Current Version:** v1.10.215 (May 27, 2026)
+
+
+## v1.10.215 – May 27, 2026
+
+### Fixed (Update Active TMs: write key now matches read key)
+
+- **The "Target Translation Memory" dropdown in `Bulk Operations → Update Active TMs` now stores the string `tm_id` as combo data, not the integer primary key.** Old behaviour: combo data was `tm['id']` (e.g. `86` for BRANTS), which got passed straight through to `add_translation_unit(tm_id=...)` and stored as `translation_units.tm_id = '86'`. The match panel queries by string tm_id (e.g. `'brants_ursu_008_be_ep'`), so bulk-written rows ended up under a key the read path never asked about – visible in the DB, invisible in the editor. The symptom that surfaced this: a segment confirmed *before* save-on-confirm wired up to write to both attached TMs had its target-TM row created **only** by today's bulk run, under the integer-PK form, and therefore showed `(No TM match)` in the match panel even though Update Active TMs reported success. New writes correctly target the string-form key and `update_entry_count` (which also expects the string form) now updates the metadata count accurately.
+- **Note:** rows already written under the integer-PK form by previous builds remain in the DB (still readable; just keyed differently). Re-running Update Active TMs after upgrading writes the canonical string-keyed copy alongside.
 
 
 ## v1.10.214 – May 27, 2026
