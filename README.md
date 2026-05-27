@@ -76,6 +76,19 @@ python Supervertaler.py
 - [Request features](https://github.com/orgs/Supervertaler/discussions)
 - [Contributing guide](CONTRIBUTING.md)
 
+### Translations
+
+Supervertaler Workbench has an early-stage i18n system (v1.10.207+). The menu bar, Settings tabs, and key group titles are translatable; dialog bodies and error messages remain in English for now.
+
+| Locale  | Language                          | Status                |
+| ------- | --------------------------------- | --------------------- |
+| `en`    | English                           | source language       |
+| `zh_CN` | 简体中文 — Simplified Chinese     | scaffold (sanity-translated samples) |
+| `zh_TW` | 繁體中文 — Traditional Chinese    | scaffold (untranslated) |
+| `pl`    | Polski — Polish                   | scaffold (untranslated) |
+
+Want to contribute a translation? See [`translations/TRANSLATING.md`](translations/TRANSLATING.md). The workflow is: open the locale's `.ts` in Qt Linguist, translate, send a PR. No build step on your end.
+
 ---
 
 ## About

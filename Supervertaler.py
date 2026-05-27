@@ -9695,44 +9695,44 @@ class SupervertalerQt(QMainWindow):
         # source docs into the project / export the translated project),
         # not on bare files. "&Project" matches the user's mental model.
         # Variable name kept as file_menu to minimise patch surface.
-        file_menu = menubar.addMenu("&Project")
-        
-        new_action = QAction("&New Project", self)
+        file_menu = menubar.addMenu(self.tr("&Project"))
+
+        new_action = QAction(self.tr("&New Project"), self)
         new_action.setShortcut(QKeySequence.StandardKey.New)
         new_action.triggered.connect(self.new_project)
         file_menu.addAction(new_action)
-        
-        open_action = QAction("&Open Project...", self)
+
+        open_action = QAction(self.tr("&Open Project..."), self)
         open_action.setShortcut(QKeySequence.StandardKey.Open)
         open_action.triggered.connect(self.open_project)
         file_menu.addAction(open_action)
-        
+
         # Recent projects submenu
-        self.recent_menu = file_menu.addMenu("Open &Recent")
+        self.recent_menu = file_menu.addMenu(self.tr("Open &Recent"))
         self.update_recent_menu()
-        
+
         file_menu.addSeparator()
-        
-        save_action = QAction("&Save", self)
+
+        save_action = QAction(self.tr("&Save"), self)
         save_action.setShortcut(QKeySequence.StandardKey.Save)
         save_action.triggered.connect(self.save_project)
         file_menu.addAction(save_action)
-        
-        save_as_action = QAction("Save &As...", self)
+
+        save_as_action = QAction(self.tr("Save &As..."), self)
         # No keyboard shortcut - Ctrl+Shift+S is used for Copy Source to Target in editor
         save_as_action.triggered.connect(self.save_project_as)
         file_menu.addAction(save_as_action)
-        
+
         file_menu.addSeparator()
-        
-        close_action = QAction("&Close Project", self)
+
+        close_action = QAction(self.tr("&Close Project"), self)
         close_action.triggered.connect(self.close_project)
         file_menu.addAction(close_action)
-        
+
         file_menu.addSeparator()
-        
+
         # Import/Export submenu
-        import_menu = file_menu.addMenu("&Import")
+        import_menu = file_menu.addMenu(self.tr("&Import"))
         
         # v1.10.53: collapsed the previous two-item split (DOCX vs "Other
         # format via Okapi") into one. Every supported format goes through
@@ -9740,81 +9740,81 @@ class SupervertalerQt(QMainWindow):
         # from when there used to be two engines. The file picker accepts
         # DOCX, IDML, HTML, XLIFF, PO, XLSX, and PPTX with an "All
         # supported formats" default filter.
-        import_document_action = QAction("&Import Document...", self)
-        import_document_action.setToolTip(
+        import_document_action = QAction(self.tr("&Import Document..."), self)
+        import_document_action.setToolTip(self.tr(
             "Import a Word document (DOCX), Adobe InDesign markup (IDML), "
             "HTML, XLIFF, PO, Excel (XLSX), or PowerPoint (PPTX). Extracted "
             "via the Okapi sidecar; round-trips back to the original format "
             "on export."
-        )
+        ))
         import_document_action.triggered.connect(self.import_document)
         import_document_action.setShortcut("Ctrl+O")
         import_menu.addAction(import_document_action)
 
-        import_txt_action = QAction("&Text / Markdown File (TXT, MD)...", self)
+        import_txt_action = QAction(self.tr("&Text / Markdown File (TXT, MD)..."), self)
         import_txt_action.triggered.connect(self.import_simple_txt)
         import_menu.addAction(import_txt_action)
-        
+
         import_menu.addSeparator()
-        
+
         # Multi-file folder import
-        import_folder_action = QAction("📁 &Folder (Multiple Files)...", self)
+        import_folder_action = QAction(self.tr("📁 &Folder (Multiple Files)..."), self)
         import_folder_action.triggered.connect(self.import_folder_multifile)
         import_menu.addAction(import_folder_action)
-        
-        import_menu.addSeparator()  # Separate monolingual from bilingual tools
-        
-        # memoQ submenu - group all memoQ imports together
-        memoq_submenu = import_menu.addMenu("&memoQ")
 
-        import_memoq_action = QAction("Bilingual Table (&DOCX)...", self)
+        import_menu.addSeparator()  # Separate monolingual from bilingual tools
+
+        # memoQ submenu - group all memoQ imports together
+        memoq_submenu = import_menu.addMenu(self.tr("&memoQ"))
+
+        import_memoq_action = QAction(self.tr("Bilingual Table (&DOCX)..."), self)
         import_memoq_action.triggered.connect(self.import_memoq_bilingual)
         memoq_submenu.addAction(import_memoq_action)
 
-        import_memoq_rtf_action = QAction("Bilingual Table (&RTF)...", self)
+        import_memoq_rtf_action = QAction(self.tr("Bilingual Table (&RTF)..."), self)
         import_memoq_rtf_action.triggered.connect(self.import_memoq_rtf)
         memoq_submenu.addAction(import_memoq_rtf_action)
 
-        import_memoq_xliff_action = QAction("&XLIFF (.mqxliff)...", self)
+        import_memoq_xliff_action = QAction(self.tr("&XLIFF (.mqxliff)..."), self)
         import_memoq_xliff_action.triggered.connect(self.import_memoq_xliff)
         memoq_submenu.addAction(import_memoq_xliff_action)
-        
-        import_cafetran_action = QAction("&CafeTran Bilingual Table (DOCX)...", self)
+
+        import_cafetran_action = QAction(self.tr("&CafeTran Bilingual Table (DOCX)..."), self)
         import_cafetran_action.triggered.connect(self.import_cafetran_bilingual)
         import_menu.addAction(import_cafetran_action)
-        
-        # Trados submenu - group all Trados imports together
-        trados_submenu = import_menu.addMenu("&Trados Studio")
 
-        import_trados_bilingual_action = QAction("Bilingual &Review (DOCX)...", self)
+        # Trados submenu - group all Trados imports together
+        trados_submenu = import_menu.addMenu(self.tr("&Trados Studio"))
+
+        import_trados_bilingual_action = QAction(self.tr("Bilingual &Review (DOCX)..."), self)
         import_trados_bilingual_action.triggered.connect(self.import_trados_bilingual)
         trados_submenu.addAction(import_trados_bilingual_action)
 
-        import_sdlxliff_action = QAction("Bilingual &XLIFF (.sdlxliff)...", self)
+        import_sdlxliff_action = QAction(self.tr("Bilingual &XLIFF (.sdlxliff)..."), self)
         import_sdlxliff_action.triggered.connect(self.import_standalone_sdlxliff)
         trados_submenu.addAction(import_sdlxliff_action)
 
-        import_sdlxliff_folder_action = QAction("Bilingual XLIFF &Folder (.sdlxliff)...", self)
+        import_sdlxliff_folder_action = QAction(self.tr("Bilingual XLIFF &Folder (.sdlxliff)..."), self)
         import_sdlxliff_folder_action.triggered.connect(self.import_sdlxliff_folder)
         trados_submenu.addAction(import_sdlxliff_folder_action)
 
-        import_sdlppx_action = QAction("&Package (SDLPPX)...", self)
+        import_sdlppx_action = QAction(self.tr("&Package (SDLPPX)..."), self)
         import_sdlppx_action.triggered.connect(self.import_sdlppx_package)
         trados_submenu.addAction(import_sdlppx_action)
 
         # Phrase (Memsource) import
-        import_phrase_bilingual_action = QAction("&Phrase (Memsource) Bilingual (DOCX)...", self)
+        import_phrase_bilingual_action = QAction(self.tr("&Phrase (Memsource) Bilingual (DOCX)..."), self)
         import_phrase_bilingual_action.triggered.connect(self.import_phrase_bilingual)
         import_menu.addAction(import_phrase_bilingual_action)
 
         # Déjà Vu X3 import
-        import_dejavu_action = QAction("&Déjà Vu X3 Bilingual (RTF)...", self)
+        import_dejavu_action = QAction(self.tr("&Déjà Vu X3 Bilingual (RTF)..."), self)
         import_dejavu_action.triggered.connect(self.import_dejavu_bilingual)
         import_menu.addAction(import_dejavu_action)
 
         import_menu.addSeparator()
-        
-        import_review_table_action = QAction("&Bilingual Table (DOCX) - Update Project...", self)
+
+        import_review_table_action = QAction(self.tr("&Bilingual Table (DOCX) - Update Project..."), self)
         import_review_table_action.triggered.connect(self.import_review_table)
         import_menu.addAction(import_review_table_action)
 
@@ -9822,12 +9822,12 @@ class SupervertalerQt(QMainWindow):
         # from a menu (no dialog), so the standard set_help_topic "?" badge
         # has nowhere to live – this entry is the closest substitute.
         import_menu.addSeparator()
-        import_help_action = QAction("❓ Supported file formats (online help)...", self)
-        import_help_action.setToolTip("Open the Supported File Formats reference in your browser")
+        import_help_action = QAction(self.tr("❓ Supported file formats (online help)..."), self)
+        import_help_action.setToolTip(self.tr("Open the Supported File Formats reference in your browser"))
         import_help_action.triggered.connect(lambda: open_help(HelpTopics.IMPORT_FORMATS))
         import_menu.addAction(import_help_action)
 
-        export_menu = file_menu.addMenu("&Export")
+        export_menu = file_menu.addMenu(self.tr("&Export"))
 
         # v1.10.53: collapsed the previous two-item split ("Target Only
         # (DOCX)" vs "Original format via Okapi") into one. The dispatcher
@@ -9836,162 +9836,162 @@ class SupervertalerQt(QMainWindow):
         # is itself Okapi-aware with a python-docx fallback); non-DOCX
         # Okapi-origin projects (IDML, HTML, …) round-trip via the Okapi
         # merge endpoint. Output file extension defaults to the original's.
-        export_document_action = QAction("&Export Translated Document...", self)
-        export_document_action.setToolTip(
+        export_document_action = QAction(self.tr("&Export Translated Document..."), self)
+        export_document_action.setToolTip(self.tr(
             "Export the translation back to a document. Output format is "
             "the same as the original source (DOCX → DOCX, IDML → IDML, "
             "etc.). Uses the Okapi sidecar to preserve formatting."
-        )
+        ))
         export_document_action.triggered.connect(self.export_document)
         export_menu.addAction(export_document_action)
 
-        export_txt_action = QAction("Simple &Text File - Translated (TXT)...", self)
+        export_txt_action = QAction(self.tr("Simple &Text File - Translated (TXT)..."), self)
         export_txt_action.triggered.connect(self.export_simple_txt)
         export_menu.addAction(export_txt_action)
 
-        ai_export_submenu = export_menu.addMenu("📄 &AI-Readable Markdown")
+        ai_export_submenu = export_menu.addMenu(self.tr("📄 &AI-Readable Markdown"))
 
-        export_ai_table_action = QAction("Markdown &Table...", self)
+        export_ai_table_action = QAction(self.tr("Markdown &Table..."), self)
         export_ai_table_action.triggered.connect(self.export_bilingual_table_markdown)
-        export_ai_table_action.setToolTip("Export segments as a bilingual Markdown table for AI translation/review")
+        export_ai_table_action.setToolTip(self.tr("Export segments as a bilingual Markdown table for AI translation/review"))
         ai_export_submenu.addAction(export_ai_table_action)
 
-        export_ai_segment_action = QAction("Labelled &Segments...", self)
+        export_ai_segment_action = QAction(self.tr("Labelled &Segments..."), self)
         export_ai_segment_action.triggered.connect(self.export_for_ai)
-        export_ai_segment_action.setToolTip("Export segments in [SEGMENT] format with language-labelled lines for AI translation/review")
+        export_ai_segment_action.setToolTip(self.tr("Export segments in [SEGMENT] format with language-labelled lines for AI translation/review"))
         ai_export_submenu.addAction(export_ai_segment_action)
 
         export_menu.addSeparator()
 
         # memoQ submenu - group all memoQ exports together
-        memoq_export_submenu = export_menu.addMenu("&memoQ")
+        memoq_export_submenu = export_menu.addMenu(self.tr("&memoQ"))
 
-        export_memoq_action = QAction("Bilingual Table - Translated (&DOCX)...", self)
+        export_memoq_action = QAction(self.tr("Bilingual Table - Translated (&DOCX)..."), self)
         export_memoq_action.triggered.connect(self.export_memoq_bilingual)
         memoq_export_submenu.addAction(export_memoq_action)
 
-        export_memoq_rtf_action = QAction("Bilingual Table - Translated (&RTF)...", self)
+        export_memoq_rtf_action = QAction(self.tr("Bilingual Table - Translated (&RTF)..."), self)
         export_memoq_rtf_action.triggered.connect(self.export_memoq_rtf)
         memoq_export_submenu.addAction(export_memoq_rtf_action)
 
-        export_memoq_xliff_action = QAction("&XLIFF - Translated (.mqxliff)...", self)
+        export_memoq_xliff_action = QAction(self.tr("&XLIFF - Translated (.mqxliff)..."), self)
         export_memoq_xliff_action.triggered.connect(self.export_memoq_xliff)
         memoq_export_submenu.addAction(export_memoq_xliff_action)
 
-        export_cafetran_action = QAction("&CafeTran Bilingual Table - Translated (DOCX)...", self)
+        export_cafetran_action = QAction(self.tr("&CafeTran Bilingual Table - Translated (DOCX)..."), self)
         export_cafetran_action.triggered.connect(self.export_cafetran_bilingual)
         export_menu.addAction(export_cafetran_action)
 
         # Trados submenu - group all Trados exports together
-        trados_export_submenu = export_menu.addMenu("&Trados Studio")
+        trados_export_submenu = export_menu.addMenu(self.tr("&Trados Studio"))
 
-        export_trados_bilingual_action = QAction("Bilingual &Review - Translated (DOCX)...", self)
+        export_trados_bilingual_action = QAction(self.tr("Bilingual &Review - Translated (DOCX)..."), self)
         export_trados_bilingual_action.triggered.connect(self.export_trados_bilingual)
         trados_export_submenu.addAction(export_trados_bilingual_action)
 
-        export_sdlxliff_action = QAction("Bilingual &XLIFF - Translated (.sdlxliff)...", self)
+        export_sdlxliff_action = QAction(self.tr("Bilingual &XLIFF - Translated (.sdlxliff)..."), self)
         export_sdlxliff_action.triggered.connect(self.export_standalone_sdlxliff)
         trados_export_submenu.addAction(export_sdlxliff_action)
 
-        export_sdlrpx_action = QAction("Return &Package (SDLRPX)...", self)
+        export_sdlrpx_action = QAction(self.tr("Return &Package (SDLRPX)..."), self)
         export_sdlrpx_action.triggered.connect(self.export_sdlrpx_package)
         trados_export_submenu.addAction(export_sdlrpx_action)
 
         # Phrase (Memsource) export
-        export_phrase_bilingual_action = QAction("&Phrase (Memsource) Bilingual - Translated (DOCX)...", self)
+        export_phrase_bilingual_action = QAction(self.tr("&Phrase (Memsource) Bilingual - Translated (DOCX)..."), self)
         export_phrase_bilingual_action.triggered.connect(self.export_phrase_bilingual)
         export_menu.addAction(export_phrase_bilingual_action)
 
         # Déjà Vu X3 export
-        export_dejavu_action = QAction("&Déjà Vu X3 Bilingual - Translated (RTF)...", self)
+        export_dejavu_action = QAction(self.tr("&Déjà Vu X3 Bilingual - Translated (RTF)..."), self)
         export_dejavu_action.triggered.connect(self.export_dejavu_bilingual)
         export_menu.addAction(export_dejavu_action)
 
         export_menu.addSeparator()
-        
+
         # Multi-file folder export
-        export_folder_action = QAction("📁 &Folder (Multiple Files)...", self)
+        export_folder_action = QAction(self.tr("📁 &Folder (Multiple Files)..."), self)
         export_folder_action.triggered.connect(self.export_folder_multifile)
-        export_folder_action.setToolTip("Export multi-file project to folder with separate files")
+        export_folder_action.setToolTip(self.tr("Export multi-file project to folder with separate files"))
         export_menu.addAction(export_folder_action)
-        
+
         export_menu.addSeparator()
-        
+
         # Relocate source folder for multi-file projects
-        relocate_source_action = QAction("🔗 &Relocate Source Folder...", self)
+        relocate_source_action = QAction(self.tr("🔗 &Relocate Source Folder..."), self)
         relocate_source_action.triggered.connect(self.relocate_source_folder)
-        relocate_source_action.setToolTip("Repoint to moved/renamed source folder for multi-file project")
+        relocate_source_action.setToolTip(self.tr("Repoint to moved/renamed source folder for multi-file project"))
         export_menu.addAction(relocate_source_action)
-        
+
         export_menu.addSeparator()
-        
+
         # Supervertaler Bilingual Table exports
-        export_review_table_action = QAction("Supervertaler Bilingual Table - With &Tags (DOCX)...", self)
+        export_review_table_action = QAction(self.tr("Supervertaler Bilingual Table - With &Tags (DOCX)..."), self)
         export_review_table_action.triggered.connect(self.export_review_table_with_tags)
         export_menu.addAction(export_review_table_action)
-        
-        export_review_table_formatted_action = QAction("Supervertaler Bilingual Table - &Formatted (DOCX)...", self)
+
+        export_review_table_formatted_action = QAction(self.tr("Supervertaler Bilingual Table - &Formatted (DOCX)..."), self)
         export_review_table_formatted_action.triggered.connect(self.export_review_table_formatted)
         export_menu.addAction(export_review_table_formatted_action)
-        
+
         export_menu.addSeparator()
-        
-        export_grid_action = QAction("TMX from &Grid (all segments)...", self)
+
+        export_grid_action = QAction(self.tr("TMX from &Grid (all segments)..."), self)
         export_grid_action.triggered.connect(self.export_tmx_from_grid)
         export_menu.addAction(export_grid_action)
-        
-        export_selected_action = QAction("TMX from &Selected Segments...", self)
+
+        export_selected_action = QAction(self.tr("TMX from &Selected Segments..."), self)
         export_selected_action.triggered.connect(self.export_tmx_from_selected)
         export_menu.addAction(export_selected_action)
-        
-        export_tm_action = QAction("TMX from &TM(s) for Current Project...", self)
+
+        export_tm_action = QAction(self.tr("TMX from &TM(s) for Current Project..."), self)
         export_tm_action.triggered.connect(self.export_tmx_from_tm_database)
         export_menu.addAction(export_tm_action)
 
         # Help link at the foot of the Export submenu (mirrors Import).
         export_menu.addSeparator()
-        export_help_action = QAction("❓ Supported file formats (online help)...", self)
-        export_help_action.setToolTip("Open the Supported File Formats reference in your browser")
+        export_help_action = QAction(self.tr("❓ Supported file formats (online help)..."), self)
+        export_help_action.setToolTip(self.tr("Open the Supported File Formats reference in your browser"))
         export_help_action.triggered.connect(lambda: open_help(HelpTopics.IMPORT_FORMATS))
         export_menu.addAction(export_help_action)
 
         file_menu.addSeparator()
-        
+
         # Project Info
-        project_info_action = QAction("📋 Project &Info...", self)
+        project_info_action = QAction(self.tr("📋 Project &Info..."), self)
         project_info_action.triggered.connect(self.show_project_info_dialog)
         file_menu.addAction(project_info_action)
-        
+
         file_menu.addSeparator()
-        
-        exit_action = QAction("E&xit", self)
+
+        exit_action = QAction(self.tr("E&xit"), self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
-        
+
         # Edit Menu
-        edit_menu = menubar.addMenu("&Edit")
-        
-        self.undo_action = QAction("&Undo", self)
+        edit_menu = menubar.addMenu(self.tr("&Edit"))
+
+        self.undo_action = QAction(self.tr("&Undo"), self)
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self.undo_action.triggered.connect(self.undo_action_handler)
         self.undo_action.setEnabled(False)
         edit_menu.addAction(self.undo_action)
-        
-        self.redo_action = QAction("&Redo", self)
+
+        self.redo_action = QAction(self.tr("&Redo"), self)
         self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self.redo_action.triggered.connect(self.redo_action_handler)
         self.redo_action.setEnabled(False)
         edit_menu.addAction(self.redo_action)
-        
+
         edit_menu.addSeparator()
-        
-        find_action = QAction("&Find...", self)
+
+        find_action = QAction(self.tr("&Find..."), self)
         find_action.setShortcut(QKeySequence.StandardKey.Find)
         find_action.triggered.connect(self.show_find_replace_dialog)
         edit_menu.addAction(find_action)
-        
-        replace_action = QAction("&Replace...", self)
+
+        replace_action = QAction(self.tr("&Replace..."), self)
         replace_action.setShortcut(QKeySequence.StandardKey.Replace)
         replace_action.triggered.connect(self.show_find_replace_dialog)
         edit_menu.addAction(replace_action)
@@ -10004,62 +10004,62 @@ class SupervertalerQt(QMainWindow):
         
         edit_menu.addSeparator()
         
-        translate_action = QAction("&Translate Segment", self)
+        translate_action = QAction(self.tr("&Translate Segment"), self)
         translate_action.setShortcut("Ctrl+T")
         translate_action.triggered.connect(self.translate_current_segment)
         edit_menu.addAction(translate_action)
 
-        translate_menu = edit_menu.addMenu("Batch &Translate")
+        translate_menu = edit_menu.addMenu(self.tr("Batch &Translate"))
 
-        translate_selected_not_started_action = QAction("Translate selected not-started segments", self)
+        translate_selected_not_started_action = QAction(self.tr("Translate selected not-started segments"), self)
         translate_selected_not_started_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("selected_not_started")
         )
         translate_menu.addAction(translate_selected_not_started_action)
 
-        translate_all_not_started_action = QAction("Translate all not-started segments", self)
+        translate_all_not_started_action = QAction(self.tr("Translate all not-started segments"), self)
         translate_all_not_started_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_not_started")
         )
         translate_menu.addAction(translate_all_not_started_action)
 
-        translate_all_pretranslated_action = QAction("Translate all pre-translated segments", self)
+        translate_all_pretranslated_action = QAction(self.tr("Translate all pre-translated segments"), self)
         translate_all_pretranslated_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_pretranslated")
         )
         translate_menu.addAction(translate_all_pretranslated_action)
 
-        translate_pending_action = QAction("Translate all not-started & pre-translated", self)
+        translate_pending_action = QAction(self.tr("Translate all not-started & pre-translated"), self)
         translate_pending_action.setShortcut("Ctrl+Shift+T")
         translate_pending_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_not_started_pretranslated")
         )
         translate_menu.addAction(translate_pending_action)
 
-        translate_translatable_action = QAction("Translate all translatable segments", self)
+        translate_translatable_action = QAction(self.tr("Translate all translatable segments"), self)
         translate_translatable_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_translatable")
         )
         translate_menu.addAction(translate_translatable_action)
 
-        translate_all_segments_action = QAction("Translate all segments (all statuses)", self)
+        translate_all_segments_action = QAction(self.tr("Translate all segments (all statuses)"), self)
         translate_all_segments_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_segments")
         )
         translate_menu.addAction(translate_all_segments_action)
-        
+
         translate_menu.addSeparator()
-        
+
         # NEW: Translate only empty segments (for re-running failed batches)
-        translate_empty_action = QAction("Translate all empty segments", self)
-        translate_empty_action.setToolTip("Translate segments with empty target (useful after partial batch translation)")
+        translate_empty_action = QAction(self.tr("Translate all empty segments"), self)
+        translate_empty_action.setToolTip(self.tr("Translate segments with empty target (useful after partial batch translation)"))
         translate_empty_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_empty")
         )
         translate_menu.addAction(translate_empty_action)
-        
-        translate_filtered_action = QAction("Translate all filtered segments", self)
-        translate_filtered_action.setToolTip("Translate only segments currently visible after filtering")
+
+        translate_filtered_action = QAction(self.tr("Translate all filtered segments"), self)
+        translate_filtered_action.setToolTip(self.tr("Translate only segments currently visible after filtering"))
         translate_filtered_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("filtered_segments")
         )
@@ -10071,11 +10071,11 @@ class SupervertalerQt(QMainWindow):
         # between Edit and View for discoverability (e.g. "Update Active TM(s)"
         # was previously three levels deep). Created here (before the View menu
         # is added) so it lands right after Edit in the menubar.
-        self.bulk_menu = menubar.addMenu("&Bulk Operations")
+        self.bulk_menu = menubar.addMenu(self.tr("&Bulk Operations"))
         self.bulk_menu.aboutToShow.connect(self._update_bulk_menu_label)
         bulk_menu = self.bulk_menu
 
-        confirm_selected_action = QAction("✅ &Confirm Selected Segments", self)
+        confirm_selected_action = QAction(self.tr("✅ &Confirm Selected Segments"), self)
         confirm_selected_action.setShortcut("Ctrl+Shift+Return")
         confirm_selected_action.setToolTip(
             f"Confirm all selected segments ({format_shortcut_for_display('Ctrl+Shift+Enter')})"
@@ -10084,62 +10084,62 @@ class SupervertalerQt(QMainWindow):
         bulk_menu.addAction(confirm_selected_action)
 
         # Change Status submenu
-        status_submenu = bulk_menu.addMenu("🏷️ Change &Status")
+        status_submenu = bulk_menu.addMenu(self.tr("🏷️ Change &Status"))
         user_statuses = [
-            ("not_started", "❌ &Not started"),
-            ("pretranslated", "🤖 &Pre-translated"),
-            ("draft", "✏️ &Draft"),
-            ("confirmed", "✔ &Confirmed"),
-            ("proofread", "🟪 Proo&fread"),
-            ("approved", "⭐ &Approved"),
-            ("rejected", "🚫 Re&jected"),
+            ("not_started", self.tr("❌ &Not started")),
+            ("pretranslated", self.tr("🤖 &Pre-translated")),
+            ("draft", self.tr("✏️ &Draft")),
+            ("confirmed", self.tr("✔ &Confirmed")),
+            ("proofread", self.tr("🟪 Proo&fread")),
+            ("approved", self.tr("⭐ &Approved")),
+            ("rejected", self.tr("🚫 Re&jected")),
         ]
         for status_key, label in user_statuses:
             action = QAction(label, self)
             action.triggered.connect(lambda checked, s=status_key: self.change_status_selected(s, from_menu=True))
             status_submenu.addAction(action)
 
-        clear_translations_action = QAction("🗑️ &Clear Translations", self)
-        clear_translations_action.setToolTip("Clear translations for selected segments")
+        clear_translations_action = QAction(self.tr("🗑️ &Clear Translations"), self)
+        clear_translations_action.setToolTip(self.tr("Clear translations for selected segments"))
         clear_translations_action.triggered.connect(self.clear_selected_translations_from_menu)
         bulk_menu.addAction(clear_translations_action)
-        
-        copy_source_to_target_action = QAction("📋 Copy &Source to Target", self)
-        copy_source_to_target_action.setToolTip("Copy source text to target for selected/filtered segments")
+
+        copy_source_to_target_action = QAction(self.tr("📋 Copy &Source to Target"), self)
+        copy_source_to_target_action.setToolTip(self.tr("Copy source text to target for selected/filtered segments"))
         copy_source_to_target_action.triggered.connect(self.copy_source_to_target_bulk)
         bulk_menu.addAction(copy_source_to_target_action)
 
-        copy_nontrans_action = QAction("🔢 Copy Source to Target (&No Letters)", self)
-        copy_nontrans_action.setToolTip("Copy source to target for segments containing no letters (numbers, codes, punctuation only) and mark as Translated")
+        copy_nontrans_action = QAction(self.tr("🔢 Copy Source to Target (&No Letters)"), self)
+        copy_nontrans_action.setToolTip(self.tr("Copy source to target for segments containing no letters (numbers, codes, punctuation only) and mark as Translated"))
         copy_nontrans_action.triggered.connect(self.copy_source_to_target_non_translatable_bulk)
         bulk_menu.addAction(copy_nontrans_action)
 
-        send_to_tm_action = QAction("💾 &Update Active TM(s)...", self)
-        send_to_tm_action.setToolTip(
+        send_to_tm_action = QAction(self.tr("💾 &Update Active TM(s)..."), self)
+        send_to_tm_action.setToolTip(self.tr(
             "Send/update confirmed (and other selected-status) segments into a "
             "writable Translation Memory. With overwrite on, same-source entries "
             "are replaced so the TM keeps only the latest translation. "
             "(Formerly 'Send Segments to TM'.)"
-        )
+        ))
         send_to_tm_action.triggered.connect(self.send_segments_to_tm_dialog)
         bulk_menu.addAction(send_to_tm_action)
-        
+
         bulk_menu.addSeparator()
-        
-        clean_tags_action = QAction("🧹 Clean &Tags...", self)
-        clean_tags_action.setToolTip("Remove formatting tags from selected segments")
+
+        clean_tags_action = QAction(self.tr("🧹 Clean &Tags..."), self)
+        clean_tags_action.setToolTip(self.tr("Remove formatting tags from selected segments"))
         clean_tags_action.triggered.connect(self.show_clean_tags_dialog)
         bulk_menu.addAction(clean_tags_action)
-        
-        proofread_action = QAction("✅ &Proofread Translation...", self)
-        proofread_action.setToolTip("Use AI to proofread and verify translation quality")
+
+        proofread_action = QAction(self.tr("✅ &Proofread Translation..."), self)
+        proofread_action.setToolTip(self.tr("Use AI to proofread and verify translation quality"))
         proofread_action.triggered.connect(self.show_proofread_dialog)
         bulk_menu.addAction(proofread_action)
 
         edit_menu.addSeparator()
-        
+
         # Superlookup
-        superlookup_action = QAction("🔍 &SuperLookup...", self)
+        superlookup_action = QAction(self.tr("🔍 &SuperLookup..."), self)
         if IS_MACOS:
             superlookup_action.setShortcut("Meta+Ctrl+L")  # Ctrl+Cmd+L on Mac
         else:
@@ -10149,53 +10149,53 @@ class SupervertalerQt(QMainWindow):
         edit_menu.addAction(superlookup_action)
         
         # View Menu
-        view_menu = menubar.addMenu("&View")
-        
+        view_menu = menubar.addMenu(self.tr("&View"))
+
         # Navigation submenu
-        nav_menu = view_menu.addMenu("📑 &Navigate To")
-        
+        nav_menu = view_menu.addMenu(self.tr("📑 &Navigate To"))
+
         # v1.10.161: navigation actions now look the target tab up by
         # label substring instead of hard-coding the index. Previously the
         # five nav actions had five different stale-index time bombs;
         # the Settings one had already exploded (was landing on
         # SuperLookup since the v1.10 tab insertions).
-        go_editor_action = QAction("📝 &Grid", self)
+        go_editor_action = QAction(self.tr("📝 &Grid"), self)
         go_editor_action.triggered.connect(lambda: self._switch_main_tab("Editor"))
         nav_menu.addAction(go_editor_action)
 
-        go_tms_action = QAction("💾 &TMs", self)
+        go_tms_action = QAction(self.tr("💾 &TMs"), self)
         go_tms_action.triggered.connect(lambda: self._switch_main_tab("TMs"))
         nav_menu.addAction(go_tms_action)
 
-        go_termbases_action = QAction("🏷️ Term&bases", self)
+        go_termbases_action = QAction(self.tr("🏷️ Term&bases"), self)
         go_termbases_action.triggered.connect(lambda: self._switch_main_tab("Termbases"))
         nav_menu.addAction(go_termbases_action)
 
-        go_prompt_manager_action = QAction("⚡ &QuickLauncher", self)
+        go_prompt_manager_action = QAction(self.tr("⚡ &QuickLauncher"), self)
         go_prompt_manager_action.triggered.connect(lambda: self._switch_main_tab("AI"))
         nav_menu.addAction(go_prompt_manager_action)
 
         # Tools-tab navigation entry retired in v1.9.467: PDF Rescue and TMX
         # Editor now open in their own windows from the Tools menu instead.
 
-        go_settings_action = QAction("⚙️ &Settings", self)
+        go_settings_action = QAction(self.tr("⚙️ &Settings"), self)
         # v1.10.161: label-based lookup (was setCurrentIndex(4), which started
         # landing on SuperLookup when SuperLookup/Clipboard/Voice were
         # inserted between AI and Settings).
         go_settings_action.triggered.connect(lambda: self._switch_main_tab("Settings"))
         nav_menu.addAction(go_settings_action)
-        
+
         view_menu.addSeparator()
-        
+
         # Grid Text section
-        grid_zoom_menu = view_menu.addMenu("📊 &Grid Text Zoom")
-        
-        grid_zoom_in = QAction("Grid Zoom &In", self)
+        grid_zoom_menu = view_menu.addMenu(self.tr("📊 &Grid Text Zoom"))
+
+        grid_zoom_in = QAction(self.tr("Grid Zoom &In"), self)
         grid_zoom_in.setShortcut("Ctrl+=")
         grid_zoom_in.triggered.connect(self.zoom_in)
         grid_zoom_menu.addAction(grid_zoom_in)
-        
-        grid_zoom_out = QAction("Grid Zoom &Out", self)
+
+        grid_zoom_out = QAction(self.tr("Grid Zoom &Out"), self)
         grid_zoom_out.setShortcut(QKeySequence.StandardKey.ZoomOut)
         grid_zoom_out.triggered.connect(self.zoom_out)
         grid_zoom_menu.addAction(grid_zoom_out)
@@ -10204,66 +10204,66 @@ class SupervertalerQt(QMainWindow):
         # QKeySequence.StandardKey.ZoomIn/ZoomOut already maps to these keys on many layouts,
         # and duplicates cause: "QAction::event: Ambiguous shortcut overload".
         grid_zoom_menu.addSeparator()
-        
-        grid_font_family_menu = grid_zoom_menu.addMenu("Grid Font &Family")
-        font_families = ["Calibri", "Segoe UI", "Arial", "Consolas", "Verdana", 
+
+        grid_font_family_menu = grid_zoom_menu.addMenu(self.tr("Grid Font &Family"))
+        font_families = ["Calibri", "Segoe UI", "Arial", "Consolas", "Verdana",
                         "Times New Roman", "Georgia", "Courier New"]
         for font_name in font_families:
             font_action = QAction(font_name, self)
             font_action.triggered.connect(lambda checked, f=font_name: self.set_font_family(f))
             grid_font_family_menu.addAction(font_action)
-        
+
         view_menu.addSeparator()
 
         # Match Panel zoom section
-        match_panel_zoom_menu = view_menu.addMenu("🔍 &Match Panel")
-        
-        match_panel_zoom_in_action = QAction("Match Panel Zoom &In", self)
+        match_panel_zoom_menu = view_menu.addMenu(self.tr("🔍 &Match Panel"))
+
+        match_panel_zoom_in_action = QAction(self.tr("Match Panel Zoom &In"), self)
         match_panel_zoom_in_action.setShortcut("Ctrl+Alt+=")
         match_panel_zoom_in_action.triggered.connect(self.match_panel_zoom_in)
         match_panel_zoom_menu.addAction(match_panel_zoom_in_action)
-        
-        match_panel_zoom_out_action = QAction("Match Panel Zoom &Out", self)
+
+        match_panel_zoom_out_action = QAction(self.tr("Match Panel Zoom &Out"), self)
         match_panel_zoom_out_action.setShortcut("Ctrl+Alt+-")
         match_panel_zoom_out_action.triggered.connect(self.match_panel_zoom_out)
         match_panel_zoom_menu.addAction(match_panel_zoom_out_action)
-        
-        match_panel_zoom_reset_action = QAction("Match Panel Zoom &Reset", self)
+
+        match_panel_zoom_reset_action = QAction(self.tr("Match Panel Zoom &Reset"), self)
         match_panel_zoom_reset_action.triggered.connect(self.match_panel_zoom_reset)
         match_panel_zoom_menu.addAction(match_panel_zoom_reset_action)
 
         match_panel_zoom_menu.addSeparator()
 
         # v1.9.307: TM pane layout toggle (horizontal ↔ vertical)
-        self.match_panel_vertical_action = QAction("Stack TM Panes &Vertically", self)
+        self.match_panel_vertical_action = QAction(self.tr("Stack TM Panes &Vertically"), self)
         self.match_panel_vertical_action.setCheckable(True)
         self.match_panel_vertical_action.setChecked(getattr(self, 'match_panel_tm_vertical', True))
         self.match_panel_vertical_action.triggered.connect(lambda _checked: self._toggle_match_panel_tm_layout())
         match_panel_zoom_menu.addAction(self.match_panel_vertical_action)
 
         view_menu.addSeparator()
-        
+
         # Under-grid panel placement. The dock holds the TermLens and
         # QuickTrans tabs; this submenu controls only WHERE the dock sits
         # (the tab bar in the dock chooses which of the two is shown).
         from PyQt6.QtGui import QActionGroup
-        underdock_menu = view_menu.addMenu("📑 TermLens / QuickTrans panel")
+        underdock_menu = view_menu.addMenu(self.tr("📑 TermLens / QuickTrans panel"))
         self.underdock_action_group = QActionGroup(self)
         self.underdock_action_group.setExclusive(True)
 
-        self.underdock_hide_action = QAction("Hide", self)
+        self.underdock_hide_action = QAction(self.tr("Hide"), self)
         self.underdock_hide_action.setCheckable(True)
-        self.underdock_hide_action.setToolTip("Hide the under-grid panel")
+        self.underdock_hide_action.setToolTip(self.tr("Hide the under-grid panel"))
         self.underdock_hide_action.triggered.connect(lambda: self.set_termlens_position(None))
 
-        self.underdock_above_action = QAction("Show above grid", self)
+        self.underdock_above_action = QAction(self.tr("Show above grid"), self)
         self.underdock_above_action.setCheckable(True)
-        self.underdock_above_action.setToolTip("Dock the panel above the translation grid")
+        self.underdock_above_action.setToolTip(self.tr("Dock the panel above the translation grid"))
         self.underdock_above_action.triggered.connect(lambda: self.set_termlens_position('above'))
 
-        self.underdock_below_action = QAction("Show below grid", self)
+        self.underdock_below_action = QAction(self.tr("Show below grid"), self)
         self.underdock_below_action.setCheckable(True)
-        self.underdock_below_action.setToolTip("Dock the panel below the translation grid")
+        self.underdock_below_action.setToolTip(self.tr("Dock the panel below the translation grid"))
         self.underdock_below_action.triggered.connect(lambda: self.set_termlens_position('below'))
 
         for _a in (self.underdock_hide_action, self.underdock_above_action, self.underdock_below_action):
@@ -10273,30 +10273,30 @@ class SupervertalerQt(QMainWindow):
 
         view_menu.addSeparator()
 
-        auto_resize_action = QAction("📐 &Auto-Resize Rows", self)
+        auto_resize_action = QAction(self.tr("📐 &Auto-Resize Rows"), self)
         auto_resize_action.triggered.connect(self.auto_resize_rows)
-        auto_resize_action.setToolTip("Automatically resize all rows to fit content")
+        auto_resize_action.setToolTip(self.tr("Automatically resize all rows to fit content"))
         view_menu.addAction(auto_resize_action)
 
         view_menu.addSeparator()
 
         # Proofreading results
-        proofread_results_action = QAction("✅ &Proofreading Results...", self)
+        proofread_results_action = QAction(self.tr("✅ &Proofreading Results..."), self)
         proofread_results_action.triggered.connect(self.show_proofreading_results_dialog)
-        proofread_results_action.setToolTip("View and manage proofreading issues")
+        proofread_results_action.setToolTip(self.tr("View and manage proofreading issues"))
         view_menu.addAction(proofread_results_action)
 
         view_menu.addSeparator()
 
-        theme_action = QAction("🎨 &Theme Editor...", self)
+        theme_action = QAction(self.tr("🎨 &Theme Editor..."), self)
         theme_action.triggered.connect(self.show_theme_editor)
         view_menu.addAction(theme_action)
 
         # Tools Menu
-        tools_menu = menubar.addMenu("&Tools")
-        
+        tools_menu = menubar.addMenu(self.tr("&Tools"))
+
         # Tools (open in their own windows; no embedded Tools tab anymore)
-        pdf_rescue_action = QAction("📄 &PDF Rescue...", self)
+        pdf_rescue_action = QAction(self.tr("📄 &PDF Rescue..."), self)
         pdf_rescue_action.triggered.connect(self.open_pdf_rescue_window)
         tools_menu.addAction(pdf_rescue_action)
 
@@ -10306,109 +10306,109 @@ class SupervertalerQt(QMainWindow):
         superlookup_action.triggered.connect(self.show_concordance_search)
         tools_menu.addAction(superlookup_action)
 
-        tmx_editor_action = QAction("✏️ T&MX Editor...", self)
+        tmx_editor_action = QAction(self.tr("✏️ T&MX Editor..."), self)
         tmx_editor_action.triggered.connect(self.open_tmx_editor_window)
         tools_menu.addAction(tmx_editor_action)
-        
+
         tools_menu.addSeparator()
-        
-        image_extractor_action = QAction("🖼️ &Image Extractor (Superimage)...", self)
+
+        image_extractor_action = QAction(self.tr("🖼️ &Image Extractor (Superimage)..."), self)
         image_extractor_action.triggered.connect(self.show_image_extractor_from_tools)
-        image_extractor_action.setToolTip("Extract images from DOCX files")
+        image_extractor_action.setToolTip(self.tr("Extract images from DOCX files"))
         tools_menu.addAction(image_extractor_action)
-        
+
         # v1.10.206: moved from Ctrl+Shift+P → Alt+S to free Ctrl+Shift+P for
         # TermPicker (matching the Trados plugin's "P = Picker" convention).
         # Alt+S is collision-free against top-level menu mnemonics (&Project,
         # &Edit, &Bulk, &View, &Tools, &Help — none owns S) and other in-app
         # Alt+letter shortcuts (currently only Alt+D and Alt+K are bound).
-        scratchpad_action = QAction("📝 Scratch&pad...", self)
+        scratchpad_action = QAction(self.tr("📝 Scratch&pad..."), self)
         scratchpad_action.setShortcut("Alt+S")
         scratchpad_action.triggered.connect(self.show_scratchpad)
-        scratchpad_action.setToolTip("Private notes for this project (never exported to CAT tools)")
+        scratchpad_action.setToolTip(self.tr("Private notes for this project (never exported to CAT tools)"))
         tools_menu.addAction(scratchpad_action)
 
-        log_window_action = QAction("📋 &Log Window...", self)
+        log_window_action = QAction(self.tr("📋 &Log Window..."), self)
         log_window_action.triggered.connect(self.detach_log_window)
-        log_window_action.setToolTip("Open the session log in a separate window that can be moved to another screen")
+        log_window_action.setToolTip(self.tr("Open the session log in a separate window that can be moved to another screen"))
         tools_menu.addAction(log_window_action)
 
         tools_menu.addSeparator()
 
-        settings_action = QAction("&Settings...", self)
+        settings_action = QAction(self.tr("&Settings..."), self)
         settings_action.triggered.connect(lambda: self._go_to_settings_tab())
         tools_menu.addAction(settings_action)
-        
+
         # Help Menu
-        help_menu = menubar.addMenu("&Help")
+        help_menu = menubar.addMenu(self.tr("&Help"))
 
         # Documentation links (GitHub URLs for universal access)
         # Removed internal manual link – documentation migrated to GitBook
 
         # Context-sensitive help (F1)
-        context_help_action = QAction("Context Help", self)
+        context_help_action = QAction(self.tr("Context Help"), self)
         context_help_action.setShortcut("F1")
-        context_help_action.setToolTip("Open help for the focused panel (F1)")
+        context_help_action.setToolTip(self.tr("Open help for the focused panel (F1)"))
         context_help_action.triggered.connect(lambda: open_help())
         help_menu.addAction(context_help_action)
 
         # Place Supervertaler Help at the top of the Help menu
-        superdocs_action = QAction("Supervertaler Workbench Help", self)
-        superdocs_action.setToolTip("Open the Workbench documentation in your browser")
+        superdocs_action = QAction(self.tr("Supervertaler Workbench Help"), self)
+        superdocs_action.setToolTip(self.tr("Open the Workbench documentation in your browser"))
         superdocs_action.triggered.connect(lambda: self._open_url("https://help.supervertaler.com/workbench/"))
         help_menu.addAction(superdocs_action)
 
-        setup_wizard_action = QAction("🚀 Setup Wizard...", self)
-        setup_wizard_action.setToolTip("Run the initial setup wizard (data folder location, features overview)")
+        setup_wizard_action = QAction(self.tr("🚀 Setup Wizard..."), self)
+        setup_wizard_action.setToolTip(self.tr("Run the initial setup wizard (data folder location, features overview)"))
         setup_wizard_action.triggered.connect(lambda: self._show_setup_wizard(is_first_run=False))
         help_menu.addAction(setup_wizard_action)
 
         help_menu.addSeparator()
 
-        shortcuts_action = QAction("⌨️ Keyboard Shortcuts", self)
+        shortcuts_action = QAction(self.tr("⌨️ Keyboard Shortcuts"), self)
         shortcuts_action.triggered.connect(lambda: open_help(HelpTopics.KEYBOARD_SHORTCUTS))
         help_menu.addAction(shortcuts_action)
 
-        changelog_action = QAction("📝 Changelog", self)
+        changelog_action = QAction(self.tr("📝 Changelog"), self)
         changelog_action.triggered.connect(lambda: self._open_url("https://github.com/Supervertaler/Supervertaler-Workbench/blob/main/CHANGELOG.md"))
         help_menu.addAction(changelog_action)
 
-        update_check_action = QAction("🔄 Check for Updates...", self)
-        update_check_action.setToolTip("Check whether you are running the latest Supervertaler release")
+        update_check_action = QAction(self.tr("🔄 Check for Updates..."), self)
+        update_check_action.setToolTip(self.tr("Check whether you are running the latest Supervertaler release"))
         update_check_action.triggered.connect(self.check_for_updates)
         help_menu.addAction(update_check_action)
 
-        copy_version_info_action = QAction("📋 Copy Version Info", self)
-        copy_version_info_action.setToolTip("Copy version and system info to clipboard (useful for support)")
+        copy_version_info_action = QAction(self.tr("📋 Copy Version Info"), self)
+        copy_version_info_action.setToolTip(self.tr("Copy version and system info to clipboard (useful for support)"))
         copy_version_info_action.triggered.connect(self.copy_version_info_to_clipboard)
         help_menu.addAction(copy_version_info_action)
 
         # Diagnostic log – so users can send us error output even when they
         # launched Supervertaler without a terminal window (silent / .exe /
         # gui-scripts entry point).
-        open_log_action = QAction("📄 Open Diagnostic Log", self)
-        open_log_action.setToolTip(
+        open_log_action = QAction(self.tr("📄 Open Diagnostic Log"), self)
+        open_log_action.setToolTip(self.tr(
             "Open the log file containing startup output and errors – useful when reporting issues"
-        )
+        ))
         open_log_action.triggered.connect(self.open_diagnostic_log)
         help_menu.addAction(open_log_action)
 
-        open_log_folder_action = QAction("📁 Open Log Folder", self)
-        open_log_folder_action.setToolTip("Reveal the folder that contains the diagnostic log files")
+        open_log_folder_action = QAction(self.tr("📁 Open Log Folder"), self)
+        open_log_folder_action.setToolTip(self.tr("Reveal the folder that contains the diagnostic log files"))
         open_log_folder_action.triggered.connect(self.open_diagnostic_log_folder)
         help_menu.addAction(open_log_folder_action)
 
         help_menu.addSeparator()
 
-        github_action = QAction("🔗 GitHub Repository", self)
+        github_action = QAction(self.tr("🔗 GitHub Repository"), self)
         github_action.triggered.connect(lambda: self._open_url("https://github.com/Supervertaler/Supervertaler-Workbench"))
         help_menu.addAction(github_action)
 
         help_menu.addSeparator()
-        
+
         # AutoHotkey setup (Windows only)
         if os.name == 'nt':
-            ahk_setup_action = QAction("⌨️ Setup AutoHotkey (Global Hotkey)", self)
+            ahk_setup_action = QAction(self.tr("⌨️ Setup AutoHotkey (Global Hotkey)"), self)
             ahk_setup_action.setToolTip(
                 f"Configure AutoHotkey for SuperLookup global hotkey ({format_shortcut_for_display('Ctrl+Alt+L')})"
             )
@@ -10416,7 +10416,7 @@ class SupervertalerQt(QMainWindow):
             help_menu.addAction(ahk_setup_action)
             help_menu.addSeparator()
 
-        about_action = QAction("ℹ️ About", self)
+        about_action = QAction(self.tr("ℹ️ About"), self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
     
@@ -20169,29 +20169,29 @@ class SupervertalerQt(QMainWindow):
 
         # ===== TAB 1: General Settings =====
         general_tab = self._create_general_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(general_tab), "⚙️ General")
+        settings_tabs.addTab(scroll_area_wrapper(general_tab), self.tr("⚙️ General"))
 
         # ===== TAB 2: User Identity =====
         identity_tab = self._create_user_identity_tab()
-        settings_tabs.addTab(scroll_area_wrapper(identity_tab), "👤 User Identity")
+        settings_tabs.addTab(scroll_area_wrapper(identity_tab), self.tr("👤 User Identity"))
 
         # ===== TAB 3: AI Settings (LLM, Ollama) =====
         ai_tab = self._create_ai_settings_tab()
         ai_scroll = scroll_area_wrapper(ai_tab)
-        settings_tabs.addTab(ai_scroll, "🤖 AI Settings")
+        settings_tabs.addTab(ai_scroll, self.tr("🤖 AI Settings"))
         self.ai_settings_scroll = ai_scroll  # Store reference for scrolling to API keys
 
         # ===== TAB: Voice (commands & dictation, lives in Sidekick) =====
         voice_tab = self._create_voice_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(voice_tab), "🎤 Voice")
+        settings_tabs.addTab(scroll_area_wrapper(voice_tab), self.tr("🎤 Voice"))
 
         # ===== TAB 3: Language Pair Settings =====
         lang_tab = self._create_language_pair_tab()
-        settings_tabs.addTab(scroll_area_wrapper(lang_tab), "🌐 Language Pair")
+        settings_tabs.addTab(scroll_area_wrapper(lang_tab), self.tr("🌐 Language Pair"))
 
         # ===== TAB 4: MT Settings =====
         mt_tab = self._create_mt_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(mt_tab), "🌐 MT Settings")
+        settings_tabs.addTab(scroll_area_wrapper(mt_tab), self.tr("🌐 MT Settings"))
 
         # ===== TAB 5: QuickTrans Settings =====
         # Prior to v1.10.10 this was a stub pointing users to
@@ -20201,20 +20201,20 @@ class SupervertalerQt(QMainWindow):
         # QuickTrans settings widget now lives directly here, where
         # users would have looked for it in the first place.
         mt_quick_tab = self._create_mt_quick_lookup_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(mt_quick_tab), "⚡ QuickTrans")
+        settings_tabs.addTab(scroll_area_wrapper(mt_quick_tab), self.tr("⚡ QuickTrans"))
         self.mt_quick_lookup_tab_index = settings_tabs.count() - 1  # Store index for opening
 
         # ===== TAB 6: View Settings =====
         view_tab = self._create_view_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(view_tab), "🔍 View Settings")
+        settings_tabs.addTab(scroll_area_wrapper(view_tab), self.tr("🔍 View Settings"))
 
         # ===== TAB 7: System Prompts (Layer 1) =====
         system_prompts_tab = self._create_system_prompts_tab()
-        settings_tabs.addTab(scroll_area_wrapper(system_prompts_tab), "📝 System Prompts")
+        settings_tabs.addTab(scroll_area_wrapper(system_prompts_tab), self.tr("📝 System Prompts"))
 
         # ===== TAB 8: Debug Settings =====
         debug_tab = self._create_debug_settings_tab()
-        settings_tabs.addTab(scroll_area_wrapper(debug_tab), "🐛 Debug")
+        settings_tabs.addTab(scroll_area_wrapper(debug_tab), self.tr("🐛 Debug"))
 
         # The "📦 Features" tab was retired in v1.9.474. The Workbench used
         # to ship feature modules (voice, web, pdf, mt, hunspell, …) as
@@ -20227,23 +20227,23 @@ class SupervertalerQt(QMainWindow):
 
         # ===== TAB 9: Domain Detection Keywords =====
         domain_keywords_tab = self._create_domain_keywords_tab()
-        settings_tabs.addTab(scroll_area_wrapper(domain_keywords_tab), "🎯 Domain Detection")
+        settings_tabs.addTab(scroll_area_wrapper(domain_keywords_tab), self.tr("🎯 Domain Detection"))
 
         # ===== TAB 11: Segmentation Rules =====
         seg_tab = self.create_segmentation_rules_tab()
-        settings_tabs.addTab(scroll_area_wrapper(seg_tab), "📏 Segmentation Rules")
+        settings_tabs.addTab(scroll_area_wrapper(seg_tab), self.tr("📏 Segmentation Rules"))
 
         # ===== TAB 12: Keyboard Shortcuts =====
         from modules.keyboard_shortcuts_widget import KeyboardShortcutsWidget
         shortcuts_tab = KeyboardShortcutsWidget(self)
-        settings_tabs.addTab(shortcuts_tab, "⌨️ Keyboard Shortcuts")
+        settings_tabs.addTab(shortcuts_tab, self.tr("⌨️ Keyboard Shortcuts"))
         # Index stored so the Voice tab's "Change in Settings → Keyboard
         # Shortcuts" link can jump straight here.
         self.keyboard_shortcuts_tab_index = settings_tabs.count() - 1
 
         # ===== TAB 13: Log (moved from main tabs) =====
         log_tab = self.create_log_tab()
-        settings_tabs.addTab(log_tab, "📋 Log")
+        settings_tabs.addTab(log_tab, self.tr("📋 Log"))
 
         layout.addWidget(settings_tabs)
 
@@ -22059,7 +22059,7 @@ class SupervertalerQt(QMainWindow):
         general_settings = self.load_general_settings()
         
         # Startup Settings group
-        startup_group = QGroupBox("Startup Settings")
+        startup_group = QGroupBox(self.tr("Startup Settings"))
         startup_layout = QVBoxLayout()
         
         restore_last_project_cb = CheckmarkCheckBox("Restore last project on startup")
@@ -22079,8 +22079,100 @@ class SupervertalerQt(QMainWindow):
         startup_group.setLayout(startup_layout)
         layout.addWidget(startup_group)
 
+        # ─── Language (v1.10.207: MVP i18n infrastructure) ───
+        # Combo-box only translates the menu bar, toolbar and Settings
+        # chrome at this stage – the bulk of dialog body text remains in
+        # English until subsequent passes wrap more strings. A restart is
+        # required because most widgets are hand-coded and don't currently
+        # respond to QEvent.LanguageChange; live re-translation is a
+        # follow-up project. The dropdown is populated from
+        # modules.i18n.SUPPORTED_LOCALES, which is the canonical list of
+        # locale codes the app recognises (regardless of whether a .ts
+        # file actually exists for each).
+        from modules.i18n import SUPPORTED_LOCALES, translations_dir
+        from PyQt6.QtWidgets import QComboBox
+
+        language_group = QGroupBox(self.tr("🌐 Language"))
+        language_layout = QVBoxLayout()
+
+        language_info = QLabel(
+            "Interface language. Translations cover the menu bar, toolbar "
+            "and Settings labels in this initial pass — dialog bodies and "
+            "error messages remain in English for now. Available languages "
+            "depend on which translation files have been contributed."
+        )
+        language_info.setWordWrap(True)
+        language_info.setStyleSheet("color: #666; font-size: 9pt;")
+        language_layout.addWidget(language_info)
+
+        language_row = QHBoxLayout()
+        language_row.addWidget(QLabel("Display language:"))
+
+        language_combo = QComboBox()
+        language_combo.setToolTip(
+            "Restart Supervertaler after changing the language for the new "
+            "translations to take effect."
+        )
+        # "System" entry is the implicit default for new installs – uses
+        # whatever QLocale.system() reports, falling back to English when
+        # no .ts file exists for that locale.
+        language_combo.addItem("System default", "system")
+
+        # Discover which .ts files actually exist on disk so we can mark
+        # locales without a translation file as "[no translation yet]".
+        _ts_dir = translations_dir()
+        _available_ts_codes = set()
+        if _ts_dir.exists():
+            for _ts in _ts_dir.glob("supervertaler_*.ts"):
+                _code = _ts.stem.replace("supervertaler_", "")
+                _available_ts_codes.add(_code)
+
+        for _code, _label in SUPPORTED_LOCALES:
+            if _code == "en":
+                # English needs no .ts file – it's the source language.
+                language_combo.addItem(_label, _code)
+            elif _code in _available_ts_codes:
+                language_combo.addItem(_label, _code)
+            else:
+                language_combo.addItem(f"{_label}  [no translation yet]", _code)
+
+        _current_locale = general_settings.get('ui_locale', 'system')
+        _idx = language_combo.findData(_current_locale)
+        if _idx >= 0:
+            language_combo.setCurrentIndex(_idx)
+        language_row.addWidget(language_combo, stretch=1)
+        language_layout.addLayout(language_row)
+
+        # Restart-required notice + Save button. The save handler stashes
+        # the choice in general.ui_locale; main() reads it on next launch.
+        language_status = QLabel("")
+        language_status.setStyleSheet("color: #B00; font-size: 9pt;")
+        language_status.setWordWrap(True)
+        language_layout.addWidget(language_status)
+
+        def _on_language_changed(_index):
+            new_code = language_combo.currentData()
+            prefs = self.load_general_settings()
+            prev = prefs.get('ui_locale', 'system')
+            prefs['ui_locale'] = new_code
+            try:
+                self._save_settings_section('general', prefs)
+            except Exception as save_err:
+                self.log(f"⚠ Could not save language preference: {save_err}")
+                return
+            if new_code != prev:
+                language_status.setText(
+                    "↻ Restart Supervertaler for the new language to take effect."
+                )
+            else:
+                language_status.setText("")
+
+        language_combo.currentIndexChanged.connect(_on_language_changed)
+        language_group.setLayout(language_layout)
+        layout.addWidget(language_group)
+
         # Usage Statistics group
-        stats_group = QGroupBox("Privacy")
+        stats_group = QGroupBox(self.tr("Privacy"))
         stats_layout = QVBoxLayout()
 
         # Load current setting from unified settings file
@@ -22106,7 +22198,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(stats_group)
 
         # Data Folder Location group
-        data_folder_group = QGroupBox("📁 Data Folder Location")
+        data_folder_group = QGroupBox(self.tr("📁 Data Folder Location"))
         data_folder_layout = QVBoxLayout()
         
         data_folder_info = QLabel(
@@ -22218,7 +22310,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(data_folder_group)
 
         # Sound Effects group
-        sound_group = QGroupBox("🔊 Sound Effects")
+        sound_group = QGroupBox(self.tr("🔊 Sound Effects"))
         sound_layout = QVBoxLayout()
 
         sound_effects_cb = CheckmarkCheckBox("Enable minimalist sound effects")
@@ -22312,7 +22404,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(sound_group)
 
         # Auto Backup Settings group
-        backup_group = QGroupBox("💾 Auto Backup Settings")
+        backup_group = QGroupBox(self.tr("💾 Auto Backup Settings"))
         backup_layout = QVBoxLayout()
 
         backup_info = QLabel(
@@ -22357,7 +22449,7 @@ class SupervertalerQt(QMainWindow):
         self.backup_interval_spin = backup_interval_spin
 
         # TM and glossary settings section
-        tm_termbase_group = QGroupBox("TM and termbase settings")
+        tm_termbase_group = QGroupBox(self.tr("TM and termbase settings"))
         tm_termbase_layout = QVBoxLayout()
         
         # Auto-propagate exact TM matches
@@ -22463,7 +22555,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(tm_termbase_group)
 
         # Editor Settings group
-        editor_group = QGroupBox("✍️ Editor Settings")
+        editor_group = QGroupBox(self.tr("✍️ Editor Settings"))
         editor_layout = QVBoxLayout()
 
         # Smart word selection toggle
@@ -22497,7 +22589,7 @@ class SupervertalerQt(QMainWindow):
         # is unchanged, so existing user preferences carry over without
         # migration.
         # ----------------------------------------------------------------
-        doc_import_group = QGroupBox("📥 Document Import")
+        doc_import_group = QGroupBox(self.tr("📥 Document Import"))
         doc_import_layout = QVBoxLayout()
 
         auto_markdown_cb = CheckmarkCheckBox("Auto-generate markdown for imported documents")
@@ -22515,7 +22607,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(doc_import_group)
 
         # Find & Replace settings group
-        find_replace_group = QGroupBox("Find && Replace Settings")
+        find_replace_group = QGroupBox(self.tr("Find && Replace Settings"))
         find_replace_layout = QVBoxLayout()
         
         allow_replace_cb = CheckmarkCheckBox("Allow Replace in Source Text")
@@ -22540,7 +22632,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(find_replace_group)
         
         # Precision Scroll Settings group
-        scroll_group = QGroupBox("⬆️⬇️ Precision Scroll Settings")
+        scroll_group = QGroupBox(self.tr("⬆️⬇️ Precision Scroll Settings"))
         scroll_layout = QVBoxLayout()
         
         scroll_info = QLabel(
@@ -22606,7 +22698,7 @@ class SupervertalerQt(QMainWindow):
         self.auto_center_cb = auto_center_cb
         
         # 🧪 Experimental Performance group
-        experimental_group = QGroupBox("🧪 Experimental Performance")
+        experimental_group = QGroupBox(self.tr("🧪 Experimental Performance"))
         experimental_layout = QVBoxLayout()
         
         exp_info = QLabel(
@@ -22636,7 +22728,7 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(experimental_group)
         
         # Translation Results Match Limits group
-        match_limits_group = QGroupBox("📊 Translation Results - Match Limits")
+        match_limits_group = QGroupBox(self.tr("📊 Translation Results - Match Limits"))
         match_limits_layout = QVBoxLayout()
         
         info_label = QLabel(
@@ -66001,6 +66093,46 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Supervertaler")
     app.setOrganizationName("Supervertaler")
+
+    # ─── v1.10.207: install UI translator BEFORE constructing any widgets ───
+    # Reads the locale from settings.json (general.ui_locale, default "en").
+    # English is the source language so we skip installation entirely when
+    # the user is on English – Qt's tr() then short-circuits to the source.
+    # We use get_user_data_path() (module-level) instead of going through
+    # SupervertalerQt because the window doesn't exist yet; the settings
+    # file layout is owned by SupervertalerQt._load_unified_settings.
+    try:
+        import json as _json_for_locale
+        _settings_path = get_user_data_path() / "workbench" / "settings" / "settings.json"
+        _ui_locale_setting = "system"
+        if _settings_path.exists():
+            try:
+                with open(_settings_path, "r", encoding="utf-8") as _sf:
+                    _all_settings = _json_for_locale.load(_sf)
+                _ui_locale_setting = _all_settings.get("general", {}).get("ui_locale", "system")
+            except Exception:
+                _ui_locale_setting = "system"
+
+        from modules.i18n import (
+            install_translator_for_locale,
+            resolve_locale,
+        )
+        _active_locale = resolve_locale(_ui_locale_setting)
+        if _active_locale and _active_locale.lower() != "en":
+            _installed = install_translator_for_locale(app, _active_locale)
+            if _installed is not None:
+                print(
+                    f"[i18n] Loaded {_installed.entry_count()} translation entries "
+                    f"for locale '{_active_locale}'"
+                )
+            else:
+                print(
+                    f"[i18n] No translation file available for locale "
+                    f"'{_active_locale}' – falling back to English"
+                )
+    except Exception as _i18n_err:
+        # Never let a translator-loading hiccup prevent the app from starting.
+        print(f"[i18n] Translator init failed (continuing in English): {_i18n_err}")
     
     # Global stylesheet to remove ugly focus rectangles (dotted outlines)
     # from buttons, tool buttons, tabs, and tree/list views.

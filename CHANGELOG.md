@@ -2,7 +2,25 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.206 (May 26, 2026)
+**Current Version:** v1.10.207 (May 27, 2026)
+
+
+## v1.10.207 – May 27, 2026
+
+### Added
+
+- **Initial UI internationalisation (i18n) scaffold.** The menu bar, Settings tab labels, General-tab group titles, and menu-action tooltips are now wrappable for translation – about **180 user-facing strings** in this first pass. A new **🌐 Language** group in Settings → General lets the user pick a display language (or "System default"); a restart is required for the new translations to take effect. Existing users see no behaviour change – English remains the default, no translation file needed.
+- **`modules/i18n.py`** with a `TsTranslator` (subclass of `QTranslator`) that reads Qt Linguist `.ts` XML directly. We avoid the `lrelease` compilation step (which lives in Qt's Linguist tooling, separate from PyQt6) by parsing `.ts` at startup – cost is sub-10ms for our string count and the simpler tooling means contributors don't need anything beyond a text editor or Qt Linguist itself.
+- **`translations/` folder** with a template file (`supervertaler_template.ts`) and scaffold files for Simplified Chinese (`zh_CN`), Traditional Chinese (`zh_TW`), and Polish (`pl`). The first 23 menu/settings strings in `zh_CN` are sanity-translated to verify the plumbing end-to-end; a proper Chinese translator (issue #178) will refine and extend. The Settings dropdown marks any locale that has no `.ts` file as `[no translation yet]`.
+- **`translations/TRANSLATING.md`** documents the workflow: open the locale's `.ts` in Qt Linguist, translate, mark as finished, send a PR. No build step on the contributor side. Coverage today is intentionally limited to UI chrome (menu bar, Settings tabs) – body text and error messages stay English in this MVP. Wider coverage is a follow-up project.
+- **README "Translations" table** showing supported locales and their status.
+
+### Notes
+
+- The MVP scope is **menu bar + Settings tab chrome only**. Wrapping dialog bodies, error messages, status-bar text, and per-widget tooltips is deliberately deferred until we see whether the translated chrome alone is enough to attract translator interest. The string-extraction script (`pylupdate6`) easily extracts further strings as we wrap them; the bottleneck is translator availability, not infrastructure.
+- **Live language switching is intentionally not supported in this version.** Most Supervertaler dialogs are hand-coded and do not currently respond to `QEvent.LanguageChange`. The Settings dropdown surfaces a restart-required notice when the language is changed. A future enhancement could audit each window for `changeEvent` handlers, but the cost-benefit isn't compelling against the alternative of "restart once after picking your language".
+- **Per the user request on issue #178**, this scaffold ships before reaching out to the contributor who offered Simplified + Traditional Chinese translations. Once it's in their hands, real translation work can begin; their `.ts` file can be PR'd back to this repo and merged on their schedule.
+- **F-strings were skipped** in this pass. About 4 menu items use f-string interpolation (e.g. `f"&Go to Segment...\t{format_shortcut_for_display('Ctrl+G')}"`); they need a `tr().format()` rewrite which is a separate, mechanical pass that can ship later.
 
 
 ## v1.10.206 – May 26, 2026
