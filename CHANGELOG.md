@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.209 (May 27, 2026)
+**Current Version:** v1.10.210 (May 27, 2026)
+
+
+## v1.10.210 – May 27, 2026
+
+### Fixed
+
+- **Untranslated UI strings now correctly fall back to English source** when a locale is partially translated. A user testing the Simplified Chinese locale (which had only 23 sanity translations covering the top-level menu titles and a handful of Settings tab labels) noticed that the Settings sidebar was rendering as empty labels for every tab that didn't have a translation – not falling back to the English source as expected. Verified empirically: `QCoreApplication.translate("SupervertalerQt", "🌐 Language Pair")` was returning `""` instead of `"🌐 Language Pair"`.
+- **Root cause: PyQt6 marshalling quirk.** Qt's documented contract is that returning an empty string from `QTranslator.translate()` causes `QCoreApplication::translate()` to try the next installed translator and ultimately fall back to the source. But returning Python `""` from a PyQt6 virtual override produces a QString that is *empty but not null*, and Qt's fallback check uses `isNull()` (or has changed semantics between versions). Either way the observed behaviour was: empty Python return → empty QString → Qt does NOT fall back → UI renders an empty label.
+- **Fix: have `XliffTranslator.translate()` return the source text explicitly** when no translation is found, instead of returning `""`. This guarantees a non-empty result regardless of Qt version / PyQt marshalling quirks, and the displayed value is the English source – exactly what Qt's fallback was supposed to give us. Single-translator setup (no chained translators) means there's no behaviour change.
+- Result: pick Simplified Chinese in Settings → General → 🌐 Language and the 23 translated strings show in Chinese, the rest show their English source (with emoji preserved) – instead of vanishing into empty space. Full i18n MVP now actually works as advertised.
 
 
 ## v1.10.209 – May 27, 2026

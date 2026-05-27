@@ -289,11 +289,25 @@ class XliffTranslator(QTranslator):
         disambiguation: Optional[str] = None,
         n: int = -1,
     ) -> str:
-        """Look up a translation. Empty string = "no translation, use source".
+        """Look up a translation. Falls back to source text when not found.
 
-        Qt's contract: returning an empty string tells the next translator
-        in the chain (or the source itself) to take over. We return the
-        translation when found, "" otherwise.
+        Qt's C++ contract says returning an empty QString causes
+        ``QCoreApplication::translate()`` to try the next installed
+        translator and ultimately fall back to the source text. **In
+        PyQt6 that contract is broken**: returning Python ``""`` produces
+        a QString that is *empty but not null*, and Qt's actual fallback
+        check uses ``isNull()`` (or has changed behaviour between
+        versions). Either way, an empirical test (v1.10.209) showed
+        every untranslated string rendering as a literally empty label
+        in the UI – which left the Settings tab bar half-populated when
+        only some tabs had translations.
+
+        The simplest robust fix is to fall back to the source text
+        explicitly inside *our* translator instead of relying on Qt's
+        internal fallback. This guarantees the displayed string is
+        always non-empty regardless of Qt version / PyQt6 marshalling
+        quirks. The downside (we shadow Qt's "try the next translator"
+        chain) doesn't matter for our single-translator setup.
         """
         # Most specific first: (ctx, src, disambig)
         if disambiguation:
@@ -311,8 +325,9 @@ class XliffTranslator(QTranslator):
         for (ctx, src, disambig), trans in self._entries.items():
             if src == source_text and disambig == disambiguation:
                 return trans
-        # Not found – Qt falls back to the source string.
-        return ""
+        # Not found – return the source text so Qt displays it verbatim
+        # rather than rendering an empty label.
+        return source_text
 
     def isEmpty(self) -> bool:  # type: ignore[override]
         return not self._entries
