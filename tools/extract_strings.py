@@ -48,7 +48,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
-from xml.dom import minidom
 
 
 # ─── Configuration ────────────────────────────────────────────────────────
@@ -367,11 +366,12 @@ def emit_xliff(
             )
             line_ref.text = str(lineno)
 
-    # Pretty-print via minidom (ElementTree's pretty-print only landed in 3.9
-    # and even then is less reliable for namespaced output).
-    raw = ET.tostring(xliff, encoding="utf-8", xml_declaration=True)
-    pretty = minidom.parseString(raw).toprettyxml(indent="  ", encoding="utf-8")
-    return pretty.decode("utf-8")
+    # Pretty-print via ET.indent (Python 3.9+). The older minidom.toprettyxml
+    # path was bug-ridden: it doubled every whitespace text node, producing
+    # files with two blank lines between every element. ET.indent is the
+    # cleaner stdlib option introduced specifically to fix that misbehaviour.
+    ET.indent(xliff, space="  ")
+    return ET.tostring(xliff, encoding="unicode", xml_declaration=True)
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────
@@ -411,7 +411,10 @@ def main(argv: list[str] | None = None) -> int:
     xliff_text = emit_xliff(entries, target_lang=None, source_path="Supervertaler.py")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(xliff_text, encoding="utf-8")
+    # Ensure a trailing newline + UTF-8 with no BOM. ET.tostring(encoding="unicode")
+    # returns text without a trailing newline, which most diff tools and editors
+    # complain about, hence the explicit + "\n".
+    out_path.write_text(xliff_text.rstrip() + "\n", encoding="utf-8", newline="\n")
     print(f"Wrote: {out_path.relative_to(REPO_ROOT)}  ({out_path.stat().st_size:,} bytes)")
     return 0
 

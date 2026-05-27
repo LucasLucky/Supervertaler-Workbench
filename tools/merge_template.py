@@ -54,7 +54,6 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
-from xml.dom import minidom
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -180,10 +179,22 @@ def merge_locale(locale_code: str) -> tuple[int, int]:
         else:
             new_count += 1
 
-    # Pretty-print and write atomically.
-    raw = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-    pretty = minidom.parseString(raw).toprettyxml(indent="  ", encoding="utf-8")
-    locale_path.write_bytes(pretty)
+    # Pretty-print via ET.indent (Python 3.9+) – minidom's toprettyxml had a
+    # well-known bug where it doubled every whitespace text node, producing
+    # files with two blank lines between every element. ET.indent is correct.
+    # Tricky: the template we cloned via ET.parse retains the whitespace
+    # text nodes from the source. Strip those before re-indenting, or
+    # ET.indent's output ends up still over-spaced. We walk every element
+    # and clear .text/.tail when it's pure whitespace.
+    for el in root.iter():
+        if el.text is not None and not el.text.strip():
+            el.text = None
+        if el.tail is not None and not el.tail.strip():
+            el.tail = None
+
+    ET.indent(root, space="  ")
+    xliff_text = ET.tostring(root, encoding="unicode", xml_declaration=True)
+    locale_path.write_text(xliff_text.rstrip() + "\n", encoding="utf-8", newline="\n")
     return (preserved, new_count)
 
 
