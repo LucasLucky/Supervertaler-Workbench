@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.210 (May 27, 2026)
+**Current Version:** v1.10.211 (May 27, 2026)
+
+
+## v1.10.211 – May 27, 2026
+
+### Changed
+
+- **Termbase highlight style: "Semibold Text" is now correctly identified as the default in the Settings UI.** The runtime default switched from "Background Color" to "Semibold Text" some versions ago, but two cosmetic stragglers were left behind: the Settings → View Settings → Termbase Highlight Style radio button still had the "(current default)" label hanging on the Background Color option, and two fallback code paths in `TermbaseMatchManager` still defaulted to `'background'` when reading the setting. Updated both so the UI label sits next to the actually-default option ("Semibold Text … (default)") and the two stragglers now default to `'semibold'` to match the rest of the codebase.
+- **No behaviour change for existing users.** This is a UI-label-and-fallback cleanup. If your `settings.json` already records a Termbase Highlight Style choice (any value), that choice is honoured. If you've never touched the setting, you get Semibold Text out of the box — same as before. Users who saved `'background'` back when it was the actual default and never changed it will still see Background Color highlighting; click the Semibold Text radio in Settings → View Settings → Termbase Highlight Style to switch.
 
 
 ## v1.10.210 – May 27, 2026

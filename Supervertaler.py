@@ -2865,13 +2865,16 @@ class ReadOnlyGridTextEditor(QTextEdit):
             return
         
         # Get highlight style and hide_shorter setting from main window
-        highlight_style = 'background'  # default
+        # v1.10.211: default switched from 'background' to 'semibold' to
+        # match the rest of the codebase (runtime default has been 'semibold'
+        # for several versions; these fallbacks were stragglers).
+        highlight_style = 'semibold'  # default
         dotted_color = '#808080'  # default medium gray (more visible)
         hide_shorter = False  # default: show all glossary matches
         parent = self.parent()
         while parent:
             if hasattr(parent, 'termbase_highlight_style'):
-                highlight_style = getattr(parent, 'termbase_highlight_style', 'background')
+                highlight_style = getattr(parent, 'termbase_highlight_style', 'semibold')
                 dotted_color = getattr(parent, 'termbase_dotted_color', '#808080')
                 hide_shorter = getattr(parent, 'termbase_hide_shorter_matches', False)
                 break
@@ -23384,20 +23387,20 @@ class SupervertalerQt(QMainWindow):
         # Get current setting
         current_tb_style = font_settings.get('termbase_highlight_style', 'semibold')
         
-        # Background highlight (current default)
-        tb_style_background = CheckmarkRadioButton("Background Color - Pastel green background (current default)")
+        # Background highlight (pre-v1.10.211 default)
+        tb_style_background = CheckmarkRadioButton("Background Color - Pastel green background")
         tb_style_background.setToolTip("Traditional highlight with pastel green background colors based on priority")
         tb_style_background.setChecked(current_tb_style == 'background')
         tb_style_layout.addWidget(tb_style_background)
-        
+
         # Dotted underline (code editor style)
         tb_style_dotted = CheckmarkRadioButton("Dotted Underline - Subtle dotted line below text (IDE style)")
         tb_style_dotted.setToolTip("Unobtrusive dotted underline like code editors use for suggestions")
         tb_style_dotted.setChecked(current_tb_style == 'dotted')
         tb_style_layout.addWidget(tb_style_dotted)
-        
-        # Semibold text (typographic)
-        tb_style_semibold = CheckmarkRadioButton("Semibold Text - Slightly bolder text with tinted color")
+
+        # Semibold text (typographic) – v1.10.211+ default
+        tb_style_semibold = CheckmarkRadioButton("Semibold Text - Slightly bolder text with tinted color (default)")
         tb_style_semibold.setToolTip("Typographic approach: text appears slightly heavier/darker without adding visual elements")
         tb_style_semibold.setChecked(current_tb_style == 'semibold')
         tb_style_layout.addWidget(tb_style_semibold)
