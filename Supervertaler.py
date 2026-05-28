@@ -4741,6 +4741,31 @@ class EditableGridTextEditor(QTextEdit):
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtGui import QTextCursor
         
+        # Ctrl+Z / Ctrl+Y: undo or redo this cell's own typing first; once the
+        # cell has nothing left to undo/redo, fall through to the app-level
+        # operation undo (Replace All, Copy Source → Target, etc.) so Ctrl+Z
+        # works even with the cursor sitting in the target box.
+        if event.key() == Qt.Key.Key_Z and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            if self.document().isUndoAvailable():
+                super().keyPressEvent(event)  # native per-cell text undo
+            else:
+                mw = self._get_main_window()
+                if mw and hasattr(mw, 'undo_action_handler'):
+                    mw.undo_action_handler()
+            event.accept()
+            return
+        if ((event.key() == Qt.Key.Key_Y and event.modifiers() == Qt.KeyboardModifier.ControlModifier)
+                or (event.key() == Qt.Key.Key_Z
+                    and event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier))):
+            if self.document().isRedoAvailable():
+                super().keyPressEvent(event)  # native per-cell text redo
+            else:
+                mw = self._get_main_window()
+                if mw and hasattr(mw, 'redo_action_handler'):
+                    mw.redo_action_handler()
+            event.accept()
+            return
+
         # Ctrl+C: Fix clipboard when copying with invisible characters shown
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             cursor = self.textCursor()
@@ -10592,102 +10617,70 @@ class SupervertalerQt(QMainWindow):
         self.update_undo_redo_actions()
     
     def undo_action_handler(self):
-        """Handle Undo (Ctrl+Z) action"""
+        """Handle Undo (Ctrl+Z) — revert the last recorded target/status change."""
         if not self.undo_stack:
             return
-        
-        # Pop last action from undo stack
+
         action = self.undo_stack.pop()
-        
-        # Find the segment
-        segment_id = action["segment_id"]
-        segment = None
-        for seg in self.current_project.segments:
-            if seg.segment_id == segment_id:
-                segment = seg
-                break
-        
-        if not segment:
-            return
-        
-        # Revert to old values
-        segment.target_text = action["old_target"]
-        segment.status = action["old_status"]
-        
-        # Update grid display
-        row = self.find_grid_row_by_segment_id(segment_id)
-        if row is not None:
-            # Update target text cell
-            target_item = self.grid.item(row, 2)
-            if target_item:
-                target_item.setText(action["old_target"])
-            
-            # Update status cell
-            status_item = self.grid.item(row, 3)
-            if status_item:
-                status_item.setText(action["old_status"])
-        
-        # Move action to redo stack
-        self.redo_stack.append(action)
-        
-        # Update menu actions
+        if self._apply_undo_redo_action(action, action["old_target"], action["old_status"]):
+            self.redo_stack.append(action)
         self.update_undo_redo_actions()
-    
+
     def redo_action_handler(self):
-        """Handle Redo (Ctrl+Shift+Z / Ctrl+Y) action"""
+        """Handle Redo (Ctrl+Shift+Z / Ctrl+Y) — re-apply the last undone change."""
         if not self.redo_stack:
             return
-        
-        # Pop last action from redo stack
+
         action = self.redo_stack.pop()
-        
-        # Find the segment
-        segment_id = action["segment_id"]
-        segment = None
-        for seg in self.current_project.segments:
-            if seg.segment_id == segment_id:
-                segment = seg
-                break
-        
-        if not segment:
-            return
-        
-        # Reapply new values
-        segment.target_text = action["new_target"]
-        segment.status = action["new_status"]
-        
-        # Update grid display
-        row = self.find_grid_row_by_segment_id(segment_id)
-        if row is not None:
-            # Update target text cell
-            target_item = self.grid.item(row, 2)
-            if target_item:
-                target_item.setText(action["new_target"])
-            
-            # Update status cell
-            status_item = self.grid.item(row, 3)
-            if status_item:
-                status_item.setText(action["new_status"])
-        
-        # Move action back to undo stack
-        self.undo_stack.append(action)
-        
-        # Update menu actions
+        if self._apply_undo_redo_action(action, action["new_target"], action["new_status"]):
+            self.undo_stack.append(action)
         self.update_undo_redo_actions()
+
+    def _apply_undo_redo_action(self, action, target, status) -> bool:
+        """Set the given target/status on the action's segment and refresh its
+        row. Shared by undo and redo. Returns True if the segment was found and
+        updated, False otherwise (the caller then drops the action).
+
+        NB: the segment model uses ``id`` / ``target`` (not ``segment_id`` /
+        ``target_text``), the grid is ``self.table`` (not ``self.grid``), and the
+        Target cell is an editable cell *widget* at column 3 (Status is col 4) –
+        the previous implementation used all the old names and silently threw.
+        """
+        if not self.current_project:
+            return False
+
+        segment_id = action["segment_id"]
+        segment = next((s for s in self.current_project.segments if s.id == segment_id), None)
+        if segment is None:
+            return False
+
+        segment.target = target
+        segment.status = status
+
+        row = self._find_row_for_segment(segment_id)
+        if row >= 0:
+            # Target column (3) is an editable QTextEdit cell widget.
+            target_widget = self.table.cellWidget(row, 3)
+            if target_widget is not None and hasattr(target_widget, 'setPlainText'):
+                display = (self.apply_invisible_replacements(target)
+                           if hasattr(self, 'apply_invisible_replacements') else target)
+                target_widget.blockSignals(True)
+                target_widget.setPlainText(display)
+                target_widget.blockSignals(False)
+            # Status column (4) is refreshed via its dedicated helper.
+            self._update_status_cell(row, segment)
+
+        self.project_modified = True
+        self.update_window_title()
+        if hasattr(self, 'update_progress_stats'):
+            self.update_progress_stats()
+        return True
     
     def update_undo_redo_actions(self):
         """Update enabled/disabled state of undo/redo menu actions"""
         self.undo_action.setEnabled(len(self.undo_stack) > 0)
         self.redo_action.setEnabled(len(self.redo_stack) > 0)
-    
-    def find_grid_row_by_segment_id(self, segment_id):
-        """Find the grid row index for a given segment ID"""
-        for row in range(self.grid.rowCount()):
-            id_item = self.grid.item(row, 0)
-            if id_item and id_item.text() == str(segment_id):
-                return row
-        return None
-    
+
     def create_quick_access_toolbar(self):
         """Create Quick Access Toolbar above ribbon"""
         from PyQt6.QtWidgets import QToolBar, QWidget, QHBoxLayout

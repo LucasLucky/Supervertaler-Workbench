@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.220 (May 28, 2026)
+**Current Version:** v1.10.221 (May 28, 2026)
+
+
+## v1.10.221 – May 28, 2026
+
+### Fixed (Undo / Redo)
+
+- **Undo and Redo now actually work** (Ctrl+Z / Ctrl+Y and Edit → Undo/Redo). The handler that replays a recorded change referenced an old data model (`segment_id` / `target_text` / `self.grid` / wrong columns) and silently threw, so app-level undo had never worked for *any* operation that records it — Replace All, Copy Source → Target, the editor's Ctrl+Shift+S, pre-translation, AI batch, etc. (Recording was fine; only the replay was broken.) The handlers now use the real model and refresh the Target cell widget (column 3) and Status cell (column 4) correctly.
+- **Ctrl+Z now works with the cursor in the target box.** While editing a cell, Ctrl+Z (and Ctrl+Y / Ctrl+Shift+Z) first undoes/redoes your own typing; once the cell has nothing left, it falls through to the app-level operation undo/redo – so you no longer have to click out of the cell first.
 
 
 ## v1.10.220 – May 28, 2026
