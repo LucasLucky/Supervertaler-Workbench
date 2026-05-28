@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.219 (May 28, 2026)
+**Current Version:** v1.10.220 (May 28, 2026)
+
+
+## v1.10.220 – May 28, 2026
+
+### Added (Find & Replace)
+
+- **Contextual "?" help button** in the top-right of the Find & Replace dialog – opens the online Find & Replace help page (the same page F1 opens from within the dialog). The help page has also been expanded to cover regular expressions, the F&R Sets export/delete operations, the Enabled column, and the empty-"Replace with" deletion warning.
 
 
 ## v1.10.219 – May 28, 2026

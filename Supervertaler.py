@@ -47712,7 +47712,19 @@ class SupervertalerQt(QMainWindow):
         # Main vertical layout 
         main_v_layout = QVBoxLayout(dialog)
         main_v_layout.setSpacing(8)
-        
+
+        # Contextual help "?" in the top-right corner – opens the online
+        # Find & Replace help page (same target as F1 within this dialog).
+        help_row = QHBoxLayout()
+        help_row.addStretch()
+        fr_help_btn = QPushButton("?")
+        fr_help_btn.setFixedSize(22, 22)
+        fr_help_btn.setToolTip("Open Find & Replace help (online)")
+        fr_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        fr_help_btn.clicked.connect(lambda: open_help(HelpTopics.FIND_REPLACE))
+        help_row.addWidget(fr_help_btn)
+        main_v_layout.addLayout(help_row)
+
         # Row 1: Find what (with history dropdown)
         find_layout = QHBoxLayout()
         find_label = QLabel("Find what:")
