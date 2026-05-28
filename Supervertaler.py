@@ -2482,6 +2482,15 @@ def _is_cjk_char(ch: str) -> bool:
     )
 
 
+def _canon_path(p: str) -> str:
+    """Canonical path for case/separator-insensitive comparison (on Windows the
+    same file can be spelled with different drive-letter case or slashes)."""
+    try:
+        return os.path.normcase(os.path.normpath(os.path.abspath(p or '')))
+    except Exception:
+        return os.path.normcase(os.path.normpath(p or ''))
+
+
 def select_word_under_cursor(widget, event) -> bool:
     """Select the word under the double-click position, excluding adjacent
     punctuation (e.g. a trailing period) and invisible-character markers.
@@ -29665,8 +29674,14 @@ class SupervertalerQt(QMainWindow):
             QMessageBox.critical(self, "Encoding Error", error_msg)
             self.log(f"✗ Encoding error loading project: {e}")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load project:\n{str(e)}")
-            self.log(f"✗ Error loading project: {e}")
+            # Self-heal: a recent entry that can't be parsed (e.g. a non-project
+            # file that slipped into the list, or a corrupt/empty file) is
+            # dropped from the recent list so it stops erroring on every click.
+            self._remove_from_recent_projects(file_path)
+            QMessageBox.critical(self, "Error",
+                f"Failed to load project:\n{str(e)}\n\n"
+                f"This entry has been removed from your recent projects.")
+            self.log(f"✗ Error loading project (removed from recent): {e}")
         finally:
             try:
                 progress.close()
@@ -31286,19 +31301,40 @@ class SupervertalerQt(QMainWindow):
         """Add project to recent projects list"""
         if not file_path or not os.path.exists(file_path):
             return
-        
+
+        # Only actual project files belong in the recent-PROJECTS list. Source
+        # documents (.docx, .sdlxliff, …) opened or imported via other paths must
+        # never land here – clicking one later runs json.load() on it and fails
+        # with "Expecting value: line 1 column 1 (char 0)".
+        if not file_path.lower().endswith('.svproj'):
+            return
+
         # Load existing recent projects
         recent_projects = self.load_recent_projects()
-        
+
+        abs_path = os.path.abspath(file_path)
+
+        # Use the open project's display name only when this entry IS that
+        # project; otherwise fall back to the file's own stem, so an entry can
+        # never appear under a different project's name.
+        if (self.current_project
+                and getattr(self, 'project_file_path', None)
+                and _canon_path(self.project_file_path) == _canon_path(abs_path)):
+            entry_name = self.current_project.name
+        else:
+            entry_name = Path(file_path).stem
+
         # Create new entry
         new_entry = {
-            'path': os.path.abspath(file_path),
-            'name': self.current_project.name if self.current_project else Path(file_path).stem,
+            'path': abs_path,
+            'name': entry_name,
             'last_opened': datetime.now().isoformat()
         }
-        
-        # Remove if already exists (to move to top)
-        recent_projects = [p for p in recent_projects if p['path'] != new_entry['path']]
+
+        # Remove any existing entry for the same file (case/separator-insensitive
+        # on Windows) so the same project can't appear twice.
+        new_canon = _canon_path(abs_path)
+        recent_projects = [p for p in recent_projects if _canon_path(p.get('path', '')) != new_canon]
         
         # Add to beginning
         recent_projects.insert(0, new_entry)
@@ -31312,7 +31348,23 @@ class SupervertalerQt(QMainWindow):
         # Update menu and home display
         self.update_recent_menu()
         self.update_recent_projects_display()
-    
+
+    def _remove_from_recent_projects(self, file_path: str):
+        """Remove a single entry from the recent-projects list (e.g. after it
+        failed to open) and refresh the menu / home display."""
+        if not file_path:
+            return
+        try:
+            target = _canon_path(file_path)
+            recent_projects = self.load_recent_projects()
+            filtered = [p for p in recent_projects if _canon_path(p.get('path', '')) != target]
+            if len(filtered) != len(recent_projects):
+                self.save_recent_projects(filtered)
+                self.update_recent_menu()
+                self.update_recent_projects_display()
+        except Exception as e:
+            self.log(f"Could not remove '{file_path}' from recent projects: {e}")
+
     def load_recent_projects(self) -> List[Dict[str, str]]:
         """Load recent projects from file"""
         if not self.recent_projects_file.exists():
@@ -31363,8 +31415,11 @@ class SupervertalerQt(QMainWindow):
                             item['name'] = Path(item['path']).stem
                         if 'last_opened' not in item:
                             item['last_opened'] = datetime.now().isoformat()
-                        # Only include if file still exists
-                        if os.path.exists(item['path']):
+                        # Only include if the file still exists AND is an actual
+                        # project file – this auto-purges any stray non-.svproj
+                        # entries (e.g. source documents) left by older builds.
+                        if (os.path.exists(item['path'])
+                                and str(item['path']).lower().endswith('.svproj')):
                             normalized.append(item)
                 return normalized
             

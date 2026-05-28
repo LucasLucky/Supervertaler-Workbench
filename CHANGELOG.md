@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.217 (May 28, 2026)
+**Current Version:** v1.10.218 (May 28, 2026)
+
+
+## v1.10.218 – May 28, 2026
+
+### Fixed (Open Recent: phantom duplicate entry that failed to open)
+
+- **A non-project file could appear in Open Recent as a duplicate of the current project and fail to open.** The recent list took its display name from the open project rather than the file, so a stray non-`.svproj` path (e.g. a source `.docx` left by an import/older build) showed up under the project's name – looking like the same project twice. Clicking it ran `json.load()` on the document and failed with "Failed to load project: Expecting value: line 1 column 1 (char 0)", while the real project alongside it opened fine. Fixed several ways: `add_to_recent_projects` now only accepts `.svproj` files; entries are de-duplicated case/separator-insensitively (Windows path spellings) so the same project can't appear twice; an entry's display name falls back to the file's own stem unless it really is the open project; `load_recent_projects` auto-purges any non-`.svproj` entries left by older builds; and if a recent entry fails to open it is now removed from the list automatically rather than erroring on every click.
 
 
 ## v1.10.217 – May 28, 2026
