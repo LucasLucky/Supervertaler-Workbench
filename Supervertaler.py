@@ -47756,10 +47756,35 @@ class SupervertalerQt(QMainWindow):
         # Match label + radio buttons
         options_layout.addWidget(QLabel("Match:"))
         self.match_group = QButtonGroup(dialog)
-        match_anything = CheckmarkRadioButton("Anything")
+        # The app's global stylesheet styles the unchecked radio indicator but
+        # not the :checked state, so a bare QRadioButton renders an empty circle
+        # that never visibly selects (looks "unclickable"). Give each radio an
+        # explicit indicator stylesheet with a working :checked fill so they read
+        # as standard radios – without the off-centre hand-painted dot of
+        # CheckmarkRadioButton.
+        _radio_qss = (
+            "QRadioButton { font-size: 9pt; spacing: 6px; }"
+            "QRadioButton::indicator { width: 14px; height: 14px;"
+            " border: 2px solid #999; border-radius: 9px; background-color: white; }"
+            "QRadioButton::indicator:checked { background-color: #4CAF50;"
+            " border-color: #4CAF50; }"
+            "QRadioButton::indicator:hover { border-color: #666; }"
+            "QRadioButton::indicator:checked:hover { background-color: #45a049;"
+            " border-color: #45a049; }"
+            # Greyed-out look while disabled (when Regex is on).
+            "QRadioButton:disabled { color: #aaa; }"
+            "QRadioButton::indicator:disabled { border-color: #ccc;"
+            " background-color: #f0f0f0; }"
+            "QRadioButton::indicator:checked:disabled { background-color: #cfe8cf;"
+            " border-color: #cfe8cf; }"
+        )
+        match_anything = QRadioButton("Anything")
+        match_anything.setStyleSheet(_radio_qss)
         match_anything.setChecked(True)
-        match_whole_words = CheckmarkRadioButton("Whole words")
-        match_entire = CheckmarkRadioButton("Entire segment")
+        match_whole_words = QRadioButton("Whole words")
+        match_whole_words.setStyleSheet(_radio_qss)
+        match_entire = QRadioButton("Entire segment")
+        match_entire.setStyleSheet(_radio_qss)
         
         self.match_group.addButton(match_anything, 0)
         self.match_group.addButton(match_whole_words, 1)
@@ -47792,6 +47817,27 @@ class SupervertalerQt(QMainWindow):
             "Has no effect when 'Case sensitive' is also checked."
         )
         options_layout.addWidget(self.auto_case_cb)
+
+        # Regex toggle. When on, the find term is a regular expression; the
+        # Match radios and Auto-adjust case don't apply, so they're greyed out
+        # (the matching code also ignores them – the regex branch runs first
+        # everywhere). The radios now render correctly, so disabling greys them
+        # cleanly and re-enables when Regex is unticked.
+        self.regex_cb = CheckmarkCheckBox("Regex")
+        self.regex_cb.setToolTip(
+            "Treat the Find field as a regular expression (Python re syntax).\n"
+            "The Replace field supports backreferences: \\1, \\2, \\g<name>.\n\n"
+            "When on, the Match options (Whole words / Entire segment) and\n"
+            "Auto-adjust case are ignored."
+        )
+
+        def _on_regex_toggled(checked):
+            for _b in self.match_group.buttons():
+                _b.setEnabled(not checked)
+            self.auto_case_cb.setEnabled(not checked)
+
+        self.regex_cb.toggled.connect(_on_regex_toggled)
+        options_layout.addWidget(self.regex_cb)
 
         options_layout.addStretch()
         main_v_layout.addLayout(options_layout)
@@ -47971,6 +48017,7 @@ class SupervertalerQt(QMainWindow):
             case_sensitive=self.case_sensitive_cb.isChecked(),
             enabled=True,
             auto_case=self.auto_case_cb.isChecked(),
+            use_regex=self.regex_cb.isChecked(),
         )
         
         self.fr_sets_manager.add_current_operation_to_set(op)
@@ -47999,6 +48046,18 @@ class SupervertalerQt(QMainWindow):
         
         self.case_sensitive_cb.setChecked(op.case_sensitive)
         self.auto_case_cb.setChecked(getattr(op, 'auto_case', False))
+        self.regex_cb.setChecked(getattr(op, 'use_regex', False))
+
+    def _fr_compile_regex(self, find_text, case_sensitive):
+        """Compile a user-entered regex. On error, show a dialog and return None."""
+        import re
+        try:
+            return re.compile(find_text, 0 if case_sensitive else re.IGNORECASE)
+        except re.error as e:
+            QMessageBox.warning(
+                self.find_replace_dialog, "Invalid regular expression",
+                f"The Find pattern is not a valid regular expression:\n\n{e}")
+            return None
 
     def _fr_run_set_batch(self, fr_set: FindReplaceSet):
         """Run all enabled operations in a F&R Set as a batch (optimized for speed)."""
@@ -48007,16 +48066,32 @@ class SupervertalerQt(QMainWindow):
         if not enabled_ops:
             QMessageBox.information(self.find_replace_dialog, "Run All", "No enabled operations with find text.")
             return
-        
-        # Confirm
+
+        # Flag operations with an empty "Replace with" – Run All would DELETE
+        # every match for those, which is a common surprise (e.g. someone saved
+        # a "find" expecting it to be harmless).
+        deletion_ops = [op for op in enabled_ops if not op.replace_text]
+        warn = ""
+        if deletion_ops:
+            listed = "\n".join(f"  • '{op.find_text}' → (nothing)" for op in deletion_ops[:8])
+            more = "" if len(deletion_ops) <= 8 else f"\n  …and {len(deletion_ops) - 8} more"
+            warn = (
+                f"\n\n⚠ {len(deletion_ops)} operation(s) have an empty \"Replace with\" "
+                f"and will DELETE all their matches:\n{listed}{more}"
+            )
+
+        # Confirm – default to No when any operation would delete text.
+        default_btn = (QMessageBox.StandardButton.No if deletion_ops
+                       else QMessageBox.StandardButton.Yes)
         reply = QMessageBox.question(
             self.find_replace_dialog,
             "Run Batch Replace",
             f"Run {len(enabled_ops)} replace operation(s) from '{fr_set.name}'?\n\n"
-            "This will replace all occurrences in target segments.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            "This will replace all occurrences in target segments." + warn,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            default_btn,
         )
-        
+
         if reply != QMessageBox.StandardButton.Yes:
             return
         
@@ -48061,16 +48136,28 @@ class SupervertalerQt(QMainWindow):
         """Execute a single F&R operation on all segments (optimized). Returns replacement count."""
         import re
         count = 0
-        
+
+        # Regex operations: pre-compile once (skip the literal substring
+        # pre-filter below, which doesn't apply to patterns). An invalid
+        # pattern is logged and the operation skipped.
+        regex_pattern = None
+        if getattr(op, 'use_regex', False):
+            try:
+                regex_pattern = re.compile(op.find_text, 0 if op.case_sensitive else re.IGNORECASE)
+            except re.error as e:
+                self.log(f"  ⚠ Skipped invalid regex '{op.find_text}': {e}")
+                return 0
+
         # OPTIMIZATION: Pre-filter segments - only check segments that might contain the text
         # Quick case-insensitive check to skip segments that definitely don't match
-        search_text_lower = op.find_text.lower() if not op.case_sensitive else None
+        search_text_lower = op.find_text.lower() if (not op.case_sensitive and regex_pattern is None) else None
         
         for segment in self.current_project.segments:
             texts_to_check = []
             
-            # Pre-filter: skip segments that can't possibly match
-            if not op.case_sensitive:
+            # Pre-filter: skip segments that can't possibly match (literal
+            # substring check – not applicable to regex patterns).
+            if regex_pattern is None and not op.case_sensitive:
                 # Quick check: does the segment contain the search text at all?
                 skip_segment = True
                 if op.search_in in ("source", "both") and self.allow_replace_in_source:
@@ -48090,7 +48177,13 @@ class SupervertalerQt(QMainWindow):
             auto_case = getattr(op, 'auto_case', False)
 
             for field_name, old_text in texts_to_check:
-                if op.match_mode == 2:  # Entire segment
+                if regex_pattern is not None:
+                    try:
+                        new_text = regex_pattern.sub(op.replace_text, old_text)
+                    except re.error as e:
+                        self.log(f"  ⚠ Regex replacement failed for '{op.find_text}': {e}")
+                        return count
+                elif op.match_mode == 2:  # Entire segment
                     if op.case_sensitive:
                         if old_text == op.find_text:
                             new_text = op.replace_text
@@ -48147,10 +48240,14 @@ class SupervertalerQt(QMainWindow):
         search_target = self.search_target_cb.isChecked()
         case_sensitive = self.case_sensitive_cb.isChecked()
         match_mode = self.match_group.checkedId()
+        use_regex = self.regex_cb.isChecked()
+
+        if use_regex and self._fr_compile_regex(find_text, case_sensitive) is None:
+            return
 
         # Find all matches if not already done
         if not self.find_matches:
-            self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode)
+            self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode, use_regex)
 
             if self.find_matches:
                 # Clear stale highlights from any previous search, then
@@ -48199,8 +48296,12 @@ class SupervertalerQt(QMainWindow):
         search_target = self.search_target_cb.isChecked()
         case_sensitive = self.case_sensitive_cb.isChecked()
         match_mode = self.match_group.checkedId()
-        
-        self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode)
+        use_regex = self.regex_cb.isChecked()
+
+        if use_regex and self._fr_compile_regex(find_text, case_sensitive) is None:
+            return
+
+        self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode, use_regex)
 
         if self.find_matches:
             # Clear stale highlights from any previous search, then
@@ -48237,27 +48338,33 @@ class SupervertalerQt(QMainWindow):
         else:
             QMessageBox.information(self.find_replace_dialog, "Find", "No matches found.")
     
-    def find_all_matches_internal(self, find_text, search_source, search_target, case_sensitive, match_mode):
+    def find_all_matches_internal(self, find_text, search_source, search_target, case_sensitive, match_mode, use_regex=False):
         """Internal method to find all matches"""
         import re
-        
+
         self.find_matches = []
-        
+
         for row, segment in enumerate(self.current_project.segments):
             texts_to_search = []
             if search_source:
                 texts_to_search.append((segment.source, 2))
             if search_target:
                 texts_to_search.append((segment.target, 3))
-            
+
             for text, col in texts_to_search:
-                if self.text_matches(text, find_text, case_sensitive, match_mode):
+                if self.text_matches(text, find_text, case_sensitive, match_mode, use_regex):
                     self.find_matches.append((row, col))
     
-    def text_matches(self, text, find_text, case_sensitive, match_mode):
+    def text_matches(self, text, find_text, case_sensitive, match_mode, use_regex=False):
         """Check if text matches search criteria"""
         import re
-        
+
+        if use_regex:
+            try:
+                return bool(re.search(find_text, text, 0 if case_sensitive else re.IGNORECASE))
+            except re.error:
+                return False
+
         if match_mode == 2:  # Entire segment
             if case_sensitive:
                 return text == find_text
@@ -48314,7 +48421,8 @@ class SupervertalerQt(QMainWindow):
         
         case_sensitive = self.case_sensitive_cb.isChecked()
         match_mode = self.match_group.checkedId()
-        
+        use_regex = self.regex_cb.isChecked()
+
         # Clear any existing highlights first
         cursor = widget.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
@@ -48331,7 +48439,20 @@ class SupervertalerQt(QMainWindow):
         cursor = QTextCursor(document)
         full_text = document.toPlainText()
         
-        if match_mode == 2:  # Entire segment
+        if use_regex:
+            # Highlight every regex match span.
+            try:
+                _flags = 0 if case_sensitive else re.IGNORECASE
+                for _m in re.finditer(find_text, full_text, _flags):
+                    if _m.start() == _m.end():
+                        continue  # skip zero-width matches (e.g. "a*")
+                    cursor.setPosition(_m.start())
+                    cursor.movePosition(QTextCursor.MoveOperation.Right,
+                                        QTextCursor.MoveMode.KeepAnchor, _m.end() - _m.start())
+                    cursor.mergeCharFormat(highlight_format)
+            except re.error:
+                pass
+        elif match_mode == 2:  # Entire segment
             # Highlight entire text
             cursor.select(QTextCursor.SelectionType.Document)
             cursor.mergeCharFormat(highlight_format)
@@ -48392,6 +48513,7 @@ class SupervertalerQt(QMainWindow):
         case_sensitive = self.case_sensitive_cb.isChecked()
         auto_case = self.auto_case_cb.isChecked()
         match_mode = self.match_group.checkedId()
+        use_regex = self.regex_cb.isChecked()
 
         # Determine which field to update
         if col == 2:  # Source column
@@ -48399,11 +48521,20 @@ class SupervertalerQt(QMainWindow):
         else:  # col == 3, Target column
             field_text = segment.target
 
-        if match_mode == 2:  # Entire segment
+        import re
+        if use_regex:
+            try:
+                new_text = re.sub(find_text, replace_text, field_text, count=1,
+                                  flags=0 if case_sensitive else re.IGNORECASE)
+            except re.error as _e:
+                QMessageBox.warning(
+                    self.find_replace_dialog, "Invalid regular expression",
+                    f"The pattern or replacement is not valid:\n\n{_e}")
+                return
+        elif match_mode == 2:  # Entire segment
             new_text = replace_text
         else:
             # Replace using the appropriate method
-            import re
             if case_sensitive:
                 new_text = field_text.replace(find_text, replace_text, 1)
             elif auto_case:
@@ -48446,6 +48577,10 @@ class SupervertalerQt(QMainWindow):
         case_sensitive = self.case_sensitive_cb.isChecked()
         auto_case = self.auto_case_cb.isChecked()
         match_mode = self.match_group.checkedId()
+        use_regex = self.regex_cb.isChecked()
+
+        if use_regex and self._fr_compile_regex(find_text, case_sensitive) is None:
+            return
 
         # Safety check: warn if trying to replace in source when disabled
         if search_source and not self.allow_replace_in_source:
@@ -48465,8 +48600,8 @@ class SupervertalerQt(QMainWindow):
                 return
         
         # Find all matches
-        self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode)
-        
+        self.find_all_matches_internal(find_text, search_source, search_target, case_sensitive, match_mode, use_regex)
+
         if not self.find_matches:
             QMessageBox.information(self.find_replace_dialog, "Replace All", "No matches found.")
             return
@@ -48507,7 +48642,24 @@ class SupervertalerQt(QMainWindow):
         
         if reply != QMessageBox.StandardButton.Yes:
             return
-        
+
+        # For regex, validate the replacement template against a real match
+        # before mutating anything (catches bad backreferences like \9 with no
+        # group 9, which only error during substitution, not at compile time).
+        if use_regex:
+            import re as _re
+            try:
+                _r0, _c0 = self.find_matches[0]
+                _seg0 = self.current_project.segments[_r0]
+                _sample = _seg0.source if _c0 == 2 else _seg0.target
+                _re.sub(find_text, replace_text, _sample,
+                        flags=0 if case_sensitive else _re.IGNORECASE)
+            except _re.error as _e:
+                QMessageBox.warning(
+                    self.find_replace_dialog, "Invalid regular expression",
+                    f"The pattern or replacement is not valid:\n\n{_e}")
+                return
+
         # OPTIMIZATION: Disable UI updates during batch replacement
         self.table.setUpdatesEnabled(False)
         
@@ -48527,7 +48679,10 @@ class SupervertalerQt(QMainWindow):
                     old_text = segment.target
                 
                 # Perform replacement
-                if match_mode == 2:  # Entire segment
+                if use_regex:
+                    new_text = re.sub(find_text, replace_text, old_text,
+                                      flags=0 if case_sensitive else re.IGNORECASE)
+                elif match_mode == 2:  # Entire segment
                     new_text = replace_text
                 else:
                     if case_sensitive:

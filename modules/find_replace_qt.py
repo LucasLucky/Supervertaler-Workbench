@@ -107,6 +107,7 @@ class FindReplaceOperation:
     case_sensitive: bool = False
     enabled: bool = True
     auto_case: bool = False  # Auto-adjust replacement to match case pattern of matched text
+    use_regex: bool = False  # Treat find_text as a regular expression (replace supports backreferences)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -228,7 +229,17 @@ class FindReplaceSetsManager(QWidget):
         import_btn = QPushButton("📥 Import")
         import_btn.clicked.connect(self._import_set)
         sets_btn_layout.addWidget(import_btn)
-        
+
+        export_btn = QPushButton("📤 Export")
+        export_btn.setToolTip("Export the selected set to a .svfr file you can share or back up.")
+        export_btn.clicked.connect(self._export_set)
+        sets_btn_layout.addWidget(export_btn)
+
+        delete_set_btn = QPushButton("🗑 Delete Set")
+        delete_set_btn.setToolTip("Delete the selected set and all its operations.")
+        delete_set_btn.clicked.connect(self._delete_selected_set)
+        sets_btn_layout.addWidget(delete_set_btn)
+
         left_layout.addLayout(sets_btn_layout)
         
         splitter.addWidget(left_widget)
@@ -244,6 +255,10 @@ class FindReplaceSetsManager(QWidget):
         self.ops_table = QTableWidget()
         self.ops_table.setColumnCount(5)
         self.ops_table.setHorizontalHeaderLabels(["✓", "Find", "Replace", "Search in", "Match"])
+        _enabled_hdr = self.ops_table.horizontalHeaderItem(0)
+        if _enabled_hdr:
+            _enabled_hdr.setToolTip(
+                "Enabled — tick to include this operation when you click ▶ Run All.")
         self.ops_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.ops_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.ops_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -261,7 +276,12 @@ class FindReplaceSetsManager(QWidget):
         add_op_btn = QPushButton("+ Add Operation")
         add_op_btn.clicked.connect(self._add_empty_operation)
         ops_btn_layout.addWidget(add_op_btn)
-        
+
+        del_op_btn = QPushButton("🗑 Delete Operation")
+        del_op_btn.setToolTip("Delete the selected operation from this set.")
+        del_op_btn.clicked.connect(self._delete_selected_operation)
+        ops_btn_layout.addWidget(del_op_btn)
+
         ops_btn_layout.addStretch()
         
         run_all_btn = QPushButton("▶ Run All")
@@ -334,11 +354,14 @@ class FindReplaceSetsManager(QWidget):
         self.ops_table.setRowCount(len(self.current_set.operations))
         
         for i, op in enumerate(self.current_set.operations):
-            # Enabled checkbox
-            enabled_item = QTableWidgetItem("✓" if op.enabled else "")
+            # Enabled checkbox – ticking includes the operation in "Run All".
+            # (Just the checkbox; the old redundant "✓" text was confusing.)
+            enabled_item = QTableWidgetItem()
             enabled_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             enabled_item.setFlags(enabled_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             enabled_item.setCheckState(Qt.CheckState.Checked if op.enabled else Qt.CheckState.Unchecked)
+            enabled_item.setToolTip(
+                "Enabled — tick to include this operation when you click ▶ Run All.")
             self.ops_table.setItem(i, 0, enabled_item)
             
             # Find text
@@ -354,9 +377,10 @@ class FindReplaceSetsManager(QWidget):
             search_item = QTableWidgetItem(search_in_map.get(op.search_in, "Target"))
             self.ops_table.setItem(i, 3, search_item)
             
-            # Match mode - full text
+            # Match mode - full text ("Regex" supersedes the match-mode label)
             match_map = {0: "Anything", 1: "Whole words", 2: "Entire segment"}
-            match_item = QTableWidgetItem(match_map.get(op.match_mode, "Anything"))
+            match_label = "Regex" if getattr(op, 'use_regex', False) else match_map.get(op.match_mode, "Anything")
+            match_item = QTableWidgetItem(match_label)
             self.ops_table.setItem(i, 4, match_item)
         
         self.ops_table.blockSignals(False)
@@ -420,7 +444,78 @@ class FindReplaceSetsManager(QWidget):
                     QMessageBox.information(self, "Import", f"Imported '{fr_set.name}' with {len(fr_set.operations)} operations.")
             except Exception as e:
                 QMessageBox.warning(self, "Import Error", f"Failed to import: {e}")
-    
+
+    def _export_set(self):
+        """Export the selected set to a .svfr file chosen by the user."""
+        if not self.current_set:
+            QMessageBox.information(self, "Export", "Select a set to export first.")
+            return
+        default_name = f"{self.current_set.name}.svfr"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export F&R Set", default_name,
+            "Supervertaler F&R Sets (*.svfr);;All Files (*)"
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith('.svfr'):
+            file_path += '.svfr'
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(self.current_set.to_dict(), f, ensure_ascii=False, indent=2)
+            QMessageBox.information(
+                self, "Export",
+                f"Exported '{self.current_set.name}' to:\n{file_path}")
+        except Exception as e:
+            QMessageBox.warning(self, "Export Error", f"Failed to export: {e}")
+
+    def _delete_selected_set(self):
+        """Delete the selected set (and its .svfr file) after confirmation."""
+        selected_rows = self.sets_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.information(self, "Delete Set", "Select a set to delete first.")
+            return
+        index = selected_rows[0].row()
+        if not (0 <= index < len(self.sets)):
+            return
+        fr_set = self.sets[index]
+        reply = QMessageBox.question(
+            self, "Delete Set",
+            f"Delete the set '{fr_set.name}' and all {len(fr_set.operations)} of its "
+            f"operation(s)?\n\nThis cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        # Remove the backing .svfr file (same name-sanitisation as _save_set).
+        safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in fr_set.name)
+        try:
+            (self.sets_dir / f"{safe_name}.svfr").unlink()
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"Error deleting F&R set file: {e}")
+        del self.sets[index]
+        if self.current_set is fr_set:
+            self.current_set = None
+        self._refresh_sets_table()
+        self._refresh_ops_table()
+
+    def _delete_selected_operation(self):
+        """Delete the selected operation from the current set."""
+        if not self.current_set:
+            QMessageBox.information(self, "Delete Operation", "Select a set first.")
+            return
+        selected_rows = self.ops_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.information(self, "Delete Operation", "Select an operation to delete.")
+            return
+        index = selected_rows[0].row()
+        if 0 <= index < len(self.current_set.operations):
+            self.current_set.remove_operation(index)
+            self._save_set(self.current_set)
+            self._refresh_ops_table()
+            self._refresh_sets_table()  # update operation count
+
     def _add_empty_operation(self):
         """Add an empty operation to the current set."""
         if not self.current_set:

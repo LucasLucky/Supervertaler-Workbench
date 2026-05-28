@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.218 (May 28, 2026)
+**Current Version:** v1.10.219 (May 28, 2026)
+
+
+## v1.10.219 – May 28, 2026
+
+### Added (Find & Replace: regular expressions)
+
+- **Regex support** – a new "Regex" checkbox treats the Find field as a Python regular expression across Find next / Find all / Highlight all / Replace this / Replace all. The Replace field supports **backreferences** (`\1`, `\g<name>`). Invalid patterns show a friendly error and abort rather than crashing or partially replacing (Replace All also validates the replacement template against a real match first, so a bad backreference is caught before anything is changed).
+- **Regex works in saved F&R Sets too** – each operation stores the regex flag (persisted to its `.svfr` file, so it survives restarts), the Sets operations table shows "Regex" in the Match column, and Run All executes regex operations with backreferences.
+
+### Added (F&R Sets)
+
+- **Export** – a new "📤 Export" button (next to Import) writes the selected set to a `.svfr` file you can share or back up. (Import already existed; Export was missing.)
+- **Delete** – new "🗑 Delete Set" and "🗑 Delete Operation" buttons; previously there was no way to remove either.
+- **Run All deletion warning** – if any enabled operation has an empty "Replace with" (which deletes every match), Run All now lists those operations and defaults the confirmation button to "No".
+
+### Changed (Find & Replace)
+
+- **Match radio buttons are now standard radios** that render and select correctly, and they grey out cleanly when Regex is on (the Match modes and Auto-adjust case don't apply to a regex).
+- **The "Enabled" column in the Sets operations table is now a plain checkbox** (the redundant "✓" text is gone) with tooltips on the header and each row explaining that it controls whether the operation runs on "Run All".
 
 
 ## v1.10.218 – May 28, 2026
