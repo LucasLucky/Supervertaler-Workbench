@@ -1924,6 +1924,33 @@ class _GridArrowKeyEventFilter(QObject):
         key = event.key()
         mods = _cleaned_modifiers(event)  # strip macOS KeypadModifier from arrow keys
 
+        # Ctrl+Shift+S with 2+ rows selected: copy source → target for every
+        # selected segment. The per-cell editor handles the single-cell case in
+        # its own keyPressEvent, but a multi-row selection means focus is on the
+        # table (not a cell editor), so that handler never fires – which is why
+        # Ctrl+Shift+S appeared to do nothing on a multi-segment selection. We
+        # intercept here only when the grid has focus and more than one row is
+        # selected, leaving the single-cell path completely untouched.
+        if (mods == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+                and key == Qt.Key.Key_S):
+            if (hasattr(mw, 'get_selected_segments_from_grid')
+                    and hasattr(mw, '_copy_source_to_target_selected')):
+                table = getattr(mw, 'table', None)
+                focus = QApplication.focusWidget()
+                focus_in_grid = (
+                    table is not None and focus is not None and (
+                        focus is table
+                        or table.isAncestorOf(focus)
+                        or isinstance(focus, (ReadOnlyGridTextEditor, EditableGridTextEditor))
+                    )
+                )
+                if focus_in_grid:
+                    selected = mw.get_selected_segments_from_grid()
+                    if len(selected) > 1:
+                        mw._copy_source_to_target_selected(selected)
+                        return True
+            return False
+
         # Only handle the four combos we care about
         alt_only = mods == Qt.KeyboardModifier.AltModifier
         ctrl_only = mods == Qt.KeyboardModifier.ControlModifier
@@ -45819,7 +45846,29 @@ class SupervertalerQt(QMainWindow):
         self.status_bar.showMessage(f"Sending segments to TM '{target_tm_name}'...")
         QApplication.processEvents()
         
-        for seg in segments_to_check:
+        from PyQt6.QtWidgets import QProgressDialog
+        _total = len(segments_to_check)
+        _progress = QProgressDialog(
+            f"Updating '{target_tm_name}'…", "Cancel", 0, _total, self)
+        _progress.setWindowTitle("Updating TM")
+        _progress.setWindowModality(Qt.WindowModality.WindowModal)
+        # Only appears if the run takes longer than ~400 ms, so small
+        # selections don't flash a dialog; long runs show progress + Cancel.
+        _progress.setMinimumDuration(400)
+        _progress.setValue(0)
+        cancelled = False
+
+        for _idx, seg in enumerate(segments_to_check):
+            # Refresh the dialog every 20 segments (and on the last one) so a
+            # large project no longer freezes the UI with no feedback.
+            if _idx % 20 == 0 or _idx == _total - 1:
+                _progress.setValue(_idx)
+                _progress.setLabelText(
+                    f"Updating '{target_tm_name}'… ({_idx + 1}/{_total})")
+                QApplication.processEvents()
+                if _progress.wasCanceled():
+                    cancelled = True
+                    break
             try:
                 # Check if has translation
                 if skip_empty_cb.isChecked() and not seg.target.strip():
@@ -45880,6 +45929,9 @@ class SupervertalerQt(QMainWindow):
                 error_count += 1
                 self.log(f"⚠ Error sending segment {seg.id} to TM: {e}")
         
+        _progress.setValue(_total)
+        _progress.close()
+
         # Update TM entry count in metadata
         if hasattr(self, 'tm_metadata_mgr') and self.tm_metadata_mgr:
             try:
@@ -45915,10 +45967,14 @@ class SupervertalerQt(QMainWindow):
         if error_count > 0:
             self.log(f"  Errors: {error_count}")
         
-        self.status_bar.showMessage(f"✓ Sent {sent_count} segments to TM", 5000)
-        
+        _title = "Send to TM – Cancelled" if cancelled else "Send to TM Complete"
+        _prefix = "Operation cancelled before finishing.\n\n" if cancelled else ""
+        self.status_bar.showMessage(
+            f"{'⚠ Cancelled – ' if cancelled else '✓ '}Sent {sent_count} segments to TM", 5000)
+
         QMessageBox.information(
-            self, "Send to TM Complete",
+            self, _title,
+            f"{_prefix}"
             f"Sent {sent_count} segment(s) to TM '{target_tm_name}'.\n\n"
             f"Skipped: {skipped_count}\n"
             f"Errors: {error_count}"

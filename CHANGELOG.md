@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.215 (May 27, 2026)
+**Current Version:** v1.10.216 (May 28, 2026)
+
+
+## v1.10.216 – May 28, 2026
+
+### Fixed (Ctrl+Shift+S now works on a multi-segment selection)
+
+- **Selecting several segments in the grid and pressing Ctrl+Shift+S now copies source → target for the whole selection.** The shortcut was only wired into the per-cell editor, so it fired only while editing a single cell; with multiple rows selected, focus sits on the grid (not a cell editor) and the keystroke went nowhere. It is now handled at the grid level and routes to the same bulk copy that `Bulk Operations → Copy Source to Target` already used. Single-cell behaviour is unchanged.
+
+### Added (Progress dialog for Update Active TM(s))
+
+- **`Bulk Operations → Update Active TM(s)` now shows a progress dialog with a Cancel button on long runs.** Previously a large project updated with no feedback and a frozen window. The dialog only appears if the operation takes longer than ~400 ms (so small selections don't flash it), reports `(n/total)` progress, and lets the user cancel mid-run – cancelling keeps everything already written and reports the partial count.
 
 
 ## v1.10.215 – May 27, 2026
