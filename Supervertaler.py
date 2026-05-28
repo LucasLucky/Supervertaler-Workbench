@@ -2463,24 +2463,43 @@ def _is_edge_trim_char(ch: str) -> bool:
     return unicodedata.category(ch).startswith('P')
 
 
+def _is_cjk_char(ch: str) -> bool:
+    """True for characters in scripts that don't put spaces between words
+    (Chinese, Japanese, Korean, Thai). Word-by-word selection expansion must
+    not run across these – each character is effectively its own token, so
+    expanding would swallow the whole run (``str.isalnum()`` is True for them,
+    which is exactly what made drag-selecting one Chinese character grab the
+    entire cell)."""
+    o = ord(ch)
+    return (
+        0x4E00 <= o <= 0x9FFF or    # CJK Unified Ideographs
+        0x3400 <= o <= 0x4DBF or    # CJK Extension A
+        0x3040 <= o <= 0x30FF or    # Hiragana + Katakana
+        0xAC00 <= o <= 0xD7AF or    # Hangul syllables
+        0x0E00 <= o <= 0x0E7F or    # Thai
+        0xF900 <= o <= 0xFAFF or    # CJK Compatibility Ideographs
+        0x20000 <= o <= 0x2FA1F     # CJK Extension B and beyond
+    )
+
+
 def select_word_under_cursor(widget, event) -> bool:
     """Select the word under the double-click position, excluding adjacent
     punctuation (e.g. a trailing period) and invisible-character markers.
 
     Used by both source and target grid cells so selection behaves identically
-    whether or not invisible characters are displayed. Word-internal apostrophes
-    and hyphens are preserved (don't, well-known); decimal separators inside a
-    number are kept because only the *edges* of the selection are trimmed.
+    whether or not invisible characters are displayed. Word boundaries come from
+    Qt's Unicode segmenter (QTextBoundaryFinder, UAX #29), so selection is
+    correct for space-less scripts such as Chinese, Japanese and Thai too – the
+    previous whitespace-delimiter scan found no delimiter in CJK text and ran to
+    both ends, selecting the entire cell. Word-internal apostrophes and hyphens
+    are preserved (don't, well-known); decimal separators inside a number are
+    kept because only the *edges* of the selection are trimmed.
 
     Returns True if a selection was made, False if the caller should fall back
     to the default handler (e.g. empty cell).
     """
     from PyQt6.QtGui import QTextCursor
-
-    # Regular/non-breaking space + the visible invisible-character markers.
-    # ​ is deliberately NOT a delimiter (it lives inside '·​' pairs);
-    # any leading/trailing ​ is removed by the edge-trim step below.
-    DELIMITERS = {' ', ' ', '·', '→', '°', '↵', '\n', '\t'}
+    from PyQt6.QtCore import QTextBoundaryFinder
 
     text = widget.toPlainText()
     n = len(text)
@@ -2490,12 +2509,18 @@ def select_word_under_cursor(widget, event) -> bool:
     cursor = widget.cursorForPosition(event.pos())
     pos = min(cursor.position(), n)
 
-    start = pos
-    while start > 0 and text[start - 1] not in DELIMITERS:
-        start -= 1
-    end = pos
-    while end < n and text[end] not in DELIMITERS:
-        end += 1
+    # Unicode word boundaries (UAX #29) around the click position. For CJK and
+    # other space-less scripts this picks a sensible character/word boundary
+    # instead of running to both ends of the text.
+    bf = QTextBoundaryFinder(QTextBoundaryFinder.BoundaryType.Word, text)
+    bf.setPosition(pos)
+    start = pos if bf.isAtBoundary() else bf.toPreviousBoundary()
+    if start < 0:
+        start = 0
+    bf.setPosition(start)
+    end = bf.toNextBoundary()
+    if end < 0:
+        end = n
 
     # Trim punctuation / zero-width markers from both edges, but never trim away
     # the entire token (e.g. a double-click directly on a standalone "(").
@@ -2506,6 +2531,11 @@ def select_word_under_cursor(widget, event) -> bool:
         te -= 1
     if ts < te:
         start, end = ts, te
+
+    # Nothing left to select (e.g. double-click past the end of the text, or a
+    # run that trimmed away entirely) – let the default handler deal with it.
+    if start >= end:
+        return False
 
     cursor.setPosition(start)
     cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
@@ -3449,7 +3479,10 @@ class ReadOnlyGridTextEditor(QTextEdit):
             # Helper function to check if character is part of a word
             # Includes alphanumeric, underscore, hyphen, and apostrophe
             def is_word_char(char):
-                return char.isalnum() or char in "_-'"
+                # CJK / Thai etc. have no inter-word spaces; treat each such
+                # character as its own token so expansion doesn't swallow the
+                # whole run (str.isalnum() is True for them).
+                return (char.isalnum() and not _is_cjk_char(char)) or char in "_-'"
 
             # Track if we need to update the selection
             selection_changed = False
@@ -4626,7 +4659,10 @@ class EditableGridTextEditor(QTextEdit):
             # Helper function to check if character is part of a word
             # Includes alphanumeric, underscore, hyphen, and apostrophe
             def is_word_char(char):
-                return char.isalnum() or char in "_-'"
+                # CJK / Thai etc. have no inter-word spaces; treat each such
+                # character as its own token so expansion doesn't swallow the
+                # whole run (str.isalnum() is True for them).
+                return (char.isalnum() and not _is_cjk_char(char)) or char in "_-'"
 
             # Track if we need to update the selection
             selection_changed = False

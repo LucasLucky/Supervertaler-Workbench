@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.216 (May 28, 2026)
+**Current Version:** v1.10.217 (May 28, 2026)
+
+
+## v1.10.217 – May 28, 2026
+
+### Fixed (Text selection in Chinese, Japanese, Thai and other space-less scripts)
+
+- **Double-click and drag-select now work correctly in scripts that don't put spaces between words.** Double-click previously selected the entire cell – the word-boundary scan looked only for whitespace/marker delimiters, of which CJK text has none, so it ran to both ends. Drag-selecting one or two characters had the same effect, because the "smart word selection" expansion treated every CJK character as a word character (`str.isalnum()` is True for them) and expanded across the whole run. Double-click now uses Qt's Unicode word segmenter (`QTextBoundaryFinder`, UAX #29), and word-expansion stops at CJK/Thai boundaries. Latin/spaced-text behaviour is unchanged, and the fix applies to both source and target cells.
 
 
 ## v1.10.216 – May 28, 2026
