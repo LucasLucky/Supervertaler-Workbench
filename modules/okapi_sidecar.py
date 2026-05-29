@@ -76,23 +76,21 @@ class OkapiSidecar:
     # the JAR + a bundled Windows JRE, so Windows pip users don't need
     # to install Java themselves.
     #
-    # The cross-platform JAR-only asset is used on macOS / Linux where
-    # we don't ship a platform-specific JRE bundle yet. Those users must
-    # have a system Java available (JAVA_HOME or `java` on PATH).
-    # macOS-with-bundled-JRE and Linux-with-bundled-JRE are tracked as
-    # future improvements; once those bundles exist we can prefer them
-    # over the JAR-only download.
+    # The cross-platform JAR-only asset is used on macOS (Intel and Apple
+    # Silicon) and Linux. Those users must have a system Java available
+    # (JAVA_HOME or `java` on PATH). We intentionally don't ship
+    # per-platform JRE bundles for them — see INSTALLER_URL_JAR_ONLY below.
     INSTALLER_URL_WINDOWS = (
         "https://github.com/Supervertaler/Supervertaler-Workbench/"
         "releases/download/v1.10.223/okapi-sidecar-windows-v0.1.8.zip"
     )
-    # The macOS bundle is currently arm64-only (Apple Silicon). Intel
-    # Macs fall through to the JAR-only path (with the user's system
-    # Java) – same as Linux. Tracked as a future improvement.
-    INSTALLER_URL_MACOS_ARM64 = (
-        "https://github.com/Supervertaler/Supervertaler-Workbench/"
-        "releases/download/v1.9.416/okapi-sidecar-macos-v0.1.6.zip"
-    )
+    # All non-Windows platforms (macOS — Intel and Apple Silicon — and
+    # Linux) use the cross-platform JAR-only asset with the user's system
+    # Java. We deliberately do NOT ship per-platform JRE bundles for them:
+    # a macOS-arm64 bundle would need an arm64 JRE built on a Mac, so every
+    # sidecar update would require a Mac. JAR-only keeps sidecar releases
+    # buildable from any OS. (The macOS desktop .app still bundles its own
+    # JRE at build time — that's separate from this lazy-download path.)
     INSTALLER_URL_JAR_ONLY = (
         "https://github.com/Supervertaler/Supervertaler-Workbench/"
         "releases/download/v1.10.223/okapi-sidecar-v0.1.8.jar"
@@ -745,14 +743,10 @@ class OkapiSidecar:
         if platform.system() == "Windows":
             return self._download_install_zip_bundle(
                 self.INSTALLER_URL_WINDOWS, target_dir, progress_callback)
-        elif platform.system() == "Darwin" and platform.machine() == "arm64":
-            # Apple Silicon: bundle includes an arm64 JRE built via
-            # jlink, so no system Java needed.
-            return self._download_install_zip_bundle(
-                self.INSTALLER_URL_MACOS_ARM64, target_dir, progress_callback)
         else:
-            # Intel Mac / Linux: JAR only, system Java required.
-            # (No platform-specific JRE bundle yet for these targets.)
+            # macOS (Intel or Apple Silicon) and Linux: JAR only, system
+            # Java required. (No per-platform JRE bundles for these — keeps
+            # sidecar updates buildable without a Mac.)
             return self._download_install_jar_only(
                 self.INSTALLER_URL_JAR_ONLY, target_dir, progress_callback)
 
@@ -879,16 +873,11 @@ class OkapiSidecar:
     def platform_bundles_jre() -> bool:
         """True on platforms whose sidecar download bundles a private JRE.
 
-        Currently: Windows (any arch) and Apple Silicon Macs. Everywhere
-        else (Intel Macs, Linux) gets the JAR-only path and must rely on
-        a system Java install.
+        Currently only Windows (any arch). All Macs (Intel and Apple
+        Silicon) and Linux use the JAR-only download and must rely on a
+        system Java install.
         """
-        sysname = platform.system()
-        if sysname == "Windows":
-            return True
-        if sysname == "Darwin" and platform.machine() == "arm64":
-            return True
-        return False
+        return platform.system() == "Windows"
 
     def needs_system_java_install(self) -> bool:
         """True iff this platform requires the user to install Java AND
