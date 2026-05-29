@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.227 (May 29, 2026)
+**Current Version:** v1.10.228 (May 29, 2026)
+
+
+## v1.10.228 – May 29, 2026
+
+### Added (multi-file export boundaries)
+
+- **Bilingual exports now mark where each file begins in multi-file projects.** The bilingual review table (DOCX, both the tagged and formatted variants) inserts a bold "📄 &lt;filename&gt;" header row at the start of each file's segments, and the AI-readable Markdown export inserts a "📄 &lt;filename&gt;" marker row. Previously every file's segments ran together in one continuous table with no way to tell where one ended and the next began. Single-file projects are unchanged. The DOCX file-header rows have no segment number, so re-import skips them automatically (and existing segments keep their file association on round-trip).
 
 
 ## v1.10.227 – May 29, 2026

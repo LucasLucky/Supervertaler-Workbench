@@ -15148,11 +15148,31 @@ class SupervertalerQt(QMainWindow):
                 }
                 return status_map.get(status, status.replace('_', ' ').title() if status else '')
             
+            # Detect a multi-file project so we can mark where each file
+            # begins. Single-file exports are unchanged.
+            _rt_file_ids = [getattr(s, 'file_id', None) for s in segments]
+            _rt_multifile = len({fid for fid in _rt_file_ids if fid is not None}) > 1
+            _rt_prev_fid = object()  # sentinel: the first file also gets a header
+
             # Add segment rows
             for i, seg in enumerate(segments):
+                # File-boundary header row (multi-file projects only). Its first
+                # cell is deliberately left empty so the re-importer skips it —
+                # the importer ignores any row without a segment number.
+                _cur_fid = getattr(seg, 'file_id', None)
+                if _rt_multifile and _cur_fid != _rt_prev_fid:
+                    _fname = getattr(seg, 'file_name', '') or f"File {_cur_fid}"
+                    _hrow = table.add_row()
+                    _hcells = _hrow.cells
+                    _hcells[0].text = ""
+                    _hrun = _hcells[1].paragraphs[0].add_run(f"📄 {_fname}")
+                    _hrun.bold = True
+                    _hrun.font.size = Pt(10)
+                    _rt_prev_fid = _cur_fid
+
                 row = table.add_row()
                 cells = row.cells
-                
+
                 # Segment number
                 cells[0].text = str(i + 1)
                 for para in cells[0].paragraphs:
@@ -33618,8 +33638,23 @@ class SupervertalerQt(QMainWindow):
                 output_lines.append(f"| Segment | {target_lang} |")
                 output_lines.append("|---------|" + "-" * (len(target_lang) + 2) + "|")
             
+            # Detect a multi-file project so we can mark file boundaries.
+            _md_file_ids = [getattr(s, 'file_id', None) for s in filtered_segments]
+            _md_multifile = len({fid for fid in _md_file_ids if fid is not None}) > 1
+            _md_prev_fid = object()  # sentinel: the first file also gets a marker
+
             # Table rows
             for i, seg in enumerate(filtered_segments, 1):
+                # File-boundary marker row (multi-file projects only)
+                _cur_fid = getattr(seg, 'file_id', None)
+                if _md_multifile and _cur_fid != _md_prev_fid:
+                    _fname = (getattr(seg, 'file_name', '') or f"File {_cur_fid}").replace("|", "\\|")
+                    if content_mode == "bilingual":
+                        output_lines.append(f"| | **📄 {_fname}** | |")
+                    else:
+                        output_lines.append(f"| | **📄 {_fname}** |")
+                    _md_prev_fid = _cur_fid
+
                 # Escape pipe characters in text for Markdown tables
                 source_text = seg.source.replace("|", "\\|").replace("\n", " ")
                 target_text = (seg.target or "").replace("|", "\\|").replace("\n", " ")
