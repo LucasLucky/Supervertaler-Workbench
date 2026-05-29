@@ -50730,8 +50730,8 @@ class SupervertalerQt(QMainWindow):
         # Replace non-breaking spaces with degree symbol (°)
         # Note: We don't add zero-width space here since NBSP should NOT break
         if self.invisible_display_settings.get('nbsp', False):
-            result = result.replace('\u00A0', '°')  # Unicode NBSP
-            result = result.replace('\u202F', '°')  # Narrow NBSP
+            result = result.replace('\u00A0', '°\uFEFF')  # Unicode NBSP
+            result = result.replace('\u202F', '°\uFEFF')  # Narrow NBSP
 
         # Replace line breaks with return arrow (↵)
         if self.invisible_display_settings.get('linebreaks', False):
@@ -50765,7 +50765,7 @@ class SupervertalerQt(QMainWindow):
         # Reverse non-breaking spaces (degree symbol → NBSP) – always
         # We can't distinguish between \u00A0 and \u202F after replacement,
         # so we default to the more common \u00A0
-        result = result.replace('°', '\u00A0')
+        result = result.replace('°\uFEFF', '\u00A0')  # sentinel-marked NBSP only; a real degree sign is left intact
 
         # Reverse line breaks (return arrow → line break) – always
         result = result.replace('↵\n', '\n')

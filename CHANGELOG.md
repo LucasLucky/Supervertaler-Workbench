@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.225 (May 29, 2026)
+**Current Version:** v1.10.226 (May 29, 2026)
+
+
+## v1.10.226 – May 29, 2026
+
+### Fixed
+
+- **Degree signs (°) were lost on export.** With "Show Invisibles → Non-breaking Spaces" enabled, non-breaking spaces are displayed as a degree symbol; the reverse step then turned *every* ° in the text back into a non-breaking space — so real degree signs (e.g. "180°C") became NBSPs and disappeared (showing as a plain space) in exported DOCX and bilingual files. The non-breaking-space marker now carries an invisible sentinel (U+FEFF), so only the marker is reversed and genuine degree signs are left untouched. (Existing segments already corrupted by the old behaviour need re-filling/re-import; new edits are safe.)
 
 
 ## v1.10.225 – May 29, 2026
