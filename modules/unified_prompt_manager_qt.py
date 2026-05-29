@@ -43,7 +43,7 @@ from modules.chat_view_widget import ChatViewWidget
 # ============================================================================
 # The AutoPrompt button used to call chat_backend.send_ai_request directly on
 # the main thread. That call is synchronous and I/O-bound — with
-# reasoning-capable models (Opus 4.7, GPT-5 etc.) it can take 1-3 minutes,
+# reasoning-capable models (Opus 4.8, GPT-5 etc.) it can take 1-3 minutes,
 # during which the whole window froze and Windows put up "Not Responding".
 # The worker class below moves that call off the main thread so the progress
 # dialog stays responsive (and the user can cancel without killing the app).

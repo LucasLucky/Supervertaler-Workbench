@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.221 (May 28, 2026)
+**Current Version:** v1.10.222 (May 29, 2026)
+
+
+## v1.10.222 – May 29, 2026
+
+### Changed
+
+- **Upgraded the Claude flagship from Opus 4.7 to Opus 4.8** (`claude-opus-4-8`), Anthropic's new most-capable model (released 28 May 2026, 1M context, same $5/$25 per 1M token pricing). Updated everywhere the model is offered: the AI Settings provider dropdowns, the OpenRouter list (`anthropic/claude-opus-4.8`), PDF Rescue, the cost estimator, and the model info/description maps. The Claude line-up stays Sonnet 4.6 (recommended), Haiku 4.5 (fast/cheap), and Opus 4.8 (highest quality). Anyone still pointing at Opus 4.7 keeps working via the editable Model ID field.
 
 
 ## v1.10.221 – May 28, 2026

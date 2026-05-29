@@ -12,7 +12,7 @@ from typing import Optional
 # Pricing per 1M tokens: (input_price_usd, output_price_usd)
 PRICING = {
     "claude": {
-        "claude-opus-4-7": (5.0, 25.0),
+        "claude-opus-4-8": (5.0, 25.0),
         "claude-sonnet-4-6": (3.0, 15.0),
         "claude-haiku-4-5-20251001": (1.0, 5.0),
     },
@@ -33,7 +33,7 @@ PRICING = {
     "openrouter": {
         # OpenRouter passes through provider pricing + small markup
         "anthropic/claude-sonnet-4.6": (3.0, 15.0),
-        "anthropic/claude-opus-4.7": (15.0, 75.0),
+        "anthropic/claude-opus-4.8": (5.0, 25.0),
         "anthropic/claude-opus-4.6": (15.0, 75.0),
         "openai/gpt-5.4": (10.0, 30.0),
         "openai/gpt-5.4-mini": (1.0, 4.0),

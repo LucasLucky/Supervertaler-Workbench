@@ -7,7 +7,7 @@ Can be used standalone or imported by other applications.
 
 Supported Providers:
 - OpenAI (GPT-5.5, GPT-5.4 Mini)
-- Anthropic (Claude Sonnet 4.6, Haiku 4.5, Opus 4.7)
+- Anthropic (Claude Sonnet 4.6, Haiku 4.5, Opus 4.8)
 - Google (Gemini 3.1 Flash-Lite, 2.5 Pro, 3.1 Pro Preview, Gemma 4 26B MoE)
 - Mistral AI (Mistral Large, Mistral Small)
 - DeepSeek (V4 Pro, V4 Flash)
@@ -15,7 +15,7 @@ Supported Providers:
 Claude Models:
 - Sonnet 4.6: Best balance - flagship model for general translation ($3/$15 per MTok)
 - Haiku 4.5: Fast & affordable - 2x speed, 1/5 cost of Sonnet ($1/$5 per MTok)
-- Opus 4.7: Most capable - complex legal/technical translation, 1M context ($5/$25 per MTok)
+- Opus 4.8: Most capable - complex legal/technical translation, 1M context ($5/$25 per MTok)
 
 Temperature Handling:
 - Reasoning models (GPT-5, o1, o3): temperature parameter OMITTED (not supported)
@@ -203,8 +203,8 @@ class LLMClient:
             "strengths": ["General translation", "Multilingual", "Fast"],
             "use_case": "Recommended for most translation tasks"
         },
-        "anthropic/claude-opus-4.7": {
-            "name": "Claude Opus 4.7",
+        "anthropic/claude-opus-4.8": {
+            "name": "Claude Opus 4.8",
             "description": "Anthropic's most capable – 1M context, top-tier reasoning",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "1M context"],
             "use_case": "Specialised legal/technical translation, long-context jobs"
@@ -342,7 +342,7 @@ class LLMClient:
         "claude": [
             "claude-sonnet-4-6",
             "claude-haiku-4-5-20251001",
-            "claude-opus-4-7"
+            "claude-opus-4-8"
         ],
         "gemini": [
             "gemini-3.1-flash-lite",
@@ -354,10 +354,10 @@ class LLMClient:
 
     # Available Claude models with descriptions
     CLAUDE_MODELS = {
-        "claude-opus-4-7": {
-            "name": "Claude Opus 4.7",
+        "claude-opus-4-8": {
+            "name": "Claude Opus 4.8",
             "description": "Most capable - Anthropic's flagship, 1M context, 128k max output",
-            "released": "2026-04-16",
+            "released": "2026-05-28",
             "strengths": ["Legal translation", "Technical documents", "Complex reasoning", "Highest accuracy", "1M context"],
             "pricing": {"input": 5, "output": 25},  # USD per million tokens
             "use_case": "Best for specialised legal/technical translation and long-context jobs"

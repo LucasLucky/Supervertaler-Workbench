@@ -20740,12 +20740,12 @@ class SupervertalerQt(QMainWindow):
         claude_combo.addItems([
             "claude-sonnet-4-6 (Recommended - Best Balance)",
             "claude-haiku-4-5-20251001 (Fast & Affordable)",
-            "claude-opus-4-7 (Latest Premium - Most Capable)"
+            "claude-opus-4-8 (Latest Premium - Most Capable)"
         ])
         claude_combo.setToolTip(
             "Claude Sonnet 4.6: Best balance of speed, quality, and cost.\n"
             "Claude Haiku 4.5: Fast and affordable for batch jobs.\n"
-            "Claude Opus 4.7: Anthropic's most capable model (1M context, 128k max output)."
+            "Claude Opus 4.8: Anthropic's most capable model (1M context, 128k max output)."
         )
         current_claude_model = settings.get('claude_model', 'claude-sonnet-4-6')
         for i in range(claude_combo.count()):
@@ -20841,7 +20841,7 @@ class SupervertalerQt(QMainWindow):
         openrouter_combo.setEditable(True)
         openrouter_combo.addItems([
             "anthropic/claude-sonnet-4.6 (Recommended)",
-            "anthropic/claude-opus-4.7 (Latest Premium)",
+            "anthropic/claude-opus-4.8 (Latest Premium)",
             "anthropic/claude-opus-4.6 (Previous Premium)",
             "openai/gpt-5.4 (Advanced Reasoning)",
             "openai/gpt-5.4-mini (Fast & Economical)",
@@ -21069,7 +21069,7 @@ class SupervertalerQt(QMainWindow):
             model_id = combo_text.split()[0] if combo_text else ""
             friendly = {
                 "gpt-5.5": "GPT-5.5", "gpt-5.4-mini": "GPT-5.4 Mini",
-                "claude-sonnet-4-6": "Claude Sonnet 4.6", "claude-opus-4-7": "Claude Opus 4.7",
+                "claude-sonnet-4-6": "Claude Sonnet 4.6", "claude-opus-4-8": "Claude Opus 4.8",
                 "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
                 "gemini-3.1-flash-lite": "Gemini 3.1 Flash-Lite", "gemini-3.5-flash": "Gemini 3.5 Flash",
                 "gemini-2.5-pro": "Gemini 2.5 Pro",
@@ -21975,7 +21975,7 @@ class SupervertalerQt(QMainWindow):
             ("claude", "Claude", "claude", [
                 ("claude-sonnet-4-6", "Claude Sonnet 4.6 (Recommended)"),
                 ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 (Fast)"),
-                ("claude-opus-4-7", "Claude Opus 4.7 (Latest Premium)"),
+                ("claude-opus-4-8", "Claude Opus 4.8 (Latest Premium)"),
             ]),
             ("openai", "OpenAI", "openai", [
                 ("gpt-5.5", "GPT-5.5 (Recommended)"),
