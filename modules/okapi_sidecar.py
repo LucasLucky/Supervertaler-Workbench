@@ -84,7 +84,7 @@ class OkapiSidecar:
     # over the JAR-only download.
     INSTALLER_URL_WINDOWS = (
         "https://github.com/Supervertaler/Supervertaler-Workbench/"
-        "releases/download/v1.9.416/okapi-sidecar-windows-v0.1.6.zip"
+        "releases/download/v1.10.223/okapi-sidecar-windows-v0.1.8.zip"
     )
     # The macOS bundle is currently arm64-only (Apple Silicon). Intel
     # Macs fall through to the JAR-only path (with the user's system
@@ -95,7 +95,7 @@ class OkapiSidecar:
     )
     INSTALLER_URL_JAR_ONLY = (
         "https://github.com/Supervertaler/Supervertaler-Workbench/"
-        "releases/download/v1.9.484/okapi-sidecar-v0.1.7.jar"
+        "releases/download/v1.10.223/okapi-sidecar-v0.1.8.jar"
     )
 
     def __init__(self, port: int = DEFAULT_PORT,
