@@ -7628,10 +7628,22 @@ class SupervertalerQt(QMainWindow):
         
         # Application settings
         self.allow_replace_in_source = False  # Safety: don't allow replace in source by default
-        self.auto_propagate_exact_matches = True  # Auto-fill 100% TM matches for empty segments
-        self.auto_insert_100_percent_matches = True  # Auto-insert 100% TM matches when segment selected
+        # Consolidated auto-fill setting (replaces the old auto_propagate_exact_matches
+        # + auto_insert_100_percent_matches pair). When you select an empty segment
+        # that has a 100% TM match, its translation is filled in automatically.
+        self.auto_fill_100_matches = True  # Auto-fill empty segments with 100% TM matches
+        self.auto_fill_confirm = False  # Mark auto-filled segments as confirmed (else draft)
+        # Old attrs kept for back-compat with any lingering references; the live
+        # code paths now read self.auto_fill_100_matches.
+        self.auto_propagate_exact_matches = True
+        self.auto_insert_100_percent_matches = True
         self.auto_confirm_100_percent_matches = False  # Auto-confirm 100% matches when navigating with Ctrl+Enter
         self.auto_confirm_overwrite_existing = False  # Allow auto-confirm to overwrite existing target content
+        # Auto-propagate confirmed translations to identical (same-source) segments
+        # — the memoQ/Trados-style propagate-on-confirm behaviour.
+        self.auto_propagate_on_confirm = True  # Propagate confirmed target to identical segments
+        self.auto_propagate_confirm = False  # Mark propagated segments as confirmed (else draft)
+        self.auto_propagate_overwrite = False  # Overwrite existing translations when propagating
         self.tm_save_mode = 'latest'  # 'all' = keep all translations with timestamps, 'latest' = only keep most recent (DEFAULT)
         
         # Tab position setting
@@ -7641,7 +7653,10 @@ class SupervertalerQt(QMainWindow):
         self.show_translation_results_pane = False  # Show Translation Results tab (hidden by default for new users)
         # Note: Match Panel is always visible (no toggle needed)
         
-        # TM and Termbase matching toggle (default: enabled)
+        # TM and Termbase matching are always on. (The old global on/off
+        # toggle was removed — to skip matching, simply don't activate any
+        # TMs/termbases.) These flags stay True; the internal match-logic
+        # guards that read them are now effectively always-true.
         self.enable_tm_matching = True
         self.enable_termbase_matching = True
         self.enable_mt_matching = True  # Machine Translation enabled
@@ -21475,7 +21490,6 @@ class SupervertalerQt(QMainWindow):
         surrounding_segments = general_prefs.get('surrounding_segments', 5)
         use_full_context = general_prefs.get('use_full_context', True)
         check_tm_before_api = general_prefs.get('check_tm_before_api', True)
-        auto_propagate_100 = general_prefs.get('auto_propagate_100', True)
 
         # --- Single-Segment Translation (Ctrl+T) ---
         single_header = QLabel(
@@ -21592,12 +21606,9 @@ class SupervertalerQt(QMainWindow):
 
         prefs_layout.addSpacing(5)
 
-        # Auto-propagate 100% TM matches
-        auto_propagate_cb = CheckmarkCheckBox("Auto-propagate 100% TM matches")
-        auto_propagate_cb.setChecked(auto_propagate_100)
-        prefs_layout.addWidget(auto_propagate_cb)
-
-        prefs_layout.addSpacing(5)
+        # (The "Auto-propagate 100% TM matches" checkbox was removed here — its
+        # behaviour is now consolidated into the single "Auto-fill empty segments
+        # with 100% TM matches" setting on the General tab → TM settings.)
 
         # TM/Termbase lookup delay
         lookup_delay = general_prefs.get('lookup_delay', 1500)
@@ -21710,7 +21721,7 @@ class SupervertalerQt(QMainWindow):
             tab.ollama_status_widget,
             openai_enable_cb, claude_enable_cb, gemini_enable_cb, ollama_enable_cb,
             batch_size_spin, surrounding_spin, full_context_cb, context_slider,
-            tm_no_check_rb, tm_fuzzy_rb, tm_exact_rb, auto_propagate_cb, delay_spin,
+            tm_no_check_rb, tm_fuzzy_rb, tm_exact_rb, None, delay_spin,
             ollama_keepwarm_cb,
             llm_matching_cb, llm_spin,
             quicklauncher_context_slider,
@@ -22735,30 +22746,78 @@ class SupervertalerQt(QMainWindow):
         self.enable_backup_cb = enable_backup_cb
         self.backup_interval_spin = backup_interval_spin
 
-        # TM and glossary settings section
-        tm_termbase_group = QGroupBox(self.tr("TM and termbase settings"))
+        # ──────────────────────────────────────────────────────────────
+        # Box 1: 📂 TM settings
+        # ──────────────────────────────────────────────────────────────
+        tm_termbase_group = QGroupBox(self.tr("📂 TM settings"))
         tm_termbase_layout = QVBoxLayout()
-        
-        # Auto-propagate exact TM matches
-        auto_propagate_cb = CheckmarkCheckBox("Auto-propagate exact TM matches (100%)")
-        auto_propagate_cb.setChecked(general_settings.get('auto_propagate_exact_matches', True))
+
+        # Header row with a contextual "?" help button at the top-right.
+        tm_header_row = QHBoxLayout()
+        tm_header_row.addStretch()
+        try:
+            from modules.styled_widgets import HelpButton
+            tm_header_row.addWidget(HelpButton(
+                "workbench/settings/tm-settings/",
+                tooltip="Open the TM settings help page",
+            ))
+        except Exception as e:
+            self.log(f"[TM settings] Could not add help button: {e}")
+        tm_termbase_layout.addLayout(tm_header_row)
+
+        # --- Auto-fill empty segments with 100% TM matches (consolidated) ---
+        auto_propagate_cb = CheckmarkCheckBox("Auto-fill empty segments with 100% TM matches")
+        # Back-compat: prefer the new key, fall back to the old one.
+        auto_propagate_cb.setChecked(general_settings.get(
+            'auto_fill_100_matches',
+            general_settings.get('auto_propagate_exact_matches', True)
+        ))
         auto_propagate_cb.setToolTip(
-            "Automatically fill target with 100% TM matches when a segment is selected and empty.\n"
-            "This saves time by applying exact matches without manual confirmation."
+            "When you select an empty segment that has a 100% TM match, its translation is filled in automatically."
         )
         tm_termbase_layout.addWidget(auto_propagate_cb)
-        
-        # Auto-insert 100% matches on segment selection
-        auto_insert_100_cb = CheckmarkCheckBox("Auto-insert 100% TM matches when selecting segment")
-        auto_insert_100_cb.setChecked(general_settings.get('auto_insert_100_percent_matches', True))
-        auto_insert_100_cb.setToolTip(
-            "When enabled, 100% TM matches are automatically inserted into the target field\n"
-            "as soon as you select a segment (even if target is not empty).\n"
-            "Like memoQ's auto-propagation feature for exact matches."
+
+        # Sub-option: mark auto-filled segments as confirmed
+        auto_fill_confirm_cb = CheckmarkCheckBox("    ↳ Mark auto-filled segments as confirmed")
+        auto_fill_confirm_cb.setChecked(general_settings.get('auto_fill_confirm', False))
+        auto_fill_confirm_cb.setToolTip(
+            "Otherwise the auto-filled translation is inserted as a draft for you to review."
         )
-        tm_termbase_layout.addWidget(auto_insert_100_cb)
-        
-        # Auto-confirm 100% matches when navigating with Ctrl+Enter
+        auto_fill_confirm_cb.setEnabled(auto_propagate_cb.isChecked())
+        auto_propagate_cb.toggled.connect(auto_fill_confirm_cb.setEnabled)
+        tm_termbase_layout.addWidget(auto_fill_confirm_cb)
+
+        # --- Auto-propagate confirmed translations to identical segments ---
+        auto_propagate_confirm_parent_cb = CheckmarkCheckBox("Auto-propagate confirmed translations to identical segments")
+        auto_propagate_confirm_parent_cb.setChecked(general_settings.get('auto_propagate_on_confirm', True))
+        auto_propagate_confirm_parent_cb.setToolTip(
+            "When you confirm a segment, its translation is copied to every other segment with identical source text.\n"
+            "This is the memoQ/Trados-style propagate-on-confirm behaviour."
+        )
+        tm_termbase_layout.addWidget(auto_propagate_confirm_parent_cb)
+
+        # Sub-option: mark propagated segments as confirmed
+        auto_propagate_confirm_cb = CheckmarkCheckBox("    ↳ Mark propagated segments as confirmed")
+        auto_propagate_confirm_cb.setChecked(general_settings.get('auto_propagate_confirm', False))
+        auto_propagate_confirm_cb.setToolTip(
+            "Otherwise propagated translations are inserted as drafts for you to review."
+        )
+        auto_propagate_confirm_cb.setEnabled(auto_propagate_confirm_parent_cb.isChecked())
+        auto_propagate_confirm_parent_cb.toggled.connect(auto_propagate_confirm_cb.setEnabled)
+        tm_termbase_layout.addWidget(auto_propagate_confirm_cb)
+
+        # Sub-option: overwrite existing translations when propagating
+        auto_propagate_overwrite_cb = CheckmarkCheckBox("    ↳ Overwrite existing translations when propagating")
+        auto_propagate_overwrite_cb.setChecked(general_settings.get('auto_propagate_overwrite', False))
+        auto_propagate_overwrite_cb.setToolTip(
+            "When enabled, propagation also replaces existing target content in identical segments.\n"
+            "When disabled, only empty segments are filled."
+        )
+        auto_propagate_overwrite_cb.setEnabled(auto_propagate_confirm_parent_cb.isChecked())
+        auto_propagate_confirm_parent_cb.toggled.connect(auto_propagate_overwrite_cb.setEnabled)
+        tm_termbase_layout.addWidget(auto_propagate_overwrite_cb)
+
+        # --- Auto-confirm 100% matches when navigating with Ctrl+Enter ---
         auto_confirm_100_cb = CheckmarkCheckBox(
             f"Auto-confirm 100% TM matches when navigating ({format_shortcut_for_display('Ctrl+Enter')})"
         )
@@ -22769,7 +22828,7 @@ class SupervertalerQt(QMainWindow):
             "handling perfect matches while navigating through unconfirmed segments."
         )
         tm_termbase_layout.addWidget(auto_confirm_100_cb)
-        
+
         # Sub-option: Allow overwriting existing translations
         auto_confirm_overwrite_cb = CheckmarkCheckBox("    ↳ Also overwrite existing translations with 100% TM matches")
         auto_confirm_overwrite_cb.setChecked(general_settings.get('auto_confirm_overwrite_existing', False))
@@ -22782,7 +22841,7 @@ class SupervertalerQt(QMainWindow):
         auto_confirm_overwrite_cb.setEnabled(auto_confirm_100_cb.isChecked())
         auto_confirm_100_cb.toggled.connect(auto_confirm_overwrite_cb.setEnabled)
         tm_termbase_layout.addWidget(auto_confirm_overwrite_cb)
-        
+
         # TM Save Mode
         tm_save_label = QLabel("TM Save Mode:")
         tm_save_mode_combo = QComboBox()
@@ -22801,18 +22860,36 @@ class SupervertalerQt(QMainWindow):
         tm_save_layout_h.addWidget(tm_save_mode_combo)
         tm_save_layout_h.addStretch()
         tm_termbase_layout.addLayout(tm_save_layout_h)
-        
-        # TM/Glossary matching toggle
-        tm_matching_cb = CheckmarkCheckBox("Enable TM && Termbase Matching")
-        tm_matching_cb.setChecked(self.enable_tm_matching)  # Load current state
-        tm_matching_cb.setToolTip(
-            "When enabled, TM and termbase searches are performed automatically\n"
-            "when you select a segment (after a 1.5 second delay). Disable to improve performance\n"
-            "when navigating quickly through segments."
-        )
-        tm_matching_cb.toggled.connect(self.toggle_tm_termbase_matching)
-        tm_termbase_layout.addWidget(tm_matching_cb)
-        
+
+        tm_termbase_group.setLayout(tm_termbase_layout)
+        layout.addWidget(tm_termbase_group)
+
+        # Store references for saving / updates
+        self.auto_propagate_checkbox = auto_propagate_cb
+        self.auto_fill_confirm_checkbox = auto_fill_confirm_cb
+        self.auto_propagate_on_confirm_checkbox = auto_propagate_confirm_parent_cb
+        self.auto_propagate_confirm_checkbox = auto_propagate_confirm_cb
+        self.auto_propagate_overwrite_checkbox = auto_propagate_overwrite_cb
+
+        # ──────────────────────────────────────────────────────────────
+        # Box 2: 📒 Termbase settings
+        # ──────────────────────────────────────────────────────────────
+        termbase_group = QGroupBox(self.tr("📒 Termbase settings"))
+        termbase_layout = QVBoxLayout()
+
+        # Header row with a contextual "?" help button at the top-right.
+        tb_header_row = QHBoxLayout()
+        tb_header_row.addStretch()
+        try:
+            from modules.styled_widgets import HelpButton
+            tb_header_row.addWidget(HelpButton(
+                "workbench/settings/termbase-settings/",
+                tooltip="Open the Termbase settings help page",
+            ))
+        except Exception as e:
+            self.log(f"[Termbase settings] Could not add help button: {e}")
+        termbase_layout.addLayout(tb_header_row)
+
         # Glossary grid highlighting toggle
         tb_highlight_cb = CheckmarkCheckBox("Highlight termbase matches in source cells")
         tb_highlight_cb.setChecked(general_settings.get('enable_termbase_grid_highlighting', True))
@@ -22821,7 +22898,7 @@ class SupervertalerQt(QMainWindow):
             "Higher priority terms are shown with darker blue, lower priority with lighter blue.\n"
             "This provides visual feedback similar to memoQ's termbase highlighting."
         )
-        tm_termbase_layout.addWidget(tb_highlight_cb)
+        termbase_layout.addWidget(tb_highlight_cb)
 
         # Hide shorter matches checkbox
         tb_hide_shorter_cb = CheckmarkCheckBox("Hide shorter termbase matches included in longer ones")
@@ -22831,15 +22908,16 @@ class SupervertalerQt(QMainWindow):
             "Example: If both 'cooling' and 'cooling system' match, only 'cooling system' is shown.\n"
             "This reduces clutter in the translation results panel."
         )
-        tm_termbase_layout.addWidget(tb_hide_shorter_cb)
+        termbase_layout.addWidget(tb_hide_shorter_cb)
 
-        self.tm_matching_checkbox = tm_matching_cb  # Store reference for updates
-        self.auto_propagate_checkbox = auto_propagate_cb  # Store reference for updates
-        self.auto_insert_100_checkbox = auto_insert_100_cb  # Store reference for updates
         self.tb_highlight_checkbox = tb_highlight_cb  # Store reference for updates
 
-        tm_termbase_group.setLayout(tm_termbase_layout)
-        layout.addWidget(tm_termbase_group)
+        termbase_group.setLayout(termbase_layout)
+        layout.addWidget(termbase_group)
+
+        # The old auto_insert_100_cb checkbox was consolidated into
+        # auto_propagate_cb above; the save call still receives it as None.
+        auto_insert_100_cb = None
 
         # Editor Settings group
         editor_group = QGroupBox(self.tr("✍️ Editor Settings"))
@@ -23100,7 +23178,11 @@ class SupervertalerQt(QMainWindow):
             auto_confirm_overwrite_cb=auto_confirm_overwrite_cb,
             sound_effects_cb=sound_effects_cb,
             sound_event_combos=sound_event_combos,
-            disable_cache_cb=disable_cache_cb
+            disable_cache_cb=disable_cache_cb,
+            auto_fill_confirm_cb=auto_fill_confirm_cb,
+            auto_propagate_on_confirm_cb=auto_propagate_confirm_parent_cb,
+            auto_propagate_confirm_cb=auto_propagate_confirm_cb,
+            auto_propagate_overwrite_cb=auto_propagate_overwrite_cb
         ))
         layout.addWidget(save_btn)
         
@@ -25641,7 +25723,8 @@ class SupervertalerQt(QMainWindow):
         # Save TM check mode settings
         general_prefs['check_tm_before_api'] = not tm_no_check_rb.isChecked()
         general_prefs['check_tm_exact_only'] = tm_exact_rb.isChecked()
-        general_prefs['auto_propagate_100'] = auto_propagate_cb.isChecked()
+        # 'auto_propagate_100' is deprecated — auto-fill is now the single
+        # 'auto_fill_100_matches' key owned by the General tab → TM settings.
         general_prefs['lookup_delay'] = delay_spin.value()
         self.save_general_settings(general_prefs)
         
@@ -25767,7 +25850,8 @@ class SupervertalerQt(QMainWindow):
         # Save TM check mode settings
         general_prefs['check_tm_before_api'] = not tm_no_check_rb.isChecked()
         general_prefs['check_tm_exact_only'] = tm_exact_rb.isChecked()
-        general_prefs['auto_propagate_100'] = auto_propagate_cb.isChecked()
+        # 'auto_propagate_100' is deprecated — auto-fill is now the single
+        # 'auto_fill_100_matches' key owned by the General tab → TM settings.
         general_prefs['lookup_delay'] = delay_spin.value()
         general_prefs['ollama_keepwarm'] = ollama_keepwarm_cb.isChecked()
         general_prefs['enable_llm_matching'] = llm_matching_cb.isChecked()
@@ -25856,18 +25940,32 @@ class SupervertalerQt(QMainWindow):
                                        tb_hide_shorter_cb=None, smart_selection_cb=None,
                                        ahk_path_edit=None, auto_center_cb=None, auto_confirm_100_cb=None,
                                        auto_confirm_overwrite_cb=None, sound_effects_cb=None, sound_event_combos=None,
-                                       disable_cache_cb=None):
+                                       disable_cache_cb=None, auto_fill_confirm_cb=None,
+                                       auto_propagate_on_confirm_cb=None, auto_propagate_confirm_cb=None,
+                                       auto_propagate_overwrite_cb=None):
         """Save general settings from UI (non-AI settings only)"""
         self.allow_replace_in_source = allow_replace_cb.isChecked()
         self.update_warning_banner()
 
-        # Update auto-propagate state
-        self.auto_propagate_exact_matches = auto_propagate_cb.isChecked()
-        
-        # Update auto-insert setting
-        if auto_insert_100_cb is not None:
-            self.auto_insert_100_percent_matches = auto_insert_100_cb.isChecked()
-        
+        # Update consolidated auto-fill state (auto_propagate_cb is now the
+        # single "Auto-fill empty segments with 100% TM matches" checkbox).
+        self.auto_fill_100_matches = auto_propagate_cb.isChecked()
+        # Keep the old attrs in sync for any lingering references.
+        self.auto_propagate_exact_matches = self.auto_fill_100_matches
+        self.auto_insert_100_percent_matches = self.auto_fill_100_matches
+
+        # Update auto-fill confirm sub-option
+        if auto_fill_confirm_cb is not None:
+            self.auto_fill_confirm = auto_fill_confirm_cb.isChecked()
+
+        # Update auto-propagate-on-confirm settings
+        if auto_propagate_on_confirm_cb is not None:
+            self.auto_propagate_on_confirm = auto_propagate_on_confirm_cb.isChecked()
+        if auto_propagate_confirm_cb is not None:
+            self.auto_propagate_confirm = auto_propagate_confirm_cb.isChecked()
+        if auto_propagate_overwrite_cb is not None:
+            self.auto_propagate_overwrite = auto_propagate_overwrite_cb.isChecked()
+
         # Update auto-confirm 100% matches setting
         if auto_confirm_100_cb is not None:
             self.auto_confirm_100_percent_matches = auto_confirm_100_cb.isChecked()
@@ -25895,8 +25993,13 @@ class SupervertalerQt(QMainWindow):
         general_settings = {
             'restore_last_project': restore_cb.isChecked(),
             'auto_open_log': auto_open_log_cb.isChecked() if auto_open_log_cb is not None else False,
-            'auto_propagate_exact_matches': self.auto_propagate_checkbox.isChecked() if hasattr(self, 'auto_propagate_checkbox') else self.auto_propagate_exact_matches,
-            'auto_insert_100_percent_matches': auto_insert_100_cb.isChecked() if auto_insert_100_cb is not None else (self.auto_insert_100_checkbox.isChecked() if hasattr(self, 'auto_insert_100_checkbox') else True),
+            # Consolidated auto-fill setting (new canonical key).
+            'auto_fill_100_matches': self.auto_fill_100_matches,
+            'auto_fill_confirm': self.auto_fill_confirm,
+            # Auto-propagate-on-confirm settings.
+            'auto_propagate_on_confirm': self.auto_propagate_on_confirm,
+            'auto_propagate_confirm': self.auto_propagate_confirm,
+            'auto_propagate_overwrite': self.auto_propagate_overwrite,
             'auto_confirm_100_percent_matches': auto_confirm_100_cb.isChecked() if auto_confirm_100_cb is not None else False,
             'auto_confirm_overwrite_existing': auto_confirm_overwrite_cb.isChecked() if auto_confirm_overwrite_cb is not None else False,
             'tm_save_mode': tm_save_mode_combo.currentData() if tm_save_mode_combo is not None else 'latest',
@@ -25977,12 +26080,6 @@ class SupervertalerQt(QMainWindow):
                 for panel in self.results_panels:
                     panel.match_limits = general_settings['match_limits']
         
-        # Update instance variable from checkbox
-        if auto_insert_100_cb is not None:
-            self.auto_insert_100_percent_matches = auto_insert_100_cb.isChecked()
-        elif hasattr(self, 'auto_insert_100_checkbox'):
-            self.auto_insert_100_percent_matches = self.auto_insert_100_checkbox.isChecked()
-        
         # Update TM save mode
         if tm_save_mode_combo is not None:
             self.tm_save_mode = tm_save_mode_combo.currentData()
@@ -25993,8 +26090,11 @@ class SupervertalerQt(QMainWindow):
         if self.current_project:
             self.current_project.general_settings_overrides = {
                 'auto_center_active_segment': self.auto_center_active_segment,
-                'auto_propagate_exact_matches': self.auto_propagate_exact_matches,
-                'auto_insert_100_percent_matches': self.auto_insert_100_percent_matches,
+                'auto_fill_100_matches': self.auto_fill_100_matches,
+                'auto_fill_confirm': self.auto_fill_confirm,
+                'auto_propagate_on_confirm': self.auto_propagate_on_confirm,
+                'auto_propagate_confirm': self.auto_propagate_confirm,
+                'auto_propagate_overwrite': self.auto_propagate_overwrite,
                 'auto_confirm_100_percent_matches': self.auto_confirm_100_percent_matches,
                 'auto_confirm_overwrite_existing': self.auto_confirm_overwrite_existing,
                 'enable_termbase_grid_highlighting': self.enable_termbase_grid_highlighting,
@@ -26064,7 +26164,6 @@ class SupervertalerQt(QMainWindow):
             'grid_font_size': grid_spin.value(),
             'results_match_font_size': match_spin.value(),
             'results_compare_font_size': compare_spin.value(),
-            'enable_tm_termbase_matching': self.enable_tm_matching
         })
         
         # Add tabs above grid setting if provided
@@ -29710,14 +29809,27 @@ class SupervertalerQt(QMainWindow):
                     self.auto_center_active_segment = project_settings['auto_center_active_segment']
                     self.log(f"✓ Project override: auto-center = {self.auto_center_active_segment}")
                 
-                if 'auto_propagate_exact_matches' in project_settings:
-                    self.auto_propagate_exact_matches = project_settings['auto_propagate_exact_matches']
-                    self.log(f"✓ Project override: auto-propagate = {self.auto_propagate_exact_matches}")
-                
-                if 'auto_insert_100_percent_matches' in project_settings:
-                    self.auto_insert_100_percent_matches = project_settings['auto_insert_100_percent_matches']
-                    self.log(f"✓ Project override: auto-insert 100% = {self.auto_insert_100_percent_matches}")
-                
+                # Consolidated auto-fill setting (new key, back-compat fallback).
+                if 'auto_fill_100_matches' in project_settings:
+                    self.auto_fill_100_matches = project_settings['auto_fill_100_matches']
+                elif 'auto_propagate_exact_matches' in project_settings:
+                    self.auto_fill_100_matches = project_settings['auto_propagate_exact_matches']
+                elif 'auto_insert_100_percent_matches' in project_settings:
+                    self.auto_fill_100_matches = project_settings['auto_insert_100_percent_matches']
+                self.auto_propagate_exact_matches = self.auto_fill_100_matches
+                self.auto_insert_100_percent_matches = self.auto_fill_100_matches
+                self.log(f"✓ Project override: auto-fill 100% = {self.auto_fill_100_matches}")
+
+                if 'auto_fill_confirm' in project_settings:
+                    self.auto_fill_confirm = project_settings['auto_fill_confirm']
+
+                if 'auto_propagate_on_confirm' in project_settings:
+                    self.auto_propagate_on_confirm = project_settings['auto_propagate_on_confirm']
+                if 'auto_propagate_confirm' in project_settings:
+                    self.auto_propagate_confirm = project_settings['auto_propagate_confirm']
+                if 'auto_propagate_overwrite' in project_settings:
+                    self.auto_propagate_overwrite = project_settings['auto_propagate_overwrite']
+
                 if 'auto_confirm_100_percent_matches' in project_settings:
                     self.auto_confirm_100_percent_matches = project_settings['auto_confirm_100_percent_matches']
                     self.log(f"✓ Project override: auto-confirm 100% = {self.auto_confirm_100_percent_matches}")
@@ -43033,18 +43145,30 @@ class SupervertalerQt(QMainWindow):
         """Load general application settings"""
         # Initialize auto-propagation from loaded settings
         settings = self._load_general_settings_from_file()
-        if 'auto_propagate_exact_matches' in settings:
-            self.auto_propagate_exact_matches = settings['auto_propagate_exact_matches']
-        if 'auto_insert_100_percent_matches' in settings:
-            self.auto_insert_100_percent_matches = settings['auto_insert_100_percent_matches']
+        # Consolidated auto-fill setting (new key, with back-compat fallback to
+        # the old auto_propagate_exact_matches / auto_insert_100_percent_matches).
+        if 'auto_fill_100_matches' in settings:
+            self.auto_fill_100_matches = settings['auto_fill_100_matches']
+        elif 'auto_propagate_exact_matches' in settings:
+            self.auto_fill_100_matches = settings['auto_propagate_exact_matches']
+        elif 'auto_insert_100_percent_matches' in settings:
+            self.auto_fill_100_matches = settings['auto_insert_100_percent_matches']
+        # Keep the old attrs in sync for any lingering references.
+        self.auto_propagate_exact_matches = self.auto_fill_100_matches
+        self.auto_insert_100_percent_matches = self.auto_fill_100_matches
+        if 'auto_fill_confirm' in settings:
+            self.auto_fill_confirm = settings['auto_fill_confirm']
+        # Auto-propagate-on-confirm settings.
+        if 'auto_propagate_on_confirm' in settings:
+            self.auto_propagate_on_confirm = settings['auto_propagate_on_confirm']
+        if 'auto_propagate_confirm' in settings:
+            self.auto_propagate_confirm = settings['auto_propagate_confirm']
+        if 'auto_propagate_overwrite' in settings:
+            self.auto_propagate_overwrite = settings['auto_propagate_overwrite']
         if 'auto_confirm_100_percent_matches' in settings:
             self.auto_confirm_100_percent_matches = settings['auto_confirm_100_percent_matches']
         if 'auto_confirm_overwrite_existing' in settings:
             self.auto_confirm_overwrite_existing = settings['auto_confirm_overwrite_existing']
-        # Load TM/termbase matching setting
-        if 'enable_tm_termbase_matching' in settings:
-            self.enable_tm_matching = settings['enable_tm_termbase_matching']
-            self.enable_termbase_matching = settings['enable_tm_termbase_matching']
         # Load termbase grid highlighting setting
         if 'enable_termbase_grid_highlighting' in settings:
             self.enable_termbase_grid_highlighting = settings['enable_termbase_grid_highlighting']
@@ -44340,9 +44464,9 @@ class SupervertalerQt(QMainWindow):
                         except Exception as e:
                             self.log(f"Error updating termlens from cache: {e}")
                     
-                    # 🎯 AUTO-INSERT 100% TM MATCH from cache (if enabled in settings)
+                    # 🎯 AUTO-FILL 100% TM MATCH from cache (if enabled in settings)
                     tm_count = len(cached_matches.get("TM", []))
-                    if self.auto_insert_100_percent_matches and tm_count > 0:
+                    if self.auto_fill_100_matches and tm_count > 0:
                         # Check if segment target is empty (don't overwrite existing translations)
                         target_empty = not segment.target or len(segment.target.strip()) == 0
                         
@@ -46676,44 +46800,6 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"Error in delayed lookup: {e}")
     
-    def toggle_tm_termbase_matching(self, enabled: bool):
-        """Toggle TM and termbase matching on/off"""
-        self.enable_tm_matching = enabled
-        self.enable_termbase_matching = enabled
-
-        # Update checkbox in settings if it exists (prevents circular updates)
-        if hasattr(self, 'tm_matching_checkbox') and self.tm_matching_checkbox:
-            # Temporarily disconnect to prevent signal loop
-            self.tm_matching_checkbox.blockSignals(True)
-            self.tm_matching_checkbox.setChecked(enabled)
-            self.tm_matching_checkbox.blockSignals(False)
-
-        # Update all segment editor toggle buttons (Grid, List, Document views)
-        if hasattr(self, 'tabbed_panels') and self.tabbed_panels:
-            for tabs in self.tabbed_panels:
-                if hasattr(tabs, 'editor_widget') and hasattr(tabs.editor_widget, 'tm_toggle_btn'):
-                    btn = tabs.editor_widget.tm_toggle_btn
-                    btn.blockSignals(True)
-                    btn.setChecked(enabled)
-                    btn.setText("🔍 TM/Termbase ON" if enabled else "🚫 TM/Termbase OFF")
-                    btn.blockSignals(False)
-
-        if enabled:
-            self.log("✓ TM and Termbase matching enabled")
-            # If a segment is currently selected, trigger lookup
-            if hasattr(self, 'table') and self.table and hasattr(self, 'current_project') and self.current_project:
-                current_row = self.table.currentRow()
-                if current_row >= 0 and current_row < len(self.current_project.segments):
-                    segment = self.current_project.segments[current_row]
-                    self._schedule_delayed_lookup(segment, current_row)
-        else:
-            self.log("⚠ TM and Termbase matching disabled")
-            # Cancel any pending lookup
-            if self.lookup_timer:
-                self.lookup_timer.stop()
-                self.lookup_timer = None
-    
-    
     def on_cell_clicked(self, item: QTableWidgetItem):
         """Handle cell click - Status column clicks are disabled (use Segment Editor instead)"""
         self.log(f"🖱️ on_cell_clicked called: row {item.row()}, col {item.column()}")
@@ -46989,12 +47075,10 @@ class SupervertalerQt(QMainWindow):
             # Search for matches (using activated TMs if available)
             matches = self.tm_database.search_all(source_text, tm_ids=tm_ids, max_matches=5)
             
-            # Auto-propagate exact match if enabled (check both settings)
-            general_prefs = self.load_general_settings()
-            auto_propagate_100 = general_prefs.get('auto_propagate_100', True)
-            auto_propagate_enabled = self.auto_propagate_exact_matches or auto_propagate_100
-            
-            if matches and auto_propagate_enabled:
+            # Auto-fill exact match if enabled (consolidated setting)
+            auto_fill_enabled = self.auto_fill_100_matches
+
+            if matches and auto_fill_enabled:
                 first_match = matches[0]
                 match_pct = first_match.get('match_pct', 0)
                 
@@ -47010,15 +47094,18 @@ class SupervertalerQt(QMainWindow):
                             if (not segment.target or not segment.target.strip() or
                                 segment.status in ["untranslated", "not_started", ""]):
 
-                                # Fill the segment
+                                # Fill the segment. When "Mark auto-filled segments
+                                # as confirmed" is on, land it as 'confirmed';
+                                # otherwise insert as a 'draft' for review.
+                                _fill_status = 'confirmed' if getattr(self, 'auto_fill_confirm', False) else 'draft'
                                 _undo_old_target = segment.target
                                 _undo_old_status = segment.status
                                 _undo_new_target = first_match.get('target', '')
                                 segment.target = _undo_new_target
-                                segment.status = "draft"
+                                segment.status = _fill_status
                                 segment.modified = True
                                 try:
-                                    self.record_undo_state(segment.id, _undo_old_target, _undo_new_target, _undo_old_status, "draft")
+                                    self.record_undo_state(segment.id, _undo_old_target, _undo_new_target, _undo_old_status, _fill_status)
                                 except Exception:
                                     pass  # never let undo failure break the actual operation
                                 self.project_modified = True
@@ -47032,14 +47119,14 @@ class SupervertalerQt(QMainWindow):
                                         display_text, _ = strip_outer_wrapping_tags(display_text)
                                     target_widget.setPlainText(display_text)
 
-                                # Update status column
-                                status_item = self.table.item(current_row, 1)
-                                if status_item:
-                                    status_item.setText("Translated")
-                                    status_item.setBackground(QColor("#d1fae5"))  # Light green for translated
+                                # Update status column to reflect draft/confirmed
+                                try:
+                                    self._refresh_segment_status(segment)
+                                except Exception:
+                                    pass
 
                                 # Update project modified status (progress is handled by status bar)
-                                self.log(f"✨ Auto-propagated 100% TM match for segment #{current_row + 1}")
+                                self.log(f"✨ Auto-filled 100% TM match for segment #{current_row + 1}")
             
             if not matches:
                 if hasattr(self, 'tm_display'):
@@ -54590,7 +54677,88 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 self.log(f"⚠️ Error saving to TM: {e}")
 
+        # Auto-propagate the just-confirmed translation to identical segments
+        # (memoQ/Trados-style propagate-on-confirm). Guarded + try/except inside
+        # so it can never break the confirm action.
+        if getattr(self, 'auto_propagate_on_confirm', False):
+            self._auto_propagate_to_identical(segment)
+
         return segment_id
+
+    def _auto_propagate_to_identical(self, source_segment) -> None:
+        """Copy a confirmed segment's target to every other identical-source segment.
+
+        For each OTHER segment whose source matches source_segment.source
+        (compared as stripped strings), fill its target with the confirmed
+        target — only if that segment is empty, or if "Overwrite existing
+        translations when propagating" is enabled. Status becomes 'confirmed'
+        when "Mark propagated segments as confirmed" is on, else 'draft'.
+
+        Entirely guarded by try/except so it can never break the confirm action.
+        """
+        try:
+            if not getattr(self, 'auto_propagate_on_confirm', False):
+                return
+            if not self.current_project or not getattr(self.current_project, 'segments', None):
+                return
+
+            new_target = source_segment.target
+            if not new_target or not new_target.strip():
+                return  # Nothing to propagate
+
+            src_key = (source_segment.source or '').strip()
+            if not src_key:
+                return
+
+            prop_status = 'confirmed' if getattr(self, 'auto_propagate_confirm', False) else 'draft'
+            overwrite = getattr(self, 'auto_propagate_overwrite', False)
+
+            count = 0
+            for other in self.current_project.segments:
+                if other.id == source_segment.id:
+                    continue
+                if (other.source or '').strip() != src_key:
+                    continue
+
+                target_empty = not (other.target or '').strip()
+                if not (target_empty or overwrite):
+                    continue
+                # Skip if the target is already exactly what we'd write
+                if (other.target or '') == new_target and other.status == prop_status:
+                    continue
+
+                old_target = other.target
+                old_status = other.status
+                other.target = new_target
+                other.status = prop_status
+                other.modified = True
+                try:
+                    self.record_undo_state(other.id, old_target, new_target, old_status, prop_status)
+                except Exception:
+                    pass  # never let undo failure break propagation
+
+                # Refresh the grid row in place (if currently populated)
+                try:
+                    row = self._find_row_for_segment(other.id)
+                    if row >= 0:
+                        target_widget = self.table.cellWidget(row, 3)
+                        if target_widget and hasattr(target_widget, 'setPlainText'):
+                            display_text = other.target
+                            if getattr(self, 'hide_outer_wrapping_tags', False):
+                                display_text, _ = strip_outer_wrapping_tags(display_text)
+                            target_widget.setPlainText(display_text)
+                        self._refresh_segment_status(other)
+                except Exception:
+                    pass
+
+                count += 1
+
+            if count > 0:
+                self.project_modified = True
+                self.update_progress_stats()
+                self.log(f"↪ Auto-propagated to {count} identical segment(s)")
+        except Exception as e:
+            self.log(f"⚠️ Auto-propagate to identical segments failed: {e}")
 
     def _move_to_next_visible_row(self, current_row: int) -> None:
         """Move focus to the next visible row after current_row (respects filters + pagination)."""
@@ -54983,19 +55151,6 @@ class SupervertalerQt(QMainWindow):
         if not hasattr(self, 'tab_current_segment_id') or not self.tab_current_segment_id:
             return
         self.log(f"✓ Saved comments for segment {self.tab_current_segment_id}")
-
-    def toggle_tm_from_editor(self, checked: bool, button: QPushButton):
-        """Toggle TM/Termbase lookups from segment editor button"""
-        # Call the existing toggle method
-        self.toggle_tm_termbase_matching(checked)
-
-        # Update button text and style
-        if checked:
-            button.setText("🔍 TM/Termbase ON")
-            self.log("✓ TM/Termbase lookups ENABLED from segment editor")
-        else:
-            button.setText("🚫 TM/Termbase OFF")
-            self.log("⚠️ TM/Termbase lookups DISABLED from segment editor (faster editing)")
 
     def _toggle_tag_view_via_shortcut(self):
         """Toggle tag view using keyboard shortcut (Ctrl+Shift+H) – cycles: tags → compact → wysiwyg"""
@@ -60367,23 +60522,26 @@ class SupervertalerQt(QMainWindow):
             row: The grid row number (if known), or None to search
         """
         try:
+            # When "Mark auto-filled segments as confirmed" is on, the auto-filled
+            # target lands as 'confirmed'; otherwise it stays a 'draft' for review.
+            fill_status = 'confirmed' if getattr(self, 'auto_fill_confirm', False) else 'draft'
             self.log(f"🔧 Auto-insert: Starting for segment {segment.id} at row {row}, target='{target_text[:50]}...'")
             self.log(f"🔧 Auto-insert: BEFORE - segment.id={segment.id}, segment object ID={id(segment)}, old_target='{segment.target[:30] if segment.target else 'EMPTY'}'")
-            
+
             # CRITICAL: Update segment data directly
             # The segment parameter IS a reference to the object in self.current_project.segments
             # No need to look it up - just modify it directly!
             _undo_old_target = segment.target
             _undo_old_status = segment.status
             segment.target = target_text
-            segment.status = 'draft'  # Mark as draft (needs confirmation)
+            segment.status = fill_status
             try:
-                self.record_undo_state(segment.id, _undo_old_target, target_text, _undo_old_status, 'draft')
+                self.record_undo_state(segment.id, _undo_old_target, target_text, _undo_old_status, fill_status)
             except Exception:
                 pass  # never let undo failure break the actual operation
             self.project_modified = True
             self.log(f"🔧 Auto-insert: AFTER - segment.id={segment.id}, segment object ID={id(segment)}, new_target='{segment.target[:30] if segment.target else 'EMPTY'}'")
-            self.log(f"🔧 Auto-insert: Updated segment.target, status=draft")
+            self.log(f"🔧 Auto-insert: Updated segment.target, status={fill_status}")
             
             # Update grid view if visible
             if hasattr(self, 'table') and self.table:
@@ -60419,8 +60577,8 @@ class SupervertalerQt(QMainWindow):
                         self.log(f"⚠️ Auto-insert: No target widget found at row {target_row}, col 3")
                     
                     # Update status icon
-                    self.update_status_icon(target_row, 'draft')
-                    self.log(f"🔧 Auto-insert: Updated status icon to 'draft'")
+                    self.update_status_icon(target_row, fill_status)
+                    self.log(f"🔧 Auto-insert: Updated status icon to '{fill_status}'")
                     
                     # Auto-resize the row to fit the new content
                     self._auto_resize_single_row(target_row)

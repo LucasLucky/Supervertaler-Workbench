@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.224 (May 29, 2026)
+**Current Version:** v1.10.225 (May 29, 2026)
+
+
+## v1.10.225 – May 29, 2026
+
+### Added
+
+- **Auto-propagate confirmed translations to identical segments** (memoQ/Trados-style propagate-on-confirm). When you confirm a segment, its translation is copied to every other segment with identical source text. Two sub-options: mark the propagated segments as confirmed, and overwrite existing translations (off by default — only empty segments are filled). Full undo support. On by default.
+
+### Changed (TM & Termbase settings)
+
+- **Consolidated three overlapping auto-fill toggles into one** — "Auto-fill empty segments with 100% TM matches" (previously split across "Auto-propagate exact TM matches", "Auto-insert 100% TM matches", and a duplicate in the QuickTrans tab). Added a sub-option to mark auto-filled segments as confirmed (otherwise inserted as draft).
+- **Split Settings → General "TM and termbase settings" into two boxes** — "📂 TM settings" and "📒 Termbase settings" — each with its own contextual "?" help button linking to the relevant help page.
+- Removed the redundant "Auto-propagate 100% TM matches" toggle from the QuickTrans tab.
+
+(Existing settings keys are still read on load, so projects and preferences are preserved.)
 
 
 ## v1.10.224 – May 29, 2026
