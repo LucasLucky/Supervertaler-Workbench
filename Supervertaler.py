@@ -2785,7 +2785,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
                     cursor = self.textCursor()
                     text = self.toPlainText()
                     pos = cursor.position()
-                    word_chars = ('·', '\u200B', '\n', '\t', '→', '°', '↵', ' ')
+                    word_chars = ('·', '\u200B', '\n', '\t', '→', '↵', ' ')
                     
                     if event.key() == Qt.Key.Key_Right:
                         # Move to end of current word, then skip delimiters to start of next word
@@ -3016,7 +3016,7 @@ class ReadOnlyGridTextEditor(QTextEdit):
 
         # Build a mapping from clean-text positions to display-text positions
         # so term searches work even when invisible markers (·, →, °, ↵, \u200B) are present.
-        MARKER_CHARS = frozenset('·→°↵\u200B')
+        MARKER_CHARS = frozenset('·→↵\u200B')
         clean_chars = []
         clean_to_display = []  # clean_to_display[i] = display position of clean char i
         for di, ch in enumerate(display_text):
@@ -3918,6 +3918,7 @@ class TagHighlighter(QSyntaxHighlighter):
     _spellcheck_enabled = False
     _is_cafetran_project = False  # Only highlight pipe symbols for CafeTran projects
     _is_markdown_project = False  # Highlight Markdown syntax for Markdown imports
+    _show_nbsp = False  # Shade real non-breaking spaces (U+00A0 / U+202F) with a background box
 
     def __init__(self, document, tag_color='#7f0001', invisible_char_color='#999999', enable_spellcheck=False):
         super().__init__(document)
@@ -3950,6 +3951,15 @@ class TagHighlighter(QSyntaxHighlighter):
         # Invisible character symbols - use configured color
         self.invisible_format = QTextCharFormat()
         self.invisible_format.setForeground(QColor(self.invisible_char_color))
+
+        # Non-breaking-space shading - a faint coloured background box drawn behind the
+        # real NBSP character (we no longer substitute a marker glyph for it). We derive a
+        # low-alpha tint from the configured invisible-char colour so the box stays subtle
+        # and the text remains readable even when invisible_char_color is very dark.
+        self.nbsp_format = QTextCharFormat()
+        _nbsp_bg = QColor(self.invisible_char_color)
+        _nbsp_bg.setAlpha(70)  # faint highlight, not a solid block
+        self.nbsp_format.setBackground(_nbsp_bg)
 
         # Spellcheck format - red wavy underline
         self.spellcheck_format = QTextCharFormat()
@@ -4041,8 +4051,15 @@ class TagHighlighter(QSyntaxHighlighter):
 
         # Match invisible character symbols (light blue)
         for i, char in enumerate(text):
-            if char in '·→°↵':  # Invisible character replacement symbols
+            if char in '·→↵':  # Invisible character replacement symbols
                 self.setFormat(i, 1, self.invisible_format)
+
+        # Shade real non-breaking spaces (U+00A0 / U+202F) with a faint background box.
+        # NBSP is no longer substituted with a marker glyph, so we colour it in place.
+        if TagHighlighter._show_nbsp:
+            for i, ch in enumerate(text):
+                if ch in (' ', ' '):
+                    self.setFormat(i, 1, self.nbsp_format)
         
         # CafeTran pipe symbols (red and bold) - ONLY for CafeTran projects
         if TagHighlighter._is_cafetran_project:
@@ -4902,7 +4919,7 @@ class EditableGridTextEditor(QTextEdit):
                     cursor = self.textCursor()
                     text = self.toPlainText()
                     pos = cursor.position()
-                    word_chars = ('·', '\u200B', '\n', '\t', '→', '°', '↵', ' ')
+                    word_chars = ('·', '\u200B', '\n', '\t', '→', '↵', ' ')
                     
                     if event.key() == Qt.Key.Key_Right:
                         # Move to end of current word, then skip delimiters to start of next word
@@ -7675,6 +7692,9 @@ class SupervertalerQt(QMainWindow):
             'nbsp': True,
             'linebreaks': True
         }
+        # Seed the highlighter's NBSP-shading flag from the startup settings so real
+        # non-breaking spaces are shaded as soon as the first grid renders.
+        TagHighlighter._show_nbsp = self.invisible_display_settings.get('nbsp', False)
 
         # Grid row color settings (memoQ-style alternating row colors)
         self.enable_alternating_row_colors = True  # Enable alternating row colors by default
@@ -23514,7 +23534,7 @@ class SupervertalerQt(QMainWindow):
         invisible_char_color_btn = QPushButton()
         invisible_char_color_btn.setFixedSize(80, 25)
         invisible_char_color_btn.setStyleSheet(f"background-color: {current_invisible_color}; border: 1px solid #999;")
-        invisible_char_color_btn.setToolTip("Color for invisible character symbols (·→°↵)")
+        invisible_char_color_btn.setToolTip("Color for invisible character symbols (·→↵); non-breaking spaces are shaded with this colour")
 
         def choose_invisible_char_color():
             color = QColorDialog.getColor(QColor(current_invisible_color), self, "Choose Invisible Character Color")
@@ -26625,7 +26645,7 @@ class SupervertalerQt(QMainWindow):
         self.show_tabs_action.setChecked(True)
         self.show_tabs_action.triggered.connect(lambda: self.toggle_invisible_display('tabs'))
 
-        self.show_nbsp_action = show_invisibles_menu.addAction("Non-breaking Spaces (°)")
+        self.show_nbsp_action = show_invisibles_menu.addAction("Non-breaking Spaces")
         self.show_nbsp_action.setCheckable(True)
         self.show_nbsp_action.setChecked(True)
         self.show_nbsp_action.triggered.connect(lambda: self.toggle_invisible_display('nbsp'))
@@ -26871,7 +26891,7 @@ class SupervertalerQt(QMainWindow):
             self.show_tabs_action.setChecked(True)
             self.show_tabs_action.triggered.connect(lambda: self.toggle_invisible_display('tabs'))
 
-            self.show_nbsp_action = show_invisibles_menu_home.addAction("Non-breaking Spaces (°)")
+            self.show_nbsp_action = show_invisibles_menu_home.addAction("Non-breaking Spaces")
             self.show_nbsp_action.setCheckable(True)
             self.show_nbsp_action.setChecked(True)
             self.show_nbsp_action.triggered.connect(lambda: self.toggle_invisible_display('nbsp'))
@@ -50541,7 +50561,11 @@ class SupervertalerQt(QMainWindow):
         # Toggle the setting
         self.invisible_display_settings[char_type] = not self.invisible_display_settings[char_type]
 
-        # Refresh the grid to show/hide invisibles
+        # Keep the highlighter NBSP-shading flag in sync (covers the no-project case too,
+        # where refresh_grid_invisibles() early-returns before it can update the flag).
+        TagHighlighter._show_nbsp = self.invisible_display_settings.get('nbsp', False)
+
+        # Refresh the grid to show/hide invisibles (re-runs the highlighter via setPlainText)
         self.refresh_grid_invisibles()
 
         # Log the change
@@ -50576,6 +50600,9 @@ class SupervertalerQt(QMainWindow):
             'linebreaks': new_state
         }
 
+        # Keep the highlighter NBSP-shading flag in sync (covers the no-project case too).
+        TagHighlighter._show_nbsp = self.invisible_display_settings.get('nbsp', False)
+
         # Update menu checkboxes – block signals so setChecked() does NOT re-fire
         # toggle_invisible_display() and cause 4 extra grid reloads
         for action_attr in ('show_spaces_action', 'show_tabs_action',
@@ -50586,7 +50613,7 @@ class SupervertalerQt(QMainWindow):
                 action.setChecked(new_state)
                 action.blockSignals(False)
 
-        # Refresh the grid (in-place, no full reload)
+        # Refresh the grid (in-place, no full reload; re-runs the highlighter via setPlainText)
         self.refresh_grid_invisibles()
 
         status = "enabled" if new_state else "disabled"
@@ -50623,6 +50650,12 @@ class SupervertalerQt(QMainWindow):
 
         # Update the legacy boolean used by word-wrap logic
         self.showing_invisible_spaces = self.invisible_display_settings.get('spaces', False)
+
+        # Keep the highlighter's NBSP shading flag in sync BEFORE we re-set widget text:
+        # NBSP is no longer substituted into the text, so toggling it does not change the
+        # string. The per-cell setPlainText() below re-runs TagHighlighter.highlightBlock(),
+        # which reads this class flag to decide whether to shade real NBSP characters.
+        TagHighlighter._show_nbsp = self.invisible_display_settings.get('nbsp', False)
 
         segments = self.current_project.segments
         row_count = self.table.rowCount()
@@ -50727,11 +50760,10 @@ class SupervertalerQt(QMainWindow):
         if self.invisible_display_settings.get('tabs', False):
             result = result.replace('\t', '→\u200B')
 
-        # Replace non-breaking spaces with degree symbol (°)
-        # Note: We don't add zero-width space here since NBSP should NOT break
-        if self.invisible_display_settings.get('nbsp', False):
-            result = result.replace('\u00A0', '°\uFEFF')  # Unicode NBSP
-            result = result.replace('\u202F', '°\uFEFF')  # Narrow NBSP
+        # Non-breaking spaces are NO LONGER substituted (Camp B approach, as used by
+        # VS Code/memoQ/Trados): the real U+00A0 / U+202F characters stay in the text and
+        # their positions are shaded with a coloured background box by the TagHighlighter.
+        # This avoids the old fragile '°' sentinel that collided with real degree signs.
 
         # Replace line breaks with return arrow (↵)
         if self.invisible_display_settings.get('linebreaks', False):
@@ -50761,11 +50793,6 @@ class SupervertalerQt(QMainWindow):
         # Reverse tabs (right arrow + zero-width space → tab) – always
         result = result.replace('→\u200B', '\t')
         result = result.replace('→', '\t')  # Fallback
-
-        # Reverse non-breaking spaces (degree symbol → NBSP) – always
-        # We can't distinguish between \u00A0 and \u202F after replacement,
-        # so we default to the more common \u00A0
-        result = result.replace('°\uFEFF', '\u00A0')  # sentinel-marked NBSP only; a real degree sign is left intact
 
         # Reverse line breaks (return arrow → line break) – always
         result = result.replace('↵\n', '\n')

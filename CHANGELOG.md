@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.226 (May 29, 2026)
+**Current Version:** v1.10.227 (May 29, 2026)
+
+
+## v1.10.227 – May 29, 2026
+
+### Changed (Show Invisibles → non-breaking spaces)
+
+- **Non-breaking spaces are now shown by shading their position** (a faint coloured box) instead of substituting a degree symbol (°) into the text. The real non-breaking-space character is left untouched, which removes the whole class of bug where the substitute glyph collided with genuine degree signs — degree signs can no longer be altered by the display feature, and real "°" no longer gets the marker highlight. This is how VS Code / memoQ / Trados visualise non-breaking spaces. (Supersedes the v1.10.226 sentinel stopgap.)
 
 
 ## v1.10.226 – May 29, 2026
