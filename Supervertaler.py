@@ -1382,6 +1382,10 @@ class Comment:
     anchor_field: str = ""   # "source", "target", or "" (segment-level)
     anchor_start: int = 0    # Character offset (inclusive)
     anchor_end: int = 0      # Character offset (exclusive)
+    imported: bool = False   # True = read in from the source document (e.g. a
+                             # Word review comment). Shown for context but NOT
+                             # re-exported, since the original still lives in
+                             # the source file (the Okapi round-trip preserves it).
 
     def __post_init__(self):
         if not self.id:
@@ -1404,6 +1408,102 @@ class Comment:
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered = {k: v for k, v in data.items() if k in valid_fields}
         return cls(**filtered)
+
+
+# ── Okapi file-type import options ──────────────────────────────────
+# Per-file-type toggles controlling which parts of an Office document
+# become translatable segments. Sent to the Okapi sidecar's /extract
+# (and /merge, for round-trip fidelity). Keys mirror the sidecar's
+# FilterService.applyFilterParameters. Defaults follow the principle
+# "import real body content; skip incidental metadata" — comments and
+# hidden text are OFF by default (translators opt in).
+DEFAULT_IMPORT_OPTIONS = {
+    # Word / DOCX
+    # Comments are three-way: "off" (skip), "comments" (import as anchored,
+    # author-tagged comments), or "segments" (import as translatable text).
+    "word_comments_mode": "off",
+    "word_hidden": False,           # hidden text
+    "word_headers_footers": True,   # page headers & footers
+    "word_doc_properties": False,   # title/author/keywords (docProps)
+    "word_exclude_shapes": True,    # exclude auto-names "Shape 16", "Group …"
+    "word_accept_revisions": True,  # auto-accept tracked changes (take final text)
+    # Excel / XLSX
+    "excel_hidden": False,          # hidden rows/columns/sheets
+    "excel_sheet_names": False,     # worksheet tab names
+    "excel_drawings": True,         # text in shapes/textboxes
+    # PowerPoint / PPTX
+    "ppt_notes": False,             # speaker notes
+    "ppt_comments": False,          # review comments
+    "ppt_hidden": False,            # hidden slides
+    "ppt_masters": True,            # slide masters / layouts
+}
+
+
+# UI metadata for the import-options checkboxes, grouped by format.
+# (key, label, tooltip). Used by both the Settings → File Types panel and
+# the per-import override in the import dialogs.
+IMPORT_OPTION_GROUPS = [
+    ("word", "Word (DOCX)", [
+        ("word_comments_mode",   "Comments",                   "How to handle Word review comments: skip, import as actual (author-tagged) comments, or import as translatable text"),
+        ("word_hidden",          "Import hidden text",         "Text formatted as hidden"),
+        ("word_headers_footers", "Import headers && footers",  "Page headers and footers"),
+        ("word_doc_properties",  "Import document properties", "Title, author, keywords, etc."),
+        ("word_exclude_shapes",  "Skip drawing/shape names",   "Exclude auto-generated object names like 'Shape 16', 'Group 574248'"),
+        ("word_accept_revisions","Accept tracked changes",     "Use the final (accepted) text of any tracked changes"),
+    ]),
+    ("excel", "Excel (XLSX)", [
+        ("excel_hidden",      "Import hidden rows/columns/sheets", ""),
+        ("excel_sheet_names", "Import sheet (tab) names",          ""),
+        ("excel_drawings",    "Import text in shapes/text boxes",  ""),
+    ]),
+    ("ppt", "PowerPoint (PPTX)", [
+        ("ppt_notes",    "Import speaker notes",          ""),
+        ("ppt_comments", "Import comments",               ""),
+        ("ppt_hidden",   "Import hidden slides",           ""),
+        ("ppt_masters",  "Import slide masters / layouts", ""),
+    ]),
+]
+
+
+def okapi_subdoc_category(sub_doc: str) -> str:
+    """Map an Okapi sub-document (XML part) name to a segment category.
+
+    Returns one of "comment", "header", "footer", "property", "notes",
+    or "" for ordinary body text. Used to label segments in the grid's
+    Type column and to let users see at a glance where each came from.
+    """
+    s = (sub_doc or "").lower().replace("\\", "/")
+    if "comments" in s:                              # word/comments.xml, ppt comments
+        return "comment"
+    if "/footer" in s or s.startswith("footer"):
+        return "footer"
+    if "/header" in s or s.startswith("header"):
+        return "header"
+    if "notesslide" in s:                            # ppt/notesSlides/notesSlideN.xml
+        return "notes"
+    if s.startswith("docprops") or "/docprops" in s \
+            or s.endswith("core.xml") or s.endswith("app.xml"):
+        return "property"
+    return ""
+
+
+def okapi_sidecar_options(opts):
+    """Translate Workbench import options into the flat boolean options the
+    Okapi sidecar understands.
+
+    The sidecar only knows a boolean ``word_comments`` (extract comments as
+    translatable text units or not). The Workbench exposes a three-way
+    ``word_comments_mode`` ("off" / "comments" / "segments") – only the
+    "segments" mode asks Okapi to extract them; "comments" handles them
+    Workbench-side, so the sidecar must NOT touch them.
+    """
+    if not opts:
+        return opts
+    out = dict(opts)
+    mode = out.pop("word_comments_mode", None)
+    if mode is not None:
+        out["word_comments"] = (mode == "segments")
+    return out
 
 
 @dataclass
@@ -1440,6 +1540,7 @@ class Segment:
     sdl_segment_id: str = ""  # SDLXLIFF segment ID for round-trip export
     okapi_tu_id: str = ""  # Okapi text unit ID for merge round-trip
     okapi_segment_index: int = -1  # Segment index within Okapi text unit (-1 = not from Okapi)
+    category: str = ""  # Okapi sub-document category: "" (body) / "comment" / "header" / "footer" / "property" / "notes"
 
     def __post_init__(self):
         """Initialize timestamps and reconcile comments[] ↔ notes."""
@@ -1622,6 +1723,7 @@ class Project:
     # Scratchpad for private translator notes (stored only in .svproj, never exported to CAT tools)
     scratchpad_notes: str = ""
     import_engine: str = ""  # "okapi" or "" (standard/built-in)
+    import_options: Optional[Dict[str, Any]] = None  # per-file-type Okapi import toggles; reused at export/merge
 
     def __post_init__(self):
         if self.segments is None:
@@ -1732,6 +1834,10 @@ class Project:
         # Add import engine indicator (for Okapi round-trip export)
         if self.import_engine:
             result['import_engine'] = self.import_engine
+        # Persist the import options so export/merge re-runs the filter
+        # with the SAME toggles the document was extracted with.
+        if self.import_options:
+            result['import_options'] = self.import_options
 
         # Add segments LAST (so they appear at the end of the file)
         result['segments'] = [seg.to_dict() for seg in self.segments]
@@ -1820,6 +1926,8 @@ class Project:
         # Store import engine indicator (for Okapi round-trip export)
         if 'import_engine' in data:
             project.import_engine = data['import_engine']
+        if 'import_options' in data:
+            project.import_options = data['import_options']
         return project
 
 
@@ -14258,6 +14366,11 @@ class SupervertalerQt(QMainWindow):
                 # nothing locatable in the exported DOCX. Skip.
                 continue
             for c in comments_list:
+                # Skip comments imported from the source document: the
+                # originals are still in the file (preserved by the Okapi
+                # round-trip), so re-attaching them would duplicate them.
+                if getattr(c, 'imported', False):
+                    continue
                 if c.text and c.text.strip():
                     candidates.append((seg, c))
 
@@ -14513,6 +14626,7 @@ class SupervertalerQt(QMainWindow):
                 source_lang=self.current_project.source_lang,
                 target_lang=self.current_project.target_lang,
                 output_path=output_path,
+                options=okapi_sidecar_options(getattr(self.current_project, 'import_options', None)),
             )
 
             self.log(f"Okapi merge complete: {os.path.basename(result_path)}")
@@ -20387,6 +20501,10 @@ class SupervertalerQt(QMainWindow):
         # ===== TAB 11: Segmentation Rules =====
         seg_tab = self.create_segmentation_rules_tab()
         settings_tabs.addTab(scroll_area_wrapper(seg_tab), self.tr("📏 Segmentation Rules"))
+
+        # ===== File Types (Okapi import options) =====
+        file_types_tab = self._create_file_types_settings_tab()
+        settings_tabs.addTab(scroll_area_wrapper(file_types_tab), self.tr("📄 File Types"))
 
         # ===== TAB 12: Keyboard Shortcuts =====
         from modules.keyboard_shortcuts_widget import KeyboardShortcutsWidget
@@ -29772,6 +29890,13 @@ class SupervertalerQt(QMainWindow):
                 self._start_prefetch_worker(prefetch_ids)
         except Exception as _e:
             self.log(f"⚠ Failed to start prefetch worker after import: {_e}")
+        # Rebuild the all-comments list so any comments carried in by the
+        # import (e.g. Word comments imported as comments) show up without
+        # needing a project reload.
+        try:
+            self._refresh_segment_comments_list()
+        except Exception as _e:
+            self.log(f"⚠ Failed to refresh comments list after import: {_e}")
 
     def _build_termbase_index(self):
         """
@@ -31488,133 +31613,6 @@ class SupervertalerQt(QMainWindow):
     # MEMOQ BILINGUAL DOCX IMPORT/EXPORT
     # ========================================================================
     
-    def import_docx(self):
-        """Import a monolingual DOCX document"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select DOCX File",
-            "",
-            "Word Documents (*.docx);;All Files (*.*)"
-        )
-
-        if not file_path:
-            return
-
-        # Show import options dialog (language pair selection)
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Import DOCX Options")
-        dialog.setMinimumWidth(500)
-
-        layout = QVBoxLayout(dialog)
-
-        # Info message
-        info_label = QLabel(
-            "You selected the Monolingual DOCX import workflow.\n\n"
-            "Projects created with this option can be exported as standard formats "
-            "(DOCX, plain text, etc.), but they cannot be exported as memoQ bilingual "
-            "DOCX files. If you need memoQ round-tripping, use 'Import memoQ bilingual document'."
-        )
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
-        layout.addSpacing(15)
-
-        # Language pair selection
-        lang_group = QGroupBox("Language Pair")
-        lang_layout = QHBoxLayout(lang_group)
-        
-        # Common languages for translation
-        languages = [
-            ("English", "en"),
-            ("Dutch", "nl"),
-            ("German", "de"),
-            ("French", "fr"),
-            ("Spanish", "es"),
-            ("Italian", "it"),
-            ("Portuguese", "pt"),
-            ("Polish", "pl"),
-            ("Russian", "ru"),
-            ("Chinese", "zh"),
-            ("Japanese", "ja"),
-            ("Korean", "ko"),
-        ]
-        
-        source_label = QLabel("Source:")
-        source_combo = QComboBox()
-        for name, code in languages:
-            source_combo.addItem(name, code)
-        
-        # Load last used languages from settings, or use current project, or default to English
-        general_settings = self.load_general_settings()
-        last_source = general_settings.get('last_import_source_lang', 
-                                          self.current_project.source_lang if self.current_project else 'en')
-        last_target = general_settings.get('last_import_target_lang',
-                                          self.current_project.target_lang if self.current_project else 'nl')
-        
-        # Set source combo to last used language
-        source_index = 0  # Default to English
-        for i in range(source_combo.count()):
-            if source_combo.itemData(i) == last_source:
-                source_index = i
-                break
-        source_combo.setCurrentIndex(source_index)
-        
-        arrow_label = QLabel(" → ")
-        arrow_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-        
-        target_label = QLabel("Target:")
-        target_combo = QComboBox()
-        for name, code in languages:
-            target_combo.addItem(name, code)
-        
-        # Set target combo to last used language
-        target_index = 1  # Default to Dutch
-        for i in range(target_combo.count()):
-            if target_combo.itemData(i) == last_target:
-                target_index = i
-                break
-        target_combo.setCurrentIndex(target_index)
-        
-        lang_layout.addWidget(source_label)
-        lang_layout.addWidget(source_combo)
-        lang_layout.addWidget(arrow_label)
-        lang_layout.addWidget(target_label)
-        lang_layout.addWidget(target_combo)
-        lang_layout.addStretch()
-        
-        layout.addWidget(lang_group)
-
-        layout.addSpacing(20)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        ok_btn = QPushButton("Import")
-        ok_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; border: none; outline: none;")
-        ok_btn.clicked.connect(dialog.accept)
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(dialog.reject)
-
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(ok_btn)
-        layout.addLayout(button_layout)
-
-        # Show dialog
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        # Store selected languages for import
-        self._import_source_lang = source_combo.currentData()
-        self._import_target_lang = target_combo.currentData()
-
-        # Save selected languages to settings for next time
-        general_settings = self.load_general_settings()
-        general_settings['last_import_source_lang'] = self._import_source_lang
-        general_settings['last_import_target_lang'] = self._import_target_lang
-        self.save_general_settings(general_settings)
-
-        self.import_docx_from_path(file_path)
-
     # Formats other than DOCX that we route through Okapi extract → merge.
     # DOCX has its own dedicated menu entry; TMX is for TM import (separate
     # path); everything else the sidecar reports as supported lands here.
@@ -31725,6 +31723,16 @@ class SupervertalerQt(QMainWindow):
         lang_layout.addWidget(target_combo)
         lang_layout.addStretch()
         layout.addWidget(lang_group)
+
+        # Per-import override of the Okapi file-type options (all formats,
+        # since this importer accepts DOCX/XLSX/PPTX). Defaults come from
+        # Settings → File Types.
+        _io_label = QLabel("Office document parts to import (Okapi):")
+        layout.addWidget(_io_label)
+        _io_current = self.get_effective_import_options()
+        _io_widget, _io_checks = self._build_import_options_widget(_io_current)
+        layout.addWidget(_io_widget)
+
         layout.addSpacing(20)
 
         button_layout = QHBoxLayout()
@@ -31745,6 +31753,7 @@ class SupervertalerQt(QMainWindow):
 
         self._import_source_lang = source_combo.currentData()
         self._import_target_lang = target_combo.currentData()
+        self._import_options = self._read_import_option_widgets(_io_checks)
         general_settings['last_import_source_lang'] = self._import_source_lang
         general_settings['last_import_target_lang'] = self._import_target_lang
         self.save_general_settings(general_settings)
@@ -31754,122 +31763,6 @@ class SupervertalerQt(QMainWindow):
         # the Okapi sidecar takes over and the format-specific bits
         # (extraction, segmentation, project build) are handled by
         # the existing pipeline.
-        self.import_docx_from_path(file_path)
-
-    def import_okapi_format(self):
-        """Import any format the Okapi sidecar can extract (IDML, HTML, XLIFF, PO, …).
-
-        Mirrors the DOCX import flow: file picker → language pair dialog →
-        ``import_docx_from_path``. The path-based importer is already
-        format-agnostic at the extraction step (it just calls
-        ``okapi_sidecar.extract``), so once we hand it the file path the
-        existing Okapi round-trip plumbing takes care of the rest – the
-        project ends up tagged with ``import_engine = "okapi"`` and the
-        original file path is stored on the project for ``_try_okapi_merge_export``
-        to use later.
-        """
-        # Build file filter list: per-format entries + an "All supported"
-        # bucket for users who don't know what their file is.
-        all_patterns = " ".join(p for _, p in self.OKAPI_OTHER_FORMATS)
-        filter_parts = [f"All supported formats ({all_patterns})"]
-        filter_parts.extend(f"{name} ({pattern})" for name, pattern in self.OKAPI_OTHER_FORMATS)
-        filter_parts.append("All Files (*.*)")
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Import via Okapi",
-            "",
-            ";;".join(filter_parts)
-        )
-        if not file_path:
-            return
-
-        # Language-pair dialog (mirrors import_docx). Kept duplicated to
-        # avoid disturbing the working DOCX path during this v1 rollout.
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Import via Okapi – Options")
-        dialog.setMinimumWidth(500)
-        # Standard "?" help badge in the dialog title bar – opens the
-        # Supported File Formats reference. Matches the convention used
-        # elsewhere in the app for context-sensitive help.
-        set_help_topic(dialog, HelpTopics.IMPORT_FORMATS)
-        layout = QVBoxLayout(dialog)
-
-        info_label = QLabel(
-            f"<b>{Path(file_path).name}</b><br><br>"
-            f"Supervertaler will use the Okapi sidecar to extract translatable "
-            f"content from this file. When you later export via "
-            f"<i>Project → Export → Original format (via Okapi)…</i>, the same "
-            f"sidecar reconstructs the file in its original format, byte-for-byte."
-        )
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-        layout.addSpacing(15)
-
-        lang_group = QGroupBox("Language Pair")
-        lang_layout = QHBoxLayout(lang_group)
-
-        languages = [
-            ("English", "en"), ("Dutch", "nl"), ("German", "de"),
-            ("French", "fr"), ("Spanish", "es"), ("Italian", "it"),
-            ("Portuguese", "pt"), ("Polish", "pl"), ("Russian", "ru"),
-            ("Chinese", "zh"), ("Japanese", "ja"), ("Korean", "ko"),
-        ]
-
-        source_combo = QComboBox()
-        target_combo = QComboBox()
-        for name, code in languages:
-            source_combo.addItem(name, code)
-            target_combo.addItem(name, code)
-
-        general_settings = self.load_general_settings()
-        last_source = general_settings.get('last_import_source_lang',
-                                           self.current_project.source_lang if self.current_project else 'en')
-        last_target = general_settings.get('last_import_target_lang',
-                                           self.current_project.target_lang if self.current_project else 'nl')
-        for i in range(source_combo.count()):
-            if source_combo.itemData(i) == last_source:
-                source_combo.setCurrentIndex(i)
-                break
-        for i in range(target_combo.count()):
-            if target_combo.itemData(i) == last_target:
-                target_combo.setCurrentIndex(i)
-                break
-
-        arrow = QLabel(" → ")
-        arrow.setStyleSheet("font-weight: bold; font-size: 14px;")
-        lang_layout.addWidget(QLabel("Source:"))
-        lang_layout.addWidget(source_combo)
-        lang_layout.addWidget(arrow)
-        lang_layout.addWidget(QLabel("Target:"))
-        lang_layout.addWidget(target_combo)
-        lang_layout.addStretch()
-        layout.addWidget(lang_group)
-        layout.addSpacing(20)
-
-        button_layout = QHBoxLayout()
-        ok_btn = QPushButton("Import")
-        ok_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; border: none; outline: none;")
-        ok_btn.clicked.connect(dialog.accept)
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(dialog.reject)
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(ok_btn)
-        layout.addLayout(button_layout)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        self._import_source_lang = source_combo.currentData()
-        self._import_target_lang = target_combo.currentData()
-        general_settings['last_import_source_lang'] = self._import_source_lang
-        general_settings['last_import_target_lang'] = self._import_target_lang
-        self.save_general_settings(general_settings)
-
-        # import_docx_from_path is generic at the extract level – it asks the
-        # Okapi sidecar to parse whatever path it gets, then builds segments
-        # from the result. The "docx" in its name is historical.
         self.import_docx_from_path(file_path)
 
     def export_okapi_merge(self):
@@ -32216,6 +32109,7 @@ class SupervertalerQt(QMainWindow):
                 import threading, time as _time
                 _result_holder: dict = {}
                 _exc_holder: dict = {}
+                _import_opts = self.get_effective_import_options()
 
                 def _okapi_worker():
                     try:
@@ -32224,6 +32118,7 @@ class SupervertalerQt(QMainWindow):
                             source_lang=src_lang,
                             target_lang=trg_lang,
                             segment=True,
+                            options=okapi_sidecar_options(_import_opts),
                         )
                     except Exception as _e:
                         _exc_holder['e'] = _e
@@ -32255,17 +32150,16 @@ class SupervertalerQt(QMainWindow):
 
                 for seg in result.get('segments', []):
                     tu_id = seg.get('id', '')
-                    sub_doc = (seg.get('subDocument') or '').lower()
+                    sub_doc = (seg.get('subDocument') or '')
                     text = seg.get('source', '').strip()
                     tagged_text = (seg.get('sourceWithTags') or '').strip()
 
-                    # ── Filter: skip header/footer content ─────────
-                    # Okapi names subdocuments after the XML part
-                    # (e.g. "document.xml", "header1.xml", "footer2.xml").
-                    # Keep everything except headers and footers.
-                    if sub_doc.startswith(('header', 'footer')):
-                        skipped_count += 1
-                        continue
+                    # What gets imported (comments, hidden text, headers/
+                    # footers, doc properties, …) is now controlled by the
+                    # import options sent to Okapi, so we no longer filter
+                    # by sub-document here. We just label each segment with
+                    # its category so the grid Type column can show it.
+                    category = okapi_subdoc_category(sub_doc)
 
                     # Skip empty segments
                     if not text:
@@ -32281,7 +32175,7 @@ class SupervertalerQt(QMainWindow):
                     # Use tagged text (with <b>/<i> etc.) if available,
                     # otherwise use plain text.
                     display_text = tagged_text if tagged_text else text
-                    segmented.append((para_id, display_text, tu_id, seg.get('segmentIndex', 0)))
+                    segmented.append((para_id, display_text, tu_id, seg.get('segmentIndex', 0), category))
 
                 self.log(f"✅ Okapi extracted {len(segmented)} segments "
                          f"from {result.get('textUnitCount', '?')} text units "
@@ -32330,10 +32224,11 @@ class SupervertalerQt(QMainWindow):
                 type: str = "#"  # Default segment type
                 okapi_tu_id: str = ""
                 okapi_seg_idx: int = -1
+                category: str = ""
 
             # Convert segments
             imported_segments = []
-            for seg_id, (para_id, text, okapi_tu_id, okapi_seg_idx) in enumerate(segmented, 1):
+            for seg_id, (para_id, text, okapi_tu_id, okapi_seg_idx, category) in enumerate(segmented, 1):
                 # Okapi import: no per-paragraph metadata (table info, styles
                 # like Heading1) is currently piped through. Style detection
                 # could be added later by extending the sidecar /extract
@@ -32374,7 +32269,8 @@ class SupervertalerQt(QMainWindow):
                     doc_position=doc_position,
                     type=seg_type,
                     okapi_tu_id=okapi_tu_id,
-                    okapi_seg_idx=okapi_seg_idx
+                    okapi_seg_idx=okapi_seg_idx,
+                    category=category
                 )
                 imported_segments.append(segment)
             
@@ -32394,7 +32290,8 @@ class SupervertalerQt(QMainWindow):
                     is_table_cell=imported_seg.is_table,
                     table_info=imported_seg.table_info,
                     okapi_tu_id=imported_seg.okapi_tu_id,
-                    okapi_segment_index=imported_seg.okapi_seg_idx
+                    okapi_segment_index=imported_seg.okapi_seg_idx,
+                    category=imported_seg.category
                 )
                 segments.append(segment)
             
@@ -32413,6 +32310,13 @@ class SupervertalerQt(QMainWindow):
             # Tag project as Okapi-imported – the export path branches on
             # this to call the sidecar's /merge endpoint.
             project.import_engine = "okapi"
+            # Persist the import options so export/merge re-runs the filter
+            # with the SAME toggles (keeps the TU set aligned for round-trip).
+            project.import_options = _import_opts
+
+            # Import Word comments as actual comments, if requested.
+            if _import_opts.get('word_comments_mode') == 'comments':
+                self._attach_docx_comments(segments, file_path)
 
             # If re-importing, restore the preserved project ID and settings
             if reimport_mode and preserved_project_id is not None:
@@ -33674,7 +33578,7 @@ class SupervertalerQt(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle("📁 Import Folder - Multi-File Project")
         dialog.setMinimumWidth(600)
-        dialog.setMinimumHeight(500)
+        dialog.setMinimumHeight(560)
         
         layout = QVBoxLayout(dialog)
         
@@ -33696,10 +33600,11 @@ class SupervertalerQt(QMainWindow):
         files_group = QGroupBox(f"Files to Import ({len(found_files)} files)")
         files_layout = QVBoxLayout(files_group)
         
-        # Create a scroll area for the checkboxes
+        # Create a scroll area for the checkboxes. Keep it compact for a
+        # handful of files; it scrolls (up to 300px) when there are many.
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setMinimumHeight(200)
+        scroll_area.setMinimumHeight(90)
         scroll_area.setMaximumHeight(300)
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
@@ -33816,6 +33721,15 @@ class SupervertalerQt(QMainWindow):
         )
         format_layout.addWidget(segment_checkbox)
 
+        # Okapi file-type options: which parts of Office documents to import
+        # (defaults come from Settings → File Types). Shown in a scroll area
+        # so the dialog stays compact.
+        _io_label = QLabel("Office document parts to import (Okapi):")
+        format_layout.addWidget(_io_label)
+        _io_current = self.get_effective_import_options()
+        _io_widget, _io_checks = self._build_import_options_widget(_io_current)
+        format_layout.addWidget(_io_widget)
+
         layout.addWidget(format_group)
         
         layout.addSpacing(10)
@@ -33851,6 +33765,9 @@ class SupervertalerQt(QMainWindow):
         target_lang = target_combo.currentData()
         detect_memoq = memoq_checkbox.isChecked()
         use_sentence_segmentation = segment_checkbox.isChecked()
+        # Per-import override of the Okapi file-type options (read by the
+        # extract/merge calls via get_effective_import_options()).
+        self._import_options = self._read_import_option_widgets(_io_checks)
 
         # Save selected settings for next time
         general_settings = self.load_general_settings()
@@ -33906,7 +33823,9 @@ class SupervertalerQt(QMainWindow):
         all_segments = []
         file_metadata = []  # Track file info for the project
         current_segment_id = 1
-        
+        extractors_used = []  # Human-readable extractor names, in first-seen order
+        _import_opts = self.get_effective_import_options()  # Okapi file-type toggles
+
         # Progress dialog
         progress_dialog = QProgressDialog("Importing files...", "Cancel", 0, len(files), self)
         progress_dialog.setWindowTitle("Importing Multi-File Project")
@@ -33947,6 +33866,9 @@ class SupervertalerQt(QMainWindow):
                     # Simple text / Markdown file
                     # Empty lines are preserved as empty segments for structure
                     # (they are hidden in the grid but kept for export fidelity)
+                    _extractor_label = "Built-in text reader"
+                    if _extractor_label not in extractors_used:
+                        extractors_used.append(_extractor_label)
                     with open(file_path, 'r', encoding='utf-8') as f:
                         lines = f.readlines()
 
@@ -33994,11 +33916,20 @@ class SupervertalerQt(QMainWindow):
                     # okapi_tu_id / okapi_segment_index metadata required
                     # by the round-trip /merge endpoint at export time.
                     self.log(f"      🔧 Extracting via Okapi sidecar…")
+                    _okapi_ver = None
+                    try:
+                        _okapi_ver = self.okapi_sidecar.get_version()
+                    except Exception:
+                        _okapi_ver = None
+                    _extractor_label = f"Okapi sidecar (v{_okapi_ver})" if _okapi_ver else "Okapi sidecar"
+                    if _extractor_label not in extractors_used:
+                        extractors_used.append(_extractor_label)
                     result = self.okapi_sidecar.extract(
                         file_path,
                         source_lang=source_lang,
                         target_lang=target_lang,
                         segment=True,
+                        options=okapi_sidecar_options(_import_opts),
                     )
 
                     tu_id_to_para = {}
@@ -34007,14 +33938,14 @@ class SupervertalerQt(QMainWindow):
 
                     for seg in result.get('segments', []):
                         tu_id = seg.get('id', '')
-                        sub_doc = (seg.get('subDocument') or '').lower()
+                        sub_doc = (seg.get('subDocument') or '')
                         text = seg.get('source', '').strip()
                         tagged_text = (seg.get('sourceWithTags') or '').strip()
 
-                        # Skip header/footer subdocuments and empty segs.
-                        if sub_doc.startswith(('header', 'footer')):
-                            skipped_count += 1
-                            continue
+                        # Inclusion (comments, hidden, headers/footers, …) is
+                        # controlled by the import options sent to Okapi; we
+                        # just label each segment with its category.
+                        category = okapi_subdoc_category(sub_doc)
                         if not text:
                             skipped_count += 1
                             continue
@@ -34040,6 +33971,7 @@ class SupervertalerQt(QMainWindow):
                             file_name=file_name,
                             okapi_tu_id=tu_id,
                             okapi_segment_index=seg.get('segmentIndex', 0),
+                            category=category,
                         )
                         file_segments.append(segment)
                         current_segment_id += 1
@@ -34047,7 +33979,11 @@ class SupervertalerQt(QMainWindow):
                     self.log(f"      ✅ Okapi: {len(file_segments)} segments "
                              f"from {result.get('textUnitCount', '?')} TUs"
                              f"{f', skipped {skipped_count} non-body' if skipped_count else ''}")
-                
+
+                    # Import Word comments as actual comments, if requested.
+                    if _import_opts.get('word_comments_mode') == 'comments':
+                        self._attach_docx_comments(file_segments, file_path)
+
                 # Track file metadata - use backup path if available, otherwise original
                 stored_path = backup_path if backup_path and os.path.exists(backup_path) else file_path
                 file_meta = {
@@ -34095,6 +34031,7 @@ class SupervertalerQt(QMainWindow):
         # use their normal text-based export.
         if has_docx:
             project.import_engine = "okapi"
+            project.import_options = _import_opts
 
         # Set as current project
         self.current_project = project
@@ -34149,6 +34086,7 @@ class SupervertalerQt(QMainWindow):
             "Multi-File Import Complete",
             f"Successfully imported {len(all_segments)} segments from {len(file_metadata)} files.\n\n"
             f"Language pair: {source_lang.upper()} → {target_lang.upper()}\n\n"
+            f"{f'Extracted via: ' + ', '.join(extractors_used) + chr(10) + chr(10) if extractors_used else ''}"
             f"Files:\n{file_summary}\n\n"
             f"Use File \u2192 Project Info to track translation progress per file."
         )
@@ -34687,6 +34625,7 @@ class SupervertalerQt(QMainWindow):
                         source_lang=src_lang,
                         target_lang=trg_lang,
                         output_path=output_path,
+                        options=okapi_sidecar_options(getattr(self.current_project, 'import_options', None)),
                     )
                     if skipped:
                         self.log(f"      ⚠️ {skipped} segments without Okapi metadata "
@@ -39562,8 +39501,22 @@ class SupervertalerQt(QMainWindow):
             (len(source_text) > 2 and source_text[0].isdigit() and source_text[1:3] in ('. ', ') '))
         )
         
+        # Okapi sub-document category (comment/header/footer/property/notes)
+        # takes precedence over style-based labelling, so the user can see at
+        # a glance which segments are not ordinary body text.
+        category = getattr(segment, 'category', '') or ''
+        _CATEGORY_LABELS = {
+            'comment':  ('Cmt',  'Comment'),
+            'header':   ('Hdr',  'Header'),
+            'footer':   ('Ftr',  'Footer'),
+            'property': ('Prop', 'Document property'),
+            'notes':    ('Note', 'Speaker notes'),
+        }
+
         # Determine type display
-        if 'Title' in style:
+        if category in _CATEGORY_LABELS:
+            type_display = _CATEGORY_LABELS[category][0]
+        elif 'Title' in style:
             type_display = "Title"
         elif 'Heading 1' in style or 'Heading1' in style:
             type_display = "H1"
@@ -39623,7 +39576,13 @@ class SupervertalerQt(QMainWindow):
         type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Color-code by type for better visibility
-        if type_display in ("H1", "H2", "H3", "H4", "Title"):
+        if category in _CATEGORY_LABELS:
+            # Non-body content: comments stand out in magenta; headers/
+            # footers/properties/notes share a purple. Tooltip spells it out.
+            type_item.setToolTip(_CATEGORY_LABELS[category][1])
+            type_item.setForeground(
+                QColor("#C2185B") if category == 'comment' else QColor("#7B1FA2"))
+        elif type_display in ("H1", "H2", "H3", "H4", "Title"):
             type_item.setForeground(QColor("#1976D2"))  # Blue for headings (works in both themes)
         elif type_display.startswith("#") or type_display in ("•", "li"):
             type_item.setForeground(QColor("#388E3C"))  # Green for list items (works in both themes)
@@ -42810,6 +42769,266 @@ class SupervertalerQt(QMainWindow):
             except Exception:
                 pass
     
+    def get_effective_import_options(self) -> Dict[str, Any]:
+        """Return the active Okapi file-type import options.
+
+        Starts from DEFAULT_IMPORT_OPTIONS and overlays the user's saved
+        defaults (general_settings['import_options']). The import-time
+        dialog may further override these per import via
+        self._import_options.
+        """
+        def _coerce(k, v):
+            # Preserve string-valued options (e.g. word_comments_mode);
+            # everything else is a boolean toggle.
+            return str(v) if isinstance(DEFAULT_IMPORT_OPTIONS[k], str) else bool(v)
+
+        opts = dict(DEFAULT_IMPORT_OPTIONS)
+        try:
+            saved = (self._load_general_settings_from_file() or {}).get('import_options') or {}
+            opts.update({k: _coerce(k, v) for k, v in saved.items() if k in DEFAULT_IMPORT_OPTIONS})
+        except Exception:
+            pass
+        # Per-import override set by the Import Options dialog, if any
+        override = getattr(self, '_import_options', None)
+        if isinstance(override, dict):
+            opts.update({k: _coerce(k, v) for k, v in override.items() if k in DEFAULT_IMPORT_OPTIONS})
+        return opts
+
+    def _build_import_options_widget(self, current_opts, formats=None):
+        """Build a checkbox widget for the Okapi file-type import options.
+
+        Returns (container_widget, checks) where checks maps option key →
+        QCheckBox. `formats` limits which format groups are shown (e.g.
+        ['word']); None shows all. Used by the Settings panel and the
+        per-import override in the import dialogs.
+        """
+        from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+                                     QGridLayout, QLabel, QComboBox)
+        from PyQt6.QtCore import Qt
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+        checks = {}
+        boxes = []
+        for fmt_key, group_title, items in IMPORT_OPTION_GROUPS:
+            if formats is not None and fmt_key not in formats:
+                continue
+            gb = QGroupBox(group_title)
+            gl = QVBoxLayout(gb)
+            gl.setSpacing(2)
+            for key, label, tip in items:
+                if key == "word_comments_mode":
+                    # Three-way control: Skip / As comments / As segments.
+                    row = QWidget()
+                    rl = QHBoxLayout(row)
+                    rl.setContentsMargins(0, 0, 0, 0)
+                    lbl = QLabel(label + ":")
+                    combo = QComboBox()
+                    combo.addItem("Skip", "off")
+                    combo.addItem("Import as comments", "comments")
+                    combo.addItem("Import as translatable text", "segments")
+                    cur = str(current_opts.get(key, DEFAULT_IMPORT_OPTIONS[key]))
+                    combo.setCurrentIndex(max(0, combo.findData(cur)))
+                    if tip:
+                        lbl.setToolTip(tip)
+                        combo.setToolTip(tip)
+                    rl.addWidget(lbl)
+                    rl.addWidget(combo)
+                    rl.addStretch()
+                    gl.addWidget(row)
+                    checks[key] = combo
+                    continue
+                cb = CheckmarkCheckBox(label)
+                cb.setChecked(bool(current_opts.get(key, DEFAULT_IMPORT_OPTIONS[key])))
+                if tip:
+                    cb.setToolTip(tip)
+                gl.addWidget(cb)
+                checks[key] = cb
+            boxes.append(gb)
+
+        # Two-column layout to use horizontal space instead of one tall
+        # column: the first (largest) group fills the left column; the rest
+        # stack in the right column. With all three formats this puts Word on
+        # the left and Excel above PowerPoint on the right.
+        if boxes:
+            right = boxes[1:]
+            grid.addWidget(boxes[0], 0, 0, max(len(right), 1), 1,
+                           Qt.AlignmentFlag.AlignTop)
+            for r, gb in enumerate(right):
+                grid.addWidget(gb, r, 1, Qt.AlignmentFlag.AlignTop)
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 1)
+            grid.setRowStretch(max(len(right), 1), 1)
+        return container, checks
+
+    def _read_import_option_widgets(self, checks) -> Dict[str, Any]:
+        """Read current values from the widgets returned by
+        _build_import_options_widget. Handles both checkboxes (bool) and the
+        word_comments_mode combobox (str)."""
+        from PyQt6.QtWidgets import QComboBox
+        out = {}
+        for key, w in checks.items():
+            if isinstance(w, QComboBox):
+                out[key] = w.currentData()
+            else:
+                out[key] = w.isChecked()
+        return out
+
+    def _attach_docx_comments(self, segments, docx_path) -> int:
+        """Import Word review comments from ``docx_path`` as author-tagged,
+        import-only Comment objects attached to ``segments``.
+
+        Placement is best-effort: a comment is attached to the segment whose
+        source best matches the start of the comment's highlighted text; if
+        none matches cleanly, it goes to the first segment (top of the
+        document). Imported comments are flagged ``imported=True`` so they are
+        shown but not re-exported (the originals stay in the source file).
+        Returns the number of comments attached.
+        """
+        if not segments:
+            return 0
+        try:
+            from modules.docx_comments import parse_docx_comments
+            comments = parse_docx_comments(docx_path)
+        except Exception as e:
+            self.log(f"      ⚠️ Could not read Word comments: {e}")
+            return 0
+        if not comments:
+            return 0
+
+        import re as _re
+
+        def _norm(s):
+            # Drop Supervertaler inline tags and trim, for text matching.
+            return _re.sub(r'<[^>]+>', '', s or '').strip()
+
+        norm_sources = [(seg, _norm(seg.source)) for seg in segments]
+
+        def _best_segment(anchor):
+            a = _norm(anchor)
+            if len(a) < 4:
+                return None
+            best, best_len = None, 0
+            for seg, src in norm_sources:
+                if len(src) < 4:
+                    continue
+                n = 0
+                for x, y in zip(src, a):
+                    if x == y:
+                        n += 1
+                    else:
+                        break
+                # Accept when the common prefix covers most of the shorter
+                # string (so "MANUAL" matches "MANUAL001…", and a heading
+                # matches its own segment, but loose 1-2 char hits don't).
+                if n >= 4 and n >= int(min(len(src), len(a)) * 0.6) and n > best_len:
+                    best, best_len = seg, n
+            return best
+
+        attached = 0
+        unplaced = 0
+        touched_segs = []
+        for c in comments:
+            seg = _best_segment(c.get('anchor_text', ''))
+            if seg is None:
+                seg = segments[0]
+                unplaced += 1
+            seg.comments.append(Comment(
+                text=c.get('text', ''),
+                author=(c.get('author') or 'Reviewer'),
+                created=(c.get('date') or ''),
+                imported=True,
+            ))
+            touched_segs.append(seg)
+            attached += 1
+
+        # Sync the legacy ``notes`` mirror so the grid's comment indicator,
+        # the "Commented" filter and tooltips reflect the imported comments
+        # (add_comment() does this; we appended directly to keep the imported
+        # flag + author + date, so sync explicitly here).
+        for seg in touched_segs:
+            try:
+                seg.notes = seg._joined_comment_text()
+            except Exception:
+                pass
+
+        note = f" ({unplaced} placed at top — no clean anchor)" if unplaced else ""
+        self.log(f"      💬 Imported {attached} Word comment(s) as comments{note}")
+        return attached
+
+    def _create_file_types_settings_tab(self):
+        """Settings → File Types: global defaults for Okapi import options."""
+        from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+        page = QWidget()
+        v = QVBoxLayout(page)
+
+        # Header row with a contextual "?" help button at the top-right.
+        header_row = QHBoxLayout()
+        header_row.addStretch()
+        try:
+            from modules.styled_widgets import HelpButton
+            header_row.addWidget(HelpButton(
+                "workbench/import-export/import-options/",
+                tooltip="Open the Import Options (File Types) help page",
+            ))
+        except Exception as e:
+            self.log(f"[File Types] Could not add help button: {e}")
+        v.addLayout(header_row)
+
+        intro = QLabel(
+            "Choose which parts of Office documents become translatable "
+            "segments when importing via Okapi. These are your defaults — "
+            "you can still override them for a single import in the import "
+            "dialog. Comments and headers/footers, when imported, are labelled "
+            "in the grid's Type column (Cmt / Hdr / Ftr)."
+        )
+        intro.setWordWrap(True)
+        v.addWidget(intro)
+
+        current = self.get_effective_import_options()
+        widget, checks = self._build_import_options_widget(current)
+        v.addWidget(widget)
+        self._settings_import_option_checks = checks
+
+        def _save():
+            try:
+                gs = self._load_general_settings_from_file() or {}
+            except Exception:
+                gs = {}
+            gs['import_options'] = self._read_import_option_widgets(checks)
+            self.save_general_settings(gs)
+
+        from PyQt6.QtWidgets import QComboBox
+        for w in checks.values():
+            if isinstance(w, QComboBox):
+                w.currentIndexChanged.connect(lambda _i=0: _save())
+            else:
+                w.toggled.connect(lambda _checked=False: _save())
+
+        # Restore-defaults button
+        btn_row = QHBoxLayout()
+        reset_btn = QPushButton(self.tr("Restore defaults"))
+
+        def _restore_defaults():
+            for key, w in checks.items():
+                w.blockSignals(True)
+                default = DEFAULT_IMPORT_OPTIONS[key]
+                if isinstance(w, QComboBox):
+                    w.setCurrentIndex(max(0, w.findData(str(default))))
+                else:
+                    w.setChecked(bool(default))
+                w.blockSignals(False)
+            _save()
+
+        reset_btn.clicked.connect(_restore_defaults)
+        btn_row.addWidget(reset_btn)
+        btn_row.addStretch()
+        v.addLayout(btn_row)
+        v.addStretch()
+        return page
+
     def load_general_settings(self) -> Dict[str, Any]:
         """Load general application settings"""
         # Initialize auto-propagation from loaded settings

@@ -65,7 +65,7 @@ class OkapiSidecar:
     # version, start() will ask it to shut down and spawn a fresh one.
     # Bump this whenever the sidecar JAR is rebuilt with meaningful
     # changes (keep it in sync with pom.xml / App.java).
-    EXPECTED_VERSION = "0.1.7"
+    EXPECTED_VERSION = "0.1.8"
 
     # URLs for lazy-downloading the sidecar when running from a pip
     # install (no JAR + JRE bundled next to the application). Pinned to
@@ -402,7 +402,8 @@ class OkapiSidecar:
     def extract(self, file_path: str,
                 source_lang: str = "en",
                 target_lang: str = "fr",
-                segment: bool = True) -> Dict[str, Any]:
+                segment: bool = True,
+                options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Extract segments from a document file.
 
@@ -411,25 +412,34 @@ class OkapiSidecar:
             source_lang: Source language code (e.g., "nl", "en")
             target_lang: Target language code (e.g., "en", "fr")
             segment:     Apply SRX segmentation (default True)
+            options:     Optional per-file-type import toggles (dict of
+                         booleans, e.g. {"word_comments": False,
+                         "word_hidden": False}). Absent keys fall back to
+                         the sidecar's Supervertaler defaults. See
+                         FilterService.applyFilterParameters for the keys.
 
         Returns:
             Dict with keys: filename, sourceLang, targetLang, filterUsed,
             textUnitCount, segmentCount, segments (list of dicts with
-            id, segmentIndex, source, type, isReferent).
+            id, segmentIndex, source, type, isReferent, subDocument).
         """
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        data = {
+            'source_lang': source_lang,
+            'target_lang': target_lang,
+            'segment': str(segment).lower(),
+        }
+        if options:
+            data['options'] = json.dumps(options)
+
         with open(file_path, 'rb') as f:
             resp = requests.post(
                 f"{self.base_url}/extract",
                 files={'file': (file_path.name, f)},
-                data={
-                    'source_lang': source_lang,
-                    'target_lang': target_lang,
-                    'segment': str(segment).lower(),
-                },
+                data=data,
                 timeout=120,
             )
 
@@ -438,9 +448,10 @@ class OkapiSidecar:
     def extract_docx(self, file_path: str,
                      source_lang: str = "en",
                      target_lang: str = "fr",
-                     segment: bool = True) -> Dict[str, Any]:
+                     segment: bool = True,
+                     options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Convenience alias for extract() with DOCX files."""
-        return self.extract(file_path, source_lang, target_lang, segment)
+        return self.extract(file_path, source_lang, target_lang, segment, options)
 
     # ═══════════════════════════════════════════════════════════════
     #  Document merge (create translated document)
@@ -450,7 +461,8 @@ class OkapiSidecar:
               translations: List[Dict[str, Any]],
               source_lang: str = "en",
               target_lang: str = "fr",
-              output_path: Optional[str] = None) -> str:
+              output_path: Optional[str] = None,
+              options: Optional[Dict[str, Any]] = None) -> str:
         """
         Create a translated version of the original document.
 
@@ -462,6 +474,9 @@ class OkapiSidecar:
             target_lang:   Target language code.
             output_path:   Where to save the translated file.  If None,
                            auto-generates a path.
+            options:       Optional per-file-type import toggles. MUST match
+                           the options used at extract time so the text-unit
+                           set lines up for the round-trip.
 
         Returns:
             Path to the saved translated document.
@@ -475,15 +490,19 @@ class OkapiSidecar:
             suffix = original.suffix
             output_path = str(original.parent / f"{stem}_{target_lang}{suffix}")
 
+        data = {
+            'translations': json.dumps(translations),
+            'source_lang': source_lang,
+            'target_lang': target_lang,
+        }
+        if options:
+            data['options'] = json.dumps(options)
+
         with open(original, 'rb') as f:
             resp = requests.post(
                 f"{self.base_url}/merge",
                 files={'original': (original.name, f)},
-                data={
-                    'translations': json.dumps(translations),
-                    'source_lang': source_lang,
-                    'target_lang': target_lang,
-                },
+                data=data,
                 timeout=120,
             )
 

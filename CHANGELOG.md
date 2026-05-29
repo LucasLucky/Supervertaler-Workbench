@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.222 (May 29, 2026)
+**Current Version:** v1.10.223 (May 29, 2026)
+
+
+## v1.10.223 – May 29, 2026
+
+### Added (File-type import options)
+
+- **New Settings → 📄 File Types panel** plus per-import controls in the DOCX and folder import dialogs, letting you choose which parts of Office documents become translatable segments when importing via Okapi. Word: comments, hidden text, headers/footers, document properties, drawing/shape names, tracked changes; Excel: hidden rows/cols/sheets, sheet names, drawings; PowerPoint: notes, comments, hidden slides, masters. Defaults skip incidental metadata (comments and hidden text are off). The chosen options are stored with the project and reused on export so the round-trip stays aligned.
+- **Word comments can now be imported as actual comments** (three-way "Comments" option: Skip / Import as comments / Import as translatable text). "Import as comments" brings them in anchored to the relevant segment where the text matches (otherwise at the top of the document), tagged with the original reviewer's name so they're distinct from your own. These are shown for context and not re-exported (the originals stay in the file); the original on-disk comments are preserved by the Okapi round-trip.
+- **Grid Type column now labels non-body segments** — Cmt (comment), Hdr/Ftr (header/footer), Prop (document property), Note (PowerPoint notes) — so you can see at a glance where each segment came from.
+- The multi-file import summary now reports the extractor used (e.g. "Extracted via: Okapi sidecar (v0.1.8)").
+
+### Fixed
+
+- **Word drawing/shape names no longer imported as junk segments.** Okapi's default Word filter pulled in the auto-generated object names of every shape, group and picture (e.g. "Shape 16", "Group 574248") as translatable text — hundreds of them in a diagram-heavy manual. The sidecar now excludes this graphic metadata by default.
+
+### Changed
+
+- Import dialog options are laid out in two columns (Word | Excel/PowerPoint) and the folder dialog's file list is more compact, so a small import no longer wastes vertical space.
+- Removed two dead, unreachable import methods (`import_docx`, `import_okapi_format`) superseded by the unified `import_document`.
 
 
 ## v1.10.222 – May 29, 2026
