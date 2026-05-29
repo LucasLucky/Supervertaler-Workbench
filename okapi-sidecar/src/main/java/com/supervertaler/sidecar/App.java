@@ -87,7 +87,7 @@ public class App {
             Map<String, Object> health = new LinkedHashMap<>();
             health.put("status", "ok");
             health.put("service", "supervertaler-okapi-sidecar");
-            health.put("version", "0.1.7");
+            health.put("version", "0.1.8");
             health.put("okapi_version", filterService.getOkapiVersion());
             ctx.json(health);
         });
@@ -143,6 +143,25 @@ public class App {
         log.info("Supervertaler Okapi Sidecar started on port {}", port);
     }
 
+    /**
+     * Parses the optional "options" form parameter (a JSON object of
+     * per-file-type import toggles) into a Map. Returns null if absent or
+     * unparseable, in which case the filter falls back to its defaults.
+     */
+    private static Map<String, Object> parseOptions(String optionsJson) {
+        if (optionsJson == null || optionsJson.isBlank()) {
+            return null;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> opts = mapper.readValue(optionsJson, Map.class);
+            return opts;
+        } catch (Exception e) {
+            log.warn("Could not parse 'options' JSON, using defaults: {}", e.getMessage());
+            return null;
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  /extract — Upload a file, get segments as JSON
     // ═══════════════════════════════════════════════════════════════
@@ -157,6 +176,7 @@ public class App {
         String sourceLang = ctx.formParam("source_lang");
         String targetLang = ctx.formParam("target_lang");
         boolean doSegmentation = !"false".equals(ctx.formParam("segment"));
+        Map<String, Object> options = parseOptions(ctx.formParam("options"));
 
         if (sourceLang == null || sourceLang.isBlank()) {
             sourceLang = "en";
@@ -174,7 +194,8 @@ public class App {
 
         try {
             ExtractResult result = filterService.extract(
-                    tempFile, file.filename(), sourceLang, targetLang, doSegmentation);
+                    tempFile, file.filename(), sourceLang, targetLang,
+                    doSegmentation, options);
             ctx.json(result);
         } finally {
             // Clean up temp files
@@ -204,6 +225,7 @@ public class App {
         String targetLang = ctx.formParam("target_lang");
         if (sourceLang == null) sourceLang = "en";
         if (targetLang == null) targetLang = "fr";
+        Map<String, Object> options = parseOptions(ctx.formParam("options"));
 
         // Parse translations JSON
         @SuppressWarnings("unchecked")
@@ -220,7 +242,7 @@ public class App {
         try {
             byte[] merged = filterService.merge(
                     tempFile, originalFile.filename(),
-                    sourceLang, targetLang, segments);
+                    sourceLang, targetLang, segments, options);
 
             // Determine output filename
             String outName = originalFile.filename();

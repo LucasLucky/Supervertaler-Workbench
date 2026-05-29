@@ -8,6 +8,7 @@ import net.sf.okapi.common.filters.FilterConfigurationMapper;
 import net.sf.okapi.common.filterwriter.IFilterWriter;
 import net.sf.okapi.common.resource.*;
 import net.sf.okapi.common.LocaleId;
+import net.sf.okapi.filters.openxml.ConditionalParameters;
 import net.sf.okapi.lib.segmentation.SRXDocument;
 
 import org.slf4j.Logger;
@@ -68,6 +69,92 @@ public class FilterService {
         log.info("FilterService initialised — {} filters available", SUPPORTED_FORMATS.size());
     }
 
+    /**
+     * Applies Supervertaler's preferred filter parameters to a freshly
+     * created filter. For the Word/OpenXML filter this excludes drawing
+     * "graphic metadata" — the auto-generated object names such as
+     * "Shape 16", "Group 574248", "Rectangle 4" and picture alt-text —
+     * which Okapi otherwise emits as standalone translatable text units.
+     * Those are not real content and just clutter the grid (a manual with
+     * many diagrams can produce hundreds of them).
+     *
+     * MUST be applied identically on the extract and merge paths so the
+     * text-unit set (and therefore the id↔translation mapping) stays in
+     * sync for the round-trip.
+     */
+    private boolean optBool(Map<String, Object> opts, String key, boolean def) {
+        if (opts == null) return def;
+        Object v = opts.get(key);
+        if (v == null) return def;
+        if (v instanceof Boolean) return (Boolean) v;
+        return Boolean.parseBoolean(String.valueOf(v));
+    }
+
+    /**
+     * Applies Supervertaler's preferred filter parameters to a freshly
+     * created filter. For the Word/OpenXML filter this controls which
+     * parts of an Office document become translatable text units —
+     * comments, hidden text, headers/footers, document properties, etc.
+     * — plus the exclusion of drawing "graphic metadata" (auto-generated
+     * object names such as "Shape 16", "Group 574248").
+     *
+     * The {@code opts} map carries the user's per-file-type import choices
+     * (keys below); any key that is absent falls back to the Supervertaler
+     * default. {@code opts} may be null (→ all defaults).
+     *
+     * MUST be applied identically on the extract and merge paths so the
+     * text-unit set (and therefore the id↔translation mapping) stays in
+     * sync for the round-trip.
+     */
+    private void applyFilterParameters(IFilter filter, String configId,
+                                       Map<String, Object> opts) {
+        if (!"okf_openxml".equals(configId)) {
+            return;
+        }
+        try {
+            ConditionalParameters params = new ConditionalParameters();
+
+            // ── Word ──────────────────────────────────────────────
+            // true = EXCLUDE graphic metadata (shape/group names, alt-text)
+            params.setTranslateWordExcludeGraphicMetaData(
+                    optBool(opts, "word_exclude_shapes", true));
+            params.setTranslateComments(
+                    optBool(opts, "word_comments", false));
+            params.setTranslateWordHidden(
+                    optBool(opts, "word_hidden", false));
+            params.setTranslateWordHeadersFooters(
+                    optBool(opts, "word_headers_footers", true));
+            params.setTranslateDocProperties(
+                    optBool(opts, "word_doc_properties", false));
+            params.setAutomaticallyAcceptRevisions(
+                    optBool(opts, "word_accept_revisions", true));
+
+            // ── Excel ─────────────────────────────────────────────
+            params.setTranslateExcelHidden(
+                    optBool(opts, "excel_hidden", false));
+            params.setTranslateExcelSheetNames(
+                    optBool(opts, "excel_sheet_names", false));
+            params.setTranslateExcelDrawings(
+                    optBool(opts, "excel_drawings", true));
+
+            // ── PowerPoint ────────────────────────────────────────
+            params.setTranslatePowerpointNotes(
+                    optBool(opts, "ppt_notes", false));
+            params.setTranslatePowerpointComments(
+                    optBool(opts, "ppt_comments", false));
+            params.setTranslatePowerpointHidden(
+                    optBool(opts, "ppt_hidden", false));
+            params.setTranslatePowerpointMasters(
+                    optBool(opts, "ppt_masters", true));
+
+            filter.setParameters(params);
+        } catch (Exception e) {
+            // Non-fatal: fall back to default parameters if an option
+            // is unavailable in this Okapi build.
+            log.warn("Could not apply OpenXML filter parameters: {}", e.getMessage());
+        }
+    }
+
     public String getOkapiVersion() {
         // Okapi doesn't have a simple version API, so we read from the JAR manifest
         try {
@@ -96,7 +183,8 @@ public class FilterService {
 
     public ExtractResult extract(Path filePath, String filename,
                                  String srcLang, String trgLang,
-                                 boolean doSegmentation) {
+                                 boolean doSegmentation,
+                                 Map<String, Object> options) {
 
         String configId = getConfigIdForFile(filename);
         LocaleId sourceLocale = LocaleId.fromString(srcLang);
@@ -113,6 +201,7 @@ public class FilterService {
             throw new IllegalArgumentException(
                     "No Okapi filter found for configuration: " + configId);
         }
+        applyFilterParameters(filter, configId, options);
 
         try {
             RawDocument rawDoc = new RawDocument(filePath.toUri(), "UTF-8", sourceLocale, targetLocale);
@@ -191,7 +280,8 @@ public class FilterService {
 
     public byte[] merge(Path originalPath, String filename,
                         String srcLang, String trgLang,
-                        List<MergeSegment> translations) {
+                        List<MergeSegment> translations,
+                        Map<String, Object> options) {
 
         String configId = getConfigIdForFile(filename);
         LocaleId sourceLocale = LocaleId.fromString(srcLang);
@@ -208,6 +298,7 @@ public class FilterService {
             throw new IllegalArgumentException(
                     "No Okapi filter found for configuration: " + configId);
         }
+        applyFilterParameters(filter, configId, options);
 
         // Prepare output
         Path outputPath;
