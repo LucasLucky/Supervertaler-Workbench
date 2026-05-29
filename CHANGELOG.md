@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.223 (May 29, 2026)
+**Current Version:** v1.10.224 (May 29, 2026)
+
+
+## v1.10.224 – May 29, 2026
+
+### Changed
+
+- **Sidecar downloads simplified for non-Windows platforms.** All macOS (Intel and Apple Silicon) and Linux pip/source installs now use the cross-platform Okapi JAR with the system's Java, instead of a per-platform bundled JRE. This keeps sidecar updates buildable from any OS (no Mac needed to rebuild an arm64 JRE bundle). Apple Silicon users now need Java installed once; the app detects this and prompts. The macOS desktop app is unaffected — it bundles its own JRE at build time.
+- Catch-up PyPI release: brings `pip install supervertaler` up to date with the entire 1.10.x line (Opus 4.8, file-type import options, Word comments-as-comments, Okapi shape-name fix, and more).
 
 
 ## v1.10.223 – May 29, 2026
