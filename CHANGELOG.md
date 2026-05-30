@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.228 (May 29, 2026)
+**Current Version:** v1.10.229 (May 30, 2026)
+
+
+## v1.10.229 – May 30, 2026
+
+### Fixed
+
+- **"Allow Replace in Source Text" had no effect — fixed.** Reported by a user. The Settings checkbox flipped the warning banner on, but typing into a source cell still did nothing on both Windows and macOS. Cause: source cells are rendered via a permanent cell widget (`setCellWidget`), which pre-empts the table delegate's `createEditor` — the delegate's source-edit branch was unreachable dead code. The cell widget itself was hard-coded `setReadOnly(True)`. The fix threads the setting through to the widget at construction time, applies an amber warning background when editable, wires up a `textChanged` handler that writes back to `segment.source`, and lets `update_grid_delegate()` flip the state of live cells when the setting is toggled at runtime. Locked segments stay read-only regardless. No undo / TM re-lookup yet for source edits — the warning banner explicitly tells the user to use the feature with caution.
+
+### Added
+
+- **F2 enters per-cell source-edit mode** (memoQ / Trados convention). Click into a source cell, press F2, edit, then click away / Tab / press Esc / press F2 again — the cell reverts to read-only and keeps your changes. No need to open Settings for one-off corrections. Locked segments are skipped; if the global "Allow Replace in Source Text" setting is already on, F2 is a no-op.
+- **Shift+F3 toggles case of the selection** (or the word at the cursor if there's no selection) in the target editor, cycling lowercase → Sentence case → UPPERCASE → lowercase. Matches Word / memoQ / Trados behaviour. Requested by a user.
 
 
 ## v1.10.228 – May 29, 2026

@@ -2059,6 +2059,51 @@ class _GridArrowKeyEventFilter(QObject):
                         return True
             return False
 
+        # v1.10.229: Plain F2 on a focused source cell → enter ephemeral
+        # source-edit mode (memoQ / Trados convention). QAbstractItemView
+        # intercepts F2 at the viewport level for "edit current item", so
+        # the cell widget's own keyPressEvent never sees it — we have to
+        # catch F2 here, at app level, before the table swallows it.
+        # Disqualify any modifier so Shift+F2 / Ctrl+F2 stay free for
+        # other bindings.
+        _disqualifying = (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.ShiftModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier
+        )
+        if key == Qt.Key.Key_F2 and not (mods & _disqualifying):
+            focus = QApplication.focusWidget()
+            if isinstance(focus, ReadOnlyGridTextEditor):
+                # Locked segments stay read-only no matter what.
+                if getattr(focus, '_segment_locked', False):
+                    return True
+                # If the global setting is already on, F2 is a deliberate
+                # no-op — the cell is permanently editable and we don't
+                # want focus-out to silently revert it later.
+                if getattr(mw, 'allow_replace_in_source', False):
+                    return True
+                if getattr(focus, '_ephemeral_source_edit', False):
+                    focus._disable_ephemeral_source_edit()
+                else:
+                    focus._enable_ephemeral_source_edit()
+                return True
+            return False
+
+        # v1.10.229: Esc exits ephemeral source-edit mode (changes are kept —
+        # the textChanged handler has been writing them to segment.source
+        # live as the user types, just like click-away does). Only consume
+        # Esc when ephemeral edit is actually active on the focused source
+        # cell; otherwise let it pass through so it can still cancel
+        # dialogs, clear selections, etc.
+        if key == Qt.Key.Key_Escape and not (mods & _disqualifying):
+            focus = QApplication.focusWidget()
+            if (isinstance(focus, ReadOnlyGridTextEditor)
+                    and getattr(focus, '_ephemeral_source_edit', False)):
+                focus._disable_ephemeral_source_edit()
+                return True
+            return False
+
         # Only handle the four combos we care about
         alt_only = mods == Qt.KeyboardModifier.AltModifier
         ctrl_only = mods == Qt.KeyboardModifier.ControlModifier
@@ -2669,21 +2714,36 @@ class ReadOnlyGridTextEditor(QTextEdit):
     table_widget = None  # Will be set by delegate
     current_row = None  # Track which row this editor is in
     allow_source_edit = False  # Will be set by delegate based on settings
-    
-    def __init__(self, text: str = "", parent=None, row: int = -1):
+
+    def __init__(self, text: str = "", parent=None, row: int = -1, allow_edit: bool = False):
         super().__init__(parent)
         self.row = row  # Store row number for Tab cycling
         self.table_ref = parent  # Store table reference (parent is the table)
-        self.setReadOnly(True)  # Prevent typing but allow selection
+        # v1.10.229: Source cells become editable when the "Allow Replace in
+        # Source Text" setting is on. Prior to this fix the cell widget was
+        # always read-only because setReadOnly(True) was unconditional here —
+        # the delegate-based source-edit path in WordWrapDelegate was dead
+        # code (cell widgets pre-empt the delegate's createEditor), so the
+        # warning banner appeared but typing into the source did nothing.
+        self.allow_source_edit = allow_edit
+        # v1.10.229: per-cell ephemeral F2 edit mode (memoQ / Trados style).
+        # Distinct from allow_source_edit which mirrors the global setting.
+        self._ephemeral_source_edit = False
+        self.setReadOnly(not allow_edit)
         self.setPlainText(text)
 
         # CRITICAL: Enable keyboard focus and text selection
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        # Enable text interaction: selection with keyboard and mouse
-        self.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByKeyboard |
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        # Enable text interaction: when editable, allow the full editor
+        # interaction set so typing works; otherwise keep it limited to
+        # selection so the cell still behaves like a read-only source.
+        if allow_edit:
+            self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        else:
+            self.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByKeyboard |
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
 
         # Make inactive selections stay visible with same color
         from PyQt6.QtGui import QPalette
@@ -2756,7 +2816,46 @@ class ReadOnlyGridTextEditor(QTextEdit):
         from PyQt6.QtCore import Qt
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtGui import QTextCursor
-        
+
+        # v1.10.229: F2 enters/leaves a per-cell ephemeral source-edit mode.
+        # This is the memoQ / Trados convention — focus the source cell,
+        # press F2, edit, then click or Tab away to auto-exit. It coexists
+        # with the global "Allow Replace in Source Text" setting: if that
+        # setting is already on, the cell is permanently editable and F2
+        # is a no-op. Locked segments never become editable.
+        #
+        # Modifier check: we explicitly screen out Ctrl/Shift/Alt/Meta but
+        # don't require modifiers() == NoModifier — on Windows, function
+        # keys frequently arrive with KeypadModifier (and on macOS with
+        # KeypadModifier as well for the touchbar/Fn-row), which would
+        # fail an equality check and silently swallow the F2 press.
+        if event.key() == Qt.Key.Key_F2:
+            _mods = event.modifiers()
+            _disqualifying = (
+                Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.ShiftModifier
+                | Qt.KeyboardModifier.AltModifier
+                | Qt.KeyboardModifier.MetaModifier
+            )
+            if not (_mods & _disqualifying):
+                if getattr(self, '_segment_locked', False):
+                    event.accept()
+                    return
+                mw = self._get_main_window()
+                globally_on = bool(getattr(mw, 'allow_replace_in_source', False)) if mw else False
+                if globally_on:
+                    # Already editable via the global setting; F2 is a no-op.
+                    event.accept()
+                    return
+                if getattr(self, '_ephemeral_source_edit', False):
+                    # Second press → exit ephemeral edit. Changes were
+                    # saved live by the textChanged handler as the user typed.
+                    self._disable_ephemeral_source_edit()
+                else:
+                    self._enable_ephemeral_source_edit()
+                event.accept()
+                return
+
         # Check for Ctrl+C (copy)
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_C:
             # Get selected text
@@ -3888,7 +3987,16 @@ class ReadOnlyGridTextEditor(QTextEdit):
 
     def _rebuild_grid_stylesheet(self):
         """Compose this cell's stylesheet from current bg colour + font size."""
-        bg_rule = f"background-color: {self._grid_bg_color};" if self._grid_bg_color else ""
+        # v1.10.229: When "Allow Replace in Source Text" is on, override the
+        # cell background with a soft amber so the user can see at a glance
+        # which cells are dangerous to touch. Mirrors the inline-editor
+        # styling that the (currently dead) delegate path used to apply.
+        if getattr(self, 'allow_source_edit', False):
+            bg_rule = "background-color: #FFF9E6;"
+            focus_border = "1px solid #FF9800"
+        else:
+            bg_rule = f"background-color: {self._grid_bg_color};" if self._grid_bg_color else ""
+            focus_border = "1px solid #2196F3"
         font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
         _tc = getattr(self, '_grid_text_color', None)
         color_rule = f"color: {_tc};" if _tc else ""
@@ -3901,13 +4009,85 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 {color_rule}
             }}
             QTextEdit:focus {{
-                border: 1px solid #2196F3;
+                border: {focus_border};
             }}
             QTextEdit::selection {{
                 background-color: #000000;
                 color: #FFFFFF;
             }}
         """)
+
+    def set_source_editable(self, enabled: bool):
+        """Toggle the editable/read-only state of this source cell at runtime.
+
+        v1.10.229: Called by the main window's update_grid_delegate() whenever
+        the "Allow Replace in Source Text" setting is toggled in Settings, so
+        the live grid reflects the new state without a full reload. Flips
+        readOnly, interaction flags, and stylesheet (which paints the amber
+        warning background when editing is on).
+        """
+        self.allow_source_edit = enabled
+        # Turning the global setting off also clears any per-cell ephemeral
+        # state (otherwise we'd leak an "editable" flag that nothing else
+        # knows about).
+        if not enabled:
+            self._ephemeral_source_edit = False
+        self.setReadOnly(not enabled)
+        if enabled:
+            self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        else:
+            self.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByKeyboard |
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+        self._rebuild_grid_stylesheet()
+
+    def _enable_ephemeral_source_edit(self):
+        """v1.10.229: Per-cell F2 source-edit mode (memoQ / Trados convention).
+
+        Distinct from the global "Allow Replace in Source Text" setting —
+        flips the same per-widget flags so the existing textChanged handler
+        picks up the edits and writes them back to segment.source, but only
+        for THIS cell, and only until focus leaves the widget.
+        """
+        self._ephemeral_source_edit = True
+        self.allow_source_edit = True
+        self.setReadOnly(False)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
+        self._rebuild_grid_stylesheet()
+        # Make sure the editor actually has focus and the cursor is in the
+        # text — when F2 is pressed via the table's key forwarding, focus
+        # may still sit on the table viewport.
+        self.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _disable_ephemeral_source_edit(self):
+        """Counterpart to _enable_ephemeral_source_edit. Auto-called on
+        focus-out so the user gets the "click away to exit" behaviour for
+        free."""
+        if not getattr(self, '_ephemeral_source_edit', False):
+            return
+        self._ephemeral_source_edit = False
+        self.allow_source_edit = False
+        self.setReadOnly(True)
+        self.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByKeyboard |
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._rebuild_grid_stylesheet()
+
+    def focusOutEvent(self, event):
+        """v1.10.229: Auto-exit per-cell F2 source-edit on focus-out.
+
+        Only revert if the GLOBAL setting is off — when the user has
+        permanently enabled source editing in Settings, we don't want
+        focus-out to silently disable it for that one cell.
+        """
+        if getattr(self, '_ephemeral_source_edit', False):
+            mw = self._get_main_window()
+            globally_on = bool(getattr(mw, 'allow_replace_in_source', False)) if mw else False
+            if not globally_on:
+                self._disable_ephemeral_source_edit()
+        super().focusOutEvent(event)
 
 
 class TagHighlighter(QSyntaxHighlighter):
@@ -4348,7 +4528,67 @@ class EditableGridTextEditor(QTextEdit):
         while main_window and not hasattr(main_window, 'go_to_first_segment'):
             main_window = main_window.parent()
         return main_window
-    
+
+    def _cycle_case_at_cursor(self):
+        """v1.10.229: Shift+F3 case toggler.
+
+        Cycles the case of the selected text (or, if there is no selection,
+        the word under the cursor) through:
+
+            lowercase  →  Sentence case  →  UPPERCASE  →  lowercase
+
+        Mirrors Word's behaviour. The undo stack still works because we mutate
+        the text through QTextCursor.insertText, which the document records as
+        a single undoable edit.
+        """
+        from PyQt6.QtGui import QTextCursor
+
+        cursor = self.textCursor()
+
+        # No selection → select the word at the cursor first, so the user
+        # doesn't have to double-click before pressing the shortcut.
+        if not cursor.hasSelection():
+            cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+            if not cursor.hasSelection():
+                return  # cursor not on a word — nothing to do
+
+        text = cursor.selectedText()
+        if not text:
+            return
+
+        # Decide the next case in the cycle. Use simple, case-fold-free
+        # heuristics so that Unicode-y strings (German ß / Turkish i / etc.)
+        # still cycle predictably.
+        if text == text.lower():
+            # lowercase → Sentence case (first cased letter capitalised,
+            # rest left alone — preserves any internal capitals like
+            # proper nouns inside a longer selection).
+            new_text = text
+            for i, ch in enumerate(text):
+                if ch.isalpha():
+                    new_text = text[:i] + ch.upper() + text[i + 1:]
+                    break
+        elif text == text.upper():
+            # UPPERCASE → lowercase
+            new_text = text.lower()
+        else:
+            # Anything else (Sentence case, Title Case, MiXeD) → UPPERCASE.
+            # That keeps the three-step cycle predictable from any starting
+            # point: one extra Shift+F3 always lands you on lowercase next.
+            new_text = text.upper()
+
+        if new_text == text:
+            return  # nothing actually changed (e.g. all-digit selection)
+
+        # Replace the selection in a single undoable operation, then
+        # re-select the new text so a follow-up Shift+F3 keeps cycling.
+        start = cursor.selectionStart()
+        cursor.insertText(new_text)
+        end = cursor.position()
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+
     def _handle_add_to_termbase(self):
         """Handle Ctrl+E: Add selected source and target terms to glossary (with dialogue)"""
         if not self.table or self.row < 0:
@@ -4865,7 +5105,16 @@ class EditableGridTextEditor(QTextEdit):
         """Handle Tab and Ctrl+E keys to cycle between source and target cells"""
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtGui import QTextCursor
-        
+
+        # v1.10.229: Shift+F3 — toggle case of the selection (or the word at
+        # the cursor if there is no selection). Cycles:
+        #   lowercase → Sentence case → UPPERCASE → lowercase
+        # Matches Word / memoQ / Trados behaviour.
+        if event.key() == Qt.Key.Key_F3 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+            self._cycle_case_at_cursor()
+            event.accept()
+            return
+
         # Ctrl+Z / Ctrl+Y: undo or redo this cell's own typing first; once the
         # cell has nothing left to undo/redo, fall through to the app-level
         # operation undo (Replace All, Copy Source → Target, etc.) so Ctrl+Z
@@ -7795,6 +8044,10 @@ class SupervertalerQt(QMainWindow):
         
         # Target editor signal suppression (prevents load-time churn)
         self._suppress_target_change_handlers = False
+        # v1.10.229: Same idea for source editors — set True when we're
+        # programmatically rewriting source cell contents so the
+        # "Replace in Source Text" handler doesn't fire a spurious save.
+        self._suppress_source_change_handlers = False
         self.warning_banners: Dict[str, QWidget] = {}
         
         # Superlookup detached window
@@ -39778,7 +40031,25 @@ class SupervertalerQt(QMainWindow):
             source_for_display = compact_tags(source_for_display, _compact_tag_map)
         # Apply invisible character replacements for display only
         source_display_text = self.apply_invisible_replacements(source_for_display)
-        source_editor = ReadOnlyGridTextEditor(source_display_text, self.table, row)
+        # v1.10.229: Honour the "Allow Replace in Source Text" setting at cell
+        # creation time. The cell widget (this editor) pre-empts the table
+        # delegate's createEditor, so the delegate's source-edit branch never
+        # ran — that's why the warning banner appeared but the cell stayed
+        # locked. Source remains read-only for locked segments regardless.
+        _allow_src_edit = bool(getattr(self, 'allow_replace_in_source', False)) \
+                          and not getattr(segment, 'locked', False)
+        source_editor = ReadOnlyGridTextEditor(
+            source_display_text, self.table, row, allow_edit=_allow_src_edit
+        )
+        # Stash the compact tag map + stripped wrapping tag on the source
+        # editor so the textChanged handler can reverse the display-only
+        # transforms before writing back to segment.source.
+        source_editor._compact_tag_map = _compact_tag_map
+        source_editor._stripped_outer_tag = stripped_source_tag
+        # Track segment locked state on the widget so update_grid_delegate()
+        # can refresh editability without re-deriving it from row indices
+        # (which don't survive filters / sorts).
+        source_editor._segment_locked = bool(getattr(segment, 'locked', False))
 
         # Initialize empty termbase matches (will be populated lazily on segment selection or by background worker)
         source_editor.termbase_matches = {}
@@ -39798,6 +40069,16 @@ class SupervertalerQt(QMainWindow):
         source_item = QTableWidgetItem()
         source_item.setFlags(Qt.ItemFlag.NoItemFlags)  # No interaction
         self.table.setItem(row, 2, source_item)
+
+        # v1.10.229: Wire up the source textChanged handler unconditionally;
+        # it gates on self.allow_replace_in_source AND the editor's
+        # allow_source_edit at fire time, so it's a no-op when the setting is
+        # off. Connecting it always means toggling the setting at runtime via
+        # set_source_editable() immediately picks up edits without rebuilding
+        # the grid.
+        source_editor.textChanged.connect(
+            self._make_source_changed_handler(segment.id, source_editor)
+        )
 
         # Target - Use editable QTextEdit widget for easy text selection and editing
         # Strip outer wrapping tags if enabled (will be auto-restored when saving)
@@ -44033,6 +44314,68 @@ class SupervertalerQt(QMainWindow):
         """Get status icon for display"""
         return get_status(status).icon
     
+    def _make_source_changed_handler(self, segment_id, editor_widget):
+        """v1.10.229: Factory for the source-cell textChanged handler.
+
+        Companion to ``make_target_changed_handler`` (inlined in
+        ``load_segments_to_grid``), but for the source column. Only fires
+        when the global ``allow_replace_in_source`` setting AND the editor's
+        own ``allow_source_edit`` flag are both on — so when the setting is
+        off, this handler is a cheap no-op even though it's always connected.
+
+        Limitations (intentional for v1):
+        - No undo recording (the global undo stack is target-centric). The
+          warning banner already says "use with extreme caution".
+        - No automatic TM/MT/termbase re-lookup. Existing matches may be
+          stale until the user navigates away and back.
+        """
+        def on_source_text_changed():
+            # Cheap guards first — fire-on-every-keystroke path.
+            # We gate ONLY on the widget's own allow_source_edit flag (not
+            # the global self.allow_replace_in_source) so that per-cell
+            # ephemeral F2 edits — which don't flip the global setting —
+            # still write back to segment.source. The widget flag is set
+            # by both paths: set_source_editable (global) and
+            # _enable_ephemeral_source_edit (F2 per-cell).
+            if not getattr(editor_widget, 'allow_source_edit', False):
+                return
+            if getattr(self, '_suppress_source_change_handlers', False):
+                return
+
+            new_text = editor_widget.toPlainText()
+
+            # Reverse display-only transforms before saving (mirrors the
+            # target-cell handler): compact tags → expanded, invisible
+            # markers stripped, outer wrapping tag re-attached.
+            compact_map = getattr(editor_widget, '_compact_tag_map', None)
+            if compact_map:
+                new_text = expand_compact_tags(new_text, compact_map)
+            new_text = self.reverse_invisible_replacements(new_text)
+            stripped_tag = getattr(editor_widget, '_stripped_outer_tag', None)
+            if stripped_tag and self.hide_outer_wrapping_tags:
+                if not new_text.strip().startswith(f'<{stripped_tag}'):
+                    new_text = f'<{stripped_tag}>{new_text}</{stripped_tag}>'
+
+            # Find the segment (by ID, not row — row indices shift under
+            # filters / sorts).
+            target_segment = next(
+                (seg for seg in self.current_project.segments if seg.id == segment_id),
+                None,
+            )
+            if target_segment is None:
+                return
+
+            # Idempotent guard — programmatic setPlainText() (e.g. grid
+            # refresh, theme change) round-trips through textChanged with
+            # the same text. Bail before marking the project dirty.
+            if new_text == target_segment.source:
+                return
+
+            target_segment.source = new_text
+            self.project_modified = True
+
+        return on_source_text_changed
+
     def _handle_target_text_debounced_by_id(self, segment_id, new_text):
         """
         Handle expensive target text change operations after user stops typing.
@@ -55869,10 +56212,44 @@ class SupervertalerQt(QMainWindow):
         self.update_grid_delegate()
     
     def update_grid_delegate(self):
-        """Update the grid's item delegate to reflect current settings"""
-        if hasattr(self, 'table') and self._widget_is_alive(self.table):
-            # Recreate the delegate with updated settings
-            self.table.setItemDelegate(WordWrapDelegate(None, self.table, self.allow_replace_in_source))
+        """Update the grid's item delegate to reflect current settings.
+
+        v1.10.229: Also walks the existing source cell widgets and flips
+        their editable state. The setItemDelegate call below is kept for
+        the (rare) code paths that still rely on the delegate, but the
+        source column is rendered via setCellWidget — which pre-empts the
+        delegate — so the delegate swap alone is not enough to make the
+        "Allow Replace in Source Text" setting take effect on a populated
+        grid. This is what made the feature appear silently broken: banner
+        flipped, delegate recreated, cells stayed locked.
+        """
+        if not hasattr(self, 'table') or not self._widget_is_alive(self.table):
+            return
+
+        # Recreate the delegate with updated settings (kept for parity with
+        # any non-cell-widget rendering paths).
+        self.table.setItemDelegate(
+            WordWrapDelegate(None, self.table, self.allow_replace_in_source)
+        )
+
+        # Walk the live source cell widgets and toggle their readOnly /
+        # interaction-flags / amber-warning styling in place. Locked
+        # segments stay read-only regardless. We read the locked flag from
+        # the widget itself (stashed at creation time) instead of indexing
+        # into current_project.segments by row — that's wrong under
+        # filters / sorts where row N ≠ segment N.
+        try:
+            for row in range(self.table.rowCount()):
+                widget = self.table.cellWidget(row, 2)
+                if widget is None or not hasattr(widget, 'set_source_editable'):
+                    continue
+                locked = bool(getattr(widget, '_segment_locked', False))
+                widget.set_source_editable(
+                    bool(self.allow_replace_in_source) and not locked
+                )
+        except Exception as e:
+            # Never let a UI refresh failure crash the settings dialog.
+            self.log(f"⚠ Could not refresh source cell editability: {e}")
     
     def show_about(self):
         import_layout = QVBoxLayout(import_tab)
