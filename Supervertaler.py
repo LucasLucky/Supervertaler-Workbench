@@ -4420,6 +4420,12 @@ class EditableGridTextEditor(QTextEdit):
         self.table = table  # Store table reference
         self.setReadOnly(False)
 
+        # v1.10.230: Backspace-undo state for the AutoCorrect engine. Set
+        # by _maybe_apply_autocorrect() right after a conversion fires;
+        # consumed by the Backspace branch in keyPressEvent (one-shot —
+        # any other keystroke clears it).
+        self._pending_autocorrect_undo: Optional[dict] = None
+
         # CRITICAL: Track initial load state to ignore spurious textChanged events
         # Qt queues document change events during setPlainText() even with blockSignals(True).
         # When signals are unblocked later, Qt delivers these queued events, causing false
@@ -4588,6 +4594,111 @@ class EditableGridTextEditor(QTextEdit):
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         self.setTextCursor(cursor)
+
+    def _maybe_apply_autocorrect(self, typed_char: str) -> None:
+        """v1.10.230: Run the AutoCorrect engine after the user types a single
+        printable character. If a rule fires, replace the relevant text
+        window and remember enough state to undo it on the next Backspace.
+
+        Called from :meth:`keyPressEvent` immediately after the parent
+        ``QTextEdit.keyPressEvent`` has inserted ``typed_char`` into the
+        document. The engine itself sees the post-insertion text and
+        decides what (if anything) to replace.
+        """
+        main_window = self._get_main_window()
+        if main_window is None:
+            return
+        engine = getattr(main_window, '_autocorrect_engine', None)
+        if engine is None:
+            return
+        # Cheap early-out without building the full settings snapshot.
+        if not getattr(main_window, 'autocorrect_enabled', True):
+            return
+        # Locked segments: nothing to do.
+        if self.isReadOnly():
+            return
+        text = self.toPlainText()
+        cursor = self.textCursor()
+        # Cursor sits one past the last typed character.
+        pos = cursor.position() - 1
+        if pos < 0 or pos >= len(text):
+            return
+        if text[pos] != typed_char:
+            # The text we observe doesn't end where the keystroke landed —
+            # something else mutated the document between insert and now
+            # (paste, programmatic set, dictation engine). Bail out.
+            return
+        try:
+            settings = main_window.get_autocorrect_settings()
+        except Exception:
+            return
+        target_lang = getattr(main_window, 'target_language', None)
+        conversion = engine.apply_after_typed_char(text, pos, target_lang, settings)
+        if conversion is None:
+            return
+        self._apply_autocorrect_conversion(conversion)
+
+    def _apply_autocorrect_conversion(self, conversion) -> None:
+        """Apply a :class:`Conversion` to this editor and record a one-shot
+        undo so the next Backspace can revert it (Word-style)."""
+        from PyQt6.QtGui import QTextCursor
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        try:
+            cursor.setPosition(conversion.start)
+            cursor.setPosition(conversion.end, QTextCursor.MoveMode.KeepAnchor)
+            cursor.insertText(conversion.replacement)
+            # Move cursor to the rule's preferred resting position.
+            cursor.setPosition(conversion.new_cursor_pos)
+            self.setTextCursor(cursor)
+        finally:
+            cursor.endEditBlock()
+        # Stash undo info — one Backspace will revert this exact edit.
+        self._pending_autocorrect_undo = {
+            'start': conversion.start,
+            'inserted_len': len(conversion.replacement),
+            'undo_text': conversion.undo_text,
+            # Final cursor position the rule chose; we use this to detect
+            # whether the user has moved the caret since the conversion.
+            'cursor_after': conversion.new_cursor_pos,
+            'rule_id': conversion.rule_id,
+        }
+
+    def _undo_last_autocorrect_if_applicable(self) -> bool:
+        """Backspace handler: revert the last autocorrect conversion if the
+        user hasn't moved the cursor away from it. Returns True if the
+        revert happened (and the caller should consume the keystroke)."""
+        from PyQt6.QtGui import QTextCursor
+        pending = self._pending_autocorrect_undo
+        if pending is None:
+            return False
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            # User has selected something — let Backspace do its normal
+            # selection-delete job.
+            self._pending_autocorrect_undo = None
+            return False
+        # Only revert if the caret hasn't drifted. Some rules leave the
+        # caret past trailing whitespace they preserved (e.g. en-dash
+        # eats "-- " and leaves the space), so we accept the rule's chosen
+        # cursor_after position exactly.
+        if cursor.position() != pending['cursor_after']:
+            self._pending_autocorrect_undo = None
+            return False
+        cursor.beginEditBlock()
+        try:
+            cursor.setPosition(pending['start'])
+            cursor.setPosition(
+                pending['start'] + pending['inserted_len'],
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            cursor.insertText(pending['undo_text'])
+            cursor.setPosition(pending['start'] + len(pending['undo_text']))
+            self.setTextCursor(cursor)
+        finally:
+            cursor.endEditBlock()
+        self._pending_autocorrect_undo = None
+        return True
 
     def _handle_add_to_termbase(self):
         """Handle Ctrl+E: Add selected source and target terms to glossary (with dialogue)"""
@@ -5106,6 +5217,16 @@ class EditableGridTextEditor(QTextEdit):
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtGui import QTextCursor
 
+        # v1.10.230: Backspace immediately after an AutoCorrect conversion
+        # undoes just the conversion (restores the user's literal typing).
+        # Word / memoQ / Trados all do this; users expect it.
+        if (event.key() == Qt.Key.Key_Backspace
+                and event.modifiers() == Qt.KeyboardModifier.NoModifier
+                and getattr(self, '_pending_autocorrect_undo', None) is not None):
+            if self._undo_last_autocorrect_if_applicable():
+                event.accept()
+                return
+
         # v1.10.229: Shift+F3 — toggle case of the selection (or the word at
         # the cursor if there is no selection). Cycles:
         #   lowercase → Sentence case → UPPERCASE → lowercase
@@ -5398,9 +5519,35 @@ class EditableGridTextEditor(QTextEdit):
                         event.accept()
                         return
         
-        # All other keys: Handle normally
+        # All other keys: Handle normally.
+        #
+        # v1.10.230: After Qt inserts the typed character (super() below),
+        # consult the AutoCorrect engine. The engine sees the text post-
+        # insertion and can decide to replace a 1-3-char window ending at
+        # the cursor (e.g. typing the third dot promotes "..." → "…").
+        #
+        # We only hand the engine a character that the user actually
+        # entered as printable text. Modifier-only events, function keys,
+        # and dead-key compositions get filtered out by .text() being
+        # empty or longer than one char.
+        autocorrect_char: Optional[str] = None
+        ev_text = event.text()
+        if ev_text and len(ev_text) == 1 and ev_text.isprintable():
+            autocorrect_char = ev_text
         super().keyPressEvent(event)
-    
+        if autocorrect_char is not None:
+            # Clearing on every typed char first guarantees the
+            # Backspace-undo memory only ever survives one keystroke.
+            had_pending = self._pending_autocorrect_undo is not None
+            self._pending_autocorrect_undo = None
+            self._maybe_apply_autocorrect(autocorrect_char)
+            # If we cleared a pending undo without applying a new one, that
+            # means the user has typed past their window for reverting the
+            # previous conversion. Fine — leave _pending_autocorrect_undo
+            # as None so a subsequent Backspace deletes a character
+            # normally.
+            _ = had_pending  # marker var for future debugging
+
     def _handle_add_to_nt(self):
         """Handle Ctrl+Alt+N: Add selected text to active non-translatable list(s)"""
         # Get selected text from source cell (for NT, we typically add from source)
@@ -8048,6 +8195,14 @@ class SupervertalerQt(QMainWindow):
         # programmatically rewriting source cell contents so the
         # "Replace in Source Text" handler doesn't fire a spurious save.
         self._suppress_source_change_handlers = False
+        # v1.10.230: AutoCorrect-while-typing engine (issue #213).
+        # The engine itself is stateless; per-user enable/disable + per-rule
+        # overrides live in the unified settings JSON and are loaded by
+        # _load_autocorrect_settings() during settings hydration below.
+        from modules.autocorrect import AutoCorrectEngine
+        self._autocorrect_engine = AutoCorrectEngine()
+        self.autocorrect_enabled: bool = True
+        self.autocorrect_rule_overrides: Dict[str, bool] = {}
         self.warning_banners: Dict[str, QWidget] = {}
         
         # Superlookup detached window
@@ -20748,6 +20903,13 @@ class SupervertalerQt(QMainWindow):
         general_tab = self._create_general_settings_tab()
         settings_tabs.addTab(scroll_area_wrapper(general_tab), self.tr("⚙️ General"))
 
+        # ===== TAB: AutoCorrect (v1.10.230, issue #213) =====
+        # Lives just below General because that's where the feature was
+        # initially prototyped; promoted to its own tab so the per-rule
+        # toggles are findable.
+        autocorrect_tab = self._create_autocorrect_settings_tab()
+        settings_tabs.addTab(scroll_area_wrapper(autocorrect_tab), self.tr("✍️ AutoCorrect"))
+
         # ===== TAB 2: User Identity =====
         identity_tab = self._create_user_identity_tab()
         settings_tabs.addTab(scroll_area_wrapper(identity_tab), self.tr("👤 User Identity"))
@@ -23288,7 +23450,12 @@ class SupervertalerQt(QMainWindow):
         
         find_replace_group.setLayout(find_replace_layout)
         layout.addWidget(find_replace_group)
-        
+
+        # v1.10.230: AutoCorrect-while-typing has its own Settings tab
+        # (_create_autocorrect_settings_tab). Originally lived here under
+        # General but was moved out so users could find it by category
+        # rather than scrolling past a dozen unrelated groups.
+
         # Precision Scroll Settings group
         scroll_group = QGroupBox(self.tr("⬆️⬇️ Precision Scroll Settings"))
         scroll_layout = QVBoxLayout()
@@ -23483,11 +23650,116 @@ class SupervertalerQt(QMainWindow):
         
         return tab
     
+    def _create_autocorrect_settings_tab(self):
+        """v1.10.230: Settings tab for the AutoCorrect-while-typing engine
+        (issue #213). Each checkbox lives-saves to ``settings.json`` on
+        toggle — no Save button — so changes take effect immediately on
+        the very next keystroke in the grid."""
+        from PyQt6.QtWidgets import QGroupBox
+        from modules.autocorrect import AutoCorrectEngine as _AC_Engine_Cls
+
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        set_help_topic(tab, HelpTopics.SETTINGS_AUTOCORRECT)
+
+        # ── AutoCorrect group ────────────────────────────────────────────
+        group = QGroupBox(self.tr("✍️ AutoCorrect while typing"))
+        glayout = QVBoxLayout()
+
+        # Help button (top-right corner of the group).
+        header_row = QHBoxLayout()
+        header_row.addStretch()
+        try:
+            from modules.styled_widgets import HelpButton as _HelpBtn
+            header_row.addWidget(_HelpBtn(
+                "workbench/settings/autocorrect/",
+                tooltip="Open the AutoCorrect help page",
+            ))
+        except Exception as _e:
+            self.log(f"[AutoCorrect settings] Could not add help button: {_e}")
+        glayout.addLayout(header_row)
+
+        info = QLabel(
+            "Automatic typographic conversion as you type in the target field.\n"
+            "Quote shapes follow the target language (German „…“, French « … », etc.).\n\n"
+            "Changes apply immediately — there's no Save button on this tab."
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet("color: #666; font-size: 9pt; padding: 5px;")
+        glayout.addWidget(info)
+
+        master_cb = CheckmarkCheckBox("Enable AutoCorrect while typing")
+        master_cb.setChecked(bool(getattr(self, 'autocorrect_enabled', True)))
+        master_cb.setToolTip(
+            "Master switch. Turning this off disables every rule below,\n"
+            "regardless of their individual state."
+        )
+        glayout.addWidget(master_cb)
+
+        # Per-rule checkboxes — same ordering as the engine's default list.
+        rule_meta = [
+            ("smart_double_quote", 'Smart double quotes  ("…"  →  „…", «…», "…" — by target language)'),
+            ("smart_single_quote", "Smart single quotes / apostrophes  ('  →  ’)"),
+            ("ellipsis",           "Ellipsis  (...  →  …)"),
+            ("en_dash",            "En-dash  (word--word  →  word–word)"),
+            ("em_dash",            "Em-dash  (word---word  →  word—word)  — off by default"),
+            ("french_nbsp",        "French typographic spacing  (NBSP before  :  ;  !  ?  — fr-* targets)"),
+        ]
+        rules_by_id = {r.rule_id: r for r in _AC_Engine_Cls().all_rules()}
+        rule_cbs: Dict[str, QCheckBox] = {}
+        for rule_id, label in rule_meta:
+            rule = rules_by_id.get(rule_id)
+            if rule is None:
+                continue
+            cb = CheckmarkCheckBox(label)
+            current_state = self.autocorrect_rule_overrides.get(rule_id, rule.default_on)
+            cb.setChecked(bool(current_state))
+            cb.setEnabled(master_cb.isChecked())
+            glayout.addWidget(cb)
+            rule_cbs[rule_id] = cb
+
+            def _on_rule_toggle(checked, rid=rule_id):
+                self.autocorrect_rule_overrides[rid] = bool(checked)
+                self._persist_autocorrect_settings()
+            cb.toggled.connect(_on_rule_toggle)
+
+        def _on_master_toggle(checked):
+            self.autocorrect_enabled = bool(checked)
+            for _cb in rule_cbs.values():
+                _cb.setEnabled(bool(checked))
+            self._persist_autocorrect_settings()
+        master_cb.toggled.connect(_on_master_toggle)
+
+        # Stash refs so a future "Reset to language defaults" button could
+        # find them, and so a programmatic settings change can sync the UI.
+        self._autocorrect_master_cb = master_cb
+        self._autocorrect_rule_cbs = rule_cbs
+
+        group.setLayout(glayout)
+        layout.addWidget(group)
+        layout.addStretch()
+        return tab
+
+    def _persist_autocorrect_settings(self):
+        """v1.10.230: Write just the AutoCorrect keys to ``settings.json``,
+        leaving every other general setting untouched. Called from every
+        toggle handler on the AutoCorrect tab so the user never has to
+        click Save."""
+        try:
+            current = self._load_settings_section("general") or {}
+            current['autocorrect_enabled'] = bool(self.autocorrect_enabled)
+            current['autocorrect_rule_overrides'] = dict(self.autocorrect_rule_overrides)
+            self.save_general_settings(current)
+        except Exception as e:
+            self.log(f"⚠ Could not persist AutoCorrect settings: {e}")
+
     def _create_view_settings_tab(self):
         """Create View Settings tab content"""
         from PyQt6.QtWidgets import QGroupBox, QPushButton, QButtonGroup, QColorDialog
         from PyQt6.QtGui import QColor
-        
+
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -26316,7 +26588,15 @@ class SupervertalerQt(QMainWindow):
             'results_compare_font_size': 9,
             'autohotkey_path': ahk_path_edit.text().strip() if ahk_path_edit is not None else existing_settings.get('autohotkey_path', ''),
             'enable_sound_effects': sound_effects_cb.isChecked() if sound_effects_cb is not None else existing_settings.get('enable_sound_effects', False),
-            'disable_all_caches': disable_cache_cb.isChecked() if disable_cache_cb is not None else existing_settings.get('disable_all_caches', False)
+            'disable_all_caches': disable_cache_cb.isChecked() if disable_cache_cb is not None else existing_settings.get('disable_all_caches', False),
+            # v1.10.230: AutoCorrect-while-typing has its own Settings tab
+            # with live-save (mutates settings.json on every toggle), so we
+            # MUST NOT overwrite those keys here — preserve whatever the
+            # disk currently has via existing_settings. Otherwise the
+            # General "Save" button would silently revert an unrelated
+            # AutoCorrect change the user made elsewhere.
+            'autocorrect_enabled': existing_settings.get('autocorrect_enabled', True),
+            'autocorrect_rule_overrides': existing_settings.get('autocorrect_rule_overrides', {}) or {},
         }
 
         # Keep a fast-access instance value
@@ -43556,8 +43836,35 @@ class SupervertalerQt(QMainWindow):
         provider_key = f"{self.current_provider}_model"
         self.current_model = llm_settings.get(provider_key)
 
+        # v1.10.230: AutoCorrect-while-typing settings (issue #213).
+        # Master toggle defaults on; per-rule overrides are sparse — missing
+        # entries fall back to each rule's own default_on (em-dash off by
+        # default, everything else on). Stored under top-level keys in the
+        # general section so the save side can mirror them without
+        # threading new kwargs through _save_general_settings_from_ui.
+        self.autocorrect_enabled = bool(settings.get('autocorrect_enabled', True))
+        overrides = settings.get('autocorrect_rule_overrides', {}) or {}
+        # Coerce values to bools defensively (JSON may round-trip them oddly)
+        self.autocorrect_rule_overrides = {
+            str(k): bool(v) for k, v in overrides.items() if isinstance(k, str)
+        }
+
         return settings
-    
+
+    def get_autocorrect_settings(self):
+        """Return an :class:`AutoCorrectSettings` snapshot for engine calls.
+
+        v1.10.230: keeps the engine stateless — every keystroke that
+        invokes the engine passes a fresh settings snapshot so a Settings
+        change takes effect immediately on the next typed character without
+        needing to reload the engine or the grid.
+        """
+        from modules.autocorrect import AutoCorrectSettings
+        return AutoCorrectSettings(
+            enabled=bool(self.autocorrect_enabled),
+            rule_overrides=dict(self.autocorrect_rule_overrides),
+        )
+
     # ═══════════════════════════════════════════════════════════════════════
     # Unified Settings Infrastructure
     # All settings are stored in settings/settings.json with top-level sections:

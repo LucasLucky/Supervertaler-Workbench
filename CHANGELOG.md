@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.229 (May 30, 2026)
+**Current Version:** v1.10.230 (May 30, 2026)
+
+
+## v1.10.230 – May 30, 2026
+
+### Added
+
+- **AutoCorrect while typing — typographic auto-conversion in the target field** (issue #213, requested by a user in discussion #211). As you type, straight quotes become language-correct typographic quotes (German `„…"`, French `« … »` with non-breaking spaces, Polish `„…"`, Russian/Italian `«…»`, English `"…"`, and 14 other language profiles), straight apostrophes become curly (`don't` → `don't`), `...` becomes `…`, and `--` becomes `–`. French targets additionally get a narrow no-break space inserted before `:` `;` `!` `?` per modern French typography. Each rule can be toggled in **Settings → General → ✍️ AutoCorrect while typing**; the master switch and per-rule toggles take effect on the very next keystroke. **Backspace immediately after** any auto-correction reverts it (Word convention) — so if AutoCorrect guesses wrong, one Backspace restores your literal typing. Em-dash (`---` → `—`) is included but off by default to match the project's en-dash house style. Autocorrect is skipped inside tag markers (`{1}`, `[2}`, `<seg>`) so it can't corrupt round-trip-able formatting, and skipped on paste / programmatic content changes so it doesn't interfere with dictation or scripted edits.
 
 
 ## v1.10.229 – May 30, 2026
