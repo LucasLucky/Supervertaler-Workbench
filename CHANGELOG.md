@@ -2,7 +2,26 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.230 (May 30, 2026)
+**Current Version:** v1.10.231 (May 31, 2026)
+
+
+## v1.10.231 – May 31, 2026
+
+### Added
+
+- **Supervertaler Re-importable Text (AI-friendly)** — a new bilingual export/import round-trip ported from the Supervertaler for Trados plugin. **Export → 🔁 Supervertaler Re-importable → Bilingual Text (AI-friendly)** writes a `[SEGMENT NNNN]` plain-text file (`.txt`) with one editable target line per segment, plus a `.svexport.json` sidecar alongside it. Hand the text to a proofreader or an LLM, edit the target lines, then **Import → 🔁 Supervertaler Re-importable → Bilingual Text (AI-friendly) - Update Project** to feed the edits straight back into the same open project. (It's plain text, not Markdown, on purpose — the segment blocks rely on preserved line breaks, which a Markdown renderer would collapse; AI agents read the raw text either way.) The sidecar matches edited segments to the right live segments (by a stable id, with position fallback), and the importer guards the round-trip:
+  - **Source-tamper detection** — a short SHA-256 hash per segment; a segment whose source line was altered is skipped.
+  - **Structural-tag integrity** — segments that drop a required placeholder tag (`{1}`, `[1}`, `<92>`, …) are flagged and skipped in strict mode (the default, toggleable in the import preview). Cosmetic formatting tags (`<b>`, `<i>`, `<u>`, …) may be freely added or removed.
+  - **Status round-trip** — a deliberate change to a segment's `Status:` line is applied; otherwise a segment whose target changed is marked Draft. The header lists exactly which statuses you may set.
+  - **Comment round-trip** — every segment block carries a `Comment:` line (empty by default, so it's obvious you can add one); editing, filling, or clearing it re-imports into the segment's comments. A comment-only edit (target unchanged) is applied on its own.
+  - **Multi-line targets** (and multi-line comments) round-trip correctly; locked segments are left untouched.
+  - A preview dialog summarises what will change, what's unchanged, and what's skipped (with reasons) before anything is applied.
+
+### Changed (Import/Export menu)
+
+- **Grouped the two re-importable round-trip formats under a "🔁 Supervertaler Re-importable" submenu** in both the Import and Export menus — **Bilingual Table (DOCX)** and **Bilingual Text (AI-friendly)**. Both update the *same open project* on re-import.
+- **Renamed the Supervertaler bilingual Word table** to **Re-importable Table** (in the menu and inside the document itself) so it pairs consistently with the new Re-importable Text. The one-way formatted variant is now **Supervertaler Formatted Table (DOCX, read-only)** and titled accordingly so it's clearly not for re-import.
+- **Removed the "Labelled Segments" Markdown export** — the new Re-importable Text supersedes it. The one-way **AI-Readable Markdown Table (read-only)** export remains for pasting into a chat (it's a genuine Markdown table, which renders correctly).
 
 
 ## v1.10.230 – May 30, 2026

@@ -10477,9 +10477,24 @@ class SupervertalerQt(QMainWindow):
 
         import_menu.addSeparator()
 
-        import_review_table_action = QAction(self.tr("&Bilingual Table (DOCX) - Update Project..."), self)
+        # v1.10.231: the two Supervertaler-native re-importable round-trip
+        # formats, grouped to mirror the Export → 🔁 Supervertaler Re-importable
+        # submenu. Both update the SAME open project.
+        reimport_submenu = import_menu.addMenu(self.tr("🔁 Supervertaler &Re-importable"))
+
+        import_review_table_action = QAction(self.tr("Bilingual &Table (DOCX) - Update Project..."), self)
         import_review_table_action.triggered.connect(self.import_review_table)
-        import_menu.addAction(import_review_table_action)
+        import_review_table_action.setToolTip(self.tr(
+            "Re-import an edited Supervertaler bilingual Word table to update this project's "
+            "translations and comments."))
+        reimport_submenu.addAction(import_review_table_action)
+
+        import_bilingual_md_action = QAction(self.tr("Bilingual Te&xt (AI-friendly) - Update Project..."), self)
+        import_bilingual_md_action.triggered.connect(self.import_bilingual_markdown)
+        import_bilingual_md_action.setToolTip(self.tr(
+            "Re-import an edited [SEGMENT NNNN] text file (with its .svexport.json "
+            "sidecar) to update the current project's translations and comments."))
+        reimport_submenu.addAction(import_bilingual_md_action)
 
         # Help link at the foot of the Import submenu. Imports happen straight
         # from a menu (no dialog), so the standard set_help_topic "?" badge
@@ -10512,17 +10527,15 @@ class SupervertalerQt(QMainWindow):
         export_txt_action.triggered.connect(self.export_simple_txt)
         export_menu.addAction(export_txt_action)
 
-        ai_export_submenu = export_menu.addMenu(self.tr("📄 &AI-Readable Markdown"))
-
-        export_ai_table_action = QAction(self.tr("Markdown &Table..."), self)
+        # One-way AI-readable Markdown table (for pasting into a chat). The
+        # re-importable Markdown round-trip lives in the "🔁 Supervertaler
+        # Re-importable" submenu further down. (v1.10.231: the old "Labelled
+        # Segments" export was removed — the re-importable Text format below
+        # supersedes it.)
+        export_ai_table_action = QAction(self.tr("📄 AI-Readable Markdown &Table (read-only)..."), self)
         export_ai_table_action.triggered.connect(self.export_bilingual_table_markdown)
-        export_ai_table_action.setToolTip(self.tr("Export segments as a bilingual Markdown table for AI translation/review"))
-        ai_export_submenu.addAction(export_ai_table_action)
-
-        export_ai_segment_action = QAction(self.tr("Labelled &Segments..."), self)
-        export_ai_segment_action.triggered.connect(self.export_for_ai)
-        export_ai_segment_action.setToolTip(self.tr("Export segments in [SEGMENT] format with language-labelled lines for AI translation/review"))
-        ai_export_submenu.addAction(export_ai_segment_action)
+        export_ai_table_action.setToolTip(self.tr("Export segments as a one-way bilingual Markdown table for AI translation/review (not re-importable)"))
+        export_menu.addAction(export_ai_table_action)
 
         export_menu.addSeparator()
 
@@ -10594,12 +10607,28 @@ class SupervertalerQt(QMainWindow):
 
         export_menu.addSeparator()
 
-        # Supervertaler Bilingual Table exports
-        export_review_table_action = QAction(self.tr("Supervertaler Bilingual Table - With &Tags (DOCX)..."), self)
-        export_review_table_action.triggered.connect(self.export_review_table_with_tags)
-        export_menu.addAction(export_review_table_action)
+        # v1.10.231: the two Supervertaler-native re-importable round-trip
+        # formats, grouped together. Both update the SAME open project on
+        # re-import. "Table" = Word DOCX; "Text" = AI-friendly plain text.
+        reimport_export_submenu = export_menu.addMenu(self.tr("🔁 Supervertaler &Re-importable"))
 
-        export_review_table_formatted_action = QAction(self.tr("Supervertaler Bilingual Table - &Formatted (DOCX)..."), self)
+        export_reimport_table_action = QAction(self.tr("Bilingual &Table (DOCX)..."), self)
+        export_reimport_table_action.triggered.connect(self.export_review_table_with_tags)
+        export_reimport_table_action.setToolTip(self.tr(
+            "Export a re-importable Word bilingual table (inline tags shown as literal text). "
+            "Edit the Target/Comments columns, then re-import to update this project."))
+        reimport_export_submenu.addAction(export_reimport_table_action)
+
+        export_reimport_text_action = QAction(self.tr("Bilingual Te&xt (AI-friendly)..."), self)
+        export_reimport_text_action.triggered.connect(self.export_bilingual_markdown)
+        export_reimport_text_action.setToolTip(self.tr(
+            "Export a re-importable [SEGMENT NNNN] text file with a .svexport.json sidecar. "
+            "Edit the target lines (or have an LLM do it), then re-import to update this project."))
+        reimport_export_submenu.addAction(export_reimport_text_action)
+
+        # The formatted Word table is a one-way deliverable (real bold/italic
+        # instead of literal tags) and cannot be re-imported.
+        export_review_table_formatted_action = QAction(self.tr("Supervertaler &Formatted Table (DOCX, read-only)..."), self)
         export_review_table_formatted_action.triggered.connect(self.export_review_table_formatted)
         export_menu.addAction(export_review_table_formatted_action)
 
@@ -15313,7 +15342,12 @@ class SupervertalerQt(QMainWindow):
             globe_run = title.add_run("🌐 ")
             globe_run.font.size = Pt(18)
             
-            title_run = title.add_run("Supervertaler Bilingual Table")
+            # v1.10.231: title reflects whether this variant round-trips.
+            # With-Tags (apply_formatting=False) is re-importable; Formatted
+            # (apply_formatting=True) is a one-way read-only deliverable.
+            _doc_title = ("Supervertaler Formatted Table"
+                          if apply_formatting else "Supervertaler Re-importable Table")
+            title_run = title.add_run(_doc_title)
             title_run.font.size = Pt(18)
             title_run.font.bold = True
             title_run.font.color.rgb = RGBColor(0, 102, 204)
@@ -15637,7 +15671,7 @@ class SupervertalerQt(QMainWindow):
             footer_text = doc.add_paragraph()
             footer_text.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-            brand_run = footer_text.add_run("Supervertaler Bilingual Table")
+            brand_run = footer_text.add_run(_doc_title)
             brand_run.font.size = Pt(9)
             brand_run.font.color.rgb = RGBColor(100, 100, 100)
             
@@ -39950,7 +39984,16 @@ class SupervertalerQt(QMainWindow):
                 initial_total=max(_n_segs, 1),
             ) as _prog:
                 self.load_segments_to_grid(progress_callback=_prog.grid_callback)
-            
+
+            # v1.10.231: rebuild the Comments pane's all-comments list so newly
+            # imported/edited comments show immediately (the grid reload doesn't
+            # touch it). Idempotent + cheap; guarded for early init.
+            if comments_applied:
+                try:
+                    self._refresh_segment_comments_list()
+                except Exception:
+                    pass
+
             self.log(
                 f"✓ Applied {applied_count} change(s) from bilingual table: "
                 f"{Path(file_path).name} "
@@ -39977,7 +40020,426 @@ class SupervertalerQt(QMainWindow):
             self.log(f"✗ Bilingual table import failed: {str(e)}")
             import traceback
             traceback.print_exc()
-    
+
+    # ────────────────────────────────────────────────────────────────────
+    # Bilingual Re-importable Text (AI-friendly, Bracketed) — export + re-import
+    # v1.10.231. Ports the Trados plugin's "[SEGMENT NNNN]" round-trip: a plain
+    # text file (editable target lines) + a .svexport.json sidecar that maps the
+    # edited file back to THIS open project. Called "Text" (not Markdown)
+    # because the segment blocks rely on preserved line breaks. The method names
+    # keep the historical "markdown" wording as an internal detail. See
+    # modules/bilingual_markdown_handler.py for the format + diff engine.
+    # ────────────────────────────────────────────────────────────────────
+    def export_bilingual_markdown(self):
+        """Export segments as AI-friendly Bracketed Text + .svexport.json sidecar.
+
+        Round-trips back into the SAME open project via import_bilingual_markdown().
+        """
+        try:
+            if not self.current_project or not self.current_project.segments:
+                QMessageBox.warning(self, "No Project",
+                                    "Please open a project with segments first.")
+                return
+
+            from modules.bilingual_markdown_handler import (
+                MdExportSegment, build_markdown, build_sidecar, write_export,
+            )
+            from modules.statuses import STATUSES, get_status
+            from datetime import datetime, timezone
+
+            segments = list(self.current_project.segments)
+            # Flush any pending grid edits into the segment objects first, so the
+            # export matches exactly what's on screen.
+            try:
+                self._sync_grid_targets_to_segments(segments)
+            except Exception:
+                pass
+
+            # ── Options dialog ──────────────────────────────────────────────
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Export Bilingual Text (AI-friendly)")
+            dialog.setMinimumWidth(480)
+            d_layout = QVBoxLayout(dialog)
+
+            info = QLabel(
+                "Export a bilingual text file in the AI-friendly "
+                "<b>[SEGMENT NNNN]</b> format, with a <code>.svexport.json</code> "
+                "sidecar written alongside it.<br><br>"
+                "Edit the target lines in any text editor or with an LLM, then "
+                "re-import via <b>File → Import → 🔁 Supervertaler Re-importable → "
+                "Bilingual Text (AI-friendly)</b> to update this project."
+            )
+            info.setTextFormat(Qt.TextFormat.RichText)
+            info.setWordWrap(True)
+            d_layout.addWidget(info)
+            d_layout.addSpacing(8)
+
+            include_locked_cb = CheckmarkCheckBox("Include locked segments")
+            include_locked_cb.setChecked(True)
+            d_layout.addWidget(include_locked_cb)
+
+            # Status filter — only the statuses actually present in the project.
+            present_keys = []
+            seen = set()
+            for s in segments:
+                k = get_status(s.status).key
+                if k not in seen:
+                    seen.add(k)
+                    present_keys.append(k)
+            status_group = QGroupBox("Include statuses")
+            sg_layout = QVBoxLayout(status_group)
+            status_cbs = {}
+            for k in present_keys:
+                lbl = STATUSES[k].label if k in STATUSES else k
+                cb = CheckmarkCheckBox(lbl)
+                cb.setChecked(True)
+                sg_layout.addWidget(cb)
+                status_cbs[k] = cb
+            d_layout.addWidget(status_group)
+
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            d_layout.addWidget(buttons)
+
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            include_locked = include_locked_cb.isChecked()
+            selected_keys = {k for k, cb in status_cbs.items() if cb.isChecked()}
+            status_filter = None if selected_keys == set(present_keys) else selected_keys
+
+            # ── Build the export list ──────────────────────────────────────
+            export_segs = []
+            number = 0
+            for seg in segments:
+                key = get_status(seg.status).key
+                if not include_locked and getattr(seg, 'locked', False):
+                    continue
+                if status_filter is not None and key not in status_filter:
+                    continue
+                number += 1
+                label = STATUSES[key].label if key in STATUSES else key
+                export_segs.append(MdExportSegment(
+                    number=number,
+                    segment_id=seg.id,
+                    source=seg.source or "",
+                    target=seg.target or "",
+                    status_key=key,
+                    status_label=label,
+                    locked=bool(getattr(seg, 'locked', False)),
+                    file_name=getattr(seg, 'file_name', '') or "",
+                    comment=getattr(seg, 'notes', '') or "",
+                ))
+
+            if not export_segs:
+                QMessageBox.warning(self, "No Segments",
+                                    "No segments match the selected options.")
+                return
+
+            # ── Save path ──────────────────────────────────────────────────
+            default_name = (self.current_project.name or "project").replace(" ", "_") + "_bilingual.txt"
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export Bilingual Text", default_name,
+                "Text Files (*.txt);;All Files (*.*)")
+            if not file_path:
+                return
+            if not file_path.lower().endswith('.txt'):
+                file_path += '.txt'
+
+            src_disp = self.current_project.source_lang or "Source"
+            tgt_disp = self.current_project.target_lang or "Target"
+
+            # A representative source file name for the header/sidecar.
+            source_file_name = ""
+            for s in export_segs:
+                if s.file_name:
+                    source_file_name = s.file_name
+                    break
+            if not source_file_name:
+                source_file_name = self.current_project.name or ""
+
+            multi_file = len({s.file_name for s in export_segs if s.file_name}) > 1
+
+            # The workflow statuses a proofreader/LLM may set (the auto-assigned
+            # TM/MT match statuses aren't meant to be set by hand).
+            _status_choice_keys = ["not_started", "draft", "confirmed",
+                                   "proofread", "approved", "rejected"]
+            status_choices = [STATUSES[k].label for k in _status_choice_keys
+                              if k in STATUSES]
+
+            md_text = build_markdown(
+                export_segs,
+                project_name=self.current_project.name or "Untitled",
+                source_file_name=source_file_name,
+                source_lang_display=src_disp,
+                target_lang_display=tgt_disp,
+                tool_version=__version__,
+                multi_file=multi_file,
+                status_choices=status_choices,
+            )
+            sidecar = build_sidecar(
+                export_segs,
+                project_name=self.current_project.name or "Untitled",
+                source_file_name=source_file_name,
+                source_language=src_disp,
+                target_language=tgt_disp,
+                tool_version=__version__,
+                export_file_path=file_path,
+                timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            )
+            side_path = write_export(file_path, md_text, sidecar)
+
+            self.log(f"✓ Exported {len(export_segs)} segments to bilingual text: "
+                     f"{os.path.basename(file_path)} (+ sidecar)")
+            QMessageBox.information(
+                self, "Export Complete",
+                f"Exported {len(export_segs)} segment(s) to:\n{os.path.basename(file_path)}\n\n"
+                f"Sidecar: {os.path.basename(side_path)}\n\n"
+                "Edit the target lines, then re-import via File → Import → "
+                "🔁 Supervertaler Re-importable → Bilingual Text (AI-friendly) to "
+                "update this project.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error",
+                                 f"Failed to export bilingual text:\n\n{str(e)}")
+            self.log(f"✗ Bilingual text export failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def import_bilingual_markdown(self):
+        """Re-import an edited bilingual Text (AI-friendly) file into the
+        current project, matching segments via the .svexport.json sidecar."""
+        try:
+            if not self.current_project or not self.current_project.segments:
+                QMessageBox.warning(
+                    self, "No Project",
+                    "Open the project you exported from first, then re-import the "
+                    "edited text file.")
+                return
+
+            from modules.bilingual_markdown_handler import (
+                parse_markdown, load_sidecar, build_import_diffs, CurrentSeg,
+                looks_like_bracketed_markdown,
+                KIND_CHANGED, KIND_UNCHANGED, KIND_MISSING, KIND_SOURCE_MISMATCH,
+                KIND_TAG_MISMATCH, KIND_LOCKED,
+            )
+            from modules.statuses import STATUSES, get_status
+
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Import Bilingual Text (AI-friendly)", "",
+                "Text Files (*.txt *.md);;All Files (*.*)")
+            if not file_path:
+                return
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                md_text = f.read()
+
+            if not looks_like_bracketed_markdown(md_text):
+                QMessageBox.warning(
+                    self, "Not a re-importable text file",
+                    "This file doesn't contain any [SEGMENT N] markers.\n\n"
+                    "Choose a file exported via Export → 🔁 Supervertaler "
+                    "Re-importable → Bilingual Text (AI-friendly).")
+                return
+
+            parsed = parse_markdown(md_text)
+            if not parsed:
+                QMessageBox.warning(self, "No Segments",
+                                    "No segments could be parsed from this file.")
+                return
+
+            sidecar = load_sidecar(file_path)
+            if sidecar is None:
+                resp = QMessageBox.question(
+                    self, "Sidecar not found",
+                    "No .svexport.json sidecar was found next to this file.\n\n"
+                    "Without it, segments are matched by position only and "
+                    "source-tamper detection is unavailable. Continue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No)
+                if resp != QMessageBox.StandardButton.Yes:
+                    return
+
+            # Build current snapshots (flush grid edits first).
+            current_segments = list(self.current_project.segments)
+            try:
+                self._sync_grid_targets_to_segments(current_segments)
+            except Exception:
+                pass
+            cur_list = []
+            for idx, seg in enumerate(current_segments, 1):
+                cur_list.append(CurrentSeg(
+                    id=seg.id, number=idx, source=seg.source or "",
+                    target=seg.target or "", status_key=get_status(seg.status).key,
+                    locked=bool(getattr(seg, 'locked', False)),
+                    comment=getattr(seg, 'notes', '') or "",
+                ))
+
+            # Status label → key (built from the canonical vocabulary).
+            label_to_key = {defn.label.strip().lower(): key
+                            for key, defn in STATUSES.items()}
+            label_to_key.setdefault("not started", "not_started")
+
+            def _compute(strict):
+                return build_import_diffs(
+                    parsed, sidecar, cur_list,
+                    status_label_to_key=label_to_key, strict_tags=strict)
+
+            # ── Preview dialog (with strict-tag toggle) ────────────────────
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Import Bilingual Text — Preview")
+            dialog.setMinimumSize(620, 460)
+            v = QVBoxLayout(dialog)
+
+            summary_label = QLabel()
+            summary_label.setTextFormat(Qt.TextFormat.RichText)
+            summary_label.setWordWrap(True)
+            v.addWidget(summary_label)
+
+            details = QTextEdit()
+            details.setReadOnly(True)
+            v.addWidget(details, 1)
+
+            strict_cb = CheckmarkCheckBox(
+                "Refuse to apply edits that drop required (structural) tags "
+                "(recommended)")
+            strict_cb.setChecked(True)
+            v.addWidget(strict_cb)
+
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Apply changes")
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            v.addWidget(buttons)
+
+            state = {"diffs": []}
+
+            def refresh():
+                diffs = _compute(strict_cb.isChecked())
+                state["diffs"] = diffs
+                changed = [d for d in diffs if d.kind == KIND_CHANGED]
+                unchanged = [d for d in diffs if d.kind == KIND_UNCHANGED]
+                issues = [d for d in diffs if d.kind in (
+                    KIND_MISSING, KIND_SOURCE_MISMATCH, KIND_TAG_MISMATCH, KIND_LOCKED)]
+                summary_label.setText(
+                    f"<b>{len(changed)}</b> segment(s) will be updated &nbsp;•&nbsp; "
+                    f"<b>{len(unchanged)}</b> unchanged &nbsp;•&nbsp; "
+                    f"<b>{len(issues)}</b> issue(s) skipped")
+                lines = []
+                kind_label = {
+                    KIND_MISSING: "MISSING", KIND_SOURCE_MISMATCH: "SOURCE CHANGED",
+                    KIND_TAG_MISMATCH: "TAG MISMATCH", KIND_LOCKED: "LOCKED",
+                }
+                for d in issues:
+                    lines.append(f"[SEGMENT {d.number:04d}] {kind_label.get(d.kind, d.kind)}"
+                                 f" — {d.note}")
+                if changed:
+                    lines.append("")
+                    lines.append(f"— {len(changed)} segment(s) to update —")
+                    for d in changed[:200]:
+                        parts = []
+                        if d.new_target is not None:
+                            preview = d.new_target.replace("\n", " ")
+                            if len(preview) > 70:
+                                preview = preview[:67] + "…"
+                            parts.append(f"target → {preview}")
+                        if d.new_comment is not None:
+                            cprev = d.new_comment.replace("\n", " ")
+                            if len(cprev) > 50:
+                                cprev = cprev[:47] + "…"
+                            parts.append(f"comment → {cprev}")
+                        if d.new_status_key:
+                            parts.append(f"status → {d.new_status_key}")
+                        note = f"  ({d.note})" if d.note else ""
+                        lines.append(f"[SEGMENT {d.number:04d}] " + "; ".join(parts) + note)
+                    if len(changed) > 200:
+                        lines.append(f"… and {len(changed) - 200} more")
+                details.setPlainText("\n".join(lines) if lines else "No changes detected.")
+
+            strict_cb.toggled.connect(lambda _checked: refresh())
+            refresh()
+
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            final_diffs = state["diffs"]
+            id_to_seg = {s.id: s for s in self.current_project.segments}
+            applied = 0
+            target_applied = 0
+            comment_applied = 0
+            for d in final_diffs:
+                if d.kind != KIND_CHANGED:
+                    continue
+                seg = id_to_seg.get(d.segment_id) if d.segment_id is not None else None
+                if seg is None and 1 <= d.number <= len(self.current_project.segments):
+                    seg = self.current_project.segments[d.number - 1]
+                if seg is None:
+                    continue
+                touched = False
+                # ``new_target`` is None when only the comment/status changed.
+                if d.new_target is not None:
+                    seg.target = d.new_target
+                    target_applied += 1
+                    touched = True
+                if d.new_comment is not None:
+                    # Proper API: rewrites seg.comments[] AND keeps seg.notes in
+                    # sync; an empty string clears the comments list.
+                    if hasattr(seg, 'replace_all_comments_with_text'):
+                        seg.replace_all_comments_with_text(d.new_comment)
+                    else:
+                        seg.notes = d.new_comment
+                    comment_applied += 1
+                    touched = True
+                if d.new_status_key and d.new_status_key in STATUSES:
+                    seg.status = d.new_status_key
+                    touched = True
+                if touched:
+                    applied += 1
+
+            if applied == 0:
+                QMessageBox.information(self, "Nothing to apply",
+                                        "No segments were updated.")
+                return
+
+            # Refresh project/UI (same pattern as import_review_table).
+            self.project_modified = True
+            self.update_window_title()
+            _n_segs = len(self.current_project.segments) if self.current_project else 0
+            with _ImportProgressDialog(
+                self, title="Importing bilingual text",
+                initial_label=f"Loading {_n_segs:,} segments into grid…",
+                initial_total=max(_n_segs, 1),
+            ) as _prog:
+                self.load_segments_to_grid(progress_callback=_prog.grid_callback)
+
+            # v1.10.231: rebuild the Comments pane's all-comments list so newly
+            # imported/edited comments show immediately (the grid reload above
+            # doesn't touch it). Idempotent + cheap; guarded for early init.
+            if comment_applied:
+                try:
+                    self._refresh_segment_comments_list()
+                except Exception:
+                    pass
+
+            self.log(f"✓ Applied {applied} change(s) from bilingual text: "
+                     f"{os.path.basename(file_path)} "
+                     f"({target_applied} target, {comment_applied} comment)")
+            QMessageBox.information(
+                self, "Import Complete",
+                f"Updated {applied} segment(s) from:\n{os.path.basename(file_path)}\n\n"
+                f"• {target_applied} translation change(s)\n"
+                f"• {comment_applied} comment change(s)")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error",
+                                 f"Failed to import bilingual text:\n\n{str(e)}")
+            self.log(f"✗ Bilingual text import failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
     def export_cafetran_bilingual(self):
         """Export to CafeTran bilingual DOCX format with translations"""
         # Check if we have segments
