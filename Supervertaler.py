@@ -17315,28 +17315,9 @@ class SupervertalerQt(QMainWindow):
                                     'target_synonyms': []
                                 }
 
-                                # Add to cache directly, replacing any lower-ranked duplicate
-                                with self.termbase_cache_lock:
-                                    if segment_id not in self.termbase_cache:
-                                        self.termbase_cache[segment_id] = {}
-                                    cached = self.termbase_cache[segment_id]
-
-                                    # Remove existing entries for the same source→target pair
-                                    # so the new (possibly higher-ranked) entry takes precedence
-                                    src_lower = source_text.lower()
-                                    tgt_lower = target_text.lower()
-                                    dup_ids = [
-                                        tid for tid, m in cached.items()
-                                        if m.get('source', '').lower() == src_lower
-                                        and m.get('translation', '').lower() == tgt_lower
-                                    ]
-                                    for tid in dup_ids:
-                                        del cached[tid]
-
-                                    cached[term_id] = new_match
-                                    self.log(f"⚡ Added term directly to cache (instant update)")
-
-                                # v1.9.182: Also add to in-memory termbase index for future lookups
+                                # v1.9.182: add the new term to the in-memory
+                                # index FIRST so the full recompute below picks
+                                # it up.
                                 import re
                                 source_lower = source_text.lower().strip()
                                 try:
@@ -17377,18 +17358,43 @@ class SupervertalerQt(QMainWindow):
                                     'source_synonyms': [],
                                     'target_synonyms': [],
                                     'pattern': pattern,
+                                    'abbreviation_variants': [],
+                                    'source_synonym_patterns': [],
                                 }
                                 with self.termbase_index_lock:
+                                    # Drop any stale entry for this term_id (re-add safety),
+                                    # then append and re-sort longest-first for phrase matching.
+                                    self.termbase_index = [
+                                        e for e in self.termbase_index
+                                        if e.get('term_id') != term_id
+                                    ]
                                     self.termbase_index.append(index_entry)
-                                    # Re-sort by length (longest first) for proper phrase matching
                                     self.termbase_index.sort(key=lambda x: len(x['source_term_lower']), reverse=True)
-                                
-                                # Update TermLens widget with the new term
+
+                                # v1.10.232: recompute the FULL match set for this
+                                # segment rather than seeding the cache with only
+                                # the new term. The previous optimisation set
+                                # termbase_cache[segment_id] = {new term} whenever
+                                # the segment's raw cache was empty (common — the
+                                # matches shown came from the translation-matches
+                                # cache, a different store), which made every OTHER
+                                # TermLens match vanish until F5. _search_termbase_in_memory
+                                # is the fast (<1 ms) in-memory matcher — the old
+                                # "avoid a 5-6 s search" concern was about the
+                                # legacy per-word DB path, which is no longer used —
+                                # so a full recompute here is cheap and correct, and
+                                # now includes the term we just appended to the index.
+                                # Use find_termbase_matches_in_source so this matches
+                                # the navigation path exactly (strips invisible
+                                # markers, guards the index build, dedups).
+                                cached_matches = self.find_termbase_matches_in_source(segment.source)
+                                with self.termbase_cache_lock:
+                                    self.termbase_cache[segment_id] = cached_matches
+                                self.log(f"⚡ Term added; recomputed {len(cached_matches)} match(es) for segment")
+
+                                # Update TermLens widget with the full, refreshed match set
                                 if (hasattr(self, 'termlens_widget') and self.termlens_widget) or (hasattr(self, 'termlens_widget_match') and self.termlens_widget_match):
-                                    # Get current matches from cache
-                                    with self.termbase_cache_lock:
-                                        cached_matches = self.termbase_cache.get(segment_id, {})
-                                    
+
                                     # Convert to list format for TermLens.
                                     # v1.10.73 (Tier 1 + Tier 2): forward the
                                     # new metadata + synonym fields so the
@@ -31539,20 +31545,24 @@ class SupervertalerQt(QMainWindow):
             if segment.id in self.termbase_cache:
                 termbase_matches_raw = self.termbase_cache[segment.id]
         
-        # If not in cache and we have a thread-local cursor, do direct lookup
-        if termbase_matches_raw is None and thread_db_cursor is not None:
+        # If not in cache, match against the in-memory termbase index.
+        #
+        # v1.10.232: switched from the legacy per-word _search_termbases_thread_safe
+        # (LIKE %word% + LIMIT 30, no ORDER BY) to the same _search_termbase_in_memory
+        # that the interactive path and TermPicker use. The old path silently dropped
+        # matches when a common word (e.g. "fractie"/"fraction" in a patent termbase)
+        # appeared in >30 term entries — SQLite truncated the per-word result set
+        # arbitrarily, so a longer phrase like "non-ferrometalen fractie" could be
+        # cut while its shorter sibling "ferrometalen fractie" survived. TermLens
+        # (fed from this prefetch cache) then showed the wrong/shorter term while
+        # TermPicker (which falls back to the in-memory matcher) showed the correct
+        # one. The in-memory index scans every term with no cap, so all surfaces now
+        # agree. It reads self.termbase_index under termbase_index_lock, so it's
+        # thread-safe to call from this worker; no DB cursor needed.
+        if termbase_matches_raw is None:
             try:
-                # Get project_id for activation filtering
-                current_project_id = None
-                if hasattr(self, 'current_project') and self.current_project and hasattr(self.current_project, 'id'):
-                    current_project_id = self.current_project.id
-                
-                termbase_matches_raw = self._search_termbases_thread_safe(
-                    segment.source,
-                    thread_db_cursor,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    project_id=current_project_id
+                termbase_matches_raw = self._deduplicate_termbase_matches(
+                    self._search_termbase_in_memory(segment.source)
                 )
                 # Also populate the termbase cache for future use
                 if termbase_matches_raw:

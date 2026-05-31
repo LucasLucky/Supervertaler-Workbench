@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.231 (May 31, 2026)
+**Current Version:** v1.10.232 (May 31, 2026)
+
+
+## v1.10.232 – May 31, 2026
+
+### Fixed
+
+- **TermLens sometimes showed a shorter overlapping term and dropped part of the source** (e.g. a Dutch segment with *non-ferrometalen fractie* showed *ferrometalen fractie*, silently losing the *non-* prefix). Reported by a user. Cause: the background prefetch worker — which fills the cache TermLens reads — used a legacy per-word termbase matcher that issued a `LIKE %word%` query capped at `LIMIT 30` with no ordering. When a common word (like *fractie* / *fraction* in a patent termbase) appeared in more than 30 term entries, SQLite truncated the result arbitrarily, so a longer phrase could be cut while its shorter sibling survived. TermLens then matched only the shorter term and the uncovered text (the *non-* part) was dropped from the display. TermPicker was unaffected because it falls back to the full in-memory matcher. The prefetch worker now uses that same uncapped in-memory matcher (`_search_termbase_in_memory`), so TermLens, the TermLens popup, and TermPicker all draw from one consistent, complete match set.
+- **Adding a term via quick-add made all the segment's other TermLens matches disappear** until you pressed F5. Reported by a user. The quick-add "instant update" path seeded the segment's match cache with *only* the newly added term whenever that cache happened to be empty (which it usually was — the matches on screen came from a different cache), so TermLens redrew with a single match. Quick-add now recomputes the full match set for the segment (via the fast in-memory matcher, which already includes the just-added term), so the new term appears *alongside* all the existing ones with no manual refresh.
 
 
 ## v1.10.231 – May 31, 2026
