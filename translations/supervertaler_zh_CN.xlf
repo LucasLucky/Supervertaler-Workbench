@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
   <file original="Supervertaler.py" source-language="en" datatype="plaintext" target-language="zh-CN">
     <header>
@@ -11,7 +11,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9704</context>
+          <context context-type="linenumber">10355</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.New_Project">
@@ -20,7 +20,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9706</context>
+          <context context-type="linenumber">10357</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_Project...">
@@ -29,7 +29,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9711</context>
+          <context context-type="linenumber">10362</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open__Recent">
@@ -38,7 +38,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9717</context>
+          <context context-type="linenumber">10368</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Save">
@@ -47,7 +47,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9722</context>
+          <context context-type="linenumber">10373</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Save__As...">
@@ -56,7 +56,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9727</context>
+          <context context-type="linenumber">10378</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Close_Project">
@@ -65,7 +65,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9734</context>
+          <context context-type="linenumber">10385</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Import">
@@ -74,7 +74,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9741</context>
+          <context context-type="linenumber">10392</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Import_Document...">
@@ -83,7 +83,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9749</context>
+          <context context-type="linenumber">10400</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Import_a_Word_document__DOCX___Adobe_InDesign_markup__IDML__">
@@ -92,7 +92,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9750</context>
+          <context context-type="linenumber">10401</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Text___Markdown_File__TXT__MD_...">
@@ -101,7 +101,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9760</context>
+          <context context-type="linenumber">10411</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Folder__Multiple_Files_...">
@@ -110,9 +110,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9767</context>
+          <context context-type="linenumber">10418</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9931</context>
+          <context context-type="linenumber">10595</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.memoQ">
@@ -121,9 +121,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9774</context>
+          <context context-type="linenumber">10425</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9879</context>
+          <context context-type="linenumber">10543</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual_Table___DOCX_...">
@@ -132,7 +132,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9776</context>
+          <context context-type="linenumber">10427</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual_Table___RTF_...">
@@ -141,7 +141,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9780</context>
+          <context context-type="linenumber">10431</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.XLIFF__.mqxliff_...">
@@ -150,7 +150,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9784</context>
+          <context context-type="linenumber">10435</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.CafeTran_Bilingual_Table__DOCX_...">
@@ -159,7 +159,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9788</context>
+          <context context-type="linenumber">10439</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Trados_Studio">
@@ -168,9 +168,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9793</context>
+          <context context-type="linenumber">10444</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9898</context>
+          <context context-type="linenumber">10562</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual__Review__DOCX_...">
@@ -179,7 +179,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9795</context>
+          <context context-type="linenumber">10446</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual__XLIFF__.sdlxliff_...">
@@ -188,7 +188,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9799</context>
+          <context context-type="linenumber">10450</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual_XLIFF__Folder__.sdlxliff_...">
@@ -197,7 +197,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9803</context>
+          <context context-type="linenumber">10454</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Package__SDLPPX_...">
@@ -206,7 +206,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9807</context>
+          <context context-type="linenumber">10458</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Phrase__Memsource__Bilingual__DOCX_...">
@@ -215,7 +215,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9812</context>
+          <context context-type="linenumber">10463</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Déjà_Vu_X3_Bilingual__RTF_...">
@@ -224,7 +224,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9817</context>
+          <context context-type="linenumber">10468</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.GNU_gettext__.po___.pot_...">
@@ -233,7 +233,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9822</context>
+          <context context-type="linenumber">10473</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Import_a_GNU_gettext_message_catalogue__Linux_Django_WordPre">
@@ -242,16 +242,54 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9823</context>
+          <context context-type="linenumber">10474</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.Bilingual_Table__DOCX__-_Update_Project...">
-        <source>&amp;Bilingual Table (DOCX) - Update Project...</source>
-        <target state="signed-off">双语表格 (DOCX) - 更新项目(&amp;B)...</target>
+      <trans-unit id="SupervertalerQt.Supervertaler__Re-importable">
+        <source>🔁 Supervertaler &amp;Re-importable</source>
+        <target state="needs-translation" />
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9829</context>
+          <context context-type="linenumber">10483</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10613</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Bilingual__Table__DOCX__-_Update_Project...">
+        <source>Bilingual &amp;Table (DOCX) - Update Project...</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10485</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Re-import_an_edited_Supervertaler_bilingual_Word_table_to_up">
+        <source>Re-import an edited Supervertaler bilingual Word table to update this project's translations and comments.</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10487</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Bilingual_Te_xt__AI-friendly__-_Update_Project...">
+        <source>Bilingual Te&amp;xt (AI-friendly) - Update Project...</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10492</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Re-import_an_edited__SEGMENT_NNNN__text_file__with_its_.svex">
+        <source>Re-import an edited [SEGMENT NNNN] text file (with its .svexport.json sidecar) to update the current project's translations and comments.</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10494</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Supported_file_formats__online_help_...">
@@ -260,9 +298,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9837</context>
+          <context context-type="linenumber">10503</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9971</context>
+          <context context-type="linenumber">10651</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_the_Supported_File_Formats_reference_in_your_browser">
@@ -271,9 +309,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9838</context>
+          <context context-type="linenumber">10504</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9972</context>
+          <context context-type="linenumber">10652</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export">
@@ -282,7 +320,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9842</context>
+          <context context-type="linenumber">10508</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export_Translated_Document...">
@@ -291,7 +329,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9851</context>
+          <context context-type="linenumber">10517</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export_the_translation_back_to_a_document._Output_format_is_">
@@ -300,7 +338,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9852</context>
+          <context context-type="linenumber">10518</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Simple__Text_File_-_Translated__TXT_...">
@@ -309,52 +347,25 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9860</context>
+          <context context-type="linenumber">10526</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.AI-Readable_Markdown">
-        <source>📄 &amp;AI-Readable Markdown</source>
-        <target state="signed-off">📄 AI 可读的 Markdown(&amp;A)</target>
+      <trans-unit id="SupervertalerQt.AI-Readable_Markdown__Table__read-only_...">
+        <source>📄 AI-Readable Markdown &amp;Table (read-only)...</source>
+        <target state="needs-translation" />
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9864</context>
+          <context context-type="linenumber">10535</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.Markdown__Table...">
-        <source>Markdown &amp;Table...</source>
-        <target state="signed-off">Markdown 表格(&amp;T)...</target>
+      <trans-unit id="SupervertalerQt.Export_segments_as_a_one-way_bilingual_Markdown_table_for_AI">
+        <source>Export segments as a one-way bilingual Markdown table for AI translation/review (not re-importable)</source>
+        <target state="needs-translation" />
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9866</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="SupervertalerQt.Export_segments_as_a_bilingual_Markdown_table_for_AI_transla">
-        <source>Export segments as a bilingual Markdown table for AI translation/review</source>
-        <target state="signed-off">将句段导出为 Markdown 双语表格以供 AI 翻译/审校</target>
-        <context-group purpose="location">
-          <context context-type="x-qt-context">SupervertalerQt</context>
-          <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9868</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="SupervertalerQt.Labelled__Segments...">
-        <source>Labelled &amp;Segments...</source>
-        <target state="signed-off">带标记的句段(&amp;S)...</target>
-        <context-group purpose="location">
-          <context context-type="x-qt-context">SupervertalerQt</context>
-          <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9871</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="SupervertalerQt.Export_segments_in__SEGMENT__format_with_language-labelled_l">
-        <source>Export segments in [SEGMENT] format with language-labelled lines for AI translation/review</source>
-        <target state="signed-off">以 [SEGMENT] 格式导出句段，并包含带语言标记的行，以供 AI 翻译/审校</target>
-        <context-group purpose="location">
-          <context context-type="x-qt-context">SupervertalerQt</context>
-          <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9873</context>
+          <context context-type="linenumber">10537</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual_Table_-_Translated___DOCX_...">
@@ -363,7 +374,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9881</context>
+          <context context-type="linenumber">10545</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual_Table_-_Translated___RTF_...">
@@ -372,7 +383,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9885</context>
+          <context context-type="linenumber">10549</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.XLIFF_-_Translated__.mqxliff_...">
@@ -381,7 +392,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9889</context>
+          <context context-type="linenumber">10553</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.CafeTran_Bilingual_Table_-_Translated__DOCX_...">
@@ -390,7 +401,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9893</context>
+          <context context-type="linenumber">10557</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual__Review_-_Translated__DOCX_...">
@@ -399,7 +410,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9900</context>
+          <context context-type="linenumber">10564</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bilingual__XLIFF_-_Translated__.sdlxliff_...">
@@ -408,7 +419,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9904</context>
+          <context context-type="linenumber">10568</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Return__Package__SDLRPX_...">
@@ -417,7 +428,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9908</context>
+          <context context-type="linenumber">10572</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Phrase__Memsource__Bilingual_-_Translated__DOCX_...">
@@ -426,7 +437,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9913</context>
+          <context context-type="linenumber">10577</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.GNU_gettext_-_Translated__.po_...">
@@ -435,7 +446,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9918</context>
+          <context context-type="linenumber">10582</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export_the_project_back_to_a_GNU_gettext_.po_catalogue__pres">
@@ -444,7 +455,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9919</context>
+          <context context-type="linenumber">10583</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Déjà_Vu_X3_Bilingual_-_Translated__RTF_...">
@@ -453,7 +464,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9924</context>
+          <context context-type="linenumber">10588</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export_multi-file_project_to_folder_with_separate_files">
@@ -462,7 +473,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9933</context>
+          <context context-type="linenumber">10597</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Relocate_Source_Folder...">
@@ -471,7 +482,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9939</context>
+          <context context-type="linenumber">10603</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Repoint_to_moved_renamed_source_folder_for_multi-file_projec">
@@ -480,25 +491,52 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9941</context>
+          <context context-type="linenumber">10605</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.Supervertaler_Bilingual_Table_-_With__Tags__DOCX_...">
-        <source>Supervertaler Bilingual Table - With &amp;Tags (DOCX)...</source>
-        <target state="signed-off">Supervertaler 双语表格 - 含标签 (DOCX)(&amp;T)...</target>
+      <trans-unit id="SupervertalerQt.Bilingual__Table__DOCX_...">
+        <source>Bilingual &amp;Table (DOCX)...</source>
+        <target state="needs-translation" />
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9947</context>
+          <context context-type="linenumber">10615</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.Supervertaler_Bilingual_Table_-__Formatted__DOCX_...">
-        <source>Supervertaler Bilingual Table - &amp;Formatted (DOCX)...</source>
-        <target state="signed-off">Supervertaler 双语表格 - 已格式化 (DOCX)(&amp;F)...</target>
+      <trans-unit id="SupervertalerQt.Export_a_re-importable_Word_bilingual_table__inline_tags_sho">
+        <source>Export a re-importable Word bilingual table (inline tags shown as literal text). Edit the Target/Comments columns, then re-import to update this project.</source>
+        <target state="needs-translation" />
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9951</context>
+          <context context-type="linenumber">10617</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Bilingual_Te_xt__AI-friendly_...">
+        <source>Bilingual Te&amp;xt (AI-friendly)...</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10622</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Export_a_re-importable__SEGMENT_NNNN__text_file_with_a_.svex">
+        <source>Export a re-importable [SEGMENT NNNN] text file with a .svexport.json sidecar. Edit the target lines (or have an LLM do it), then re-import to update this project.</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10624</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Supervertaler__Formatted_Table__DOCX__read-only_...">
+        <source>Supervertaler &amp;Formatted Table (DOCX, read-only)...</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10631</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.TMX_from__Grid__all_segments_...">
@@ -507,7 +545,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9957</context>
+          <context context-type="linenumber">10637</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.TMX_from__Selected_Segments...">
@@ -516,7 +554,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9961</context>
+          <context context-type="linenumber">10641</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.TMX_from__TM_s__for_Current_Project...">
@@ -525,7 +563,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9965</context>
+          <context context-type="linenumber">10645</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Project__Info...">
@@ -534,7 +572,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9979</context>
+          <context context-type="linenumber">10659</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.E_xit">
@@ -543,7 +581,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9985</context>
+          <context context-type="linenumber">10665</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Edit">
@@ -552,7 +590,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9991</context>
+          <context context-type="linenumber">10671</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Undo">
@@ -561,7 +599,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9993</context>
+          <context context-type="linenumber">10673</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Redo">
@@ -570,7 +608,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">9999</context>
+          <context context-type="linenumber">10679</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Find...">
@@ -579,7 +617,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10007</context>
+          <context context-type="linenumber">10687</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Replace...">
@@ -588,7 +626,16 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10012</context>
+          <context context-type="linenumber">10692</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Go_to_Segment...">
+        <source>&amp;Go to Segment...</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">10704</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_Segment">
@@ -597,7 +644,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10025</context>
+          <context context-type="linenumber">10710</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Batch__Translate">
@@ -606,7 +653,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10030</context>
+          <context context-type="linenumber">10715</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_selected_not-started_segments">
@@ -615,7 +662,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10032</context>
+          <context context-type="linenumber">10717</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_not-started_segments">
@@ -624,7 +671,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10038</context>
+          <context context-type="linenumber">10723</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_pre-translated_segments">
@@ -633,7 +680,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10044</context>
+          <context context-type="linenumber">10729</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_not-started___pre-translated">
@@ -642,7 +689,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10050</context>
+          <context context-type="linenumber">10735</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_translatable_segments">
@@ -651,7 +698,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10057</context>
+          <context context-type="linenumber">10742</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_segments__all_statuses">
@@ -660,7 +707,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10063</context>
+          <context context-type="linenumber">10748</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_empty_segments">
@@ -669,7 +716,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10072</context>
+          <context context-type="linenumber">10757</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_segments_with_empty_target__useful_after_partial_b">
@@ -678,7 +725,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10073</context>
+          <context context-type="linenumber">10758</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_all_filtered_segments">
@@ -687,7 +734,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10079</context>
+          <context context-type="linenumber">10764</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translate_only_segments_currently_visible_after_filtering">
@@ -696,7 +743,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10080</context>
+          <context context-type="linenumber">10765</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Bulk_Operations">
@@ -705,7 +752,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10092</context>
+          <context context-type="linenumber">10777</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">52594</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Confirm_Selected_Segments">
@@ -714,7 +763,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10096</context>
+          <context context-type="linenumber">10781</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Change__Status">
@@ -723,7 +772,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10105</context>
+          <context context-type="linenumber">10790</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Not_started">
@@ -732,7 +781,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10107</context>
+          <context context-type="linenumber">10792</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Pre-translated">
@@ -741,7 +790,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10108</context>
+          <context context-type="linenumber">10793</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Draft">
@@ -750,7 +799,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10109</context>
+          <context context-type="linenumber">10794</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Confirmed">
@@ -759,7 +808,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10110</context>
+          <context context-type="linenumber">10795</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Proo_fread">
@@ -768,7 +817,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10111</context>
+          <context context-type="linenumber">10796</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Approved">
@@ -777,7 +826,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10112</context>
+          <context context-type="linenumber">10797</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Re_jected">
@@ -786,7 +835,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10113</context>
+          <context context-type="linenumber">10798</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Clear_Translations">
@@ -795,7 +844,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10120</context>
+          <context context-type="linenumber">10805</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Clear_translations_for_selected_segments">
@@ -804,7 +853,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10121</context>
+          <context context-type="linenumber">10806</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Copy__Source_to_Target">
@@ -813,7 +862,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10125</context>
+          <context context-type="linenumber">10810</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Copy_source_text_to_target_for_selected_filtered_segments">
@@ -822,7 +871,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10126</context>
+          <context context-type="linenumber">10811</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Copy_Source_to_Target___No_Letters">
@@ -831,7 +880,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10130</context>
+          <context context-type="linenumber">10815</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Copy_source_to_target_for_segments_containing_no_letters__nu">
@@ -840,7 +889,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10131</context>
+          <context context-type="linenumber">10816</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Update_Active_TM_s_...">
@@ -849,7 +898,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10135</context>
+          <context context-type="linenumber">10820</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Send_update_confirmed__and_other_selected-status__segments_i">
@@ -858,7 +907,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10136</context>
+          <context context-type="linenumber">10821</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Clean__Tags...">
@@ -867,7 +916,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10147</context>
+          <context context-type="linenumber">10832</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Remove_formatting_tags_from_selected_segments">
@@ -876,7 +925,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10148</context>
+          <context context-type="linenumber">10833</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Proofread_Translation...">
@@ -885,7 +934,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10152</context>
+          <context context-type="linenumber">10837</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Use_AI_to_proofread_and_verify_translation_quality">
@@ -894,7 +943,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10153</context>
+          <context context-type="linenumber">10838</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.SuperLookup...">
@@ -903,7 +952,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10160</context>
+          <context context-type="linenumber">10845</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.View">
@@ -912,7 +961,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10170</context>
+          <context context-type="linenumber">10855</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Navigate_To">
@@ -921,7 +970,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10173</context>
+          <context context-type="linenumber">10858</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Grid">
@@ -930,7 +979,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10180</context>
+          <context context-type="linenumber">10865</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.TMs">
@@ -939,7 +988,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10184</context>
+          <context context-type="linenumber">10869</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Term_bases">
@@ -948,7 +997,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10188</context>
+          <context context-type="linenumber">10873</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.QuickLauncher">
@@ -957,7 +1006,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10192</context>
+          <context context-type="linenumber">10877</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Settings">
@@ -966,7 +1015,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10199</context>
+          <context context-type="linenumber">10884</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Grid_Text_Zoom">
@@ -975,7 +1024,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10209</context>
+          <context context-type="linenumber">10900</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Grid_Zoom__In">
@@ -984,7 +1033,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10211</context>
+          <context context-type="linenumber">10902</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Grid_Zoom__Out">
@@ -993,7 +1042,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10216</context>
+          <context context-type="linenumber">10907</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Grid_Font__Family">
@@ -1002,7 +1051,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10226</context>
+          <context context-type="linenumber">10917</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Match_Panel">
@@ -1011,7 +1060,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10237</context>
+          <context context-type="linenumber">10928</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Match_Panel_Zoom__In">
@@ -1020,7 +1069,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10239</context>
+          <context context-type="linenumber">10930</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Match_Panel_Zoom__Out">
@@ -1029,7 +1078,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10244</context>
+          <context context-type="linenumber">10935</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Match_Panel_Zoom__Reset">
@@ -1038,7 +1087,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10249</context>
+          <context context-type="linenumber">10940</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Stack_TM_Panes__Vertically">
@@ -1047,7 +1096,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10256</context>
+          <context context-type="linenumber">10947</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.TermLens___QuickTrans_panel">
@@ -1056,7 +1105,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10268</context>
+          <context context-type="linenumber">10959</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Hide">
@@ -1065,7 +1114,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10272</context>
+          <context context-type="linenumber">10963</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Hide_the_under-grid_panel">
@@ -1074,7 +1123,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10274</context>
+          <context context-type="linenumber">10965</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Show_above_grid">
@@ -1083,7 +1132,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10277</context>
+          <context context-type="linenumber">10968</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Dock_the_panel_above_the_translation_grid">
@@ -1092,7 +1141,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10279</context>
+          <context context-type="linenumber">10970</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Show_below_grid">
@@ -1101,7 +1150,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10282</context>
+          <context context-type="linenumber">10973</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Dock_the_panel_below_the_translation_grid">
@@ -1110,7 +1159,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10284</context>
+          <context context-type="linenumber">10975</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Auto-Resize_Rows">
@@ -1119,7 +1168,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10294</context>
+          <context context-type="linenumber">10985</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Automatically_resize_all_rows_to_fit_content">
@@ -1128,7 +1177,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10296</context>
+          <context context-type="linenumber">10987</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Proofreading_Results...">
@@ -1137,7 +1186,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10302</context>
+          <context context-type="linenumber">10993</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.View_and_manage_proofreading_issues">
@@ -1146,7 +1195,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10304</context>
+          <context context-type="linenumber">10995</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Theme_Editor...">
@@ -1155,7 +1204,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10309</context>
+          <context context-type="linenumber">11000</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Tools">
@@ -1164,7 +1213,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10314</context>
+          <context context-type="linenumber">11005</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.PDF_Rescue...">
@@ -1173,7 +1222,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10317</context>
+          <context context-type="linenumber">11008</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.T_MX_Editor...">
@@ -1182,7 +1231,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10327</context>
+          <context context-type="linenumber">11018</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Image_Extractor__Superimage_...">
@@ -1191,7 +1240,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10333</context>
+          <context context-type="linenumber">11024</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Extract_images_from_DOCX_files">
@@ -1200,7 +1249,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10335</context>
+          <context context-type="linenumber">11026</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Scratch_pad...">
@@ -1209,7 +1258,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10343</context>
+          <context context-type="linenumber">11034</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Private_notes_for_this_project__never_exported_to_CAT_tools">
@@ -1218,7 +1267,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10346</context>
+          <context context-type="linenumber">11037</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Log_Window...">
@@ -1227,7 +1276,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10349</context>
+          <context context-type="linenumber">11040</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_the_session_log_in_a_separate_window_that_can_be_moved_">
@@ -1236,7 +1285,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10351</context>
+          <context context-type="linenumber">11042</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Settings...">
@@ -1245,7 +1294,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10356</context>
+          <context context-type="linenumber">11047</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Help">
@@ -1254,7 +1303,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10361</context>
+          <context context-type="linenumber">11055</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Context_Help">
@@ -1263,7 +1312,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10367</context>
+          <context context-type="linenumber">11061</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_help_for_the_focused_panel__F1">
@@ -1272,7 +1321,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10369</context>
+          <context context-type="linenumber">11063</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Supervertaler_Workbench_Help">
@@ -1281,7 +1330,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10374</context>
+          <context context-type="linenumber">11068</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_the_Workbench_documentation_in_your_browser">
@@ -1290,7 +1339,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10375</context>
+          <context context-type="linenumber">11069</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Setup_Wizard...">
@@ -1299,7 +1348,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10379</context>
+          <context context-type="linenumber">11073</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Run_the_initial_setup_wizard__data_folder_location__features">
@@ -1308,7 +1357,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10380</context>
+          <context context-type="linenumber">11074</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Keyboard_Shortcuts">
@@ -1317,9 +1366,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10386</context>
+          <context context-type="linenumber">11080</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20257</context>
+          <context context-type="linenumber">21036</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Changelog">
@@ -1328,7 +1377,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10390</context>
+          <context context-type="linenumber">11084</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Check_for_Updates...">
@@ -1337,7 +1386,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10394</context>
+          <context context-type="linenumber">11088</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Check_whether_you_are_running_the_latest_Supervertaler_relea">
@@ -1346,7 +1395,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10395</context>
+          <context context-type="linenumber">11089</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Copy_Version_Info">
@@ -1355,7 +1404,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10399</context>
+          <context context-type="linenumber">11093</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Copy_version_and_system_info_to_clipboard__useful_for_suppor">
@@ -1364,7 +1413,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10400</context>
+          <context context-type="linenumber">11094</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_Diagnostic_Log">
@@ -1373,7 +1422,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10407</context>
+          <context context-type="linenumber">11101</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_the_log_file_containing_startup_output_and_errors___use">
@@ -1382,7 +1431,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10408</context>
+          <context context-type="linenumber">11102</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Open_Log_Folder">
@@ -1391,7 +1440,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10414</context>
+          <context context-type="linenumber">11108</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Reveal_the_folder_that_contains_the_diagnostic_log_files">
@@ -1400,7 +1449,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10415</context>
+          <context context-type="linenumber">11109</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.GitHub_Repository">
@@ -1409,7 +1458,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10421</context>
+          <context context-type="linenumber">11115</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Setup_AutoHotkey__Global_Hotkey">
@@ -1418,7 +1467,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10429</context>
+          <context context-type="linenumber">11123</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.ℹ__About">
@@ -1427,7 +1476,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">10437</context>
+          <context context-type="linenumber">11131</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.General">
@@ -1436,7 +1485,16 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20190</context>
+          <context context-type="linenumber">20958</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.AutoCorrect">
+        <source>✍️ AutoCorrect</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">20965</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.User_Identity">
@@ -1445,7 +1503,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20194</context>
+          <context context-type="linenumber">20969</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.AI_Settings">
@@ -1454,7 +1512,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20199</context>
+          <context context-type="linenumber">20974</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Voice">
@@ -1463,7 +1521,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20204</context>
+          <context context-type="linenumber">20979</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Language_Pair">
@@ -1472,7 +1530,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20208</context>
+          <context context-type="linenumber">20983</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.MT_Settings">
@@ -1481,7 +1539,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20212</context>
+          <context context-type="linenumber">20987</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.QuickTrans">
@@ -1490,7 +1548,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20222</context>
+          <context context-type="linenumber">20997</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.View_Settings">
@@ -1499,7 +1557,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20227</context>
+          <context context-type="linenumber">21002</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.System_Prompts">
@@ -1508,7 +1566,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20231</context>
+          <context context-type="linenumber">21006</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Debug">
@@ -1517,7 +1575,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20235</context>
+          <context context-type="linenumber">21010</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Domain_Detection">
@@ -1526,7 +1584,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20248</context>
+          <context context-type="linenumber">21023</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Segmentation_Rules">
@@ -1535,7 +1593,16 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20252</context>
+          <context context-type="linenumber">21027</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.File_Types">
+        <source>📄 File Types</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">21031</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Log">
@@ -1544,7 +1611,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">20264</context>
+          <context context-type="linenumber">21043</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Startup_Settings">
@@ -1553,7 +1620,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22080</context>
+          <context context-type="linenumber">22855</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Language">
@@ -1562,7 +1629,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22117</context>
+          <context context-type="linenumber">22892</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Privacy">
@@ -1571,7 +1638,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22207</context>
+          <context context-type="linenumber">22982</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Data_Folder_Location">
@@ -1580,7 +1647,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22233</context>
+          <context context-type="linenumber">23008</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Sound_Effects">
@@ -1589,7 +1656,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22345</context>
+          <context context-type="linenumber">23120</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Auto_Backup_Settings">
@@ -1598,16 +1665,25 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22439</context>
+          <context context-type="linenumber">23214</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.TM_and_termbase_settings">
-        <source>TM and termbase settings</source>
-        <target state="signed-off">TM 和术语库设置</target>
+      <trans-unit id="SupervertalerQt.TM_settings">
+        <source>📂 TM settings</source>
+        <target state="needs-translation" />
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22484</context>
+          <context context-type="linenumber">23261</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Termbase_settings">
+        <source>📒 Termbase settings</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">23386</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Editor_Settings">
@@ -1616,7 +1692,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22590</context>
+          <context context-type="linenumber">23432</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Document_Import">
@@ -1625,7 +1701,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22624</context>
+          <context context-type="linenumber">23466</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Find____Replace_Settings">
@@ -1634,7 +1710,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22642</context>
+          <context context-type="linenumber">23484</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Precision_Scroll_Settings">
@@ -1643,7 +1719,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22667</context>
+          <context context-type="linenumber">23514</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Experimental_Performance">
@@ -1652,7 +1728,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22733</context>
+          <context context-type="linenumber">23580</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Translation_Results_-_Match_Limits">
@@ -1661,7 +1737,16 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">22763</context>
+          <context context-type="linenumber">23610</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.AutoCorrect_while_typing">
+        <source>✍️ AutoCorrect while typing</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">23722</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Select_GNU_gettext_.po___.pot_File">
@@ -1670,7 +1755,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36116</context>
+          <context context-type="linenumber">37014</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.gettext_catalogue___.po__.pot___All_Files___.">
@@ -1679,9 +1764,9 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36118</context>
+          <context context-type="linenumber">37016</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36277</context>
+          <context context-type="linenumber">37175</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Error">
@@ -1690,15 +1775,15 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36136</context>
+          <context context-type="linenumber">37034</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36253</context>
+          <context context-type="linenumber">37151</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36256</context>
+          <context context-type="linenumber">37154</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36286</context>
+          <context context-type="linenumber">37184</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36289</context>
+          <context context-type="linenumber">37187</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Failed_to_load_gettext_.po_file.">
@@ -1707,7 +1792,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36137</context>
+          <context context-type="linenumber">37035</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.No_Segments">
@@ -1716,7 +1801,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36144</context>
+          <context context-type="linenumber">37042</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.No_translatable_strings_found_in_the_.po_file.">
@@ -1725,7 +1810,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36145</context>
+          <context context-type="linenumber">37043</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Importing_gettext_.po">
@@ -1734,7 +1819,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36195</context>
+          <context context-type="linenumber">37093</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Loading__n__segments_into_grid">
@@ -1743,7 +1828,7 @@
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36196</context>
+          <context context-type="linenumber">37094</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Successfully_imported__n__segment_s__from_gettext_.po.__Lang">
@@ -1756,7 +1841,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36218</context>
+          <context context-type="linenumber">37116</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Pretranslated___n__segment_s__with_target_text_loaded.">
@@ -1765,7 +1850,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36222</context>
+          <context context-type="linenumber">37120</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Fuzzy___n__segment_s__marked_draft__clear_the_fuzzy_flag_by_">
@@ -1774,7 +1859,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36224</context>
+          <context context-type="linenumber">37122</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Import_Successful">
@@ -1783,7 +1868,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36227</context>
+          <context context-type="linenumber">37125</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Import_Error">
@@ -1792,7 +1877,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36231</context>
+          <context context-type="linenumber">37129</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Error_importing_gettext_.po_file____err">
@@ -1805,7 +1890,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36232</context>
+          <context context-type="linenumber">37130</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.No_Data">
@@ -1814,7 +1899,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36238</context>
+          <context context-type="linenumber">37136</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.No_segments_to_export">
@@ -1823,7 +1908,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36238</context>
+          <context context-type="linenumber">37136</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Failed_to_reload_.po_source_file">
@@ -1832,7 +1917,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36253</context>
+          <context context-type="linenumber">37151</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Failed_to_reload_.po_file___err">
@@ -1841,7 +1926,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36256</context>
+          <context context-type="linenumber">37154</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Select_.po_Source_File">
@@ -1850,7 +1935,7 @@ Languages: {src} → {tgt}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36263</context>
+          <context context-type="linenumber">37161</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.To_export_to_gettext_.po_format__please_select_the_original_">
@@ -1867,7 +1952,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36264</context>
+          <context context-type="linenumber">37162</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Select_Original_.po_File">
@@ -1876,7 +1961,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36275</context>
+          <context context-type="linenumber">37173</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Failed_to_load_.po_source_file">
@@ -1885,7 +1970,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36286</context>
+          <context context-type="linenumber">37184</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Failed_to_load_.po_file___err">
@@ -1894,7 +1979,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36289</context>
+          <context context-type="linenumber">37187</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Save_Translated_.po_File">
@@ -1903,7 +1988,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36303</context>
+          <context context-type="linenumber">37201</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.gettext_catalogue___.po___All_Files___.">
@@ -1912,7 +1997,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36305</context>
+          <context context-type="linenumber">37203</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export_Successful">
@@ -1921,7 +2006,7 @@ Would you like to select it now?</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36318</context>
+          <context context-type="linenumber">37216</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Successfully_exported__n__translated_segment_s__to_gettext_.">
@@ -1934,7 +2019,7 @@ File: {name}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36319</context>
+          <context context-type="linenumber">37217</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Export_Error">
@@ -1943,9 +2028,9 @@ File: {name}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36326</context>
+          <context context-type="linenumber">37224</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36332</context>
+          <context context-type="linenumber">37230</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Failed_to_save_.po_file.">
@@ -1954,7 +2039,7 @@ File: {name}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36327</context>
+          <context context-type="linenumber">37225</context>
         </context-group>
       </trans-unit>
       <trans-unit id="SupervertalerQt.Error_exporting_gettext_.po_file____err">
@@ -1967,7 +2052,25 @@ File: {name}</source>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
-          <context context-type="linenumber">36333</context>
+          <context context-type="linenumber">37231</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.Restore_defaults">
+        <source>Restore defaults</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">44227</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="SupervertalerQt.n__filtered">
+        <source> ({n} filtered)</source>
+        <target state="needs-translation" />
+        <context-group purpose="location">
+          <context context-type="x-qt-context">SupervertalerQt</context>
+          <context context-type="sourcefile">Supervertaler.py</context>
+          <context context-type="linenumber">52604</context>
         </context-group>
       </trans-unit>
     </body>

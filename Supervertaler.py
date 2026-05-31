@@ -10696,7 +10696,12 @@ class SupervertalerQt(QMainWindow):
         
         edit_menu.addSeparator()
         
-        goto_action = QAction(f"&Go to Segment...\t{format_shortcut_for_display('Ctrl+G')}", self)
+        # v1.10.235: wrap the label in self.tr() so it's both translated at
+        # runtime AND picked up by tools/extract_strings.py. Previously the
+        # whole label was a bare f-string, so the string never reached the
+        # translation template and couldn't be localised (reported by a
+        # contributor). The shortcut hint stays appended via the tab trick.
+        goto_action = QAction(f"{self.tr('&Go to Segment...')}\t{format_shortcut_for_display('Ctrl+G')}", self)
         goto_action.triggered.connect(self.show_goto_dialog)
         edit_menu.addAction(goto_action)
         

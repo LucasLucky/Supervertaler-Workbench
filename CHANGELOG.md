@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.234 (May 31, 2026)
+**Current Version:** v1.10.235 (May 31, 2026)
+
+
+## v1.10.235 – May 31, 2026
+
+### Fixed (localisation)
+
+- **"Go to Segment" (Edit menu) was not translatable** — it was missing from the translation template entirely (reported by a contributor). The menu label was built as a bare f-string with the keyboard-shortcut hint appended, so it neither went through `self.tr()` at runtime nor got picked up by the string extractor. The label is now wrapped in `self.tr()` (shortcut hint still appended), and the translation template has been regenerated. Re-ran the locale merge so the Simplified/Traditional Chinese files now list "Go to Segment" — and the other strings added in recent versions (the AutoCorrect tab, the Re-importable export/import menus, etc.) — as needing translation, while preserving all existing translations.
 
 
 ## v1.10.234 – May 31, 2026
