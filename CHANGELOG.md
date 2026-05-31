@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.236 (May 31, 2026)
+**Current Version:** v1.10.237 (May 31, 2026)
+
+
+## v1.10.237 – May 31, 2026
+
+### Fixed
+
+- **"Insert Line Break" showed the wrong shortcut (Ctrl+Enter) in the Keyboard Shortcuts list**, duplicating the "Save & Next Segment" row (reported by a user). The shortcut registry had a stale default — the actual line-break binding in the editor is **Shift+Enter** — so the listed default now matches the real behaviour and the duplicate Ctrl+Enter entry is gone. (Display-only fix; the working Shift+Enter binding was never affected.)
 
 
 ## v1.10.236 – May 31, 2026
