@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.237 (May 31, 2026)
+**Current Version:** v1.10.238 (May 31, 2026)
+
+
+## v1.10.238 – May 31, 2026
+
+### Fixed
+
+- **"Quit Supervertaler" / ⌘Q on macOS now actually quits.** By design, closing the window (the X on Windows, the red button on macOS) backgrounds Supervertaler to the tray/dock so the SuperLookup global hotkey and Clipboard Manager keep working. But an *explicit* quit — macOS's **Quit Supervertaler** menu item or **⌘Q** — was going through the same close-to-tray path and leaving the app running in the dock (reported by a user). An explicit quit (delivered as a `QEvent.Quit`) now sets the real-quit flag so the app terminates, while the window close button still backgrounds as intended.
 
 
 ## v1.10.237 – May 31, 2026

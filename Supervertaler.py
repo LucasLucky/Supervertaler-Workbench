@@ -1949,6 +1949,35 @@ def _cleaned_modifiers(event):
     return event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
 
 
+class _QuitEventFilter(QObject):
+    """App-level filter that distinguishes a real quit from a window close.
+
+    v1.10.238: The main window's closeEvent backgrounds the app to the system
+    tray / dock (the deliberate "close to tray" behaviour) instead of quitting,
+    so clicking the window's X (Windows) or red close button (macOS) keeps
+    Supervertaler running for the SuperLookup global hotkey + Clipboard Manager.
+
+    But an *explicit* quit — macOS "Quit Supervertaler" / ⌘Q, or a system
+    shutdown — must genuinely quit. Those arrive as a ``QEvent.Quit`` on the
+    application object; we set ``main_window._really_quit`` when we see one, so
+    the subsequent closeEvent accepts and terminates instead of hiding. We do
+    not consume the event, so Qt's normal quit sequence proceeds.
+    """
+
+    def __init__(self, main_window):
+        super().__init__(main_window)
+        self._main_window = main_window
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.Quit:
+            try:
+                self._main_window._really_quit = True
+            except Exception:
+                pass
+        return False
+
+
 class _CtrlReturnEventFilter(QObject):
     """App-level event filter to catch Ctrl+Return/Ctrl+Enter for grid confirm.
 
@@ -29661,6 +29690,14 @@ class SupervertalerQt(QMainWindow):
 
         self._tray_icon = None
         self._really_quit = False  # Set by tray "Quit" so closeEvent doesn't hide
+
+        # v1.10.238: route an explicit quit (macOS "Quit Supervertaler" / ⌘Q,
+        # or system shutdown) through _really_quit so it terminates instead of
+        # backgrounding to the tray. The window X / red close button does NOT
+        # send QEvent.Quit, so it still backgrounds as designed.
+        if not hasattr(self, "_quit_event_filter"):
+            self._quit_event_filter = _QuitEventFilter(self)
+            QApplication.instance().installEventFilter(self._quit_event_filter)
 
         if not QSystemTrayIcon.isSystemTrayAvailable():
             print("[Tray] System tray unavailable on this platform – skipping")
