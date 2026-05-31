@@ -2,15 +2,42 @@
 
 Thanks for considering a translation contribution! This guide covers the workflow for adding a new language or improving an existing one.
 
-## What's translatable today (v1.10.208)
+## What's translatable today (v1.10.236)
 
-The **MVP infrastructure** ships with these areas wrapped for translation:
+As of the **Tier 1 expansion** (v1.10.236) roughly **1,100 strings** are wrapped
+for translation — up from ~210 in the original MVP. Coverage now includes:
 
-- **Menu bar** – every menu title, submenu title, menu item, and action tooltip
-- **Settings tabs** – the tab labels (⚙️ General, 🤖 AI Settings, 🎤 Voice, etc.)
-- **General settings group titles** – Startup Settings, 🌐 Language, Privacy, etc.
+- **Menu bar** – every menu title, submenu title, menu item, and action tooltip.
+- **Main toolbar & window chrome** – buttons, group-box titles, window titles.
+- **Settings tabs** – tab labels, group titles, **checkbox / radio-button option
+  labels**, descriptive labels, and most tooltips.
+- **Dialog scaffolding** – window titles, group-box titles, button labels,
+  checkboxes, placeholder text, and labels across most dialogs.
 
-That's roughly **180 strings**. Dialog bodies, error messages, status-bar text, and per-cell tooltips remain in English in this first pass. Subsequent passes will widen coverage.
+That's roughly **half** of the user-facing strings in the app, and deliberately
+the **highest-traffic half** — the surfaces a translator sees every session.
+
+### What's still English (the next tiers)
+
+About **1,000 strings** remain hard-coded. They're the harder / lower-traffic
+remainder, scheduled for later passes:
+
+| Tier | Area | Why deferred |
+|---|---|---|
+| **2** | `QMessageBox` bodies & confirmations (~840), status-bar messages | Many are **f-strings** with interpolated values (counts, filenames) — they need restructuring to `self.tr("…{n}…").format(n=…)`, not a plain wrap. |
+| **3** | Long-tail dialogs, advanced/debug settings, rich-text (`<b>…</b>`) labels built by string concatenation | Lower traffic; some need careful handling of embedded HTML / runtime values. |
+
+`needs-translation` entries always fall through to English, so partial coverage
+is perfectly fine — a half-translated UI is fully usable.
+
+### How coverage is measured / extended
+
+The localizable set is exactly the strings wrapped in `self.tr(...)` (see
+[Regenerating the template](#regenerating-the-template)). To widen coverage we
+wrap more user-facing string literals in `self.tr(...)`, re-run the extractor,
+then run `tools/merge_template.py` to propagate the new entries into every
+locale file (preserving completed translations). New strings show up in your CAT
+tool as `needs-translation`.
 
 ## File format: XLIFF 1.2
 
@@ -133,10 +160,20 @@ If a string doesn't appear, common causes:
 Whenever new translatable strings are added to the codebase, the template needs refreshing so all locales can pick them up:
 
 ```bash
-python tools/extract_strings.py
+python tools/extract_strings.py     # 1. rebuild the template from source
+python tools/merge_template.py      # 2. propagate new strings into every locale
 ```
 
-That walks the AST of `Supervertaler.py` + `modules/i18n.py`, finds every `self.tr(...)` call, and writes the result to `translations/supervertaler_template.xlf`. CAT tools' "update from source" or "merge new strings" workflows can then propagate new entries into existing locale files while preserving completed translations.
+**Step 1** walks the AST of `Supervertaler.py` + `modules/i18n.py`, finds every
+`self.tr(...)` call (literal arguments only — f-strings are skipped), and writes
+`translations/supervertaler_template.xlf`.
+
+**Step 2** merges that template into each existing locale file
+(`supervertaler_zh_CN.xlf`, etc.): completed translations whose source text is
+unchanged are **preserved** (`state="translated"`/`signed-off`), brand-new or
+reworded strings appear as `needs-translation`, and strings removed from the
+code are dropped. (A CAT tool's own "update from source" can do the same job if
+you prefer.)
 
 ## Why XLIFF? (Brief)
 

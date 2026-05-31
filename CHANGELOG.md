@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.235 (May 31, 2026)
+**Current Version:** v1.10.236 (May 31, 2026)
+
+
+## v1.10.236 – May 31, 2026
+
+### Changed (localisation — Tier 1 coverage expansion)
+
+- **Roughly five times more of the UI is now translatable** — the set of strings wrapped for translation grew from ~210 to **~1,100** (about half of all user-facing strings, and deliberately the highest-traffic half). This Tier 1 pass wraps the main-window/toolbar chrome and, across the Settings tabs and most dialogs, the **group-box titles, button labels, checkbox / radio-button options, window titles, placeholder text, descriptive labels, and tooltips** in `self.tr()`. Only safe, single-line literal strings were wrapped (f-strings, which need `.format()` restructuring, were left for a later pass), and every wrap was verified to have `self` in scope. The translation template and the Simplified/Traditional Chinese locale files were regenerated accordingly; all existing translations are preserved, and the ~880 newly-exposed strings show as `needs-translation`. Still pending for later tiers: `QMessageBox` bodies/confirmations and status-bar messages (mostly f-strings), and long-tail/advanced dialogs. See `translations/TRANSLATING.md` for the full coverage map and roadmap.
 
 
 ## v1.10.235 – May 31, 2026
