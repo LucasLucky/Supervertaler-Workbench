@@ -10877,6 +10877,12 @@ class SupervertalerQt(QMainWindow):
         # Editor now open in their own windows from the Tools menu instead.
 
         go_settings_action = QAction(self.tr("⚙️ &Settings"), self)
+        # v1.10.233: on macOS Qt auto-detects any "Settings"-titled action,
+        # promotes it to the application-menu Preferences slot, and binds it to
+        # the system ⌘, — which then steals ⌘, from "Insert next tag" (Ctrl+,
+        # → Cmd+, on Mac). Force NoRole so the action stays an ordinary menu
+        # item and ⌘, flows through to the editor. Reported by a user.
+        go_settings_action.setMenuRole(QAction.MenuRole.NoRole)
         # v1.10.161: label-based lookup (was setCurrentIndex(4), which started
         # landing on SuperLookup when SuperLookup/Clipboard/Voice were
         # inserted between AI and Settings).
@@ -11034,6 +11040,9 @@ class SupervertalerQt(QMainWindow):
         tools_menu.addSeparator()
 
         settings_action = QAction(self.tr("&Settings..."), self)
+        # v1.10.233: keep ⌘, free for "Insert next tag" on macOS (see note on
+        # go_settings_action) — stop Qt promoting this to the Preferences slot.
+        settings_action.setMenuRole(QAction.MenuRole.NoRole)
         settings_action.triggered.connect(lambda: self._go_to_settings_tab())
         tools_menu.addAction(settings_action)
 
@@ -29707,6 +29716,7 @@ class SupervertalerQt(QMainWindow):
         menu.addAction(jump_voice)
 
         jump_settings = QAction("Open Settings", self)
+        jump_settings.setMenuRole(QAction.MenuRole.NoRole)  # v1.10.233: keep ⌘, off Preferences (Mac)
         jump_settings.triggered.connect(_make_jumper('settings_tab_index'))
         menu.addAction(jump_settings)
 

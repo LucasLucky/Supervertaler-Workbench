@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.232 (May 31, 2026)
+**Current Version:** v1.10.233 (May 31, 2026)
+
+
+## v1.10.233 – May 31, 2026
+
+### Fixed (macOS)
+
+- **`Cmd+,` opened Settings instead of inserting the next tag on macOS.** Reported by a user. macOS automatically detects any menu item titled "Settings" and promotes it to the application-menu Preferences slot, binding it to the system-standard `⌘,` — which then stole `⌘,` from "Insert next tag" (`Ctrl+,` maps to `⌘,` on Mac). The Settings menu actions are now marked `NoRole`, so macOS leaves `⌘,` alone and it inserts the next tag as on Windows. (Settings is still reachable from the toolbar button, the View/Tools menus, and its tab.)
 
 
 ## v1.10.232 – May 31, 2026
