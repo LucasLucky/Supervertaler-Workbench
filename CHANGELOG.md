@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.233 (May 31, 2026)
+**Current Version:** v1.10.234 (May 31, 2026)
+
+
+## v1.10.234 – May 31, 2026
+
+### Fixed (localisation)
+
+- **The "Bulk Operations" menu title reverted to English when the menu was opened** in a translated UI (reported by a contributor on the Simplified/Traditional Chinese builds — closed it read `批量操作` / `批次作業`, open it flipped back to `Bulk Operations`). The menu's `aboutToShow` handler, which annotates the title with the filtered-segment count, was re-setting the title from a hard-coded English literal. It now uses the translated label (`self.tr("&Bulk Operations")`), and the "(N filtered)" suffix is itself translatable (with an English fallback).
 
 
 ## v1.10.233 – May 31, 2026

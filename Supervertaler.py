@@ -52574,20 +52574,32 @@ class SupervertalerQt(QMainWindow):
         self.log(f"🔍 {filter_names.get(filter_type, 'Quick')} filter: showing {len(matching_rows)} of {len(self.current_project.segments)} segments")
     
     def _update_bulk_menu_label(self):
-        """Update the Bulk Operations menu label to show filter state."""
+        """Update the Bulk Operations menu label to show filter state.
+
+        v1.10.234: use the translated base label via self.tr(...) instead of a
+        hard-coded English literal. This handler runs on the menu's aboutToShow,
+        so the previous literal "&Bulk Operations" overwrote the translated menu
+        title every time the menu was opened — the title showed correctly
+        translated when the menu was closed, then reverted to English when
+        opened (reported by a user on the Simplified/Traditional Chinese UI).
+        """
         if not hasattr(self, 'bulk_menu') or not self.bulk_menu:
             return
         action = self.bulk_menu.menuAction()
+        base = self.tr("&Bulk Operations")  # honour the active UI translation
         if not self.current_project or not hasattr(self, 'table') or not self.table:
-            action.setText("&Bulk Operations")
+            action.setText(base)
             return
         visible = sum(1 for r in range(self.table.rowCount())
                       if not self.table.isRowHidden(r))
         total = self.table.rowCount()
         if visible < total and visible > 0:
-            action.setText(f"&Bulk Operations ({visible} filtered)")
+            # Translatable filtered-count suffix; falls back to English "(N filtered)"
+            # if the active locale hasn't translated the suffix string.
+            suffix = self.tr(" ({n} filtered)").format(n=visible)
+            action.setText(base + suffix)
         else:
-            action.setText("&Bulk Operations")
+            action.setText(base)
 
     def show_advanced_filters_dialog(self):
         """Show advanced filters dialog with detailed filtering options"""
