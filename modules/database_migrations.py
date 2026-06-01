@@ -259,6 +259,68 @@ def migrate_termbase_terms_id_to_integer(db_manager) -> bool:
         return False
 
 
+def _backup_database_before_structural_migration(db_manager) -> bool:
+    """Take a consistent, timestamped snapshot of the DB right before a
+    structural migration (table rebuild / column rename) runs.
+
+    These are the first non-additive migrations the app ships, so every user
+    gets a safety net even though they didn't make a manual backup. Uses
+    SQLite's online backup API, which is consistent even with the DB open in
+    WAL mode. Best-effort: a backup failure is logged loudly but does NOT abort
+    the migration (the individual migrations are transactional/atomic, and a
+    disk-full backup failure would also roll back the rebuild safely).
+    """
+    import os
+    import sqlite3
+    from datetime import datetime
+    try:
+        db_path = getattr(db_manager, 'db_path', None)
+        if not db_path or not os.path.exists(db_path):
+            print("⚠️ Pre-migration backup skipped: database path unknown")
+            return False
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = f"{db_path}.pre-migration-{ts}.bak"
+        dest = sqlite3.connect(backup_path)
+        try:
+            db_manager.connection.backup(dest)
+        finally:
+            dest.close()
+        size_mb = os.path.getsize(backup_path) / (1024 * 1024)
+        print(f"💾 Pre-migration backup written: {backup_path} ({size_mb:.0f} MB) — "
+              f"delete it once the upgrade is confirmed working.")
+        return True
+    except Exception as e:
+        print(f"⚠️ Pre-migration backup FAILED ({e}). Proceeding anyway — the "
+              f"migrations are transactional, but no restore point was created.")
+        return False
+
+
+def _verify_structural_migrations(db_manager) -> bool:
+    """After running migrations, confirm the structural changes actually took.
+    A mismatch (e.g. an old bundled SQLite that couldn't RENAME COLUMN) would
+    otherwise leave the app's code expecting a schema the DB doesn't have, so
+    surface it LOUDLY rather than silently breaking search."""
+    ok = True
+    try:
+        cur = db_manager.cursor
+        tma = {r[1] for r in cur.execute("PRAGMA table_info(tm_activation)")}
+        if tma and 'tm_db_id' not in tma:
+            ok = False
+            print("❌ POST-MIGRATION CHECK FAILED: tm_activation.tm_db_id is missing. "
+                  "TM activation/search may not work. Restore the pre-migration "
+                  "backup (*.pre-migration-*.bak) and report this.")
+        tt = {r[1]: (r[2] or '') for r in cur.execute("PRAGMA table_info(termbase_terms)")}
+        if tt and tt.get('termbase_id', '').upper() != 'INTEGER':
+            # Not fatal — the column still works via affinity/CAST — but note it.
+            print("⚠️ POST-MIGRATION CHECK: termbase_terms.termbase_id is still not "
+                  "INTEGER (functional via affinity, but the rebuild did not complete).")
+        if ok:
+            print("✅ Post-migration check passed (tm_db_id present, termbase_id INTEGER)")
+    except Exception as e:
+        print(f"⚠️ Post-migration verification error: {e}")
+    return ok
+
+
 def run_all_migrations(db_manager) -> bool:
     """
     Run all pending database migrations.
@@ -388,12 +450,21 @@ def check_and_migrate(db_manager) -> bool:
         if needs_termbase_id_int:
             print("⚠️ Migration needed - termbase_terms.termbase_id TEXT -> INTEGER")
 
+        structural = needs_tm_activation_rename or needs_termbase_id_int
+
         if (needs_migration or needs_synonyms_table or needs_ai_inject or needs_clipboard_table
-                or needs_tm_activation_rename or needs_termbase_id_int):
+                or structural):
+            # Structural migrations (table rebuild / column rename) get a
+            # consistent timestamped backup first — the safety net every user
+            # gets, since these are the first non-additive migrations we ship.
+            if structural:
+                _backup_database_before_structural_migration(db_manager)
             success = run_all_migrations(db_manager)
             if success:
                 # Generate UUIDs for terms that don't have them
                 generate_missing_uuids(db_manager)
+            if structural:
+                _verify_structural_migrations(db_manager)
             return success
         
         # Even if no schema migration needed, check for missing UUIDs

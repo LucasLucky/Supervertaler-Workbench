@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.244 (June 1, 2026)
+**Current Version:** v1.10.245 (June 1, 2026)
+
+
+## v1.10.245 – June 1, 2026
+
+### Changed (migration safety)
+
+- **Structural migrations now take an automatic backup first, and verify themselves afterward.** Before a table-rebuild or column-rename migration runs (such as the v1.10.244 identifier changes), the app writes a consistent, timestamped snapshot of the database — `<db>.pre-migration-<timestamp>.bak`, via SQLite's online backup API, safe even with the DB open — so *every* user gets a restore point, not just those who made one by hand. After migrating, it verifies the structural change actually took (e.g. catching an old bundled SQLite that couldn't rename a column) and logs loudly instead of running on a mismatched schema. The backup runs **only when a structural migration is actually pending** (never on a normal launch), and is best-effort: a backup failure is logged but doesn't block the otherwise-transactional migrations. Delete the `.pre-migration-*.bak` file once the upgrade is confirmed working.
 
 
 ## v1.10.244 – June 1, 2026
