@@ -2,10 +2,10 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.245 (June 1, 2026)
+**Current Version:** v1.10.246 (June 1, 2026)
 
 
-## v1.10.245 – June 1, 2026
+## v1.10.246 – June 1, 2026
 
 ### Added (Voice)
 
@@ -14,6 +14,9 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ### Fixed (Superlookup)
 
 - **Beijerterm web resource now uses the live deep-link URL.** It still pointed at the old MediaWiki search path (`/w/index.php?search=…`), which 404s since Beijerterm moved to its new Cloudflare-hosted database. It now opens `https://beijerterm.com/?q={query}&from={sl}&to={tl}` with ISO 639-1 language codes, so a Dutch→English lookup lands straight on the matching results in the right direction.
+
+
+## v1.10.245 – June 1, 2026
 
 ### Changed (migration safety)
 
