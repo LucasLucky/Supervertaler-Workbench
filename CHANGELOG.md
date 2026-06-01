@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.241 (June 1, 2026)
+**Current Version:** v1.10.242 (June 1, 2026)
+
+
+## v1.10.242 – June 1, 2026
+
+### Fixed
+
+- **SuperLookup returned zero TM matches whenever a TM was active — the real cause** (reported by a user, who confirmed it persisted after the v1.10.239–240 fixes). `get_selected_tm_ids()` returned each active TM's *numeric* registry id (`translation_memories.id`), but the TM search filters on `translation_units.tm_id`, which stores the TM's *string* slug (`BEIJER`, `patents`, …). The resulting `tm_id IN (4, 5, …)` clause matched no rows, so TM concordance silently returned nothing while termbase search (which uses different ids) worked fine. It now returns the string slug, still gating activation on the numeric id. Verified on real data: a representative Dutch→English query went from **0 → 100** TM matches. (The v1.10.239–240 language-matching work was a genuine fix for a *different* latent bug — regional/name variants — but was never the cause of this symptom.)
 
 
 ## v1.10.241 – June 1, 2026

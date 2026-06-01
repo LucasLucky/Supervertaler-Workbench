@@ -64817,12 +64817,18 @@ class SuperlookupTab(QWidget):
         selected_ids = []
         try:
             for tm in (mw.tm_metadata_mgr.get_all_tms() or []):
-                tm_id = tm.get('id')
-                if tm_id is None:
+                db_id = tm.get('id')        # numeric registry id — keys activation
+                slug = tm.get('tm_id')      # string id stored on translation_units rows
+                if db_id is None:
                     continue
                 try:
-                    if mw.tm_metadata_mgr.is_tm_active(tm_id, project_id):
-                        selected_ids.append(tm_id)
+                    if mw.tm_metadata_mgr.is_tm_active(db_id, project_id):
+                        # IMPORTANT: return the STRING slug, not the numeric registry
+                        # id. The TM search filters on translation_units.tm_id, which
+                        # holds the slug ('BEIJER', 'patents', …). Passing the numeric
+                        # id makes the `tm_id IN (...)` clause match nothing, so TM
+                        # search silently returned zero results for everyone.
+                        selected_ids.append(slug if slug is not None else db_id)
                 except Exception:
                     continue
         except Exception as e:
