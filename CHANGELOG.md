@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.243 (June 1, 2026)
+**Current Version:** v1.10.244 (June 1, 2026)
+
+
+## v1.10.244 – June 1, 2026
+
+### Changed (schema — TM/termbase identifier disambiguation)
+
+- **Completed the identifier cleanup with a one-time schema migration that runs automatically on first launch.** Two long-standing data-model traps are removed: (1) `tm_activation.tm_id` — which actually holds the *numeric* registry id, not the string slug — is renamed to **`tm_db_id`**, ending the name collision with `translation_units.tm_id` (the slug) that caused the v1.10.242 "0 TM matches" bug; (2) `termbase_terms.termbase_id` is converted from **TEXT to INTEGER**, so it joins `termbases.id` by plain equality and the CASTs that papered over the type mismatch are now redundant. The migration preserves every row and the `id` primary key (the full-text index and the term-synonyms link both depend on it), rebuilds the FTS index, and is **idempotent**. It was validated on a copy of a real **93,480-term / 1.5M-unit** database: all data intact, **zero foreign-key violations**, search results unchanged before and after. (As always, keep a backup; the migration was designed to be safe and was rehearsed on a full-size copy, but schema changes deserve one.)
 
 
 ## v1.10.243 – June 1, 2026

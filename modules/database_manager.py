@@ -281,12 +281,12 @@ class DatabaseManager:
         # TM activation (tracks which TMs are active for which projects)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS tm_activation (
-                tm_id INTEGER NOT NULL,
+                tm_db_id INTEGER NOT NULL,   -- numeric translation_memories.id (NOT the string slug)
                 project_id INTEGER NOT NULL,
                 is_active BOOLEAN DEFAULT 1,
                 activated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (tm_id, project_id),
-                FOREIGN KEY (tm_id) REFERENCES translation_memories(id) ON DELETE CASCADE
+                PRIMARY KEY (tm_db_id, project_id),
+                FOREIGN KEY (tm_db_id) REFERENCES translation_memories(id) ON DELETE CASCADE
             )
         """)
         
@@ -500,7 +500,7 @@ class DatabaseManager:
                 target_term TEXT NOT NULL,
                 source_lang TEXT DEFAULT 'unknown',
                 target_lang TEXT DEFAULT 'unknown',
-                termbase_id TEXT NOT NULL,
+                termbase_id INTEGER NOT NULL,   -- numeric termbases.id (was TEXT; see id-migration)
                 priority INTEGER DEFAULT 99,
                 project_id TEXT,
                 

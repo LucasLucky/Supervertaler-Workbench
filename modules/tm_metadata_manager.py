@@ -315,7 +315,7 @@ class TMMetadataManager:
             now = datetime.now().isoformat()
             
             cursor.execute("""
-                INSERT OR REPLACE INTO tm_activation (tm_id, project_id, is_active, activated_date)
+                INSERT OR REPLACE INTO tm_activation (tm_db_id, project_id, is_active, activated_date)
                 VALUES (?, ?, 1, ?)
             """, (tm_db_id, project_id, now))
             
@@ -337,7 +337,7 @@ class TMMetadataManager:
             now = datetime.now().isoformat()
 
             cursor.execute("""
-                INSERT OR REPLACE INTO tm_activation (tm_id, project_id, is_active, activated_date)
+                INSERT OR REPLACE INTO tm_activation (tm_db_id, project_id, is_active, activated_date)
                 VALUES (?, ?, 0, ?)
             """, (tm_db_id, project_id, now))
 
@@ -364,7 +364,7 @@ class TMMetadataManager:
             if project_id != 0:
                 cursor.execute("""
                     SELECT is_active FROM tm_activation
-                    WHERE tm_id = ? AND project_id = ?
+                    WHERE tm_db_id = ? AND project_id = ?
                 """, (tm_db_id, project_id))
                 row = cursor.fetchone()
                 if row is not None:
@@ -373,7 +373,7 @@ class TMMetadataManager:
             # Fall back to global (project_id=0) only if no project-specific record
             cursor.execute("""
                 SELECT is_active FROM tm_activation
-                WHERE tm_id = ? AND project_id = 0
+                WHERE tm_db_id = ? AND project_id = 0
             """, (tm_db_id,))
             row = cursor.fetchone()
             if row is not None:
@@ -412,7 +412,7 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = ? AND ta.is_active = 1
             """, (project_id,))
             result = [row[0] for row in cursor.fetchall()]
@@ -421,10 +421,10 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = 0 AND ta.is_active = 1
                 AND tm.id NOT IN (
-                    SELECT tm_id FROM tm_activation WHERE project_id = ?
+                    SELECT tm_db_id FROM tm_activation WHERE project_id = ?
                 )
             """, (project_id,))
             result.extend(row[0] for row in cursor.fetchall())
@@ -467,7 +467,7 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = ? AND ta.is_active = 1 AND tm.read_only = 0
             """, (project_id,))
             result = [row[0] for row in cursor.fetchall()]
@@ -476,10 +476,10 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = 0 AND ta.is_active = 1 AND tm.read_only = 0
                 AND tm.id NOT IN (
-                    SELECT tm_id FROM tm_activation WHERE project_id = ?
+                    SELECT tm_db_id FROM tm_activation WHERE project_id = ?
                 )
             """, (project_id,))
             result.extend(row[0] for row in cursor.fetchall())
