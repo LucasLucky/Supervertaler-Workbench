@@ -2,7 +2,76 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.230 (May 30, 2026)
+**Current Version:** v1.10.238 (May 31, 2026)
+
+
+## v1.10.238 – May 31, 2026
+
+### Fixed
+
+- **"Quit Supervertaler" / ⌘Q on macOS now actually quits.** By design, closing the window (the X on Windows, the red button on macOS) backgrounds Supervertaler to the tray/dock so the SuperLookup global hotkey and Clipboard Manager keep working. But an *explicit* quit — macOS's **Quit Supervertaler** menu item or **⌘Q** — was going through the same close-to-tray path and leaving the app running in the dock (reported by a user). An explicit quit (delivered as a `QEvent.Quit`) now sets the real-quit flag so the app terminates, while the window close button still backgrounds as intended.
+
+
+## v1.10.237 – May 31, 2026
+
+### Fixed
+
+- **"Insert Line Break" showed the wrong shortcut (Ctrl+Enter) in the Keyboard Shortcuts list**, duplicating the "Save & Next Segment" row (reported by a user). The shortcut registry had a stale default — the actual line-break binding in the editor is **Shift+Enter** — so the listed default now matches the real behaviour and the duplicate Ctrl+Enter entry is gone. (Display-only fix; the working Shift+Enter binding was never affected.)
+
+
+## v1.10.236 – May 31, 2026
+
+### Changed (localisation — Tier 1 coverage expansion)
+
+- **Roughly five times more of the UI is now translatable** — the set of strings wrapped for translation grew from ~210 to **~1,100** (about half of all user-facing strings, and deliberately the highest-traffic half). This Tier 1 pass wraps the main-window/toolbar chrome and, across the Settings tabs and most dialogs, the **group-box titles, button labels, checkbox / radio-button options, window titles, placeholder text, descriptive labels, and tooltips** in `self.tr()`. Only safe, single-line literal strings were wrapped (f-strings, which need `.format()` restructuring, were left for a later pass), and every wrap was verified to have `self` in scope. The translation template and the Simplified/Traditional Chinese locale files were regenerated accordingly; all existing translations are preserved, and the ~880 newly-exposed strings show as `needs-translation`. Still pending for later tiers: `QMessageBox` bodies/confirmations and status-bar messages (mostly f-strings), and long-tail/advanced dialogs. See `translations/TRANSLATING.md` for the full coverage map and roadmap.
+
+
+## v1.10.235 – May 31, 2026
+
+### Fixed (localisation)
+
+- **"Go to Segment" (Edit menu) was not translatable** — it was missing from the translation template entirely (reported by a contributor). The menu label was built as a bare f-string with the keyboard-shortcut hint appended, so it neither went through `self.tr()` at runtime nor got picked up by the string extractor. The label is now wrapped in `self.tr()` (shortcut hint still appended), and the translation template has been regenerated. Re-ran the locale merge so the Simplified/Traditional Chinese files now list "Go to Segment" — and the other strings added in recent versions (the AutoCorrect tab, the Re-importable export/import menus, etc.) — as needing translation, while preserving all existing translations.
+
+
+## v1.10.234 – May 31, 2026
+
+### Fixed (localisation)
+
+- **The "Bulk Operations" menu title reverted to English when the menu was opened** in a translated UI (reported by a contributor on the Simplified/Traditional Chinese builds — closed it read `批量操作` / `批次作業`, open it flipped back to `Bulk Operations`). The menu's `aboutToShow` handler, which annotates the title with the filtered-segment count, was re-setting the title from a hard-coded English literal. It now uses the translated label (`self.tr("&Bulk Operations")`), and the "(N filtered)" suffix is itself translatable (with an English fallback).
+
+
+## v1.10.233 – May 31, 2026
+
+### Fixed (macOS)
+
+- **`Cmd+,` opened Settings instead of inserting the next tag on macOS.** Reported by a user. macOS automatically detects any menu item titled "Settings" and promotes it to the application-menu Preferences slot, binding it to the system-standard `⌘,` — which then stole `⌘,` from "Insert next tag" (`Ctrl+,` maps to `⌘,` on Mac). The Settings menu actions are now marked `NoRole`, so macOS leaves `⌘,` alone and it inserts the next tag as on Windows. (Settings is still reachable from the toolbar button, the View/Tools menus, and its tab.)
+
+
+## v1.10.232 – May 31, 2026
+
+### Fixed
+
+- **TermLens sometimes showed a shorter overlapping term and dropped part of the source** (e.g. a Dutch segment with *non-ferrometalen fractie* showed *ferrometalen fractie*, silently losing the *non-* prefix). Reported by a user. Cause: the background prefetch worker — which fills the cache TermLens reads — used a legacy per-word termbase matcher that issued a `LIKE %word%` query capped at `LIMIT 30` with no ordering. When a common word (like *fractie* / *fraction* in a patent termbase) appeared in more than 30 term entries, SQLite truncated the result arbitrarily, so a longer phrase could be cut while its shorter sibling survived. TermLens then matched only the shorter term and the uncovered text (the *non-* part) was dropped from the display. TermPicker was unaffected because it falls back to the full in-memory matcher. The prefetch worker now uses that same uncapped in-memory matcher (`_search_termbase_in_memory`), so TermLens, the TermLens popup, and TermPicker all draw from one consistent, complete match set.
+- **Adding a term via quick-add made all the segment's other TermLens matches disappear** until you pressed F5. Reported by a user. The quick-add "instant update" path seeded the segment's match cache with *only* the newly added term whenever that cache happened to be empty (which it usually was — the matches on screen came from a different cache), so TermLens redrew with a single match. Quick-add now recomputes the full match set for the segment (via the fast in-memory matcher, which already includes the just-added term), so the new term appears *alongside* all the existing ones with no manual refresh.
+
+
+## v1.10.231 – May 31, 2026
+
+### Added
+
+- **Supervertaler Re-importable Text (AI-friendly)** — a new bilingual export/import round-trip ported from the Supervertaler for Trados plugin. **Export → 🔁 Supervertaler Re-importable → Bilingual Text (AI-friendly)** writes a `[SEGMENT NNNN]` plain-text file (`.txt`) with one editable target line per segment, plus a `.svexport.json` sidecar alongside it. Hand the text to a proofreader or an LLM, edit the target lines, then **Import → 🔁 Supervertaler Re-importable → Bilingual Text (AI-friendly) - Update Project** to feed the edits straight back into the same open project. (It's plain text, not Markdown, on purpose — the segment blocks rely on preserved line breaks, which a Markdown renderer would collapse; AI agents read the raw text either way.) The sidecar matches edited segments to the right live segments (by a stable id, with position fallback), and the importer guards the round-trip:
+  - **Source-tamper detection** — a short SHA-256 hash per segment; a segment whose source line was altered is skipped.
+  - **Structural-tag integrity** — segments that drop a required placeholder tag (`{1}`, `[1}`, `<92>`, …) are flagged and skipped in strict mode (the default, toggleable in the import preview). Cosmetic formatting tags (`<b>`, `<i>`, `<u>`, …) may be freely added or removed.
+  - **Status round-trip** — a deliberate change to a segment's `Status:` line is applied; otherwise a segment whose target changed is marked Draft. The header lists exactly which statuses you may set.
+  - **Comment round-trip** — every segment block carries a `Comment:` line (empty by default, so it's obvious you can add one); editing, filling, or clearing it re-imports into the segment's comments. A comment-only edit (target unchanged) is applied on its own.
+  - **Multi-line targets** (and multi-line comments) round-trip correctly; locked segments are left untouched.
+  - A preview dialog summarises what will change, what's unchanged, and what's skipped (with reasons) before anything is applied.
+
+### Changed (Import/Export menu)
+
+- **Grouped the two re-importable round-trip formats under a "🔁 Supervertaler Re-importable" submenu** in both the Import and Export menus — **Bilingual Table (DOCX)** and **Bilingual Text (AI-friendly)**. Both update the *same open project* on re-import.
+- **Renamed the Supervertaler bilingual Word table** to **Re-importable Table** (in the menu and inside the document itself) so it pairs consistently with the new Re-importable Text. The one-way formatted variant is now **Supervertaler Formatted Table (DOCX, read-only)** and titled accordingly so it's clearly not for re-import.
+- **Removed the "Labelled Segments" Markdown export** — the new Re-importable Text supersedes it. The one-way **AI-Readable Markdown Table (read-only)** export remains for pasting into a chat (it's a genuine Markdown table, which renders correctly).
 
 
 ## v1.10.230 – May 30, 2026

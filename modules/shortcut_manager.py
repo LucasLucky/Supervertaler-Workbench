@@ -481,7 +481,12 @@ class ShortcutManager:
         "editor_line_break": {
             "category": "Editor",
             "description": "Insert Line Break",
-            "default": "Ctrl+Enter",
+            # v1.10.237: was wrongly "Ctrl+Enter" — that collided with
+            # "Save & Next Segment" and showed two identical Ctrl+Enter rows in
+            # the shortcuts list (reported by a user). The actual line-break
+            # binding in the editor is Shift+Enter (handled in keyPressEvent),
+            # so the listed default now matches reality.
+            "default": "Shift+Enter",
             "action": "insert_line_break",
             "context": "editor_alt"
         },
