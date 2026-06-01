@@ -2,10 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.238 (May 31, 2026)
+**Current Version:** v1.10.239 (June 1, 2026)
 
 
-## v1.10.238 – May 31, 2026
+## v1.10.239 – June 1, 2026
+
+### Fixed
+
+- **SuperLookup found no termbase matches when a specific language direction was set** (e.g. Dutch → English), only working with From/To set to "Any" (reported by a user). The termbase language filter required the termbase to be declared in exactly the search direction, so a termbase stored in the *reverse* orientation — for example a termbase declared English → Dutch — was skipped entirely before the (already bidirectional) term matching ran. The filter is now direction-agnostic: a termbase is searched whenever its language pair matches the From/To pair in either orientation. In practice this restored every reverse-oriented termbase to Dutch → English lookups (one user had ten such termbases silently excluded). Unrelated language pairs are still correctly excluded.
+- **Termbase searches could miss terms whose language was untagged or regional.** The terminology search filter treated a term's literal `unknown` language tag as a real language (excluding it under any language filter instead of falling back to the termbase's declared languages), and matched language codes too strictly so a regional variant such as `en-US` was not found by a plain `en` search. Language matching is now case-insensitive, treats untagged/`unknown` terms as inheriting the termbase's languages, and matches regional variants. The change only ever adds matches, so no existing result is affected.
 
 ### Fixed
 

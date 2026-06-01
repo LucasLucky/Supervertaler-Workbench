@@ -66266,16 +66266,22 @@ class SuperlookupTab(QWidget):
                 
                 print(f"[DEBUG search_termbases] Checking TB '{termbase['name']}': source='{tb_source_lang}' (norm: '{tb_source_norm}'), target='{tb_target_lang}' (norm: '{tb_target_norm}')")
                 
-                # Skip termbases that don't match language filters
-                # Compare normalized codes - match if TB's language is in the list of variants
-                if source_langs_norm and tb_source_norm:
-                    if tb_source_norm not in source_langs_norm:
-                        print(f"[DEBUG search_termbases] Skipping '{termbase['name']}' - source lang mismatch: '{tb_source_norm}' not in {source_langs_norm}")
-                        continue
-                if target_langs_norm and tb_target_norm:
-                    if tb_target_norm not in target_langs_norm:
-                        print(f"[DEBUG search_termbases] Skipping '{termbase['name']}' - target lang mismatch: '{tb_target_norm}' not in {target_langs_norm}")
-                        continue
+                # Skip termbases whose language PAIR doesn't match the search.
+                # DIRECTION-AGNOSTIC: the term matching below is bidirectional
+                # (it searches both source_term and target_term and swaps as
+                # needed), so a termbase stored in the REVERSE orientation must
+                # still be searched — e.g. the PATENTS termbase is declared
+                # en→nl, but a Dutch→English lookup must still find its terms.
+                # We therefore accept the termbase if its declared languages
+                # line up with the From/To pair in EITHER direction. A side with
+                # no declared TB language is never used to exclude.
+                src_ok_fwd = (not source_langs_norm) or (not tb_source_norm) or (tb_source_norm in source_langs_norm)
+                tgt_ok_fwd = (not target_langs_norm) or (not tb_target_norm) or (tb_target_norm in target_langs_norm)
+                src_ok_rev = (not target_langs_norm) or (not tb_source_norm) or (tb_source_norm in target_langs_norm)
+                tgt_ok_rev = (not source_langs_norm) or (not tb_target_norm) or (tb_target_norm in source_langs_norm)
+                if not ((src_ok_fwd and tgt_ok_fwd) or (src_ok_rev and tgt_ok_rev)):
+                    print(f"[DEBUG search_termbases] Skipping '{termbase['name']}' - language pair mismatch: TB=({tb_source_norm},{tb_target_norm}) search=src{source_langs_norm}/tgt{target_langs_norm}")
+                    continue
                 
                 print(f"[DEBUG search_termbases] Searching in '{termbase['name']}'")
                 terms = self.termbase_mgr.get_terms(termbase_id, connection=connection)

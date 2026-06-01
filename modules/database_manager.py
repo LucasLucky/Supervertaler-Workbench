@@ -2375,43 +2375,46 @@ class DatabaseManager:
         forward_params = [project_param] + build_match_params()
         reverse_params = [project_param] + build_match_params()
 
-        # Build language filter conditions
+        # Build language filter conditions.
+        #
+        # A single column's language clause matches when:
+        #   * the term-level language matches (case-insensitive), OR
+        #   * the term-level language is a regional variant of it
+        #     (search 'en' matches a stored 'en-US'), OR
+        #   * the term row is UNTAGGED — NULL / '' / 'unknown' — and the
+        #     termbase-level language matches (or is itself untagged).
+        # This is strictly ADDITIVE versus the old exact-match filter: it can
+        # only add matches, never drop one. It recovers untagged terms (the
+        # bulk of the store relies on the termbase-level fallback), rows tagged
+        # the literal string 'unknown', and regional variants like en-US.
+        def _lang_clause(term_col: str, tb_col: str) -> str:
+            return f""" AND (
+                LOWER({term_col}) = LOWER(?) OR
+                LOWER({term_col}) LIKE LOWER(?) || '-%' OR
+                (({term_col} IS NULL OR {term_col} = '' OR LOWER({term_col}) = 'unknown')
+                    AND (LOWER({tb_col}) = LOWER(?) OR LOWER({tb_col}) LIKE LOWER(?) || '-%')) OR
+                (({term_col} IS NULL OR {term_col} = '' OR LOWER({term_col}) = 'unknown')
+                    AND ({tb_col} IS NULL OR {tb_col} = '' OR LOWER({tb_col}) = 'unknown'))
+            )"""
+
         lang_conditions_forward = ""
         lang_conditions_reverse = ""
         lang_params_forward = []
         lang_params_reverse = []
 
         if source_lang:
-            # For forward: filter on source_lang
-            lang_conditions_forward += """ AND (
-                t.source_lang = ? OR
-                (t.source_lang IS NULL AND tb.source_lang = ?) OR
-                (t.source_lang IS NULL AND tb.source_lang IS NULL)
-            )"""
-            lang_params_forward.extend([source_lang, source_lang])
-            # For reverse: source_lang becomes target_lang (swapped)
-            lang_conditions_reverse += """ AND (
-                t.target_lang = ? OR
-                (t.target_lang IS NULL AND tb.target_lang = ?) OR
-                (t.target_lang IS NULL AND tb.target_lang IS NULL)
-            )"""
-            lang_params_reverse.extend([source_lang, source_lang])
+            # Forward: term's source side. Reverse: term's target side (swapped).
+            lang_conditions_forward += _lang_clause('t.source_lang', 'tb.source_lang')
+            lang_params_forward.extend([source_lang] * 4)
+            lang_conditions_reverse += _lang_clause('t.target_lang', 'tb.target_lang')
+            lang_params_reverse.extend([source_lang] * 4)
 
         if target_lang:
-            # For forward: filter on target_lang
-            lang_conditions_forward += """ AND (
-                t.target_lang = ? OR
-                (t.target_lang IS NULL AND tb.target_lang = ?) OR
-                (t.target_lang IS NULL AND tb.target_lang IS NULL)
-            )"""
-            lang_params_forward.extend([target_lang, target_lang])
-            # For reverse: target_lang becomes source_lang (swapped)
-            lang_conditions_reverse += """ AND (
-                t.source_lang = ? OR
-                (t.source_lang IS NULL AND tb.source_lang = ?) OR
-                (t.source_lang IS NULL AND tb.source_lang IS NULL)
-            )"""
-            lang_params_reverse.extend([target_lang, target_lang])
+            # Forward: term's target side. Reverse: term's source side (swapped).
+            lang_conditions_forward += _lang_clause('t.target_lang', 'tb.target_lang')
+            lang_params_forward.extend([target_lang] * 4)
+            lang_conditions_reverse += _lang_clause('t.source_lang', 'tb.source_lang')
+            lang_params_reverse.extend([target_lang] * 4)
 
         # Project filter conditions
         project_conditions = ""
