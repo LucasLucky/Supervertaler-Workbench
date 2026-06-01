@@ -1006,9 +1006,14 @@ class TermbaseManager:
                 SELECT id, source_term, target_term, domain, notes,
                        project, client, forbidden, term_uuid
                 FROM termbase_terms
-                WHERE termbase_id = ?
+                WHERE termbase_id = CAST(? AS TEXT)
                 ORDER BY source_term ASC
             """, (termbase_id,))
+            # termbase_terms.termbase_id is declared TEXT (stores e.g. '13') while
+            # the caller passes the numeric termbases.id. Cast the PARAM to TEXT —
+            # explicit (no reliance on SQLite implicit coercion) AND keeps the
+            # idx_gt_termbase_id index usable. See the identifier convention in
+            # modules/identifier_conventions.py.
 
             terms = []
             for row in cursor.fetchall():

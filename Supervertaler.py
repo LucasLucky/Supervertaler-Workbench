@@ -64828,7 +64828,14 @@ class SuperlookupTab(QWidget):
                         # holds the slug ('BEIJER', 'patents', …). Passing the numeric
                         # id makes the `tm_id IN (...)` clause match nothing, so TM
                         # search silently returned zero results for everyone.
-                        selected_ids.append(slug if slug is not None else db_id)
+                        # No numeric-id fallback: a slug-less TM cannot match any
+                        # translation_units row, so skip it loudly rather than
+                        # silently poisoning the filter with a numeric id.
+                        if slug is not None:
+                            selected_ids.append(slug)
+                        else:
+                            print(f"[Superlookup] get_selected_tm_ids: active TM id={db_id!r} "
+                                  f"has no string tm_id slug; skipping (cannot match TM rows).")
                 except Exception:
                     continue
         except Exception as e:

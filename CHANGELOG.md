@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.242 (June 1, 2026)
+**Current Version:** v1.10.243 (June 1, 2026)
+
+
+## v1.10.243 – June 1, 2026
+
+### Changed (TM/termbase identifier robustness + a documented convention)
+
+- **Hardened the identifier handling that caused the v1.10.242 "0 TM matches" bug and documented the rule so it stops recurring.** A new module, `modules/identifier_conventions.py`, states the single convention: a TM's content is keyed by its **string slug** (`tm_id`, what `translation_units.tm_id` stores), a termbase's content by its **numeric `id`** (stored as TEXT in `termbase_terms.termbase_id`), and `name` is **display-only — never an identifier**. (Plus the gotcha that `tm_activation.tm_id` confusingly holds the numeric registry id, not the slug.) Two concrete hardenings: SuperLookup's TM selection no longer falls back to a numeric id when a slug is missing — it skips and logs, rather than silently poisoning the search filter; and `termbase_manager.get_terms()` now casts explicitly (`CAST(? AS TEXT)`) instead of relying on SQLite's implicit coercion, while keeping its index usable. A new test suite, `tests/test_identifier_conventions.py`, locks the rules: a string slug finds TM rows, a numeric id finds none, and a numeric termbase id correctly resolves the TEXT-stored content key.
 
 
 ## v1.10.242 – June 1, 2026
