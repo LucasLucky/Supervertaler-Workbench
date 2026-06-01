@@ -54150,20 +54150,145 @@ class SupervertalerQt(QMainWindow):
                 # listener on press; the release handler tears it
                 # down again if WE started it.
                 self._on_voice_command_ptt_press()
+            elif binding_id == 'voice_pause_alwayson':
+                # User-recordable hotkey that PAUSES Always-On while an
+                # external dictation tool (Wispr Flow etc.) holds the mic.
+                self._on_voice_pause_press()
 
         def _on_chord_released(binding_id):
             if binding_id == 'voice_dictate':
                 self.stop_voice_dictation_if_recording()
             elif binding_id == 'voice_command_ptt':
                 self._on_voice_command_ptt_release()
+            elif binding_id == 'voice_pause_alwayson':
+                self._on_voice_pause_release()
 
         listener.chord_pressed.connect(_on_chord_pressed)
         listener.chord_released.connect(_on_chord_released)
+        # Record-a-key for the pause hotkey routes through the same hook.
+        listener.captured.connect(self._on_voice_pause_key_captured)
         if not listener.start():
             self.log("⚠ Voice hotkey listener failed to start – push-to-talk will not work")
             return None
+        # Register the saved pause-Always-On hotkey (may be a media key,
+        # stored as a serialized VK chord). Safe no-op if unset.
+        try:
+            _pause_spec = self.load_dictation_settings().get('voice_pause_hotkey')
+            if _pause_spec:
+                listener.register_serialized('voice_pause_alwayson', _pause_spec)
+        except Exception:
+            pass
         self._voice_hotkey_listener = listener
         return listener
+
+    # ── Pause Always-On via a user-recorded global hotkey ───────────────
+    # For users who drive an EXTERNAL dictation tool (Wispr Flow, Dragon…)
+    # with their own hotkey — often an odd key like media fast-forward.
+    # While that key is engaged we pause our Always-On Vosk listener so the
+    # two don't fight over the microphone. The key is RECORDED (not typed)
+    # so media keys work; behaviour is Hold (default) or Toggle.
+
+    def _voice_pause_mode(self) -> str:
+        try:
+            return self.load_dictation_settings().get('voice_pause_mode', 'hold')
+        except Exception:
+            return 'hold'
+
+    def _pause_alwayson_external(self):
+        """Pause the Always-On listener (if running) for external dictation."""
+        vl = getattr(self, 'voice_listener', None)
+        if vl and getattr(vl, 'is_listening', False) and not getattr(vl, '_paused', False):
+            try:
+                vl.pause()
+                self._alwayson_paused_by_external = True
+                self.log("⏸️ Always-On paused for external dictation")
+            except Exception as e:
+                self.log(f"⚠ Could not pause Always-On: {e}")
+
+    def _resume_alwayson_external(self):
+        """Resume Always-On if WE paused it for external dictation."""
+        if not getattr(self, '_alwayson_paused_by_external', False):
+            return
+        self._alwayson_paused_by_external = False
+        vl = getattr(self, 'voice_listener', None)
+        if vl and getattr(vl, '_paused', False):
+            try:
+                vl.resume()
+                self.log("▶️ Always-On resumed")
+            except Exception as e:
+                self.log(f"⚠ Could not resume Always-On: {e}")
+
+    def _on_voice_pause_press(self):
+        if self._voice_pause_mode() == 'toggle':
+            if getattr(self, '_alwayson_paused_by_external', False):
+                self._resume_alwayson_external()
+            else:
+                self._pause_alwayson_external()
+        else:  # hold
+            self._pause_alwayson_external()
+
+    def _on_voice_pause_release(self):
+        if self._voice_pause_mode() != 'toggle':
+            self._resume_alwayson_external()
+
+    def _set_voice_pause_setting(self, **kw):
+        try:
+            s = self._load_unified_settings()
+            ds = s.setdefault('ui', {}).setdefault('dictation_settings', {})
+            ds.update(kw)
+            self._save_unified_settings(s)
+        except Exception as e:
+            self.log(f"⚠ Could not save voice-pause setting: {e}")
+
+    def _begin_voice_pause_capture(self):
+        """Enter record-a-key mode for the pause hotkey (called from Voice tab)."""
+        listener = self._get_voice_hotkey_listener()
+        if listener is None:
+            self.log("⚠ Can't record a hotkey — the global keyboard listener is unavailable.")
+            lbl = getattr(self, '_voice_pause_hotkey_label', None)
+            if lbl is not None:
+                lbl.setText("Listener unavailable")
+            return
+        self._capturing_voice_pause = True
+        listener.begin_capture()
+        self.log("⏺ Recording pause hotkey — press the key you use for external dictation…")
+
+    def _on_voice_pause_key_captured(self, chord):
+        """Handle a captured chord from record-a-key mode (pause hotkey only)."""
+        if not getattr(self, '_capturing_voice_pause', False):
+            return  # capture wasn't initiated by us
+        self._capturing_voice_pause = False
+        try:
+            from modules.voice_hotkey_listener import serialize_chord, describe_chord
+        except Exception:
+            return
+        spec = serialize_chord(chord)
+        label = describe_chord(chord) or 'Not set'
+        self._set_voice_pause_setting(voice_pause_hotkey=spec)
+        listener = self._get_voice_hotkey_listener()
+        if listener is not None:
+            listener.unregister('voice_pause_alwayson')
+            if spec:
+                listener.register_serialized('voice_pause_alwayson', spec)
+        lbl = getattr(self, '_voice_pause_hotkey_label', None)
+        if lbl is not None:
+            lbl.setText(label)
+        self.log(f"⏸️ Pause-Always-On hotkey set to: {label}")
+
+    def _clear_voice_pause_hotkey(self):
+        self._set_voice_pause_setting(voice_pause_hotkey='')
+        self._capturing_voice_pause = False
+        listener = getattr(self, '_voice_hotkey_listener', None)
+        if listener is not None:
+            try:
+                listener.cancel_capture()
+                listener.unregister('voice_pause_alwayson')
+            except Exception:
+                pass
+        lbl = getattr(self, '_voice_pause_hotkey_label', None)
+        if lbl is not None:
+            lbl.setText("Not set")
+        self.log("⏸️ Pause-Always-On hotkey cleared")
 
     def stop_voice_dictation_if_recording(self):
         """Stop an active dictation recording on release (hold-to-talk).

@@ -7,6 +7,10 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ## v1.10.245 – June 1, 2026
 
+### Added (Voice)
+
+- **Pause Always-On with your own (recordable) hotkey, for external dictation tools.** If you drive a separate dictation tool (Wispr Flow, Dragon, …) with its own key, Always-On can now step off the microphone while that key is engaged. The hotkey is **recorded, not typed**, so it works with odd keys — including media keys like fast-forward — that can't be expressed as text. Two modes: **Hold** (Always-On pauses only while the key is held, resumes on release — pairs with hold-to-talk tools) and **Toggle** (press to pause, press again to resume). Set it in the Voice tab under "⏸️ Pause Always-On for external dictation": click **Record key**, press your key, pick the mode. Built on the existing global keyboard hook (a passive observer — your other app still receives the key), so it works even when the Workbench isn't focused.
+
 ### Fixed (Superlookup)
 
 - **Beijerterm web resource now uses the live deep-link URL.** It still pointed at the old MediaWiki search path (`/w/index.php?search=…`), which 404s since Beijerterm moved to its new Cloudflare-hosted database. It now opens `https://beijerterm.com/?q={query}&from={sl}&to={tl}` with ISO 639-1 language codes, so a Dutch→English lookup lands straight on the matching results in the right direction.
