@@ -36765,54 +36765,12 @@ class SupervertalerQt(QMainWindow):
             )
     
     def _normalize_language_code(self, lang_code: str) -> str:
-        """Convert ISO language codes to full language names."""
-        # Common ISO 639-1 codes to full names
-        lang_map = {
-            'en': 'English', 'en-US': 'English', 'en-GB': 'English',
-            'nl': 'Dutch', 'nl-NL': 'Dutch', 'nl-BE': 'Dutch',
-            'de': 'German', 'de-DE': 'German', 'de-AT': 'German',
-            'fr': 'French', 'fr-FR': 'French', 'fr-BE': 'French',
-            'es': 'Spanish', 'es-ES': 'Spanish', 'es-MX': 'Spanish',
-            'it': 'Italian', 'it-IT': 'Italian',
-            'pt': 'Portuguese', 'pt-PT': 'Portuguese', 'pt-BR': 'Portuguese',
-            'pl': 'Polish', 'pl-PL': 'Polish',
-            'cs': 'Czech', 'cs-CZ': 'Czech',
-            'sk': 'Slovak', 'sk-SK': 'Slovak',
-            'hu': 'Hungarian', 'hu-HU': 'Hungarian',
-            'ro': 'Romanian', 'ro-RO': 'Romanian',
-            'bg': 'Bulgarian', 'bg-BG': 'Bulgarian',
-            'el': 'Greek', 'el-GR': 'Greek',
-            'ru': 'Russian', 'ru-RU': 'Russian',
-            'uk': 'Ukrainian', 'uk-UA': 'Ukrainian',
-            'ja': 'Japanese', 'ja-JP': 'Japanese',
-            'zh': 'Chinese', 'zh-CN': 'Chinese', 'zh-TW': 'Chinese',
-            'ko': 'Korean', 'ko-KR': 'Korean',
-            'ar': 'Arabic', 'ar-SA': 'Arabic',
-            'he': 'Hebrew', 'he-IL': 'Hebrew',
-            'tr': 'Turkish', 'tr-TR': 'Turkish',
-            'sv': 'Swedish', 'sv-SE': 'Swedish',
-            'da': 'Danish', 'da-DK': 'Danish',
-            'fi': 'Finnish', 'fi-FI': 'Finnish',
-            'no': 'Norwegian', 'nb-NO': 'Norwegian', 'nn-NO': 'Norwegian',
-        }
-        
-        # Try exact match first
-        if lang_code in lang_map:
-            return lang_map[lang_code]
-        
-        # Try lowercase match
-        lang_lower = lang_code.lower()
-        if lang_lower in lang_map:
-            return lang_map[lang_lower]
-        
-        # Try base code (before hyphen)
-        if '-' in lang_code:
-            base_code = lang_code.split('-')[0].lower()
-            if base_code in lang_map:
-                return lang_map[base_code]
-        
-        # Return original if no match found
-        return lang_code
+        """Resolve an ISO code / variant to the full English language name.
+
+        Delegates to modules.language_codes (the single authority). Falls
+        back to the original input when the language is not recognised."""
+        from modules import language_codes as _lc
+        return _lc.english_name(lang_code) or lang_code
 
     def export_memoq_rtf(self):
         """Export to memoQ bilingual RTF format with translations"""
@@ -66147,43 +66105,13 @@ class SuperlookupTab(QWidget):
         self.status_label.setText(self.tr("Cleared. Ready for new lookup."))
     
     def _normalize_language_code(self, lang: str) -> str:
-        """Normalize language code/name to a standard format for comparison.
-        
-        Converts both full names (English, Dutch) and ISO codes (en, nl)
-        to lowercase ISO 2-letter codes for consistent matching.
-        """
-        if not lang:
-            return ''
-        
-        lang_lower = lang.lower().strip()
-        
-        # Map full names to ISO codes
-        name_to_code = {
-            'english': 'en', 'dutch': 'nl', 'german': 'de', 'french': 'fr',
-            'spanish': 'es', 'italian': 'it', 'portuguese': 'pt', 'russian': 'ru',
-            'chinese': 'zh', 'japanese': 'ja', 'korean': 'ko', 'arabic': 'ar',
-            'polish': 'pl', 'czech': 'cs', 'hungarian': 'hu', 'romanian': 'ro',
-            'bulgarian': 'bg', 'greek': 'el', 'turkish': 'tr', 'swedish': 'sv',
-            'danish': 'da', 'norwegian': 'no', 'finnish': 'fi', 'ukrainian': 'uk',
-            'hebrew': 'he', 'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id',
-            'malay': 'ms', 'hindi': 'hi', 'bengali': 'bn', 'tamil': 'ta',
-            'catalan': 'ca', 'basque': 'eu', 'galician': 'gl', 'croatian': 'hr',
-            'serbian': 'sr', 'slovenian': 'sl', 'slovak': 'sk', 'estonian': 'et',
-            'latvian': 'lv', 'lithuanian': 'lt',
-        }
-        
-        # If it's a full name, convert to code
-        if lang_lower in name_to_code:
-            return name_to_code[lang_lower]
-        
-        # If it's already an ISO code (2-3 chars), normalize it
-        # Handle variants like en-US, nl-BE by taking the base code
-        if '-' in lang_lower or '_' in lang_lower:
-            base_code = lang_lower.replace('_', '-').split('-')[0]
-            return base_code
-        
-        # Return as-is (already a code like 'en', 'nl')
-        return lang_lower
+        """Normalize a language code/name to a base ISO code for comparison.
+
+        Delegates to modules.language_codes (the single authority): full
+        names ('Dutch') and regional variants ('nl-BE') all collapse to the
+        base code ('nl')."""
+        from modules import language_codes as _lc
+        return _lc.base_code(lang)
     
     # Hard cap on termbase results to keep the UI responsive when very large
     # termbases are loaded (otherwise we'd build thousands of QTableWidgetItems

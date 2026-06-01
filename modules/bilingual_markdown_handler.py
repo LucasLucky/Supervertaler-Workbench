@@ -101,18 +101,14 @@ def lang_to_code(language: Optional[str]) -> str:
     """
     if not language:
         return "??"
-    base = language.strip()
-    # Drop a parenthesised variant: "English (US)" -> "English"
-    if "(" in base:
-        base = base.split("(")[0].strip()
-    # Drop a region subtag: "en-GB" / "en_US" -> "en"
-    base = re.split(r"[-_]", base)[0].strip()
-    if not base:
-        return "??"
-    code = _LANG_NAME_TO_CODE.get(base.lower())
-    if code:
-        return code
-    return base[:2].upper()
+    # Delegate to the single language authority so the name↔code mapping is
+    # shared with the rest of the app; preserve this function's contract
+    # (uppercase 2-letter code, "??" when unresolvable).
+    try:
+        from modules import language_codes as _lc
+    except ImportError:
+        import language_codes as _lc
+    return (_lc.base_code(language) or "").upper() or "??"
 
 
 # ---------------------------------------------------------------------------

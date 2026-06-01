@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.240 (June 1, 2026)
+**Current Version:** v1.10.241 (June 1, 2026)
+
+
+## v1.10.241 – June 1, 2026
+
+### Changed (language handling — consolidated into one authority)
+
+- **All language-code normalisation now flows through a single module** (`modules/language_codes.py`), ending a long-standing class of "no results when a language direction is set" bugs (the SuperLookup termbase and TM misses fixed in v1.10.239–240 were two symptoms). The codebase had **six** separate normalisers across four modules — including a method defined twice with *opposite* behaviour — each handling the `nl` / `nl-NL` / `nl-BE` / `Dutch` / `Dutch (Belgium)` variants differently, or not at all, so different features disagreed about whether two languages matched. The legacy helpers (`get_base_lang_code`, `get_simple_lang_code`, `get_lang_match_variants`, `normalize_lang_variant`, `languages_are_compatible`, `lang_to_code`, and both `_normalize_language_code` methods) are kept for compatibility but now **all delegate to the one authority**, so every feature shares the same name↔code table and matching policy. Policy: regional variants are preserved for storage and display, but matching is on the **base** code (`nl-BE`, `nl-NL`, `nl` and `Dutch` all match), so lookups stop missing. A new equivalence test (`tests/test_language_codes.py`) locks this in so the divergence cannot creep back.
 
 
 ## v1.10.240 – June 1, 2026
