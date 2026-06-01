@@ -7,6 +7,10 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ## v1.10.245 – June 1, 2026
 
+### Fixed (Superlookup)
+
+- **Beijerterm web resource now uses the live deep-link URL.** It still pointed at the old MediaWiki search path (`/w/index.php?search=…`), which 404s since Beijerterm moved to its new Cloudflare-hosted database. It now opens `https://beijerterm.com/?q={query}&from={sl}&to={tl}` with ISO 639-1 language codes, so a Dutch→English lookup lands straight on the matching results in the right direction.
+
 ### Changed (migration safety)
 
 - **Structural migrations now take an automatic backup first, and verify themselves afterward.** Before a table-rebuild or column-rename migration runs (such as the v1.10.244 identifier changes), the app writes a consistent, timestamped snapshot of the database — `<db>.pre-migration-<timestamp>.bak`, via SQLite's online backup API, safe even with the DB open — so *every* user gets a restore point, not just those who made one by hand. After migrating, it verifies the structural change actually took (e.g. catching an old bundled SQLite that couldn't rename a column) and logs loudly instead of running on a mismatched schema. The backup runs **only when a structural migration is actually pending** (never on a normal launch), and is best-effort: a backup failure is logged but doesn't block the otherwise-transactional migrations. Delete the `.pre-migration-*.bak` file once the upgrade is confirmed working.

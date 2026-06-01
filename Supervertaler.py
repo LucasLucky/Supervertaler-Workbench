@@ -63460,9 +63460,9 @@ class SuperlookupTab(QWidget):
                 'id': 'beijerterm',
                 'name': 'Beijerterm',
                 'icon': '📚',
-                'description': 'Dutch-English terminology database (500k+ terms)',
-                'url_template': 'https://beijerterm.com/w/index.php?search={query}',
-                'lang_format': None,
+                'description': 'Curated multilingual terminology database (Dutch ↔ English)',
+                'url_template': 'https://beijerterm.com/?q={query}&from={sl}&to={tl}',
+                'lang_format': 'iso2',  # nl, en — Beijerterm deep-link expects ISO 639-1
                 'bidirectional': True,
             },
             {
