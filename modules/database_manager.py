@@ -2072,46 +2072,46 @@ class DatabaseManager:
             
             # Smart search: Filter and swap based on language metadata
             if use_smart_search:
+                # TM language tags are wildly inconsistent across the store —
+                # base codes ('nl','en'), regional variants ('nl-BE','en-GB',
+                # 'nl-NL') and even full names ('Dutch','English') all coexist,
+                # and the From/To dropdowns may pass any of these. Compare on
+                # BASE codes (Dutch->nl, nl-BE->nl) on BOTH sides so a
+                # Dutch->English search matches nl->en rows however either was
+                # tagged. (Previously this used raw exact membership, so e.g.
+                # 'nl' was never 'in' ['Dutch'] and every row was dropped.)
+                from modules.tmx_generator import get_base_lang_code
+                def _base(x):
+                    return get_base_lang_code(x) if x else ''
+                src_norms = {_base(x) for x in source_langs} if source_langs else None
+                tgt_norms = {_base(x) for x in target_langs} if target_langs else None
+
                 processed_results = []
                 for row in raw_results:
-                    row_src_lang = row.get('source_lang', '')
-                    row_tgt_lang = row.get('target_lang', '')
-                    
-                    # Check if this row matches our language requirements
-                    # If "From: Dutch, To: English":
-                    # - Accept if source=nl and target=en (normal)
-                    # - Accept if source=en and target=nl (swap needed)
-                    
+                    row_src_norm = _base(row.get('source_lang', ''))
+                    row_tgt_norm = _base(row.get('target_lang', ''))
+
+                    # Accept the row if its language pair matches the requested
+                    # pair in EITHER orientation (swap the columns when reversed).
                     matches = False
                     needs_swap = False
-                    
-                    if source_langs and target_langs:
-                        # Both filters specified
-                        if row_src_lang in source_langs and row_tgt_lang in target_langs:
-                            # Perfect match - no swap
-                            matches = True
-                            needs_swap = False
-                        elif row_src_lang in target_langs and row_tgt_lang in source_langs:
-                            # Reversed - needs swap
-                            matches = True
-                            needs_swap = True
-                    elif source_langs:
-                        # Only "From" specified - just check if Dutch is in EITHER column
-                        if row_src_lang in source_langs:
-                            matches = True
-                            needs_swap = False
-                        elif row_tgt_lang in source_langs:
-                            matches = True
-                            needs_swap = True
-                    elif target_langs:
-                        # Only "To" specified - just check if English is in EITHER column
-                        if row_tgt_lang in target_langs:
-                            matches = True
-                            needs_swap = False
-                        elif row_src_lang in target_langs:
-                            matches = True
-                            needs_swap = True
-                    
+
+                    if src_norms and tgt_norms:
+                        if row_src_norm in src_norms and row_tgt_norm in tgt_norms:
+                            matches = True; needs_swap = False
+                        elif row_src_norm in tgt_norms and row_tgt_norm in src_norms:
+                            matches = True; needs_swap = True
+                    elif src_norms:
+                        if row_src_norm in src_norms:
+                            matches = True; needs_swap = False
+                        elif row_tgt_norm in src_norms:
+                            matches = True; needs_swap = True
+                    elif tgt_norms:
+                        if row_tgt_norm in tgt_norms:
+                            matches = True; needs_swap = False
+                        elif row_src_norm in tgt_norms:
+                            matches = True; needs_swap = True
+
                     if matches:
                         # CRITICAL CHECK: Verify the search text is actually in the correct column
                         # If user searches for Dutch with "From: Dutch", the text must be in the source column (after any swap)

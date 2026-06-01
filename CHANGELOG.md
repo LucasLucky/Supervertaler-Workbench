@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.239 (June 1, 2026)
+**Current Version:** v1.10.240 (June 1, 2026)
+
+
+## v1.10.240 – June 1, 2026
+
+### Fixed
+
+- **SuperLookup found no TM matches when a specific language direction was set** (e.g. Dutch → English), even for text plainly present in the TMs (reported by a user). The concordance search's "smart" language filter compared the From/To values against each TM row's language tags using raw, exact string membership. But the From/To dropdowns can pass full names (`Dutch`/`English`) or regional variants (`nl-BE`), while stored rows are tagged inconsistently (`nl`, `nl-NL`, `Dutch`, …) — so `nl` was never "in" `['Dutch']` and every row was discarded. Both sides are now compared on their base language code (`Dutch` → `nl`, `nl-BE` → `nl`), so a Dutch → English search matches `nl → en` rows however either side was tagged, and reverse-oriented rows are swapped into the correct order. Verified against real data: 0 → 99 matches for a representative query, consistent across every language-tag format.
 
 
 ## v1.10.239 – June 1, 2026
