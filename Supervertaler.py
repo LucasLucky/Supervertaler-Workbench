@@ -271,7 +271,7 @@ from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
-from modules.styled_widgets import CheckmarkCheckBox, PurpleCheckmarkCheckBox
+from modules.styled_widgets import CheckmarkCheckBox, PurpleCheckmarkCheckBox, TealCheckmarkCheckBox
 from modules.statuses import (
     STATUSES,
     DEFAULT_STATUS,
@@ -13510,6 +13510,7 @@ class SupervertalerQt(QMainWindow):
             "• <b>Read</b> (green ✓): TM is used for matching segments<br>"
             "• <b>Write</b> (blue ✓): TM is updated with new translations<br>"
             "• <b>Bridge</b> (orange ✓): TM is visible to the Supervertaler for Trados plugin (Phase 2)<br>"
+            "• <b>🔍 SuperLookup</b> (teal ✓): TM is searched by SuperLookup (independent of Read)<br>"
             "• <b>Typical Setup</b>: Main TM (Read + Write) + Reference TMs (Read only)"
         )
         help_msg.setWordWrap(True)
@@ -13553,16 +13554,28 @@ class SupervertalerQt(QMainWindow):
         tm_clear_all_bridge_btn.clicked.connect(lambda: toggle_all_bridge(False))
         bulk_layout.addWidget(tm_clear_all_bridge_btn)
 
+        # v1.10.247: SuperLookup bulk toggles. "Select All SuperLookup"
+        # includes every TM in SuperLookup, "Clear All SuperLookup" excludes
+        # them. Late-binding via the toggle_all_superlookup closure defined
+        # further down alongside toggle_all_read/write/bridge.
+        superlookup_header_checkbox = TealCheckmarkCheckBox(self.tr("Select All SuperLookup"))
+        bulk_layout.addWidget(superlookup_header_checkbox)
+
+        tm_clear_all_superlookup_btn = QPushButton(self.tr("Clear All SuperLookup"))
+        tm_clear_all_superlookup_btn.setToolTip(self.tr("Uncheck the SuperLookup flag on every TM (exclude all TMs from SuperLookup)"))
+        tm_clear_all_superlookup_btn.clicked.connect(lambda: toggle_all_superlookup(False))
+        bulk_layout.addWidget(tm_clear_all_superlookup_btn)
+
         bulk_layout.addStretch()
         layout.addLayout(bulk_layout)
 
         # TM list with table
         tm_table = QTableWidget()
-        # v1.10.212: 8 columns now – Bridge added at index 5, between Write
-        # and Last Modified, so the three per-TM toggles cluster together
-        # visually. Last Modified moves to 6, Description to 7.
-        tm_table.setColumnCount(8)
-        tm_table.setHorizontalHeaderLabels(["TM Name", "Languages", "Entries", "Read", "Write", "Bridge", "Last Modified", "Description"])
+        # v1.10.247: 9 columns now – SuperLookup added at index 6, after
+        # Bridge, so the four per-TM toggles (Read/Write/Bridge/SuperLookup)
+        # cluster together. Last Modified moves to 7, Description to 8.
+        tm_table.setColumnCount(9)
+        tm_table.setHorizontalHeaderLabels(["TM Name", "Languages", "Entries", "Read", "Write", "Bridge", "🔍 SuperLookup", "Last Modified", "Description"])
         tm_table.horizontalHeader().setStretchLastSection(True)
         tm_table.setColumnWidth(0, 250)
         tm_table.setColumnWidth(1, 120)
@@ -13570,7 +13583,8 @@ class SupervertalerQt(QMainWindow):
         tm_table.setColumnWidth(3, 60)
         tm_table.setColumnWidth(4, 60)
         tm_table.setColumnWidth(5, 60)   # Bridge
-        tm_table.setColumnWidth(6, 150)  # Last Modified
+        tm_table.setColumnWidth(6, 100)  # SuperLookup
+        tm_table.setColumnWidth(7, 150)  # Last Modified
         # v1.10.169: click-header-to-sort on the data columns (TM Name,
         # Languages, Entries, Last Modified, Description). The Read /
         # Write columns are checkbox widgets and won't sort meaningfully
@@ -13634,9 +13648,25 @@ class SupervertalerQt(QMainWindow):
                 self.log(f"⚠️ Bulk TM Bridge toggle failed mid-way: {e}")
             refresh_tm_list()
 
+        # v1.10.247: bulk SuperLookup toggle (include/exclude every TM
+        # from SuperLookup in one click). Single DB pass + one refresh,
+        # mirroring the Bridge bulk toggle.
+        def toggle_all_superlookup(checked):
+            try:
+                for tm in (tm_metadata_mgr.get_all_tms() or []):
+                    tm_id = tm.get('id')
+                    if tm_id is None:
+                        continue
+                    if hasattr(tm_metadata_mgr, 'set_superlookup_enabled'):
+                        tm_metadata_mgr.set_superlookup_enabled(tm_id, bool(checked))
+            except Exception as e:
+                self.log(f"⚠️ Bulk TM SuperLookup toggle failed mid-way: {e}")
+            refresh_tm_list()
+
         read_header_checkbox.toggled.connect(toggle_all_read)
         write_header_checkbox.toggled.connect(toggle_all_write)
         bridge_header_checkbox.toggled.connect(toggle_all_bridge)
+        superlookup_header_checkbox.toggled.connect(toggle_all_superlookup)
         
         # Populate TM list
         def refresh_tm_list():
@@ -13781,6 +13811,35 @@ class SupervertalerQt(QMainWindow):
                 bridge_checkbox.toggled.connect(on_bridge_toggle)
                 tm_table.setCellWidget(row, 5, bridge_checkbox)
 
+                # v1.10.247: SuperLookup checkbox (teal). Independent of Read
+                # — the single switch that decides whether SuperLookup searches
+                # this TM. Default on (included) for every existing TM.
+                is_superlookup = bool(tm.get('superlookup_enabled', True))
+                superlookup_checkbox = TealCheckmarkCheckBox()
+                superlookup_checkbox.setChecked(is_superlookup)
+                superlookup_checkbox.setToolTip(self.tr(
+                    "SuperLookup: TM is searched by SuperLookup. Independent of "
+                    "Read — leave Read off for a project and still search this TM."
+                ))
+
+                def on_superlookup_toggle(checked, tm_id=tm['id'], row_idx=row):
+                    if hasattr(tm_metadata_mgr, 'set_superlookup_enabled'):
+                        success = tm_metadata_mgr.set_superlookup_enabled(tm_id, bool(checked))
+                        if success:
+                            self.log(
+                                f"✅ TM {tm_id} {'included in' if checked else 'excluded from'} SuperLookup"
+                            )
+                        else:
+                            # Revert on failure
+                            sender = tm_table.cellWidget(row_idx, 6)
+                            if sender:
+                                sender.blockSignals(True)
+                                sender.setChecked(not checked)
+                                sender.blockSignals(False)
+
+                superlookup_checkbox.toggled.connect(on_superlookup_toggle)
+                tm_table.setCellWidget(row, 6, superlookup_checkbox)
+
                 # Last modified
                 modified = tm['modified_date'] or tm['created_date'] or ''
                 if modified:
@@ -13791,25 +13850,29 @@ class SupervertalerQt(QMainWindow):
                         modified = dt.strftime("%Y-%m-%d %H:%M")
                     except:
                         pass
-                tm_table.setItem(row, 6, QTableWidgetItem(modified))
+                tm_table.setItem(row, 7, QTableWidgetItem(modified))
 
                 # Description
                 desc_text = tm['description'] or ''
-                tm_table.setItem(row, 7, QTableWidgetItem(desc_text))
+                tm_table.setItem(row, 8, QTableWidgetItem(desc_text))
 
             # Update header checkbox states based on current selection
             read_header_checkbox.blockSignals(True)
             write_header_checkbox.blockSignals(True)
             bridge_header_checkbox.blockSignals(True)
+            superlookup_header_checkbox.blockSignals(True)
             all_read_checked = all(tm_table.cellWidget(r, 3).isChecked() if tm_table.cellWidget(r, 3) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             all_write_checked = all(tm_table.cellWidget(r, 4).isChecked() if tm_table.cellWidget(r, 4) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             all_bridge_checked = all(tm_table.cellWidget(r, 5).isChecked() if tm_table.cellWidget(r, 5) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
+            all_superlookup_checked = all(tm_table.cellWidget(r, 6).isChecked() if tm_table.cellWidget(r, 6) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             read_header_checkbox.setChecked(all_read_checked)
             write_header_checkbox.setChecked(all_write_checked)
             bridge_header_checkbox.setChecked(all_bridge_checked)
+            superlookup_header_checkbox.setChecked(all_superlookup_checked)
             read_header_checkbox.blockSignals(False)
             write_header_checkbox.blockSignals(False)
             bridge_header_checkbox.blockSignals(False)
+            superlookup_header_checkbox.blockSignals(False)
 
             # Summary line: total TUs across N TMs
             total_tus = sum((tm.get('entry_count') or 0) for tm in tms)
@@ -17729,7 +17792,8 @@ class SupervertalerQt(QMainWindow):
             "• <b>Read</b> (green ✓): Termbase is used for terminology matching<br>"
             "• <b>Write</b> (blue ✓): Termbase is updated with new terms<br>"
             "• <b>Project</b> (pink ✓): Set as Project Termbase (highest priority, one at a time)<br>"
-            "• <b>AI</b> (orange ✓): Send termbase terms to LLM with every translation (increases prompt size)"
+            "• <b>AI</b> (orange ✓): Send termbase terms to LLM with every translation (increases prompt size)<br>"
+            "• <b>🔍 SuperLookup</b> (teal ✓): Termbase is searched by SuperLookup (independent of Read)"
         )
         help_msg.setWordWrap(True)
         help_msg.setStyleSheet("background-color: #e3f2fd; padding: 8px; border-radius: 4px; color: #1976d2;")
@@ -17759,6 +17823,16 @@ class SupervertalerQt(QMainWindow):
         tb_clear_all_write_btn.clicked.connect(lambda: toggle_all_tb_write(False))
         tb_bulk_layout.addWidget(tb_clear_all_write_btn)
 
+        # v1.10.247: SuperLookup bulk toggles (include/exclude every termbase
+        # from SuperLookup). Late-binding via toggle_all_tb_superlookup below.
+        tb_superlookup_header_checkbox = TealCheckmarkCheckBox(self.tr("Select All SuperLookup"))
+        tb_bulk_layout.addWidget(tb_superlookup_header_checkbox)
+
+        tb_clear_all_superlookup_btn = QPushButton(self.tr("Clear All SuperLookup"))
+        tb_clear_all_superlookup_btn.setToolTip(self.tr("Uncheck the SuperLookup flag on every termbase (exclude all from SuperLookup)"))
+        tb_clear_all_superlookup_btn.clicked.connect(lambda: toggle_all_tb_superlookup(False))
+        tb_bulk_layout.addWidget(tb_clear_all_superlookup_btn)
+
         tb_bulk_layout.addStretch()
         left_layout.addLayout(tb_bulk_layout)
         
@@ -17766,11 +17840,13 @@ class SupervertalerQt(QMainWindow):
         termbase_table = QTableWidget()
         self.termbase_table = termbase_table  # Store for external access (Superlookup navigation)
         # v1.10.28: added 🎤 Voice column (per-termbase opt-in for
-        # voice-dictation vocabulary biasing). New column count = 9.
-        termbase_table.setColumnCount(9)
+        # voice-dictation vocabulary biasing).
+        # v1.10.247: added 🔍 SuperLookup column (per-termbase toggle for
+        # SuperLookup inclusion, independent of Read). New column count = 10.
+        termbase_table.setColumnCount(10)
         termbase_table.setHorizontalHeaderLabels([
             "Type", "Name", "Languages", "Terms",
-            "Read", "Write", "Project", "AI", "🎤 Voice",
+            "Read", "Write", "Project", "AI", "🎤 Voice", "🔍 SuperLookup",
         ])
         termbase_table.horizontalHeader().setStretchLastSection(False)
         termbase_table.setColumnWidth(0, 80)   # Type (Project/Background)
@@ -17782,6 +17858,7 @@ class SupervertalerQt(QMainWindow):
         termbase_table.setColumnWidth(6, 60)   # Priority
         termbase_table.setColumnWidth(7, 40)   # AI checkbox
         termbase_table.setColumnWidth(8, 70)   # 🎤 Voice checkbox
+        termbase_table.setColumnWidth(9, 100)  # 🔍 SuperLookup checkbox
         termbase_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         termbase_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         termbase_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Disable inline editing
@@ -17871,9 +17948,24 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 self.log(f"⚠️ Bulk Write toggle failed mid-way: {e}")
             refresh_termbase_list()
-        
+
+        # v1.10.247: bulk SuperLookup toggle. Single DB pass + one refresh.
+        # No index rebuild needed — SuperLookup inclusion doesn't affect the
+        # in-memory termbase matching index (that follows the Read flag).
+        def toggle_all_tb_superlookup(checked):
+            try:
+                for tb in (termbase_mgr.get_all_termbases() or []):
+                    tb_id = tb.get('id')
+                    if tb_id is None:
+                        continue
+                    termbase_mgr.set_termbase_superlookup_enabled(tb_id, bool(checked))
+            except Exception as e:
+                self.log(f"⚠️ Bulk SuperLookup toggle failed mid-way: {e}")
+            refresh_termbase_list()
+
         tb_read_header_checkbox.toggled.connect(toggle_all_tb_read)
         tb_write_header_checkbox.toggled.connect(toggle_all_tb_write)
+        tb_superlookup_header_checkbox.toggled.connect(toggle_all_tb_superlookup)
         
         # ========== RIGHT PANEL: Terms Editor ==========
         right_panel = QWidget()
@@ -18810,15 +18902,50 @@ class SupervertalerQt(QMainWindow):
                 voice_checkbox.toggled.connect(on_voice_toggle)
                 termbase_table.setCellWidget(row, 8, voice_checkbox)
 
+                # v1.10.247: 🔍 SuperLookup checkbox (teal). The single
+                # switch deciding whether SuperLookup searches this termbase,
+                # independent of Read. Default on (included) for every
+                # existing termbase. No index rebuild on toggle — it doesn't
+                # affect the active-project matching index.
+                is_superlookup = bool(tb.get('superlookup_enabled', True))
+                tb_superlookup_checkbox = TealCheckmarkCheckBox()
+                tb_superlookup_checkbox.setChecked(is_superlookup)
+                tb_superlookup_checkbox.setToolTip(self.tr(
+                    "SuperLookup: termbase is searched by SuperLookup. "
+                    "Independent of Read — leave Read off for a project and "
+                    "still search this termbase."
+                ))
+
+                def on_tb_superlookup_toggle(checked, tb_id=tb['id'], row_idx=row):
+                    success = termbase_mgr.set_termbase_superlookup_enabled(tb_id, bool(checked))
+                    if success:
+                        self.log(
+                            f"{'✅ Included in' if checked else '❌ Excluded from'} "
+                            f"SuperLookup: termbase {tb_id}"
+                        )
+                    else:
+                        sender = termbase_table.cellWidget(row_idx, 9)
+                        if sender:
+                            sender.blockSignals(True)
+                            sender.setChecked(not checked)
+                            sender.blockSignals(False)
+
+                tb_superlookup_checkbox.toggled.connect(on_tb_superlookup_toggle)
+                termbase_table.setCellWidget(row, 9, tb_superlookup_checkbox)
+
             # Update header checkbox states based on current selection
             tb_read_header_checkbox.blockSignals(True)
             tb_write_header_checkbox.blockSignals(True)
+            tb_superlookup_header_checkbox.blockSignals(True)
             all_tb_read_checked = all(termbase_table.cellWidget(r, 4).isChecked() if termbase_table.cellWidget(r, 4) else False for r in range(termbase_table.rowCount())) if termbase_table.rowCount() > 0 else False
             all_tb_write_checked = all(termbase_table.cellWidget(r, 5).isChecked() if termbase_table.cellWidget(r, 5) else False for r in range(termbase_table.rowCount())) if termbase_table.rowCount() > 0 else False
+            all_tb_superlookup_checked = all(termbase_table.cellWidget(r, 9).isChecked() if termbase_table.cellWidget(r, 9) else False for r in range(termbase_table.rowCount())) if termbase_table.rowCount() > 0 else False
             tb_read_header_checkbox.setChecked(all_tb_read_checked)
             tb_write_header_checkbox.setChecked(all_tb_write_checked)
+            tb_superlookup_header_checkbox.setChecked(all_tb_superlookup_checked)
             tb_read_header_checkbox.blockSignals(False)
             tb_write_header_checkbox.blockSignals(False)
+            tb_superlookup_header_checkbox.blockSignals(False)
 
             # v1.10.169: re-enable sorting now that the rebuild is done.
             # See the matching disable call at the top of this function.
@@ -64918,51 +65045,42 @@ class SuperlookupTab(QWidget):
     def get_selected_tm_ids(self):
         """Get list of TM IDs that SuperLookup should search.
 
-        v1.10.168: changed from "SuperLookup-local checkbox state" to
-        "the Read flag set on the TMs tab in the main window". The
-        per-SuperLookup TM checkbox list was confusing — users would
-        toggle Read on the TMs tab and then wonder why SuperLookup still
-        showed (or didn't show) results. Now there's one switch per
-        resource, in the obvious place. The Termbases tab's Read flag
-        gates termbase search the same way (see get_selected_termbase_ids).
-        Returns an empty list when no TM is active, which signals search
-        code to skip the TM query entirely.
+        v1.10.247: gated on the dedicated **SuperLookup** column on the
+        TMs tab (translation_memories.superlookup_enabled) — NOT the Read
+        flag. v1.10.168 had tied SuperLookup inclusion to the Read flag
+        (tm_activation.is_active), which meant you couldn't keep only a
+        couple of TMs Read during a project while still having SuperLookup
+        search all of them. The SuperLookup column is now the single,
+        independent switch for SuperLookup inclusion (global per TM, no
+        project context). Returns an empty list when no TM is enabled,
+        which signals search code to skip the TM query entirely.
         """
         mw = self.main_window
         if mw is None or not hasattr(mw, 'tm_metadata_mgr') or mw.tm_metadata_mgr is None:
             return []
-        # project_id = 0 means "global activation" (no project loaded);
-        # mirrors how the TMs-tab Read toggle stores its state.
-        try:
-            curr_proj = getattr(mw, 'current_project', None)
-            project_id = curr_proj.id if (curr_proj is not None and hasattr(curr_proj, 'id')) else 0
-        except Exception:
-            project_id = 0
 
         selected_ids = []
         try:
             for tm in (mw.tm_metadata_mgr.get_all_tms() or []):
-                db_id = tm.get('id')        # numeric registry id — keys activation
                 slug = tm.get('tm_id')      # string id stored on translation_units rows
-                if db_id is None:
+                # SuperLookup inclusion is the only gate here. Default True
+                # (included) for rows whose flag predates the column.
+                if not tm.get('superlookup_enabled', True):
                     continue
-                try:
-                    if mw.tm_metadata_mgr.is_tm_active(db_id, project_id):
-                        # IMPORTANT: return the STRING slug, not the numeric registry
-                        # id. The TM search filters on translation_units.tm_id, which
-                        # holds the slug ('BEIJER', 'patents', …). Passing the numeric
-                        # id makes the `tm_id IN (...)` clause match nothing, so TM
-                        # search silently returned zero results for everyone.
-                        # No numeric-id fallback: a slug-less TM cannot match any
-                        # translation_units row, so skip it loudly rather than
-                        # silently poisoning the filter with a numeric id.
-                        if slug is not None:
-                            selected_ids.append(slug)
-                        else:
-                            print(f"[Superlookup] get_selected_tm_ids: active TM id={db_id!r} "
-                                  f"has no string tm_id slug; skipping (cannot match TM rows).")
-                except Exception:
-                    continue
+                # IMPORTANT: return the STRING slug, not the numeric registry
+                # id. The TM search filters on translation_units.tm_id, which
+                # holds the slug ('BEIJER', 'patents', …). Passing the numeric
+                # id makes the `tm_id IN (...)` clause match nothing, so TM
+                # search silently returned zero results for everyone.
+                # No numeric-id fallback: a slug-less TM cannot match any
+                # translation_units row, so skip it loudly rather than
+                # silently poisoning the filter with a numeric id.
+                if slug is not None:
+                    selected_ids.append(slug)
+                else:
+                    print(f"[Superlookup] get_selected_tm_ids: SuperLookup-enabled TM "
+                          f"id={tm.get('id')!r} has no string tm_id slug; skipping "
+                          f"(cannot match TM rows).")
         except Exception as e:
             print(f"[Superlookup] get_selected_tm_ids: enumeration failed: {e}")
         return selected_ids
@@ -65178,19 +65296,16 @@ class SuperlookupTab(QWidget):
     def get_selected_termbase_ids(self):
         """Get list of termbase IDs that SuperLookup should search.
 
-        v1.10.168: changed to query the Termbases-tab Read flag
-        (termbase_activation.is_active) instead of a SuperLookup-local
-        checkbox list. One switch per resource, in the obvious place.
-        See get_selected_tm_ids for the rationale.
+        v1.10.247: gated on the dedicated **SuperLookup** column on the
+        Termbases tab (termbases.superlookup_enabled) — NOT the Read flag.
+        See get_selected_tm_ids for the rationale: SuperLookup inclusion is
+        now independent of Read, so you can keep just a few termbases Read
+        during a project while SuperLookup still searches them all. Global
+        per termbase, no project context.
         """
         mw = self.main_window
         if mw is None or not hasattr(mw, 'termbase_mgr') or mw.termbase_mgr is None:
             return []
-        try:
-            curr_proj = getattr(mw, 'current_project', None)
-            project_id = curr_proj.id if (curr_proj is not None and hasattr(curr_proj, 'id')) else 0
-        except Exception:
-            project_id = 0
 
         selected_ids = []
         try:
@@ -65198,11 +65313,10 @@ class SuperlookupTab(QWidget):
                 tb_id = tb.get('id')
                 if tb_id is None:
                     continue
-                try:
-                    if mw.termbase_mgr.is_termbase_active(tb_id, project_id):
-                        selected_ids.append(tb_id)
-                except Exception:
-                    continue
+                # SuperLookup inclusion is the only gate. Default True
+                # (included) for rows whose flag predates the column.
+                if tb.get('superlookup_enabled', True):
+                    selected_ids.append(tb_id)
         except Exception as e:
             print(f"[Superlookup] get_selected_termbase_ids: enumeration failed: {e}")
         return selected_ids
@@ -66302,17 +66416,21 @@ class SuperlookupTab(QWidget):
             # Get search direction
             direction = self.get_search_direction()
             
-            # v1.10.168: termbase selection now mirrors the Termbases-tab
-            # Read flag (termbase_activation.is_active). v1.10.169:
-            # selected_tb_ids is pre-computed on the main thread by
-            # perform_lookup() and threaded through to here, so this method
-            # can run safely from the search worker thread (sqlite cursor
-            # affinity). If the caller didn't precompute (e.g. an older
-            # call site), fall back to computing now.
+            # v1.10.247: termbase selection follows the dedicated
+            # Termbases-tab SuperLookup column (termbases.superlookup_enabled),
+            # independent of the Read flag — so a termbase can be searched by
+            # SuperLookup whether or not it's Read-active for the project. The
+            # search reads terms straight from the DB (get_terms below), NOT
+            # the Read-gated in-memory matching index, so Read-off termbases
+            # are searched fine. v1.10.169: selected_tb_ids is pre-computed on
+            # the main thread by perform_lookup() and threaded through to here,
+            # so this method can run safely from the search worker thread
+            # (sqlite cursor affinity). If the caller didn't precompute (e.g.
+            # an older call site), fall back to computing now.
             if selected_tb_ids is None:
                 selected_tb_ids = self.get_selected_termbase_ids()
             if not selected_tb_ids:
-                print("[DEBUG search_termbases] No termbase has Read enabled – skipping termbase search.")
+                print("[DEBUG search_termbases] No termbase is SuperLookup-enabled – skipping termbase search.")
                 return results
 
             all_termbases = self.termbase_mgr.get_all_termbases(connection=connection)

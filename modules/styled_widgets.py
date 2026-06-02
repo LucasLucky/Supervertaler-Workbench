@@ -158,6 +158,47 @@ class PurpleCheckmarkCheckBox(CheckmarkCheckBox):
         """)
 
 
+class TealCheckmarkCheckBox(CheckmarkCheckBox):
+    """Teal-themed variant of :class:`CheckmarkCheckBox` – same geometry
+    and hand-painted white checkmark, with a teal fill (Material 500 /
+    hover 700) instead of green.
+
+    Used by the **SuperLookup** column in the TMs and Termbases tabs: a
+    per-resource toggle controlling whether that TM / termbase is
+    searched by SuperLookup. It is deliberately independent of the
+    Read flag, so the colour is deliberately distinct from Read (green),
+    Write (blue), Bridge/AI (orange), Project (pink) and Voice (purple) –
+    one glance tells you which switch you're looking at.
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QCheckBox {
+                font-size: 9pt;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #888;
+                border-radius: 3px;
+                background-color: white;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #009688;
+                border-color: #009688;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #555;
+            }
+            QCheckBox::indicator:checked:hover {
+                background-color: #00796B;
+                border-color: #00796B;
+            }
+        """)
+
+
 class HelpButton(QPushButton):
     """A small, unobtrusive "?" button that opens the relevant help page.
 

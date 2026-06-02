@@ -347,6 +347,20 @@ class DatabaseManager:
                 )
                 print("✓ Added bridged_to_trados column to translation_memories")
 
+            # SuperLookup inclusion flag. Independent of the Read flag
+            # (tm_activation.is_active): Read controls whether a TM is used
+            # for matching the *active project*, while this controls whether
+            # SuperLookup searches the TM at all. Decoupling them lets a user
+            # keep only a couple of TMs Read during a project while still
+            # having SuperLookup search every TM. DEFAULT 1 (included) so on
+            # upgrade SuperLookup searches everything, then the user opts out
+            # per TM via the SuperLookup column on the TMs tab.
+            if 'superlookup_enabled' not in columns:
+                self.cursor.execute(
+                    "ALTER TABLE translation_memories ADD COLUMN superlookup_enabled BOOLEAN DEFAULT 1"
+                )
+                print("✓ Added superlookup_enabled column to translation_memories (default: included)")
+
             self.connection.commit()
         except Exception as e:
             print(f"Migration info: {e}")
@@ -423,6 +437,22 @@ class DatabaseManager:
         try:
             self.cursor.execute(
                 "ALTER TABLE termbases ADD COLUMN voice_dictation_enabled BOOLEAN DEFAULT 0"
+            )
+            self.connection.commit()
+        except Exception:
+            # Column already exists, ignore
+            pass
+
+        # SuperLookup inclusion flag (mirror of the translation_memories
+        # column above). Independent of the Read flag
+        # (termbase_activation.is_active): Read gates terminology matching
+        # for the active project; this gates whether SuperLookup searches
+        # the termbase at all. DEFAULT 1 (included) so SuperLookup keeps
+        # searching every termbase on upgrade until the user opts out per
+        # termbase via the SuperLookup column on the Termbases tab.
+        try:
+            self.cursor.execute(
+                "ALTER TABLE termbases ADD COLUMN superlookup_enabled BOOLEAN DEFAULT 1"
             )
             self.connection.commit()
         except Exception:

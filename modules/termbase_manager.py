@@ -124,7 +124,8 @@ class TermbaseManager:
                     t.id, t.name, t.source_lang, t.target_lang, t.project_id,
                     t.description, t.is_global, t.priority, t.is_project_termbase, 
                     t.ranking, t.read_only, t.created_date, t.modified_date,
-                    COUNT(gt.id) as term_count
+                    COUNT(gt.id) as term_count,
+                    COALESCE(t.superlookup_enabled, 1) as superlookup_enabled
                 FROM termbases t
                 LEFT JOIN termbase_terms gt ON CAST(t.id AS TEXT) = gt.termbase_id
                 GROUP BY t.id
@@ -147,7 +148,10 @@ class TermbaseManager:
                     'read_only': bool(row[10]) if row[10] is not None else True,  # Default to read-only if NULL
                     'created_date': row[11],
                     'modified_date': row[12],
-                    'term_count': row[13] or 0
+                    'term_count': row[13] or 0,
+                    # SuperLookup inclusion (default True/included if the
+                    # column predates this row — see database_manager migration).
+                    'superlookup_enabled': bool(row[14]) if len(row) > 14 and row[14] is not None else True,
                 })
 
             if _close_cursor:
@@ -487,6 +491,33 @@ class TermbaseManager:
             return True
         except Exception as e:
             self.log(f"✗ Error setting termbase voice_dictation_enabled: {e}")
+            return False
+
+    def set_termbase_superlookup_enabled(self, termbase_id: int, enabled: bool) -> bool:
+        """Set whether SuperLookup searches this termbase.
+
+        Independent of the Read flag (termbase_activation.is_active): this
+        is the single switch that controls SuperLookup inclusion, so a
+        termbase can be searched by SuperLookup whether or not it's
+        Read-active for the current project. Global per termbase, no
+        project context.
+        """
+        try:
+            cursor = self.db_manager.cursor
+            cursor.execute(
+                "UPDATE termbases SET superlookup_enabled = ? WHERE id = ?",
+                (1 if enabled else 0, termbase_id),
+            )
+            self.db_manager.connection.commit()
+            status = "included in" if enabled else "excluded from"
+            self.log(f"✓ Termbase {termbase_id} {status} SuperLookup")
+            return True
+        except Exception as e:
+            self.log(f"✗ Error setting termbase superlookup_enabled: {e}")
+            try:
+                self.db_manager.connection.rollback()
+            except Exception:
+                pass
             return False
 
     def get_voice_enabled_termbase_ids(self) -> list:

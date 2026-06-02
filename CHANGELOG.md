@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.246 (June 1, 2026)
+**Current Version:** v1.10.247 (June 2, 2026)
+
+
+## v1.10.247 – June 2, 2026
+
+### Added (SuperLookup)
+
+- **A dedicated "🔍 SuperLookup" column on the TMs and Termbases tabs — the single, independent switch for what SuperLookup searches.** Until now, SuperLookup searched exactly the TMs and termbases that had the **Read** flag set (v1.10.168 tied the two together). That meant you couldn't keep just a couple of TMs Read during a project while still having SuperLookup search *all* of them — the same applied to termbases. SuperLookup inclusion is now controlled by its own teal-tick column, **fully decoupled from Read**: a TM or termbase can be searched by SuperLookup whether or not it's Read-active for the current project, and vice versa. Each tab gets a "Select All / Clear All SuperLookup" bulk toggle to match the other columns. The flag is **global per resource** (one setting per TM/termbase, the same in every project), backed by a new `superlookup_enabled` column that **defaults to on for every existing TM and termbase** on upgrade — so SuperLookup keeps searching everything until you deliberately exclude something. The search reads matches straight from the database, so a SuperLookup-enabled but Read-off resource is searched correctly.
 
 
 ## v1.10.246 – June 1, 2026
