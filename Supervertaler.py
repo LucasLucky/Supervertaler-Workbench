@@ -47535,28 +47535,31 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(status_group)
         
         # Target TM group
-        tm_group = QGroupBox(self.tr("Target Translation Memory"))
+        tm_group = QGroupBox(self.tr("Target Translation Memories"))
         tm_layout = QVBoxLayout(tm_group)
         
-        tm_combo = QComboBox()
-        for tm in writable_tms:
+        # Multi-select: one checkbox per writable TM so several can be updated
+        # in a single run (was a single-pick combo before). We store the STRING
+        # tm_id (e.g. 'patents'), NOT the integer PK (`tm['id']`, e.g. 86): the
+        # match-panel read path queries translation_units by string tm_id, so
+        # writing under the integer-PK form makes the bulk-written rows invisible
+        # to it (surfaced as "segment 306 won't show TM matches even after Update
+        # Active TMs" – the row existed, just under the wrong key).
+        # update_entry_count and add_translation_unit both expect the string
+        # form, so this keeps the whole write path aligned.
+        tm_checkboxes = []  # list of (checkbox, tm_id, name)
+        for i, tm in enumerate(writable_tms):
             entry_count = tm.get('entry_count', 0)
-            # v1.10.215: store the STRING tm_id (e.g. 'patents') as combo data,
-            # not the integer PK (`tm['id']`, e.g. 86). The match-panel read
-            # path queries translation_units by string tm_id; writing under
-            # the integer-PK form makes the bulk-written rows invisible to it.
-            # Same bug surfaced as "segment 306 won't show TM matches even
-            # after Update Active TMs" – the row existed, just under the
-            # wrong key. update_entry_count and add_translation_unit both
-            # expect the string form, so this aligns the entire write path.
-            tm_combo.addItem(f"{tm['name']} ({entry_count} entries)", tm['tm_id'])
+            cb = CheckmarkCheckBox(f"{tm['name']} ({entry_count} entries)")
+            if i == 0:
+                cb.setChecked(True)  # default to the first (matches the old default)
+            tm_layout.addWidget(cb)
+            tm_checkboxes.append((cb, tm['tm_id'], tm['name']))
 
-        tm_layout.addWidget(tm_combo)
-        
         # Note about multiple writable TMs
         if len(writable_tms) > 1:
             multi_note = QLabel(
-                f"ℹ️ {len(writable_tms)} writable TMs available. Select which one to send segments to."
+                f"ℹ️ {len(writable_tms)} writable TMs available. Tick every TM you want to send segments to."
             )
             multi_note.setStyleSheet("color: #2196F3; font-size: 10px;")
             tm_layout.addWidget(multi_note)
@@ -47625,154 +47628,150 @@ class SupervertalerQt(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         
-        # Perform the operation
-        target_tm_id = tm_combo.currentData()
-        target_tm_name = tm_combo.currentText()
-        
+        # Perform the operation — send to every ticked TM in one pass.
+        selected_tms = [(tm_id, name) for cb, tm_id, name in tm_checkboxes if cb.isChecked()]
+        if not selected_tms:
+            QMessageBox.information(
+                self, self.tr("No TM selected"),
+                self.tr("Tick at least one Translation Memory to send segments to."))
+            return
+
         segments_to_check = selected_segments if scope_selected.isChecked() else self.current_project.segments
-        
-        sent_count = 0
+
+        # Pre-clean each qualifying segment ONCE (the cleaning is identical for
+        # every target TM) so the per-TM write loop stays cheap. Each item is
+        # (seg, source_clean, target_clean). skipped_count is per-TM: the same
+        # set is skipped for each selected TM.
+        skip_empty = skip_empty_cb.isChecked()
+        overwrite = overwrite_cb.isChecked()
+        all_statuses = all_statuses_cb.isChecked()
+        prepared = []
         skipped_count = 0
-        error_count = 0
-        
-        # Get language codes
-        source_lang = self.current_project.source_lang or "en"
-        target_lang = self.current_project.target_lang or "nl"
-        
-        self.status_bar.showMessage(f"Sending segments to TM '{target_tm_name}'...")
-        QApplication.processEvents()
-        
+        for seg in segments_to_check:
+            if skip_empty and not seg.target.strip():
+                skipped_count += 1
+                continue
+            should_send = False
+            if all_statuses:
+                should_send = bool(seg.target.strip())
+            else:
+                for status_key, cb in status_checkboxes.items():
+                    if cb.isChecked() and seg.status == status_key:
+                        should_send = True
+                        break
+            if not should_send:
+                skipped_count += 1
+                continue
+            # Reverse invisible-char display markers (·/→/°/↵) so they never
+            # leak into the TM, then strip wrapping/formatting tags.
+            source_clean = seg.source
+            target_clean = seg.target
+            if hasattr(self, 'reverse_invisible_replacements'):
+                source_clean = self.reverse_invisible_replacements(source_clean)
+                target_clean = self.reverse_invisible_replacements(target_clean)
+            if self.hide_outer_wrapping_tags:
+                source_clean, _ = strip_outer_wrapping_tags(source_clean)
+                target_clean, _ = strip_outer_wrapping_tags(target_clean)
+            source_clean = strip_formatting_tags(source_clean) if has_formatting_tags(source_clean) else source_clean
+            target_clean = strip_formatting_tags(target_clean) if has_formatting_tags(target_clean) else target_clean
+            prepared.append((seg, source_clean, target_clean))
+
         from PyQt6.QtWidgets import QProgressDialog
-        _total = len(segments_to_check)
+        _per_tm = len(prepared)
+        _total = _per_tm * len(selected_tms)
         _progress = QProgressDialog(
-            f"Updating '{target_tm_name}'…", "Cancel", 0, _total, self)
+            self.tr("Updating TMs…"), self.tr("Cancel"), 0, max(_total, 1), self)
         _progress.setWindowTitle(self.tr("Updating TM"))
         _progress.setWindowModality(Qt.WindowModality.WindowModal)
-        # Only appears if the run takes longer than ~400 ms, so small
-        # selections don't flash a dialog; long runs show progress + Cancel.
+        # Only appears if the run takes longer than ~400 ms.
         _progress.setMinimumDuration(400)
         _progress.setValue(0)
         cancelled = False
 
-        for _idx, seg in enumerate(segments_to_check):
-            # Refresh the dialog every 20 segments (and on the last one) so a
-            # large project no longer freezes the UI with no feedback.
-            if _idx % 20 == 0 or _idx == _total - 1:
-                _progress.setValue(_idx)
-                _progress.setLabelText(
-                    f"Updating '{target_tm_name}'… ({_idx + 1}/{_total})")
-                QApplication.processEvents()
-                if _progress.wasCanceled():
-                    cancelled = True
-                    break
-            try:
-                # Check if has translation
-                if skip_empty_cb.isChecked() and not seg.target.strip():
-                    skipped_count += 1
-                    continue
-                
-                # Check status
-                should_send = False
-                if all_statuses_cb.isChecked():
-                    if seg.target.strip():
-                        should_send = True
-                else:
-                    for status_key, cb in status_checkboxes.items():
-                        if cb.isChecked() and seg.status == status_key:
-                            should_send = True
-                            break
-                
-                if not should_send:
-                    skipped_count += 1
-                    continue
+        self.status_bar.showMessage(
+            self.tr("Sending segments to %d TM(s)…") % len(selected_tms))
+        QApplication.processEvents()
 
-                # Reverse any invisible-char display markers (·/→/°/↵) so they
-                # never leak into the TM (defensive – the model is usually clean).
-                source_clean = seg.source
-                target_clean = seg.target
-                if hasattr(self, 'reverse_invisible_replacements'):
-                    source_clean = self.reverse_invisible_replacements(source_clean)
-                    target_clean = self.reverse_invisible_replacements(target_clean)
-
-                # Strip outer wrapping tags first (like <li-b>, <li-o>, <p>) if setting is enabled
-                if self.hide_outer_wrapping_tags:
-                    source_clean, _ = strip_outer_wrapping_tags(source_clean)
-                    target_clean, _ = strip_outer_wrapping_tags(target_clean)
-
-                # Then strip formatting tags (like <b>, <i>, <u>)
-                source_clean = strip_formatting_tags(source_clean) if has_formatting_tags(source_clean) else source_clean
-                target_clean = strip_formatting_tags(target_clean) if has_formatting_tags(target_clean) else target_clean
-
-                # Add to TM. v1.10.145: honour the "Update existing entries
-                # (overwrite if source matches)" checkbox – previously it was
-                # ignored and entries were always appended, so the TM accumulated
-                # duplicates instead of being updated. With overwrite on, entries
-                # with the same source are replaced, leaving a clean TM with only
-                # the latest translation per source.
+        per_tm_sent = {}   # name -> count written
+        error_count = 0
+        _done = 0
+        for target_tm_id, target_tm_name in selected_tms:
+            if cancelled:
+                break
+            sent_this = 0
+            for seg, source_clean, target_clean in prepared:
+                if _done % 20 == 0:
+                    _progress.setValue(_done)
+                    _progress.setLabelText(
+                        self.tr("Updating '%s'… (%d/%d)") % (target_tm_name, _done + 1, max(_total, 1)))
+                    QApplication.processEvents()
+                    if _progress.wasCanceled():
+                        cancelled = True
+                        break
+                # v1.10.145: honour the overwrite checkbox — entries with the
+                # same source are replaced rather than appended (no duplicates).
                 try:
                     self.tm_database.add_entry(
                         source=source_clean,
                         target=target_clean,
                         tm_id=target_tm_id,
-                        overwrite=overwrite_cb.isChecked()
+                        overwrite=overwrite,
                     )
-                    sent_count += 1
+                    sent_this += 1
                 except Exception as add_error:
-                    self.log(f"⚠ Failed to add segment {seg.id}: {add_error}")
+                    self.log(f"⚠ Failed to add segment {seg.id} to '{target_tm_name}': {add_error}")
                     error_count += 1
-                    
-            except Exception as e:
-                error_count += 1
-                self.log(f"⚠ Error sending segment {seg.id} to TM: {e}")
-        
-        _progress.setValue(_total)
+                _done += 1
+            per_tm_sent[target_tm_name] = sent_this
+            # Update entry count for this TM in metadata.
+            if hasattr(self, 'tm_metadata_mgr') and self.tm_metadata_mgr:
+                try:
+                    self.tm_metadata_mgr.update_entry_count(target_tm_id)
+                except Exception as e:
+                    self.log(f"⚠ Could not update entry count for '{target_tm_name}': {e}")
+
+        _progress.setValue(max(_total, 1))
         _progress.close()
 
-        # Update TM entry count in metadata
-        if hasattr(self, 'tm_metadata_mgr') and self.tm_metadata_mgr:
-            try:
-                self.tm_metadata_mgr.update_entry_count(target_tm_id)
-            except Exception as e:
-                self.log(f"⚠ Could not update TM entry count: {e}")
-        
-        # Refresh TM list if visible
+        sent_count = sum(per_tm_sent.values())
+
+        # Refresh TM list if visible.
         if hasattr(self, 'refresh_tm_list'):
             try:
                 self.refresh_tm_list()
-            except:
+            except Exception:
                 pass
 
-        # v1.10.213: invalidate the match-panel cache so the newly-written
-        # TUs surface as matches without needing a project reopen. The bulk
-        # write commits to SQLite but the in-memory translation_matches_cache
-        # is segment-keyed and stale – without this call, segments the user
-        # already visited continue to show their pre-bulk-write match set.
-        # Full invalidation (smart_invalidation=False) – cheaper than
-        # walking the cache, and a bulk write usually touches enough
-        # segments to make a partial clear pointless.
+        # v1.10.213: invalidate the segment-keyed match-panel cache so the
+        # newly-written TUs surface without a project reopen.
         if hasattr(self, 'invalidate_translation_cache'):
             try:
                 self.invalidate_translation_cache(smart_invalidation=False)
             except Exception as e:
                 self.log(f"⚠ Could not invalidate match cache: {e}")
 
-        # Report results
-        self.log(f"✓ Sent {sent_count} segments to TM '{target_tm_name}'")
+        # Report results.
+        self.log(f"✓ Sent to {len(selected_tms)} TM(s): {sent_count} write(s) total")
+        for name, n in per_tm_sent.items():
+            self.log(f"   {name}: {n}")
         if skipped_count > 0:
-            self.log(f"  Skipped: {skipped_count} (empty or non-matching status)")
+            self.log(f"  Skipped per TM: {skipped_count} (empty or non-matching status)")
         if error_count > 0:
             self.log(f"  Errors: {error_count}")
-        
-        _title = "Send to TM – Cancelled" if cancelled else "Send to TM Complete"
-        _prefix = "Operation cancelled before finishing.\n\n" if cancelled else ""
-        self.status_bar.showMessage(
-            f"{'⚠ Cancelled – ' if cancelled else '✓ '}Sent {sent_count} segments to TM", 5000)
 
+        _title = self.tr("Send to TM – Cancelled") if cancelled else self.tr("Send to TM Complete")
+        _prefix = self.tr("Operation cancelled before finishing.\n\n") if cancelled else ""
+        self.status_bar.showMessage(
+            ("⚠ Cancelled – " if cancelled else "✓ ") +
+            f"Sent {sent_count} write(s) across {len(selected_tms)} TM(s)", 5000)
+
+        _tm_lines = "\n".join(f"  • {name}: {n}" for name, n in per_tm_sent.items())
         QMessageBox.information(
             self, _title,
             f"{_prefix}"
-            f"Sent {sent_count} segment(s) to TM '{target_tm_name}'.\n\n"
-            f"Skipped: {skipped_count}\n"
+            f"Sent {sent_count} segment-write(s) across {len(selected_tms)} TM(s):\n"
+            f"{_tm_lines}\n\n"
+            f"Skipped per TM: {skipped_count}\n"
             f"Errors: {error_count}"
         )
     

@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.249 (June 4, 2026)
+**Current Version:** v1.10.250 (June 4, 2026)
+
+
+## v1.10.250 – June 4, 2026
+
+### Added (TMs)
+
+- **"Update active TMs" can now send segments to several TMs at once.** The Bulk Operations ▸ Update active TMs ("Send Segments to TM") dialog used to show how many writable TMs you had but only let you pick one from a dropdown, so updating three TMs meant running it three times. The target picker is now a checklist — tick every TM you want — and the run writes to all of them in a single pass with one combined progress bar and a per-TM summary of how many segments went to each. Each segment is filtered and cleaned once and then written to every selected TM, so adding a second or third target only costs the extra writes.
 
 
 ## v1.10.249 – June 4, 2026
