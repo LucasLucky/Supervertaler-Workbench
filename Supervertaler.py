@@ -24970,7 +24970,13 @@ class SupervertalerQt(QMainWindow):
                 # Start
                 self.voice_listener.start()
                 self.log("🎧 Always-on listening started")
-                
+
+                # Always-On is the only time the Pause-Always-On hotkey
+                # matters, so guarantee it's armed now rather than relying on
+                # push-to-talk having lazily created the keyboard listener
+                # earlier in the session (it may never have).
+                self._ensure_voice_pause_hotkey_armed()
+
             except Exception as e:
                 import traceback
                 self.log(f"❌ Failed to start always-on listening: {e}")
@@ -38266,6 +38272,49 @@ class SupervertalerQt(QMainWindow):
                 segment_comments[seg_id] = notes
         return segment_comments
 
+    def _confirm_include_comments(self, segment_comments: dict):
+        """Ask whether to ship internal comments/notes in a Trados export.
+
+        Segment comments/notes are internal by default. They can hold AI
+        review rationale round-tripped in via the bilingual re-import, or any
+        working note the translator never meant for the client. So the export
+        must NOT write them unless the translator explicitly opts in.
+
+        Returns the dict to use: unchanged if the user ticks the box, emptied
+        if not, or ``None`` if the user cancels the export. No prompt is shown
+        when there are no comments to begin with.
+        """
+        if not segment_comments:
+            return segment_comments
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Include comments?")
+        box.setText(
+            f"This project has notes/comments on {len(segment_comments)} "
+            "segment(s).")
+        box.setInformativeText(
+            "By default these are <b>not</b> written to the exported file, so "
+            "internal notes never reach the client.<br><br>"
+            "Tick the box below only if you want them exported as Trados Studio "
+            "comments.")
+        incl = CheckmarkCheckBox(
+            "Include comments as Trados comments in the export")
+        incl.setChecked(False)
+        box.setCheckBox(incl)
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Ok)
+        if box.exec() != QMessageBox.StandardButton.Ok:
+            self.log("Export cancelled by user at the include-comments prompt")
+            return None
+        if not incl.isChecked():
+            self.log(f"  Excluding {len(segment_comments)} segment comment(s) "
+                     "from export (default; not shipped to client)")
+            return {}
+        self.log(f"  Including {len(segment_comments)} segment comment(s) in "
+                 "export (translator opted in)")
+        return segment_comments
+
     def export_sdlrpx_package(self):
         """Export translations back to a Trados Studio SDLRPX return package."""
         if not self.current_project or not self.current_project.segments:
@@ -38352,6 +38401,9 @@ class SupervertalerQt(QMainWindow):
             # Build translations and comments dicts
             translations = self._build_sdlxliff_translations_dict()
             segment_comments = self._build_sdlxliff_comments_dict()
+            segment_comments = self._confirm_include_comments(segment_comments)
+            if segment_comments is None:
+                return  # user cancelled at the include-comments prompt
 
             total_segs = len(self.current_project.segments)
             segs_with_target = sum(1 for s in self.current_project.segments if s.target and s.target.strip())
@@ -38985,6 +39037,9 @@ class SupervertalerQt(QMainWindow):
             # Build translations and comments dicts
             translations = self._build_sdlxliff_translations_dict()
             segment_comments = self._build_sdlxliff_comments_dict()
+            segment_comments = self._confirm_include_comments(segment_comments)
+            if segment_comments is None:
+                return  # user cancelled at the include-comments prompt
 
             if not translations:
                 QMessageBox.warning(
@@ -54344,6 +54399,39 @@ class SupervertalerQt(QMainWindow):
                 self.log("▶️ Always-On resumed")
             except Exception as e:
                 self.log(f"⚠ Could not resume Always-On: {e}")
+
+    def _ensure_voice_pause_hotkey_armed(self):
+        """Guarantee the Pause-Always-On hotkey is registered on the global
+        keyboard listener.
+
+        Idempotent and safe to call repeatedly. Called whenever Always-On
+        starts so the pause key is live exactly when it matters, instead of
+        depending on push-to-talk having lazily created the listener earlier
+        in the session. Without this, a user who drives an external dictation
+        tool (and never uses the Workbench push-to-talk) could have Always-On
+        running with the pause hotkey never registered — so the key does
+        nothing and the external dictation bleeds into Vosk ([unk] [unk]).
+        """
+        try:
+            spec = (self.load_dictation_settings() or {}).get('voice_pause_hotkey') or ''
+        except Exception:
+            spec = ''
+        if not spec:
+            return  # no pause hotkey configured — nothing to arm
+        listener = self._get_voice_hotkey_listener()
+        if listener is None:
+            return
+        try:
+            # Re-register unconditionally (unregister first) so we're correct
+            # even if the listener was created before the hotkey was set, or a
+            # prior registration was cleared.
+            listener.unregister('voice_pause_alwayson')
+            if listener.register_serialized('voice_pause_alwayson', spec):
+                self.log("⏸️ Pause-Always-On hotkey armed")
+            else:
+                self.log(f"⚠ Could not parse Pause-Always-On hotkey: {spec!r}")
+        except Exception as e:
+            self.log(f"⚠ Could not arm Pause-Always-On hotkey: {e}")
 
     def _on_voice_pause_press(self):
         if self._voice_pause_mode() == 'toggle':

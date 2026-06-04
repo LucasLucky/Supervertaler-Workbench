@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.247 (June 2, 2026)
+**Current Version:** v1.10.248 (June 4, 2026)
+
+
+## v1.10.248 – June 4, 2026
+
+### Fixed (Voice)
+
+- **Pause Always-On now reliably arms whenever Always-On is listening.** The recordable Pause-Always-On hotkey (for external dictation tools) was only ever registered *lazily* — as a side effect of the push-to-talk listener being created. If you drive dictation entirely from an external tool and never use the Workbench push-to-talk, that listener might never come up, leaving the pause key registered to nothing: Always-On kept the microphone and the external tool's speech bled into Vosk as `[unk]` noise. The pause hotkey is now (re-)armed every time Always-On starts, so it is live exactly when it matters, independent of push-to-talk. (Note for users pausing via an AutoHotkey-remapped media key: use the `~` prefix on the hotkey so the native key still propagates to the Workbench's keyboard hook.)
+
+### Changed (Trados export)
+
+- **Trados return-package export now asks before shipping internal segment comments.** Segment notes/comments are internal by default — they can hold AI review rationale round-tripped in via the bilingual re-import, or any private working note. The SDLRPX / SDLXLIFF export now prompts when a project has comments and, unless you explicitly tick the box, leaves them out of the exported file so they never reach the client.
 
 
 ## v1.10.247 – June 2, 2026
