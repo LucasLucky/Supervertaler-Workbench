@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.248 (June 4, 2026)
+**Current Version:** v1.10.249 (June 4, 2026)
+
+
+## v1.10.249 – June 4, 2026
+
+### Fixed (Voice)
+
+- **The "show log" internal voice command opens the detached Log window again.** It still tried to switch to a "Log" tab, but the Log stopped being a tab in a v1.10.x UI change (it is now a detached window) — so the command silently did nothing. It now opens the detached Log window, the same as the toolbar 📋 Log button and Tools ▸ Log Window. The other built-in internal actions (navigation, confirm, copy/clear, translate, SuperLookup, concordance, dictation, "show editor") were verified to still map to live handlers.
 
 
 ## v1.10.248 – June 4, 2026

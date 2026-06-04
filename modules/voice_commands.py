@@ -207,7 +207,10 @@ class VoiceCommandManager(QObject):
             "concordance_search": lambda: main_window.show_concordance_search() if hasattr(main_window, 'show_concordance_search') else self._log_missing('show_concordance_search'),
             
             # View
-            "show_log": lambda: self._show_tab(main_window, "Log"),
+            # The Log is no longer a tab (v1.10.x moved it to a detached
+            # window), so switch tabs would silently no-op — open the detached
+            # Log window instead.
+            "show_log": lambda: main_window.detach_log_window() if hasattr(main_window, 'detach_log_window') else self._log_missing('detach_log_window'),
             "show_editor": lambda: self._show_tab(main_window, "Editor"),
             
             # Dictation
