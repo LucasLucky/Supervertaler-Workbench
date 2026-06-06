@@ -168,6 +168,159 @@ def create_synonyms_table(db_manager) -> bool:
         return False
 
 
+def migrate_tm_activation_column_name(db_manager) -> bool:
+    """Rename tm_activation.tm_id -> tm_db_id (idempotent).
+
+    The column holds the NUMERIC translation_memories.id, but its old name
+    collided with translation_units.tm_id (the string slug) — the confusion
+    behind the v1.10.242 "0 TM matches" bug. Renaming makes the schema
+    self-documenting. ALTER ... RENAME COLUMN rewrites the PK + FK definitions
+    automatically.
+    """
+    try:
+        cursor = db_manager.cursor
+        cols = [r[1] for r in cursor.execute("PRAGMA table_info(tm_activation)")]
+        if 'tm_db_id' in cols or 'tm_id' not in cols:
+            return True  # already migrated (or table absent)
+        cursor.execute("ALTER TABLE tm_activation RENAME COLUMN tm_id TO tm_db_id")
+        db_manager.connection.commit()
+        print("✓ Renamed tm_activation.tm_id -> tm_db_id")
+        return True
+    except Exception as e:
+        print(f"✗ tm_activation column rename failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def migrate_termbase_terms_id_to_integer(db_manager) -> bool:
+    """Rebuild termbase_terms so termbase_id has INTEGER affinity (was TEXT),
+    removing the TEXT-vs-INTEGER mismatch that forced CASTs in every join.
+    Idempotent. Preserves all rows + the `id` PK (FTS content_rowid and the
+    termbase_synonyms FK depend on it), recreates indexes, rebuilds FTS.
+    Validated on a real 93k-row copy before shipping.
+    """
+    try:
+        cursor = db_manager.cursor
+        info = {r[1]: (r[2] or '') for r in cursor.execute("PRAGMA table_info(termbase_terms)")}
+        if not info or info.get('termbase_id', '').upper() == 'INTEGER':
+            return True  # already migrated (or table absent)
+
+        row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='termbase_terms'").fetchone()
+        if not row:
+            return True
+        new_sql = row[0].replace("CREATE TABLE termbase_terms (",
+                                 "CREATE TABLE termbase_terms_new (", 1)
+        new_sql = new_sql.replace("termbase_id TEXT NOT NULL",
+                                  "termbase_id INTEGER NOT NULL", 1)
+        if "termbase_terms_new" not in new_sql or "termbase_id INTEGER NOT NULL" not in new_sql:
+            print("✗ termbase_terms migration: unexpected DDL, skipping (no change made)")
+            return False
+        idx_sqls = [r[0] for r in cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='termbase_terms' "
+            "AND sql IS NOT NULL")]
+
+        conn = db_manager.connection
+        old_iso = conn.isolation_level
+        conn.isolation_level = None  # manage the transaction explicitly
+        try:
+            cursor.execute("PRAGMA foreign_keys=OFF")
+            cursor.execute("BEGIN")
+            cursor.execute(new_sql)
+            cursor.execute("INSERT INTO termbase_terms_new SELECT * FROM termbase_terms")
+            cursor.execute("DROP TABLE termbase_terms")
+            cursor.execute("ALTER TABLE termbase_terms_new RENAME TO termbase_terms")
+            for s in idx_sqls:
+                cursor.execute(s)
+            cursor.execute("INSERT OR REPLACE INTO sqlite_sequence(name, seq) "
+                           "SELECT 'termbase_terms', COALESCE(MAX(id), 0) FROM termbase_terms")
+            cursor.execute("INSERT INTO termbase_terms_fts(termbase_terms_fts) VALUES('rebuild')")
+            cursor.execute("COMMIT")
+        except Exception:
+            try:
+                cursor.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            cursor.execute("PRAGMA foreign_keys=ON")
+            conn.isolation_level = old_iso
+
+        viol = cursor.execute("PRAGMA foreign_key_check").fetchall()
+        if viol:
+            print(f"⚠️ termbase_terms migration: {len(viol)} FK violation(s) after rebuild")
+        print("✓ Rebuilt termbase_terms with INTEGER termbase_id")
+        return True
+    except Exception as e:
+        print(f"✗ termbase_terms INTEGER migration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def _backup_database_before_structural_migration(db_manager) -> bool:
+    """Take a consistent, timestamped snapshot of the DB right before a
+    structural migration (table rebuild / column rename) runs.
+
+    These are the first non-additive migrations the app ships, so every user
+    gets a safety net even though they didn't make a manual backup. Uses
+    SQLite's online backup API, which is consistent even with the DB open in
+    WAL mode. Best-effort: a backup failure is logged loudly but does NOT abort
+    the migration (the individual migrations are transactional/atomic, and a
+    disk-full backup failure would also roll back the rebuild safely).
+    """
+    import os
+    import sqlite3
+    from datetime import datetime
+    try:
+        db_path = getattr(db_manager, 'db_path', None)
+        if not db_path or not os.path.exists(db_path):
+            print("⚠️ Pre-migration backup skipped: database path unknown")
+            return False
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = f"{db_path}.pre-migration-{ts}.bak"
+        dest = sqlite3.connect(backup_path)
+        try:
+            db_manager.connection.backup(dest)
+        finally:
+            dest.close()
+        size_mb = os.path.getsize(backup_path) / (1024 * 1024)
+        print(f"💾 Pre-migration backup written: {backup_path} ({size_mb:.0f} MB) — "
+              f"delete it once the upgrade is confirmed working.")
+        return True
+    except Exception as e:
+        print(f"⚠️ Pre-migration backup FAILED ({e}). Proceeding anyway — the "
+              f"migrations are transactional, but no restore point was created.")
+        return False
+
+
+def _verify_structural_migrations(db_manager) -> bool:
+    """After running migrations, confirm the structural changes actually took.
+    A mismatch (e.g. an old bundled SQLite that couldn't RENAME COLUMN) would
+    otherwise leave the app's code expecting a schema the DB doesn't have, so
+    surface it LOUDLY rather than silently breaking search."""
+    ok = True
+    try:
+        cur = db_manager.cursor
+        tma = {r[1] for r in cur.execute("PRAGMA table_info(tm_activation)")}
+        if tma and 'tm_db_id' not in tma:
+            ok = False
+            print("❌ POST-MIGRATION CHECK FAILED: tm_activation.tm_db_id is missing. "
+                  "TM activation/search may not work. Restore the pre-migration "
+                  "backup (*.pre-migration-*.bak) and report this.")
+        tt = {r[1]: (r[2] or '') for r in cur.execute("PRAGMA table_info(termbase_terms)")}
+        if tt and tt.get('termbase_id', '').upper() != 'INTEGER':
+            # Not fatal — the column still works via affinity/CAST — but note it.
+            print("⚠️ POST-MIGRATION CHECK: termbase_terms.termbase_id is still not "
+                  "INTEGER (functional via affinity, but the rebuild did not complete).")
+        if ok:
+            print("✅ Post-migration check passed (tm_db_id present, termbase_id INTEGER)")
+    except Exception as e:
+        print(f"⚠️ Post-migration verification error: {e}")
+    return ok
+
+
 def run_all_migrations(db_manager) -> bool:
     """
     Run all pending database migrations.
@@ -202,6 +355,16 @@ def run_all_migrations(db_manager) -> bool:
 
     # Migration 5: Create clipboard_history table
     if not create_clipboard_history_table(db_manager):
+        success = False
+
+    # Migration 6: Disambiguate tm_activation.tm_id (numeric id) -> tm_db_id
+    if not migrate_tm_activation_column_name(db_manager):
+        success = False
+
+    # Migration 7: termbase_terms.termbase_id TEXT -> INTEGER. MUST run last —
+    # it rebuilds the table, so it needs every column added by earlier
+    # migrations to already be present.
+    if not migrate_termbase_terms_id_to_integer(db_manager):
         success = False
 
     print("="*60)
@@ -273,11 +436,35 @@ def check_and_migrate(db_manager) -> bool:
         if needs_ai_inject:
             print("⚠️ Migration needed - termbases.ai_inject column missing")
 
-        if needs_migration or needs_synonyms_table or needs_ai_inject or needs_clipboard_table:
+        # Identifier-disambiguation migrations (2026-06-01):
+        # tm_activation.tm_id -> tm_db_id, and termbase_terms.termbase_id TEXT -> INTEGER.
+        cursor.execute("PRAGMA table_info(tm_activation)")
+        tma_cols = {row[1] for row in cursor.fetchall()}
+        needs_tm_activation_rename = ('tm_id' in tma_cols and 'tm_db_id' not in tma_cols)
+        if needs_tm_activation_rename:
+            print("⚠️ Migration needed - tm_activation.tm_id -> tm_db_id")
+
+        cursor.execute("PRAGMA table_info(termbase_terms)")
+        tt_info = {row[1]: (row[2] or '') for row in cursor.fetchall()}
+        needs_termbase_id_int = bool(tt_info) and tt_info.get('termbase_id', '').upper() != 'INTEGER'
+        if needs_termbase_id_int:
+            print("⚠️ Migration needed - termbase_terms.termbase_id TEXT -> INTEGER")
+
+        structural = needs_tm_activation_rename or needs_termbase_id_int
+
+        if (needs_migration or needs_synonyms_table or needs_ai_inject or needs_clipboard_table
+                or structural):
+            # Structural migrations (table rebuild / column rename) get a
+            # consistent timestamped backup first — the safety net every user
+            # gets, since these are the first non-additive migrations we ship.
+            if structural:
+                _backup_database_before_structural_migration(db_manager)
             success = run_all_migrations(db_manager)
             if success:
                 # Generate UUIDs for terms that don't have them
                 generate_missing_uuids(db_manager)
+            if structural:
+                _verify_structural_migrations(db_manager)
             return success
         
         # Even if no schema migration needed, check for missing UUIDs

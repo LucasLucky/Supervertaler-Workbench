@@ -11,6 +11,15 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
+# Single source of truth for language normalisation. These helpers are kept as
+# thin shims (lots of existing call sites import them) but now all delegate to
+# modules.language_codes so there is exactly ONE name↔code table and ONE
+# matching policy across the whole app.
+try:
+    from modules import language_codes as _lc
+except ImportError:  # when modules/ is already on sys.path
+    import language_codes as _lc
+
 
 def get_simple_lang_code(lang_name_or_code_input):
     """
@@ -23,189 +32,38 @@ def get_simple_lang_code(lang_name_or_code_input):
     
     Returns base code if no variant specified, or full code with variant if provided.
     """
-    if not lang_name_or_code_input:
-        return "en"  # Default to English
-    
-    lang_input = lang_name_or_code_input.strip()
-    lang_lower = lang_input.lower()
-    
-    # Comprehensive language name to ISO 639-1 mapping
-    lang_map = {
-        # Major languages
-        "english": "en",
-        "dutch": "nl",
-        "german": "de",
-        "french": "fr",
-        "spanish": "es",
-        "italian": "it",
-        "portuguese": "pt",
-        "russian": "ru",
-        "chinese": "zh",
-        "japanese": "ja",
-        "korean": "ko",
-        "arabic": "ar",
-        
-        # European languages
-        "afrikaans": "af",
-        "albanian": "sq",
-        "armenian": "hy",
-        "basque": "eu",
-        "bengali": "bn",
-        "bulgarian": "bg",
-        "catalan": "ca",
-        "croatian": "hr",
-        "czech": "cs",
-        "danish": "da",
-        "estonian": "et",
-        "finnish": "fi",
-        "galician": "gl",
-        "georgian": "ka",
-        "greek": "el",
-        "hebrew": "he",
-        "hindi": "hi",
-        "hungarian": "hu",
-        "icelandic": "is",
-        "indonesian": "id",
-        "irish": "ga",
-        "latvian": "lv",
-        "lithuanian": "lt",
-        "macedonian": "mk",
-        "malay": "ms",
-        "norwegian": "no",
-        "persian": "fa",
-        "polish": "pl",
-        "romanian": "ro",
-        "serbian": "sr",
-        "slovak": "sk",
-        "slovenian": "sl",
-        "swahili": "sw",
-        "swedish": "sv",
-        "thai": "th",
-        "turkish": "tr",
-        "ukrainian": "uk",
-        "urdu": "ur",
-        "vietnamese": "vi",
-        "welsh": "cy",
-        
-        # Chinese variants
-        "chinese (simplified)": "zh-CN",
-        "chinese (traditional)": "zh-TW",
-    }
-    
-    # Check if it's a full language name
-    if lang_lower in lang_map:
-        return lang_map[lang_lower]
-    
-    # Check if already ISO code (2-letter or with variant)
-    # Examples: "en", "en-US", "nl-NL", "fr-CA"
-    if '-' in lang_input or '_' in lang_input:
-        # Has variant - preserve it
-        parts = lang_input.replace('_', '-').split('-')
-        if len(parts[0]) == 2:
-            # Valid format like "en-US"
-            return f"{parts[0].lower()}-{parts[1].upper()}"
-    
-    # Extract base code if it looks like an ISO code
-    base_code = lang_lower.split('-')[0].split('_')[0]
-    if len(base_code) == 2 and base_code.isalpha():
-        return base_code
-    
-    # Fallback: return first 2 characters or default
-    if len(lang_input) >= 2:
-        return lang_input[:2].lower()
-    
-    return "en"  # Ultimate fallback
+    # Delegated to the single authority (modules.language_codes). Preserves the
+    # historical contract: ISO code, base or base-REGION; default 'en'.
+    return _lc.canonical(lang_name_or_code_input) or "en"
 
 
 def get_base_lang_code(lang_code: str) -> str:
     """Extract base language code from variant (e.g., 'en-US' → 'en', 'nl-BE' → 'nl', 'Dutch' → 'nl')"""
-    if not lang_code:
-        return "en"
-    
-    # First convert full language names to ISO codes
-    iso_code = get_simple_lang_code(lang_code)
-    
-    # Then extract base code from variant
-    return iso_code.split('-')[0].split('_')[0].lower()
+    return _lc.base_code(lang_code) or "en"
 
 
 def get_lang_match_variants(lang_code: str) -> list:
     """
-    Get all possible string variants for matching a language in database queries.
-    
-    Returns list of strings that could be used to match this language, including:
-    - Base ISO code (e.g., 'nl', 'en')
-    - Full language names (e.g., 'Dutch', 'English')
-    - Common variants (e.g., 'nl-NL', 'en-US')
-    
-    This helps match database entries that may have inconsistent language formats.
+    Get all possible string variants for matching a language in database queries
+    (base ISO code, full English name, canonical region form). Delegates to the
+    single authority so the variant set is consistent everywhere.
     """
     if not lang_code:
         return ['en', 'English']
-    
-    # Reverse mapping from ISO codes to full names
-    code_to_name = {
-        "en": "English",
-        "nl": "Dutch",
-        "de": "German",
-        "fr": "French",
-        "es": "Spanish",
-        "it": "Italian",
-        "pt": "Portuguese",
-        "ru": "Russian",
-        "zh": "Chinese",
-        "ja": "Japanese",
-        "ko": "Korean",
-        "ar": "Arabic",
-        "pl": "Polish",
-        "sv": "Swedish",
-        "da": "Danish",
-        "no": "Norwegian",
-        "fi": "Finnish",
-    }
-    
-    # Get the base ISO code
-    base_code = get_base_lang_code(lang_code)
-    
-    variants = [base_code]
-    
-    # Add full language name if we know it
-    if base_code in code_to_name:
-        variants.append(code_to_name[base_code])
-    
-    return variants
+    return _lc.match_variants(lang_code) or [_lc.base_code(lang_code) or 'en']
+
 
 def normalize_lang_variant(lang_code: str) -> str:
-    """Normalize language variant to lowercase-UPPERCASE format (e.g., 'en-us' → 'en-US', 'nl-be' → 'nl-BE').
-    
-    Handles various input formats:
-    - nl-nl → nl-NL
-    - nl-NL → nl-NL  
-    - NL-NL → nl-NL
-    - nl_BE → nl-BE
-    - nl → nl (base code unchanged)
-    """
+    """Normalize a language value to canonical BCP-47 (e.g., 'en-us' → 'en-US',
+    'nl_BE' → 'nl-BE', 'Dutch' → 'nl'). Delegates to the single authority."""
     if not lang_code:
         return lang_code
-    
-    # Replace underscores with hyphens
-    lang_code = lang_code.replace('_', '-')
-    
-    parts = lang_code.split('-')
-    if len(parts) == 1:
-        # Base language code only (e.g., 'nl', 'en')
-        return parts[0].lower()
-    elif len(parts) == 2:
-        # Language variant (e.g., 'en-US', 'nl-BE')
-        return f"{parts[0].lower()}-{parts[1].upper()}"
-    else:
-        # Unexpected format, just lowercase the first part
-        return parts[0].lower()
+    return _lc.canonical(lang_code) or lang_code
 
 
 def languages_are_compatible(lang1: str, lang2: str) -> bool:
     """Check if two language codes are compatible (same base language)"""
-    return get_base_lang_code(lang1) == get_base_lang_code(lang2)
+    return _lc.same_language(lang1, lang2)
 
 
 # ---------------------------------------------------------------------------

@@ -281,12 +281,12 @@ class DatabaseManager:
         # TM activation (tracks which TMs are active for which projects)
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS tm_activation (
-                tm_id INTEGER NOT NULL,
+                tm_db_id INTEGER NOT NULL,   -- numeric translation_memories.id (NOT the string slug)
                 project_id INTEGER NOT NULL,
                 is_active BOOLEAN DEFAULT 1,
                 activated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (tm_id, project_id),
-                FOREIGN KEY (tm_id) REFERENCES translation_memories(id) ON DELETE CASCADE
+                PRIMARY KEY (tm_db_id, project_id),
+                FOREIGN KEY (tm_db_id) REFERENCES translation_memories(id) ON DELETE CASCADE
             )
         """)
         
@@ -346,6 +346,20 @@ class DatabaseManager:
                     "ALTER TABLE translation_memories ADD COLUMN bridged_to_trados BOOLEAN DEFAULT 0"
                 )
                 print("✓ Added bridged_to_trados column to translation_memories")
+
+            # SuperLookup inclusion flag. Independent of the Read flag
+            # (tm_activation.is_active): Read controls whether a TM is used
+            # for matching the *active project*, while this controls whether
+            # SuperLookup searches the TM at all. Decoupling them lets a user
+            # keep only a couple of TMs Read during a project while still
+            # having SuperLookup search every TM. DEFAULT 1 (included) so on
+            # upgrade SuperLookup searches everything, then the user opts out
+            # per TM via the SuperLookup column on the TMs tab.
+            if 'superlookup_enabled' not in columns:
+                self.cursor.execute(
+                    "ALTER TABLE translation_memories ADD COLUMN superlookup_enabled BOOLEAN DEFAULT 1"
+                )
+                print("✓ Added superlookup_enabled column to translation_memories (default: included)")
 
             self.connection.commit()
         except Exception as e:
@@ -429,6 +443,22 @@ class DatabaseManager:
             # Column already exists, ignore
             pass
 
+        # SuperLookup inclusion flag (mirror of the translation_memories
+        # column above). Independent of the Read flag
+        # (termbase_activation.is_active): Read gates terminology matching
+        # for the active project; this gates whether SuperLookup searches
+        # the termbase at all. DEFAULT 1 (included) so SuperLookup keeps
+        # searching every termbase on upgrade until the user opts out per
+        # termbase via the SuperLookup column on the Termbases tab.
+        try:
+            self.cursor.execute(
+                "ALTER TABLE termbases ADD COLUMN superlookup_enabled BOOLEAN DEFAULT 1"
+            )
+            self.connection.commit()
+        except Exception:
+            # Column already exists, ignore
+            pass
+
         # Data Migration: Set is_project_termbase=1 for termbases with non-NULL project_id
         # This ensures existing project termbases are correctly flagged
         try:
@@ -500,7 +530,7 @@ class DatabaseManager:
                 target_term TEXT NOT NULL,
                 source_lang TEXT DEFAULT 'unknown',
                 target_lang TEXT DEFAULT 'unknown',
-                termbase_id TEXT NOT NULL,
+                termbase_id INTEGER NOT NULL,   -- numeric termbases.id (was TEXT; see id-migration)
                 priority INTEGER DEFAULT 99,
                 project_id TEXT,
                 
@@ -2072,46 +2102,46 @@ class DatabaseManager:
             
             # Smart search: Filter and swap based on language metadata
             if use_smart_search:
+                # TM language tags are wildly inconsistent across the store —
+                # base codes ('nl','en'), regional variants ('nl-BE','en-GB',
+                # 'nl-NL') and even full names ('Dutch','English') all coexist,
+                # and the From/To dropdowns may pass any of these. Compare on
+                # BASE codes (Dutch->nl, nl-BE->nl) on BOTH sides so a
+                # Dutch->English search matches nl->en rows however either was
+                # tagged. (Previously this used raw exact membership, so e.g.
+                # 'nl' was never 'in' ['Dutch'] and every row was dropped.)
+                from modules.tmx_generator import get_base_lang_code
+                def _base(x):
+                    return get_base_lang_code(x) if x else ''
+                src_norms = {_base(x) for x in source_langs} if source_langs else None
+                tgt_norms = {_base(x) for x in target_langs} if target_langs else None
+
                 processed_results = []
                 for row in raw_results:
-                    row_src_lang = row.get('source_lang', '')
-                    row_tgt_lang = row.get('target_lang', '')
-                    
-                    # Check if this row matches our language requirements
-                    # If "From: Dutch, To: English":
-                    # - Accept if source=nl and target=en (normal)
-                    # - Accept if source=en and target=nl (swap needed)
-                    
+                    row_src_norm = _base(row.get('source_lang', ''))
+                    row_tgt_norm = _base(row.get('target_lang', ''))
+
+                    # Accept the row if its language pair matches the requested
+                    # pair in EITHER orientation (swap the columns when reversed).
                     matches = False
                     needs_swap = False
-                    
-                    if source_langs and target_langs:
-                        # Both filters specified
-                        if row_src_lang in source_langs and row_tgt_lang in target_langs:
-                            # Perfect match - no swap
-                            matches = True
-                            needs_swap = False
-                        elif row_src_lang in target_langs and row_tgt_lang in source_langs:
-                            # Reversed - needs swap
-                            matches = True
-                            needs_swap = True
-                    elif source_langs:
-                        # Only "From" specified - just check if Dutch is in EITHER column
-                        if row_src_lang in source_langs:
-                            matches = True
-                            needs_swap = False
-                        elif row_tgt_lang in source_langs:
-                            matches = True
-                            needs_swap = True
-                    elif target_langs:
-                        # Only "To" specified - just check if English is in EITHER column
-                        if row_tgt_lang in target_langs:
-                            matches = True
-                            needs_swap = False
-                        elif row_src_lang in target_langs:
-                            matches = True
-                            needs_swap = True
-                    
+
+                    if src_norms and tgt_norms:
+                        if row_src_norm in src_norms and row_tgt_norm in tgt_norms:
+                            matches = True; needs_swap = False
+                        elif row_src_norm in tgt_norms and row_tgt_norm in src_norms:
+                            matches = True; needs_swap = True
+                    elif src_norms:
+                        if row_src_norm in src_norms:
+                            matches = True; needs_swap = False
+                        elif row_tgt_norm in src_norms:
+                            matches = True; needs_swap = True
+                    elif tgt_norms:
+                        if row_tgt_norm in tgt_norms:
+                            matches = True; needs_swap = False
+                        elif row_src_norm in tgt_norms:
+                            matches = True; needs_swap = True
+
                     if matches:
                         # CRITICAL CHECK: Verify the search text is actually in the correct column
                         # If user searches for Dutch with "From: Dutch", the text must be in the source column (after any swap)
@@ -2375,43 +2405,46 @@ class DatabaseManager:
         forward_params = [project_param] + build_match_params()
         reverse_params = [project_param] + build_match_params()
 
-        # Build language filter conditions
+        # Build language filter conditions.
+        #
+        # A single column's language clause matches when:
+        #   * the term-level language matches (case-insensitive), OR
+        #   * the term-level language is a regional variant of it
+        #     (search 'en' matches a stored 'en-US'), OR
+        #   * the term row is UNTAGGED — NULL / '' / 'unknown' — and the
+        #     termbase-level language matches (or is itself untagged).
+        # This is strictly ADDITIVE versus the old exact-match filter: it can
+        # only add matches, never drop one. It recovers untagged terms (the
+        # bulk of the store relies on the termbase-level fallback), rows tagged
+        # the literal string 'unknown', and regional variants like en-US.
+        def _lang_clause(term_col: str, tb_col: str) -> str:
+            return f""" AND (
+                LOWER({term_col}) = LOWER(?) OR
+                LOWER({term_col}) LIKE LOWER(?) || '-%' OR
+                (({term_col} IS NULL OR {term_col} = '' OR LOWER({term_col}) = 'unknown')
+                    AND (LOWER({tb_col}) = LOWER(?) OR LOWER({tb_col}) LIKE LOWER(?) || '-%')) OR
+                (({term_col} IS NULL OR {term_col} = '' OR LOWER({term_col}) = 'unknown')
+                    AND ({tb_col} IS NULL OR {tb_col} = '' OR LOWER({tb_col}) = 'unknown'))
+            )"""
+
         lang_conditions_forward = ""
         lang_conditions_reverse = ""
         lang_params_forward = []
         lang_params_reverse = []
 
         if source_lang:
-            # For forward: filter on source_lang
-            lang_conditions_forward += """ AND (
-                t.source_lang = ? OR
-                (t.source_lang IS NULL AND tb.source_lang = ?) OR
-                (t.source_lang IS NULL AND tb.source_lang IS NULL)
-            )"""
-            lang_params_forward.extend([source_lang, source_lang])
-            # For reverse: source_lang becomes target_lang (swapped)
-            lang_conditions_reverse += """ AND (
-                t.target_lang = ? OR
-                (t.target_lang IS NULL AND tb.target_lang = ?) OR
-                (t.target_lang IS NULL AND tb.target_lang IS NULL)
-            )"""
-            lang_params_reverse.extend([source_lang, source_lang])
+            # Forward: term's source side. Reverse: term's target side (swapped).
+            lang_conditions_forward += _lang_clause('t.source_lang', 'tb.source_lang')
+            lang_params_forward.extend([source_lang] * 4)
+            lang_conditions_reverse += _lang_clause('t.target_lang', 'tb.target_lang')
+            lang_params_reverse.extend([source_lang] * 4)
 
         if target_lang:
-            # For forward: filter on target_lang
-            lang_conditions_forward += """ AND (
-                t.target_lang = ? OR
-                (t.target_lang IS NULL AND tb.target_lang = ?) OR
-                (t.target_lang IS NULL AND tb.target_lang IS NULL)
-            )"""
-            lang_params_forward.extend([target_lang, target_lang])
-            # For reverse: target_lang becomes source_lang (swapped)
-            lang_conditions_reverse += """ AND (
-                t.source_lang = ? OR
-                (t.source_lang IS NULL AND tb.source_lang = ?) OR
-                (t.source_lang IS NULL AND tb.source_lang IS NULL)
-            )"""
-            lang_params_reverse.extend([target_lang, target_lang])
+            # Forward: term's target side. Reverse: term's source side (swapped).
+            lang_conditions_forward += _lang_clause('t.target_lang', 'tb.target_lang')
+            lang_params_forward.extend([target_lang] * 4)
+            lang_conditions_reverse += _lang_clause('t.source_lang', 'tb.source_lang')
+            lang_params_reverse.extend([target_lang] * 4)
 
         # Project filter conditions
         project_conditions = ""

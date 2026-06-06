@@ -7,7 +7,10 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.voice_hotkey_listener import HotkeyMatcher, parse_qt_shortcut
+from modules.voice_hotkey_listener import (
+    HotkeyMatcher, parse_qt_shortcut,
+    serialize_chord, parse_serialized_chord, describe_chord, vk_label,
+)
 
 
 # Windows VKs we'll synthesise in tests
@@ -163,6 +166,44 @@ def test_multiple_bindings():
     print("PASS multiple_bindings")
 
 
+VK_MEDIA_NEXT = 0xB0   # "fast-forward" on many keyboards
+VK_MEDIA_PLAY = 0xB3
+
+
+def test_serialize_roundtrip():
+    # Media key + modifier survives serialize → parse unchanged.
+    chord = frozenset({'CTRL', VK_MEDIA_NEXT})
+    assert serialize_chord(chord) == 'CTRL+VK176'
+    assert parse_serialized_chord('CTRL+VK176') == chord
+    # Lone media key.
+    assert serialize_chord(frozenset({VK_MEDIA_NEXT})) == 'VK176'
+    assert parse_serialized_chord('VK176') == frozenset({VK_MEDIA_NEXT})
+    # Non-VK serialized form falls back to the Qt-style parser.
+    assert parse_serialized_chord('Ctrl+Shift+Space') == parse_qt_shortcut('Ctrl+Shift+Space')
+    assert parse_serialized_chord('') is None
+    print("PASS serialize_roundtrip")
+
+
+def test_describe_and_label():
+    assert vk_label(VK_MEDIA_NEXT) == 'Media Next / Fast-Forward'
+    assert vk_label(ord('A')) == 'A'
+    assert vk_label(0x78) == 'F9'
+    assert describe_chord(frozenset({'CTRL', VK_MEDIA_PLAY})) == 'Ctrl + Media Play/Pause'
+    print("PASS describe_and_label")
+
+
+def test_media_key_hold():
+    # A lone media key behaves like any other single-key hold binding.
+    m, pressed, released = make_matcher()
+    m.register('pause', frozenset({VK_MEDIA_NEXT}))
+    m.on_press(VK_MEDIA_NEXT)
+    m.on_press(VK_MEDIA_NEXT)   # auto-repeat — ignored
+    assert pressed == ['pause']
+    m.on_release(VK_MEDIA_NEXT)
+    assert released == ['pause']
+    print("PASS media_key_hold")
+
+
 if __name__ == "__main__":
     test_parse()
     test_single_key_hold()
@@ -172,5 +213,8 @@ if __name__ == "__main__":
     test_altgr_does_not_misfire_ctrl_binding()
     test_unregister()
     test_multiple_bindings()
+    test_serialize_roundtrip()
+    test_describe_and_label()
+    test_media_key_hold()
     print()
     print("All tests passed.")

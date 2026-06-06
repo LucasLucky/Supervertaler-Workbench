@@ -271,7 +271,7 @@ from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
-from modules.styled_widgets import CheckmarkCheckBox, PurpleCheckmarkCheckBox
+from modules.styled_widgets import CheckmarkCheckBox, PurpleCheckmarkCheckBox, TealCheckmarkCheckBox
 from modules.statuses import (
     STATUSES,
     DEFAULT_STATUS,
@@ -13510,6 +13510,7 @@ class SupervertalerQt(QMainWindow):
             "• <b>Read</b> (green ✓): TM is used for matching segments<br>"
             "• <b>Write</b> (blue ✓): TM is updated with new translations<br>"
             "• <b>Bridge</b> (orange ✓): TM is visible to the Supervertaler for Trados plugin (Phase 2)<br>"
+            "• <b>🔍 SuperLookup</b> (teal ✓): TM is searched by SuperLookup (independent of Read)<br>"
             "• <b>Typical Setup</b>: Main TM (Read + Write) + Reference TMs (Read only)"
         )
         help_msg.setWordWrap(True)
@@ -13553,16 +13554,28 @@ class SupervertalerQt(QMainWindow):
         tm_clear_all_bridge_btn.clicked.connect(lambda: toggle_all_bridge(False))
         bulk_layout.addWidget(tm_clear_all_bridge_btn)
 
+        # v1.10.247: SuperLookup bulk toggles. "Select All SuperLookup"
+        # includes every TM in SuperLookup, "Clear All SuperLookup" excludes
+        # them. Late-binding via the toggle_all_superlookup closure defined
+        # further down alongside toggle_all_read/write/bridge.
+        superlookup_header_checkbox = TealCheckmarkCheckBox(self.tr("Select All SuperLookup"))
+        bulk_layout.addWidget(superlookup_header_checkbox)
+
+        tm_clear_all_superlookup_btn = QPushButton(self.tr("Clear All SuperLookup"))
+        tm_clear_all_superlookup_btn.setToolTip(self.tr("Uncheck the SuperLookup flag on every TM (exclude all TMs from SuperLookup)"))
+        tm_clear_all_superlookup_btn.clicked.connect(lambda: toggle_all_superlookup(False))
+        bulk_layout.addWidget(tm_clear_all_superlookup_btn)
+
         bulk_layout.addStretch()
         layout.addLayout(bulk_layout)
 
         # TM list with table
         tm_table = QTableWidget()
-        # v1.10.212: 8 columns now – Bridge added at index 5, between Write
-        # and Last Modified, so the three per-TM toggles cluster together
-        # visually. Last Modified moves to 6, Description to 7.
-        tm_table.setColumnCount(8)
-        tm_table.setHorizontalHeaderLabels(["TM Name", "Languages", "Entries", "Read", "Write", "Bridge", "Last Modified", "Description"])
+        # v1.10.247: 9 columns now – SuperLookup added at index 6, after
+        # Bridge, so the four per-TM toggles (Read/Write/Bridge/SuperLookup)
+        # cluster together. Last Modified moves to 7, Description to 8.
+        tm_table.setColumnCount(9)
+        tm_table.setHorizontalHeaderLabels(["TM Name", "Languages", "Entries", "Read", "Write", "Bridge", "🔍 SuperLookup", "Last Modified", "Description"])
         tm_table.horizontalHeader().setStretchLastSection(True)
         tm_table.setColumnWidth(0, 250)
         tm_table.setColumnWidth(1, 120)
@@ -13570,7 +13583,8 @@ class SupervertalerQt(QMainWindow):
         tm_table.setColumnWidth(3, 60)
         tm_table.setColumnWidth(4, 60)
         tm_table.setColumnWidth(5, 60)   # Bridge
-        tm_table.setColumnWidth(6, 150)  # Last Modified
+        tm_table.setColumnWidth(6, 100)  # SuperLookup
+        tm_table.setColumnWidth(7, 150)  # Last Modified
         # v1.10.169: click-header-to-sort on the data columns (TM Name,
         # Languages, Entries, Last Modified, Description). The Read /
         # Write columns are checkbox widgets and won't sort meaningfully
@@ -13634,9 +13648,25 @@ class SupervertalerQt(QMainWindow):
                 self.log(f"⚠️ Bulk TM Bridge toggle failed mid-way: {e}")
             refresh_tm_list()
 
+        # v1.10.247: bulk SuperLookup toggle (include/exclude every TM
+        # from SuperLookup in one click). Single DB pass + one refresh,
+        # mirroring the Bridge bulk toggle.
+        def toggle_all_superlookup(checked):
+            try:
+                for tm in (tm_metadata_mgr.get_all_tms() or []):
+                    tm_id = tm.get('id')
+                    if tm_id is None:
+                        continue
+                    if hasattr(tm_metadata_mgr, 'set_superlookup_enabled'):
+                        tm_metadata_mgr.set_superlookup_enabled(tm_id, bool(checked))
+            except Exception as e:
+                self.log(f"⚠️ Bulk TM SuperLookup toggle failed mid-way: {e}")
+            refresh_tm_list()
+
         read_header_checkbox.toggled.connect(toggle_all_read)
         write_header_checkbox.toggled.connect(toggle_all_write)
         bridge_header_checkbox.toggled.connect(toggle_all_bridge)
+        superlookup_header_checkbox.toggled.connect(toggle_all_superlookup)
         
         # Populate TM list
         def refresh_tm_list():
@@ -13781,6 +13811,35 @@ class SupervertalerQt(QMainWindow):
                 bridge_checkbox.toggled.connect(on_bridge_toggle)
                 tm_table.setCellWidget(row, 5, bridge_checkbox)
 
+                # v1.10.247: SuperLookup checkbox (teal). Independent of Read
+                # — the single switch that decides whether SuperLookup searches
+                # this TM. Default on (included) for every existing TM.
+                is_superlookup = bool(tm.get('superlookup_enabled', True))
+                superlookup_checkbox = TealCheckmarkCheckBox()
+                superlookup_checkbox.setChecked(is_superlookup)
+                superlookup_checkbox.setToolTip(self.tr(
+                    "SuperLookup: TM is searched by SuperLookup. Independent of "
+                    "Read — leave Read off for a project and still search this TM."
+                ))
+
+                def on_superlookup_toggle(checked, tm_id=tm['id'], row_idx=row):
+                    if hasattr(tm_metadata_mgr, 'set_superlookup_enabled'):
+                        success = tm_metadata_mgr.set_superlookup_enabled(tm_id, bool(checked))
+                        if success:
+                            self.log(
+                                f"✅ TM {tm_id} {'included in' if checked else 'excluded from'} SuperLookup"
+                            )
+                        else:
+                            # Revert on failure
+                            sender = tm_table.cellWidget(row_idx, 6)
+                            if sender:
+                                sender.blockSignals(True)
+                                sender.setChecked(not checked)
+                                sender.blockSignals(False)
+
+                superlookup_checkbox.toggled.connect(on_superlookup_toggle)
+                tm_table.setCellWidget(row, 6, superlookup_checkbox)
+
                 # Last modified
                 modified = tm['modified_date'] or tm['created_date'] or ''
                 if modified:
@@ -13791,25 +13850,29 @@ class SupervertalerQt(QMainWindow):
                         modified = dt.strftime("%Y-%m-%d %H:%M")
                     except:
                         pass
-                tm_table.setItem(row, 6, QTableWidgetItem(modified))
+                tm_table.setItem(row, 7, QTableWidgetItem(modified))
 
                 # Description
                 desc_text = tm['description'] or ''
-                tm_table.setItem(row, 7, QTableWidgetItem(desc_text))
+                tm_table.setItem(row, 8, QTableWidgetItem(desc_text))
 
             # Update header checkbox states based on current selection
             read_header_checkbox.blockSignals(True)
             write_header_checkbox.blockSignals(True)
             bridge_header_checkbox.blockSignals(True)
+            superlookup_header_checkbox.blockSignals(True)
             all_read_checked = all(tm_table.cellWidget(r, 3).isChecked() if tm_table.cellWidget(r, 3) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             all_write_checked = all(tm_table.cellWidget(r, 4).isChecked() if tm_table.cellWidget(r, 4) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             all_bridge_checked = all(tm_table.cellWidget(r, 5).isChecked() if tm_table.cellWidget(r, 5) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
+            all_superlookup_checked = all(tm_table.cellWidget(r, 6).isChecked() if tm_table.cellWidget(r, 6) else False for r in range(tm_table.rowCount())) if tm_table.rowCount() > 0 else False
             read_header_checkbox.setChecked(all_read_checked)
             write_header_checkbox.setChecked(all_write_checked)
             bridge_header_checkbox.setChecked(all_bridge_checked)
+            superlookup_header_checkbox.setChecked(all_superlookup_checked)
             read_header_checkbox.blockSignals(False)
             write_header_checkbox.blockSignals(False)
             bridge_header_checkbox.blockSignals(False)
+            superlookup_header_checkbox.blockSignals(False)
 
             # Summary line: total TUs across N TMs
             total_tus = sum((tm.get('entry_count') or 0) for tm in tms)
@@ -17729,7 +17792,8 @@ class SupervertalerQt(QMainWindow):
             "• <b>Read</b> (green ✓): Termbase is used for terminology matching<br>"
             "• <b>Write</b> (blue ✓): Termbase is updated with new terms<br>"
             "• <b>Project</b> (pink ✓): Set as Project Termbase (highest priority, one at a time)<br>"
-            "• <b>AI</b> (orange ✓): Send termbase terms to LLM with every translation (increases prompt size)"
+            "• <b>AI</b> (orange ✓): Send termbase terms to LLM with every translation (increases prompt size)<br>"
+            "• <b>🔍 SuperLookup</b> (teal ✓): Termbase is searched by SuperLookup (independent of Read)"
         )
         help_msg.setWordWrap(True)
         help_msg.setStyleSheet("background-color: #e3f2fd; padding: 8px; border-radius: 4px; color: #1976d2;")
@@ -17759,6 +17823,16 @@ class SupervertalerQt(QMainWindow):
         tb_clear_all_write_btn.clicked.connect(lambda: toggle_all_tb_write(False))
         tb_bulk_layout.addWidget(tb_clear_all_write_btn)
 
+        # v1.10.247: SuperLookup bulk toggles (include/exclude every termbase
+        # from SuperLookup). Late-binding via toggle_all_tb_superlookup below.
+        tb_superlookup_header_checkbox = TealCheckmarkCheckBox(self.tr("Select All SuperLookup"))
+        tb_bulk_layout.addWidget(tb_superlookup_header_checkbox)
+
+        tb_clear_all_superlookup_btn = QPushButton(self.tr("Clear All SuperLookup"))
+        tb_clear_all_superlookup_btn.setToolTip(self.tr("Uncheck the SuperLookup flag on every termbase (exclude all from SuperLookup)"))
+        tb_clear_all_superlookup_btn.clicked.connect(lambda: toggle_all_tb_superlookup(False))
+        tb_bulk_layout.addWidget(tb_clear_all_superlookup_btn)
+
         tb_bulk_layout.addStretch()
         left_layout.addLayout(tb_bulk_layout)
         
@@ -17766,11 +17840,13 @@ class SupervertalerQt(QMainWindow):
         termbase_table = QTableWidget()
         self.termbase_table = termbase_table  # Store for external access (Superlookup navigation)
         # v1.10.28: added 🎤 Voice column (per-termbase opt-in for
-        # voice-dictation vocabulary biasing). New column count = 9.
-        termbase_table.setColumnCount(9)
+        # voice-dictation vocabulary biasing).
+        # v1.10.247: added 🔍 SuperLookup column (per-termbase toggle for
+        # SuperLookup inclusion, independent of Read). New column count = 10.
+        termbase_table.setColumnCount(10)
         termbase_table.setHorizontalHeaderLabels([
             "Type", "Name", "Languages", "Terms",
-            "Read", "Write", "Project", "AI", "🎤 Voice",
+            "Read", "Write", "Project", "AI", "🎤 Voice", "🔍 SuperLookup",
         ])
         termbase_table.horizontalHeader().setStretchLastSection(False)
         termbase_table.setColumnWidth(0, 80)   # Type (Project/Background)
@@ -17782,6 +17858,7 @@ class SupervertalerQt(QMainWindow):
         termbase_table.setColumnWidth(6, 60)   # Priority
         termbase_table.setColumnWidth(7, 40)   # AI checkbox
         termbase_table.setColumnWidth(8, 70)   # 🎤 Voice checkbox
+        termbase_table.setColumnWidth(9, 100)  # 🔍 SuperLookup checkbox
         termbase_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         termbase_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         termbase_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Disable inline editing
@@ -17871,9 +17948,24 @@ class SupervertalerQt(QMainWindow):
             except Exception as e:
                 self.log(f"⚠️ Bulk Write toggle failed mid-way: {e}")
             refresh_termbase_list()
-        
+
+        # v1.10.247: bulk SuperLookup toggle. Single DB pass + one refresh.
+        # No index rebuild needed — SuperLookup inclusion doesn't affect the
+        # in-memory termbase matching index (that follows the Read flag).
+        def toggle_all_tb_superlookup(checked):
+            try:
+                for tb in (termbase_mgr.get_all_termbases() or []):
+                    tb_id = tb.get('id')
+                    if tb_id is None:
+                        continue
+                    termbase_mgr.set_termbase_superlookup_enabled(tb_id, bool(checked))
+            except Exception as e:
+                self.log(f"⚠️ Bulk SuperLookup toggle failed mid-way: {e}")
+            refresh_termbase_list()
+
         tb_read_header_checkbox.toggled.connect(toggle_all_tb_read)
         tb_write_header_checkbox.toggled.connect(toggle_all_tb_write)
+        tb_superlookup_header_checkbox.toggled.connect(toggle_all_tb_superlookup)
         
         # ========== RIGHT PANEL: Terms Editor ==========
         right_panel = QWidget()
@@ -18810,15 +18902,50 @@ class SupervertalerQt(QMainWindow):
                 voice_checkbox.toggled.connect(on_voice_toggle)
                 termbase_table.setCellWidget(row, 8, voice_checkbox)
 
+                # v1.10.247: 🔍 SuperLookup checkbox (teal). The single
+                # switch deciding whether SuperLookup searches this termbase,
+                # independent of Read. Default on (included) for every
+                # existing termbase. No index rebuild on toggle — it doesn't
+                # affect the active-project matching index.
+                is_superlookup = bool(tb.get('superlookup_enabled', True))
+                tb_superlookup_checkbox = TealCheckmarkCheckBox()
+                tb_superlookup_checkbox.setChecked(is_superlookup)
+                tb_superlookup_checkbox.setToolTip(self.tr(
+                    "SuperLookup: termbase is searched by SuperLookup. "
+                    "Independent of Read — leave Read off for a project and "
+                    "still search this termbase."
+                ))
+
+                def on_tb_superlookup_toggle(checked, tb_id=tb['id'], row_idx=row):
+                    success = termbase_mgr.set_termbase_superlookup_enabled(tb_id, bool(checked))
+                    if success:
+                        self.log(
+                            f"{'✅ Included in' if checked else '❌ Excluded from'} "
+                            f"SuperLookup: termbase {tb_id}"
+                        )
+                    else:
+                        sender = termbase_table.cellWidget(row_idx, 9)
+                        if sender:
+                            sender.blockSignals(True)
+                            sender.setChecked(not checked)
+                            sender.blockSignals(False)
+
+                tb_superlookup_checkbox.toggled.connect(on_tb_superlookup_toggle)
+                termbase_table.setCellWidget(row, 9, tb_superlookup_checkbox)
+
             # Update header checkbox states based on current selection
             tb_read_header_checkbox.blockSignals(True)
             tb_write_header_checkbox.blockSignals(True)
+            tb_superlookup_header_checkbox.blockSignals(True)
             all_tb_read_checked = all(termbase_table.cellWidget(r, 4).isChecked() if termbase_table.cellWidget(r, 4) else False for r in range(termbase_table.rowCount())) if termbase_table.rowCount() > 0 else False
             all_tb_write_checked = all(termbase_table.cellWidget(r, 5).isChecked() if termbase_table.cellWidget(r, 5) else False for r in range(termbase_table.rowCount())) if termbase_table.rowCount() > 0 else False
+            all_tb_superlookup_checked = all(termbase_table.cellWidget(r, 9).isChecked() if termbase_table.cellWidget(r, 9) else False for r in range(termbase_table.rowCount())) if termbase_table.rowCount() > 0 else False
             tb_read_header_checkbox.setChecked(all_tb_read_checked)
             tb_write_header_checkbox.setChecked(all_tb_write_checked)
+            tb_superlookup_header_checkbox.setChecked(all_tb_superlookup_checked)
             tb_read_header_checkbox.blockSignals(False)
             tb_write_header_checkbox.blockSignals(False)
+            tb_superlookup_header_checkbox.blockSignals(False)
 
             # v1.10.169: re-enable sorting now that the rebuild is done.
             # See the matching disable call at the top of this function.
@@ -24843,7 +24970,13 @@ class SupervertalerQt(QMainWindow):
                 # Start
                 self.voice_listener.start()
                 self.log("🎧 Always-on listening started")
-                
+
+                # Always-On is the only time the Pause-Always-On hotkey
+                # matters, so guarantee it's armed now rather than relying on
+                # push-to-talk having lazily created the keyboard listener
+                # earlier in the session (it may never have).
+                self._ensure_voice_pause_hotkey_armed()
+
             except Exception as e:
                 import traceback
                 self.log(f"❌ Failed to start always-on listening: {e}")
@@ -36765,54 +36898,12 @@ class SupervertalerQt(QMainWindow):
             )
     
     def _normalize_language_code(self, lang_code: str) -> str:
-        """Convert ISO language codes to full language names."""
-        # Common ISO 639-1 codes to full names
-        lang_map = {
-            'en': 'English', 'en-US': 'English', 'en-GB': 'English',
-            'nl': 'Dutch', 'nl-NL': 'Dutch', 'nl-BE': 'Dutch',
-            'de': 'German', 'de-DE': 'German', 'de-AT': 'German',
-            'fr': 'French', 'fr-FR': 'French', 'fr-BE': 'French',
-            'es': 'Spanish', 'es-ES': 'Spanish', 'es-MX': 'Spanish',
-            'it': 'Italian', 'it-IT': 'Italian',
-            'pt': 'Portuguese', 'pt-PT': 'Portuguese', 'pt-BR': 'Portuguese',
-            'pl': 'Polish', 'pl-PL': 'Polish',
-            'cs': 'Czech', 'cs-CZ': 'Czech',
-            'sk': 'Slovak', 'sk-SK': 'Slovak',
-            'hu': 'Hungarian', 'hu-HU': 'Hungarian',
-            'ro': 'Romanian', 'ro-RO': 'Romanian',
-            'bg': 'Bulgarian', 'bg-BG': 'Bulgarian',
-            'el': 'Greek', 'el-GR': 'Greek',
-            'ru': 'Russian', 'ru-RU': 'Russian',
-            'uk': 'Ukrainian', 'uk-UA': 'Ukrainian',
-            'ja': 'Japanese', 'ja-JP': 'Japanese',
-            'zh': 'Chinese', 'zh-CN': 'Chinese', 'zh-TW': 'Chinese',
-            'ko': 'Korean', 'ko-KR': 'Korean',
-            'ar': 'Arabic', 'ar-SA': 'Arabic',
-            'he': 'Hebrew', 'he-IL': 'Hebrew',
-            'tr': 'Turkish', 'tr-TR': 'Turkish',
-            'sv': 'Swedish', 'sv-SE': 'Swedish',
-            'da': 'Danish', 'da-DK': 'Danish',
-            'fi': 'Finnish', 'fi-FI': 'Finnish',
-            'no': 'Norwegian', 'nb-NO': 'Norwegian', 'nn-NO': 'Norwegian',
-        }
-        
-        # Try exact match first
-        if lang_code in lang_map:
-            return lang_map[lang_code]
-        
-        # Try lowercase match
-        lang_lower = lang_code.lower()
-        if lang_lower in lang_map:
-            return lang_map[lang_lower]
-        
-        # Try base code (before hyphen)
-        if '-' in lang_code:
-            base_code = lang_code.split('-')[0].lower()
-            if base_code in lang_map:
-                return lang_map[base_code]
-        
-        # Return original if no match found
-        return lang_code
+        """Resolve an ISO code / variant to the full English language name.
+
+        Delegates to modules.language_codes (the single authority). Falls
+        back to the original input when the language is not recognised."""
+        from modules import language_codes as _lc
+        return _lc.english_name(lang_code) or lang_code
 
     def export_memoq_rtf(self):
         """Export to memoQ bilingual RTF format with translations"""
@@ -38181,6 +38272,49 @@ class SupervertalerQt(QMainWindow):
                 segment_comments[seg_id] = notes
         return segment_comments
 
+    def _confirm_include_comments(self, segment_comments: dict):
+        """Ask whether to ship internal comments/notes in a Trados export.
+
+        Segment comments/notes are internal by default. They can hold AI
+        review rationale round-tripped in via the bilingual re-import, or any
+        working note the translator never meant for the client. So the export
+        must NOT write them unless the translator explicitly opts in.
+
+        Returns the dict to use: unchanged if the user ticks the box, emptied
+        if not, or ``None`` if the user cancels the export. No prompt is shown
+        when there are no comments to begin with.
+        """
+        if not segment_comments:
+            return segment_comments
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Include comments?")
+        box.setText(
+            f"This project has notes/comments on {len(segment_comments)} "
+            "segment(s).")
+        box.setInformativeText(
+            "By default these are <b>not</b> written to the exported file, so "
+            "internal notes never reach the client.<br><br>"
+            "Tick the box below only if you want them exported as Trados Studio "
+            "comments.")
+        incl = CheckmarkCheckBox(
+            "Include comments as Trados comments in the export")
+        incl.setChecked(False)
+        box.setCheckBox(incl)
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Ok)
+        if box.exec() != QMessageBox.StandardButton.Ok:
+            self.log("Export cancelled by user at the include-comments prompt")
+            return None
+        if not incl.isChecked():
+            self.log(f"  Excluding {len(segment_comments)} segment comment(s) "
+                     "from export (default; not shipped to client)")
+            return {}
+        self.log(f"  Including {len(segment_comments)} segment comment(s) in "
+                 "export (translator opted in)")
+        return segment_comments
+
     def export_sdlrpx_package(self):
         """Export translations back to a Trados Studio SDLRPX return package."""
         if not self.current_project or not self.current_project.segments:
@@ -38267,6 +38401,9 @@ class SupervertalerQt(QMainWindow):
             # Build translations and comments dicts
             translations = self._build_sdlxliff_translations_dict()
             segment_comments = self._build_sdlxliff_comments_dict()
+            segment_comments = self._confirm_include_comments(segment_comments)
+            if segment_comments is None:
+                return  # user cancelled at the include-comments prompt
 
             total_segs = len(self.current_project.segments)
             segs_with_target = sum(1 for s in self.current_project.segments if s.target and s.target.strip())
@@ -38900,6 +39037,9 @@ class SupervertalerQt(QMainWindow):
             # Build translations and comments dicts
             translations = self._build_sdlxliff_translations_dict()
             segment_comments = self._build_sdlxliff_comments_dict()
+            segment_comments = self._confirm_include_comments(segment_comments)
+            if segment_comments is None:
+                return  # user cancelled at the include-comments prompt
 
             if not translations:
                 QMessageBox.warning(
@@ -47395,28 +47535,31 @@ class SupervertalerQt(QMainWindow):
         layout.addWidget(status_group)
         
         # Target TM group
-        tm_group = QGroupBox(self.tr("Target Translation Memory"))
+        tm_group = QGroupBox(self.tr("Target Translation Memories"))
         tm_layout = QVBoxLayout(tm_group)
         
-        tm_combo = QComboBox()
-        for tm in writable_tms:
+        # Multi-select: one checkbox per writable TM so several can be updated
+        # in a single run (was a single-pick combo before). We store the STRING
+        # tm_id (e.g. 'patents'), NOT the integer PK (`tm['id']`, e.g. 86): the
+        # match-panel read path queries translation_units by string tm_id, so
+        # writing under the integer-PK form makes the bulk-written rows invisible
+        # to it (surfaced as "segment 306 won't show TM matches even after Update
+        # Active TMs" – the row existed, just under the wrong key).
+        # update_entry_count and add_translation_unit both expect the string
+        # form, so this keeps the whole write path aligned.
+        tm_checkboxes = []  # list of (checkbox, tm_id, name)
+        for i, tm in enumerate(writable_tms):
             entry_count = tm.get('entry_count', 0)
-            # v1.10.215: store the STRING tm_id (e.g. 'patents') as combo data,
-            # not the integer PK (`tm['id']`, e.g. 86). The match-panel read
-            # path queries translation_units by string tm_id; writing under
-            # the integer-PK form makes the bulk-written rows invisible to it.
-            # Same bug surfaced as "segment 306 won't show TM matches even
-            # after Update Active TMs" – the row existed, just under the
-            # wrong key. update_entry_count and add_translation_unit both
-            # expect the string form, so this aligns the entire write path.
-            tm_combo.addItem(f"{tm['name']} ({entry_count} entries)", tm['tm_id'])
+            cb = CheckmarkCheckBox(f"{tm['name']} ({entry_count} entries)")
+            if i == 0:
+                cb.setChecked(True)  # default to the first (matches the old default)
+            tm_layout.addWidget(cb)
+            tm_checkboxes.append((cb, tm['tm_id'], tm['name']))
 
-        tm_layout.addWidget(tm_combo)
-        
         # Note about multiple writable TMs
         if len(writable_tms) > 1:
             multi_note = QLabel(
-                f"ℹ️ {len(writable_tms)} writable TMs available. Select which one to send segments to."
+                f"ℹ️ {len(writable_tms)} writable TMs available. Tick every TM you want to send segments to."
             )
             multi_note.setStyleSheet("color: #2196F3; font-size: 10px;")
             tm_layout.addWidget(multi_note)
@@ -47485,154 +47628,150 @@ class SupervertalerQt(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         
-        # Perform the operation
-        target_tm_id = tm_combo.currentData()
-        target_tm_name = tm_combo.currentText()
-        
+        # Perform the operation — send to every ticked TM in one pass.
+        selected_tms = [(tm_id, name) for cb, tm_id, name in tm_checkboxes if cb.isChecked()]
+        if not selected_tms:
+            QMessageBox.information(
+                self, self.tr("No TM selected"),
+                self.tr("Tick at least one Translation Memory to send segments to."))
+            return
+
         segments_to_check = selected_segments if scope_selected.isChecked() else self.current_project.segments
-        
-        sent_count = 0
+
+        # Pre-clean each qualifying segment ONCE (the cleaning is identical for
+        # every target TM) so the per-TM write loop stays cheap. Each item is
+        # (seg, source_clean, target_clean). skipped_count is per-TM: the same
+        # set is skipped for each selected TM.
+        skip_empty = skip_empty_cb.isChecked()
+        overwrite = overwrite_cb.isChecked()
+        all_statuses = all_statuses_cb.isChecked()
+        prepared = []
         skipped_count = 0
-        error_count = 0
-        
-        # Get language codes
-        source_lang = self.current_project.source_lang or "en"
-        target_lang = self.current_project.target_lang or "nl"
-        
-        self.status_bar.showMessage(f"Sending segments to TM '{target_tm_name}'...")
-        QApplication.processEvents()
-        
+        for seg in segments_to_check:
+            if skip_empty and not seg.target.strip():
+                skipped_count += 1
+                continue
+            should_send = False
+            if all_statuses:
+                should_send = bool(seg.target.strip())
+            else:
+                for status_key, cb in status_checkboxes.items():
+                    if cb.isChecked() and seg.status == status_key:
+                        should_send = True
+                        break
+            if not should_send:
+                skipped_count += 1
+                continue
+            # Reverse invisible-char display markers (·/→/°/↵) so they never
+            # leak into the TM, then strip wrapping/formatting tags.
+            source_clean = seg.source
+            target_clean = seg.target
+            if hasattr(self, 'reverse_invisible_replacements'):
+                source_clean = self.reverse_invisible_replacements(source_clean)
+                target_clean = self.reverse_invisible_replacements(target_clean)
+            if self.hide_outer_wrapping_tags:
+                source_clean, _ = strip_outer_wrapping_tags(source_clean)
+                target_clean, _ = strip_outer_wrapping_tags(target_clean)
+            source_clean = strip_formatting_tags(source_clean) if has_formatting_tags(source_clean) else source_clean
+            target_clean = strip_formatting_tags(target_clean) if has_formatting_tags(target_clean) else target_clean
+            prepared.append((seg, source_clean, target_clean))
+
         from PyQt6.QtWidgets import QProgressDialog
-        _total = len(segments_to_check)
+        _per_tm = len(prepared)
+        _total = _per_tm * len(selected_tms)
         _progress = QProgressDialog(
-            f"Updating '{target_tm_name}'…", "Cancel", 0, _total, self)
+            self.tr("Updating TMs…"), self.tr("Cancel"), 0, max(_total, 1), self)
         _progress.setWindowTitle(self.tr("Updating TM"))
         _progress.setWindowModality(Qt.WindowModality.WindowModal)
-        # Only appears if the run takes longer than ~400 ms, so small
-        # selections don't flash a dialog; long runs show progress + Cancel.
+        # Only appears if the run takes longer than ~400 ms.
         _progress.setMinimumDuration(400)
         _progress.setValue(0)
         cancelled = False
 
-        for _idx, seg in enumerate(segments_to_check):
-            # Refresh the dialog every 20 segments (and on the last one) so a
-            # large project no longer freezes the UI with no feedback.
-            if _idx % 20 == 0 or _idx == _total - 1:
-                _progress.setValue(_idx)
-                _progress.setLabelText(
-                    f"Updating '{target_tm_name}'… ({_idx + 1}/{_total})")
-                QApplication.processEvents()
-                if _progress.wasCanceled():
-                    cancelled = True
-                    break
-            try:
-                # Check if has translation
-                if skip_empty_cb.isChecked() and not seg.target.strip():
-                    skipped_count += 1
-                    continue
-                
-                # Check status
-                should_send = False
-                if all_statuses_cb.isChecked():
-                    if seg.target.strip():
-                        should_send = True
-                else:
-                    for status_key, cb in status_checkboxes.items():
-                        if cb.isChecked() and seg.status == status_key:
-                            should_send = True
-                            break
-                
-                if not should_send:
-                    skipped_count += 1
-                    continue
+        self.status_bar.showMessage(
+            self.tr("Sending segments to %d TM(s)…") % len(selected_tms))
+        QApplication.processEvents()
 
-                # Reverse any invisible-char display markers (·/→/°/↵) so they
-                # never leak into the TM (defensive – the model is usually clean).
-                source_clean = seg.source
-                target_clean = seg.target
-                if hasattr(self, 'reverse_invisible_replacements'):
-                    source_clean = self.reverse_invisible_replacements(source_clean)
-                    target_clean = self.reverse_invisible_replacements(target_clean)
-
-                # Strip outer wrapping tags first (like <li-b>, <li-o>, <p>) if setting is enabled
-                if self.hide_outer_wrapping_tags:
-                    source_clean, _ = strip_outer_wrapping_tags(source_clean)
-                    target_clean, _ = strip_outer_wrapping_tags(target_clean)
-
-                # Then strip formatting tags (like <b>, <i>, <u>)
-                source_clean = strip_formatting_tags(source_clean) if has_formatting_tags(source_clean) else source_clean
-                target_clean = strip_formatting_tags(target_clean) if has_formatting_tags(target_clean) else target_clean
-
-                # Add to TM. v1.10.145: honour the "Update existing entries
-                # (overwrite if source matches)" checkbox – previously it was
-                # ignored and entries were always appended, so the TM accumulated
-                # duplicates instead of being updated. With overwrite on, entries
-                # with the same source are replaced, leaving a clean TM with only
-                # the latest translation per source.
+        per_tm_sent = {}   # name -> count written
+        error_count = 0
+        _done = 0
+        for target_tm_id, target_tm_name in selected_tms:
+            if cancelled:
+                break
+            sent_this = 0
+            for seg, source_clean, target_clean in prepared:
+                if _done % 20 == 0:
+                    _progress.setValue(_done)
+                    _progress.setLabelText(
+                        self.tr("Updating '%s'… (%d/%d)") % (target_tm_name, _done + 1, max(_total, 1)))
+                    QApplication.processEvents()
+                    if _progress.wasCanceled():
+                        cancelled = True
+                        break
+                # v1.10.145: honour the overwrite checkbox — entries with the
+                # same source are replaced rather than appended (no duplicates).
                 try:
                     self.tm_database.add_entry(
                         source=source_clean,
                         target=target_clean,
                         tm_id=target_tm_id,
-                        overwrite=overwrite_cb.isChecked()
+                        overwrite=overwrite,
                     )
-                    sent_count += 1
+                    sent_this += 1
                 except Exception as add_error:
-                    self.log(f"⚠ Failed to add segment {seg.id}: {add_error}")
+                    self.log(f"⚠ Failed to add segment {seg.id} to '{target_tm_name}': {add_error}")
                     error_count += 1
-                    
-            except Exception as e:
-                error_count += 1
-                self.log(f"⚠ Error sending segment {seg.id} to TM: {e}")
-        
-        _progress.setValue(_total)
+                _done += 1
+            per_tm_sent[target_tm_name] = sent_this
+            # Update entry count for this TM in metadata.
+            if hasattr(self, 'tm_metadata_mgr') and self.tm_metadata_mgr:
+                try:
+                    self.tm_metadata_mgr.update_entry_count(target_tm_id)
+                except Exception as e:
+                    self.log(f"⚠ Could not update entry count for '{target_tm_name}': {e}")
+
+        _progress.setValue(max(_total, 1))
         _progress.close()
 
-        # Update TM entry count in metadata
-        if hasattr(self, 'tm_metadata_mgr') and self.tm_metadata_mgr:
-            try:
-                self.tm_metadata_mgr.update_entry_count(target_tm_id)
-            except Exception as e:
-                self.log(f"⚠ Could not update TM entry count: {e}")
-        
-        # Refresh TM list if visible
+        sent_count = sum(per_tm_sent.values())
+
+        # Refresh TM list if visible.
         if hasattr(self, 'refresh_tm_list'):
             try:
                 self.refresh_tm_list()
-            except:
+            except Exception:
                 pass
 
-        # v1.10.213: invalidate the match-panel cache so the newly-written
-        # TUs surface as matches without needing a project reopen. The bulk
-        # write commits to SQLite but the in-memory translation_matches_cache
-        # is segment-keyed and stale – without this call, segments the user
-        # already visited continue to show their pre-bulk-write match set.
-        # Full invalidation (smart_invalidation=False) – cheaper than
-        # walking the cache, and a bulk write usually touches enough
-        # segments to make a partial clear pointless.
+        # v1.10.213: invalidate the segment-keyed match-panel cache so the
+        # newly-written TUs surface without a project reopen.
         if hasattr(self, 'invalidate_translation_cache'):
             try:
                 self.invalidate_translation_cache(smart_invalidation=False)
             except Exception as e:
                 self.log(f"⚠ Could not invalidate match cache: {e}")
 
-        # Report results
-        self.log(f"✓ Sent {sent_count} segments to TM '{target_tm_name}'")
+        # Report results.
+        self.log(f"✓ Sent to {len(selected_tms)} TM(s): {sent_count} write(s) total")
+        for name, n in per_tm_sent.items():
+            self.log(f"   {name}: {n}")
         if skipped_count > 0:
-            self.log(f"  Skipped: {skipped_count} (empty or non-matching status)")
+            self.log(f"  Skipped per TM: {skipped_count} (empty or non-matching status)")
         if error_count > 0:
             self.log(f"  Errors: {error_count}")
-        
-        _title = "Send to TM – Cancelled" if cancelled else "Send to TM Complete"
-        _prefix = "Operation cancelled before finishing.\n\n" if cancelled else ""
-        self.status_bar.showMessage(
-            f"{'⚠ Cancelled – ' if cancelled else '✓ '}Sent {sent_count} segments to TM", 5000)
 
+        _title = self.tr("Send to TM – Cancelled") if cancelled else self.tr("Send to TM Complete")
+        _prefix = self.tr("Operation cancelled before finishing.\n\n") if cancelled else ""
+        self.status_bar.showMessage(
+            ("⚠ Cancelled – " if cancelled else "✓ ") +
+            f"Sent {sent_count} write(s) across {len(selected_tms)} TM(s)", 5000)
+
+        _tm_lines = "\n".join(f"  • {name}: {n}" for name, n in per_tm_sent.items())
         QMessageBox.information(
             self, _title,
             f"{_prefix}"
-            f"Sent {sent_count} segment(s) to TM '{target_tm_name}'.\n\n"
-            f"Skipped: {skipped_count}\n"
+            f"Sent {sent_count} segment-write(s) across {len(selected_tms)} TM(s):\n"
+            f"{_tm_lines}\n\n"
+            f"Skipped per TM: {skipped_count}\n"
             f"Errors: {error_count}"
         )
     
@@ -54192,20 +54331,178 @@ class SupervertalerQt(QMainWindow):
                 # listener on press; the release handler tears it
                 # down again if WE started it.
                 self._on_voice_command_ptt_press()
+            elif binding_id == 'voice_pause_alwayson':
+                # User-recordable hotkey that PAUSES Always-On while an
+                # external dictation tool (Wispr Flow etc.) holds the mic.
+                self._on_voice_pause_press()
 
         def _on_chord_released(binding_id):
             if binding_id == 'voice_dictate':
                 self.stop_voice_dictation_if_recording()
             elif binding_id == 'voice_command_ptt':
                 self._on_voice_command_ptt_release()
+            elif binding_id == 'voice_pause_alwayson':
+                self._on_voice_pause_release()
 
         listener.chord_pressed.connect(_on_chord_pressed)
         listener.chord_released.connect(_on_chord_released)
+        # Record-a-key for the pause hotkey routes through the same hook.
+        listener.captured.connect(self._on_voice_pause_key_captured)
         if not listener.start():
             self.log("⚠ Voice hotkey listener failed to start – push-to-talk will not work")
             return None
+        # Register the saved pause-Always-On hotkey (may be a media key,
+        # stored as a serialized VK chord). Safe no-op if unset.
+        try:
+            _pause_spec = self.load_dictation_settings().get('voice_pause_hotkey')
+            if _pause_spec:
+                listener.register_serialized('voice_pause_alwayson', _pause_spec)
+        except Exception:
+            pass
         self._voice_hotkey_listener = listener
         return listener
+
+    # ── Pause Always-On via a user-recorded global hotkey ───────────────
+    # For users who drive an EXTERNAL dictation tool (Wispr Flow, Dragon…)
+    # with their own hotkey — often an odd key like media fast-forward.
+    # While that key is engaged we pause our Always-On Vosk listener so the
+    # two don't fight over the microphone. The key is RECORDED (not typed)
+    # so media keys work; behaviour is Hold (default) or Toggle.
+
+    def _voice_pause_mode(self) -> str:
+        try:
+            return self.load_dictation_settings().get('voice_pause_mode', 'hold')
+        except Exception:
+            return 'hold'
+
+    def _pause_alwayson_external(self):
+        """Pause the Always-On listener (if running) for external dictation."""
+        vl = getattr(self, 'voice_listener', None)
+        if vl and getattr(vl, 'is_listening', False) and not getattr(vl, '_paused', False):
+            try:
+                vl.pause()
+                self._alwayson_paused_by_external = True
+                self.log("⏸️ Always-On paused for external dictation")
+            except Exception as e:
+                self.log(f"⚠ Could not pause Always-On: {e}")
+
+    def _resume_alwayson_external(self):
+        """Resume Always-On if WE paused it for external dictation."""
+        if not getattr(self, '_alwayson_paused_by_external', False):
+            return
+        self._alwayson_paused_by_external = False
+        vl = getattr(self, 'voice_listener', None)
+        if vl and getattr(vl, '_paused', False):
+            try:
+                vl.resume()
+                self.log("▶️ Always-On resumed")
+            except Exception as e:
+                self.log(f"⚠ Could not resume Always-On: {e}")
+
+    def _ensure_voice_pause_hotkey_armed(self):
+        """Guarantee the Pause-Always-On hotkey is registered on the global
+        keyboard listener.
+
+        Idempotent and safe to call repeatedly. Called whenever Always-On
+        starts so the pause key is live exactly when it matters, instead of
+        depending on push-to-talk having lazily created the listener earlier
+        in the session. Without this, a user who drives an external dictation
+        tool (and never uses the Workbench push-to-talk) could have Always-On
+        running with the pause hotkey never registered — so the key does
+        nothing and the external dictation bleeds into Vosk ([unk] [unk]).
+        """
+        try:
+            spec = (self.load_dictation_settings() or {}).get('voice_pause_hotkey') or ''
+        except Exception:
+            spec = ''
+        if not spec:
+            return  # no pause hotkey configured — nothing to arm
+        listener = self._get_voice_hotkey_listener()
+        if listener is None:
+            return
+        try:
+            # Re-register unconditionally (unregister first) so we're correct
+            # even if the listener was created before the hotkey was set, or a
+            # prior registration was cleared.
+            listener.unregister('voice_pause_alwayson')
+            if listener.register_serialized('voice_pause_alwayson', spec):
+                self.log("⏸️ Pause-Always-On hotkey armed")
+            else:
+                self.log(f"⚠ Could not parse Pause-Always-On hotkey: {spec!r}")
+        except Exception as e:
+            self.log(f"⚠ Could not arm Pause-Always-On hotkey: {e}")
+
+    def _on_voice_pause_press(self):
+        if self._voice_pause_mode() == 'toggle':
+            if getattr(self, '_alwayson_paused_by_external', False):
+                self._resume_alwayson_external()
+            else:
+                self._pause_alwayson_external()
+        else:  # hold
+            self._pause_alwayson_external()
+
+    def _on_voice_pause_release(self):
+        if self._voice_pause_mode() != 'toggle':
+            self._resume_alwayson_external()
+
+    def _set_voice_pause_setting(self, **kw):
+        try:
+            s = self._load_unified_settings()
+            ds = s.setdefault('ui', {}).setdefault('dictation_settings', {})
+            ds.update(kw)
+            self._save_unified_settings(s)
+        except Exception as e:
+            self.log(f"⚠ Could not save voice-pause setting: {e}")
+
+    def _begin_voice_pause_capture(self):
+        """Enter record-a-key mode for the pause hotkey (called from Voice tab)."""
+        listener = self._get_voice_hotkey_listener()
+        if listener is None:
+            self.log("⚠ Can't record a hotkey — the global keyboard listener is unavailable.")
+            lbl = getattr(self, '_voice_pause_hotkey_label', None)
+            if lbl is not None:
+                lbl.setText("Listener unavailable")
+            return
+        self._capturing_voice_pause = True
+        listener.begin_capture()
+        self.log("⏺ Recording pause hotkey — press the key you use for external dictation…")
+
+    def _on_voice_pause_key_captured(self, chord):
+        """Handle a captured chord from record-a-key mode (pause hotkey only)."""
+        if not getattr(self, '_capturing_voice_pause', False):
+            return  # capture wasn't initiated by us
+        self._capturing_voice_pause = False
+        try:
+            from modules.voice_hotkey_listener import serialize_chord, describe_chord
+        except Exception:
+            return
+        spec = serialize_chord(chord)
+        label = describe_chord(chord) or 'Not set'
+        self._set_voice_pause_setting(voice_pause_hotkey=spec)
+        listener = self._get_voice_hotkey_listener()
+        if listener is not None:
+            listener.unregister('voice_pause_alwayson')
+            if spec:
+                listener.register_serialized('voice_pause_alwayson', spec)
+        lbl = getattr(self, '_voice_pause_hotkey_label', None)
+        if lbl is not None:
+            lbl.setText(label)
+        self.log(f"⏸️ Pause-Always-On hotkey set to: {label}")
+
+    def _clear_voice_pause_hotkey(self):
+        self._set_voice_pause_setting(voice_pause_hotkey='')
+        self._capturing_voice_pause = False
+        listener = getattr(self, '_voice_hotkey_listener', None)
+        if listener is not None:
+            try:
+                listener.cancel_capture()
+                listener.unregister('voice_pause_alwayson')
+            except Exception:
+                pass
+        lbl = getattr(self, '_voice_pause_hotkey_label', None)
+        if lbl is not None:
+            lbl.setText("Not set")
+        self.log("⏸️ Pause-Always-On hotkey cleared")
 
     def stop_voice_dictation_if_recording(self):
         """Stop an active dictation recording on release (hold-to-talk).
@@ -63502,9 +63799,9 @@ class SuperlookupTab(QWidget):
                 'id': 'beijerterm',
                 'name': 'Beijerterm',
                 'icon': '📚',
-                'description': 'Dutch-English terminology database (500k+ terms)',
-                'url_template': 'https://beijerterm.com/w/index.php?search={query}',
-                'lang_format': None,
+                'description': 'Curated multilingual terminology database (Dutch ↔ English)',
+                'url_template': 'https://beijerterm.com/?q={query}&from={sl}&to={tl}',
+                'lang_format': 'iso2',  # nl, en — Beijerterm deep-link expects ISO 639-1
                 'bidirectional': True,
             },
             {
@@ -64835,38 +65132,42 @@ class SuperlookupTab(QWidget):
     def get_selected_tm_ids(self):
         """Get list of TM IDs that SuperLookup should search.
 
-        v1.10.168: changed from "SuperLookup-local checkbox state" to
-        "the Read flag set on the TMs tab in the main window". The
-        per-SuperLookup TM checkbox list was confusing — users would
-        toggle Read on the TMs tab and then wonder why SuperLookup still
-        showed (or didn't show) results. Now there's one switch per
-        resource, in the obvious place. The Termbases tab's Read flag
-        gates termbase search the same way (see get_selected_termbase_ids).
-        Returns an empty list when no TM is active, which signals search
-        code to skip the TM query entirely.
+        v1.10.247: gated on the dedicated **SuperLookup** column on the
+        TMs tab (translation_memories.superlookup_enabled) — NOT the Read
+        flag. v1.10.168 had tied SuperLookup inclusion to the Read flag
+        (tm_activation.is_active), which meant you couldn't keep only a
+        couple of TMs Read during a project while still having SuperLookup
+        search all of them. The SuperLookup column is now the single,
+        independent switch for SuperLookup inclusion (global per TM, no
+        project context). Returns an empty list when no TM is enabled,
+        which signals search code to skip the TM query entirely.
         """
         mw = self.main_window
         if mw is None or not hasattr(mw, 'tm_metadata_mgr') or mw.tm_metadata_mgr is None:
             return []
-        # project_id = 0 means "global activation" (no project loaded);
-        # mirrors how the TMs-tab Read toggle stores its state.
-        try:
-            curr_proj = getattr(mw, 'current_project', None)
-            project_id = curr_proj.id if (curr_proj is not None and hasattr(curr_proj, 'id')) else 0
-        except Exception:
-            project_id = 0
 
         selected_ids = []
         try:
             for tm in (mw.tm_metadata_mgr.get_all_tms() or []):
-                tm_id = tm.get('id')
-                if tm_id is None:
+                slug = tm.get('tm_id')      # string id stored on translation_units rows
+                # SuperLookup inclusion is the only gate here. Default True
+                # (included) for rows whose flag predates the column.
+                if not tm.get('superlookup_enabled', True):
                     continue
-                try:
-                    if mw.tm_metadata_mgr.is_tm_active(tm_id, project_id):
-                        selected_ids.append(tm_id)
-                except Exception:
-                    continue
+                # IMPORTANT: return the STRING slug, not the numeric registry
+                # id. The TM search filters on translation_units.tm_id, which
+                # holds the slug ('BEIJER', 'patents', …). Passing the numeric
+                # id makes the `tm_id IN (...)` clause match nothing, so TM
+                # search silently returned zero results for everyone.
+                # No numeric-id fallback: a slug-less TM cannot match any
+                # translation_units row, so skip it loudly rather than
+                # silently poisoning the filter with a numeric id.
+                if slug is not None:
+                    selected_ids.append(slug)
+                else:
+                    print(f"[Superlookup] get_selected_tm_ids: SuperLookup-enabled TM "
+                          f"id={tm.get('id')!r} has no string tm_id slug; skipping "
+                          f"(cannot match TM rows).")
         except Exception as e:
             print(f"[Superlookup] get_selected_tm_ids: enumeration failed: {e}")
         return selected_ids
@@ -65082,19 +65383,16 @@ class SuperlookupTab(QWidget):
     def get_selected_termbase_ids(self):
         """Get list of termbase IDs that SuperLookup should search.
 
-        v1.10.168: changed to query the Termbases-tab Read flag
-        (termbase_activation.is_active) instead of a SuperLookup-local
-        checkbox list. One switch per resource, in the obvious place.
-        See get_selected_tm_ids for the rationale.
+        v1.10.247: gated on the dedicated **SuperLookup** column on the
+        Termbases tab (termbases.superlookup_enabled) — NOT the Read flag.
+        See get_selected_tm_ids for the rationale: SuperLookup inclusion is
+        now independent of Read, so you can keep just a few termbases Read
+        during a project while SuperLookup still searches them all. Global
+        per termbase, no project context.
         """
         mw = self.main_window
         if mw is None or not hasattr(mw, 'termbase_mgr') or mw.termbase_mgr is None:
             return []
-        try:
-            curr_proj = getattr(mw, 'current_project', None)
-            project_id = curr_proj.id if (curr_proj is not None and hasattr(curr_proj, 'id')) else 0
-        except Exception:
-            project_id = 0
 
         selected_ids = []
         try:
@@ -65102,11 +65400,10 @@ class SuperlookupTab(QWidget):
                 tb_id = tb.get('id')
                 if tb_id is None:
                     continue
-                try:
-                    if mw.termbase_mgr.is_termbase_active(tb_id, project_id):
-                        selected_ids.append(tb_id)
-                except Exception:
-                    continue
+                # SuperLookup inclusion is the only gate. Default True
+                # (included) for rows whose flag predates the column.
+                if tb.get('superlookup_enabled', True):
+                    selected_ids.append(tb_id)
         except Exception as e:
             print(f"[Superlookup] get_selected_termbase_ids: enumeration failed: {e}")
         return selected_ids
@@ -66147,43 +66444,13 @@ class SuperlookupTab(QWidget):
         self.status_label.setText(self.tr("Cleared. Ready for new lookup."))
     
     def _normalize_language_code(self, lang: str) -> str:
-        """Normalize language code/name to a standard format for comparison.
-        
-        Converts both full names (English, Dutch) and ISO codes (en, nl)
-        to lowercase ISO 2-letter codes for consistent matching.
-        """
-        if not lang:
-            return ''
-        
-        lang_lower = lang.lower().strip()
-        
-        # Map full names to ISO codes
-        name_to_code = {
-            'english': 'en', 'dutch': 'nl', 'german': 'de', 'french': 'fr',
-            'spanish': 'es', 'italian': 'it', 'portuguese': 'pt', 'russian': 'ru',
-            'chinese': 'zh', 'japanese': 'ja', 'korean': 'ko', 'arabic': 'ar',
-            'polish': 'pl', 'czech': 'cs', 'hungarian': 'hu', 'romanian': 'ro',
-            'bulgarian': 'bg', 'greek': 'el', 'turkish': 'tr', 'swedish': 'sv',
-            'danish': 'da', 'norwegian': 'no', 'finnish': 'fi', 'ukrainian': 'uk',
-            'hebrew': 'he', 'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id',
-            'malay': 'ms', 'hindi': 'hi', 'bengali': 'bn', 'tamil': 'ta',
-            'catalan': 'ca', 'basque': 'eu', 'galician': 'gl', 'croatian': 'hr',
-            'serbian': 'sr', 'slovenian': 'sl', 'slovak': 'sk', 'estonian': 'et',
-            'latvian': 'lv', 'lithuanian': 'lt',
-        }
-        
-        # If it's a full name, convert to code
-        if lang_lower in name_to_code:
-            return name_to_code[lang_lower]
-        
-        # If it's already an ISO code (2-3 chars), normalize it
-        # Handle variants like en-US, nl-BE by taking the base code
-        if '-' in lang_lower or '_' in lang_lower:
-            base_code = lang_lower.replace('_', '-').split('-')[0]
-            return base_code
-        
-        # Return as-is (already a code like 'en', 'nl')
-        return lang_lower
+        """Normalize a language code/name to a base ISO code for comparison.
+
+        Delegates to modules.language_codes (the single authority): full
+        names ('Dutch') and regional variants ('nl-BE') all collapse to the
+        base code ('nl')."""
+        from modules import language_codes as _lc
+        return _lc.base_code(lang)
     
     # Hard cap on termbase results to keep the UI responsive when very large
     # termbases are loaded (otherwise we'd build thousands of QTableWidgetItems
@@ -66236,17 +66503,21 @@ class SuperlookupTab(QWidget):
             # Get search direction
             direction = self.get_search_direction()
             
-            # v1.10.168: termbase selection now mirrors the Termbases-tab
-            # Read flag (termbase_activation.is_active). v1.10.169:
-            # selected_tb_ids is pre-computed on the main thread by
-            # perform_lookup() and threaded through to here, so this method
-            # can run safely from the search worker thread (sqlite cursor
-            # affinity). If the caller didn't precompute (e.g. an older
-            # call site), fall back to computing now.
+            # v1.10.247: termbase selection follows the dedicated
+            # Termbases-tab SuperLookup column (termbases.superlookup_enabled),
+            # independent of the Read flag — so a termbase can be searched by
+            # SuperLookup whether or not it's Read-active for the project. The
+            # search reads terms straight from the DB (get_terms below), NOT
+            # the Read-gated in-memory matching index, so Read-off termbases
+            # are searched fine. v1.10.169: selected_tb_ids is pre-computed on
+            # the main thread by perform_lookup() and threaded through to here,
+            # so this method can run safely from the search worker thread
+            # (sqlite cursor affinity). If the caller didn't precompute (e.g.
+            # an older call site), fall back to computing now.
             if selected_tb_ids is None:
                 selected_tb_ids = self.get_selected_termbase_ids()
             if not selected_tb_ids:
-                print("[DEBUG search_termbases] No termbase has Read enabled – skipping termbase search.")
+                print("[DEBUG search_termbases] No termbase is SuperLookup-enabled – skipping termbase search.")
                 return results
 
             all_termbases = self.termbase_mgr.get_all_termbases(connection=connection)
@@ -66266,16 +66537,22 @@ class SuperlookupTab(QWidget):
                 
                 print(f"[DEBUG search_termbases] Checking TB '{termbase['name']}': source='{tb_source_lang}' (norm: '{tb_source_norm}'), target='{tb_target_lang}' (norm: '{tb_target_norm}')")
                 
-                # Skip termbases that don't match language filters
-                # Compare normalized codes - match if TB's language is in the list of variants
-                if source_langs_norm and tb_source_norm:
-                    if tb_source_norm not in source_langs_norm:
-                        print(f"[DEBUG search_termbases] Skipping '{termbase['name']}' - source lang mismatch: '{tb_source_norm}' not in {source_langs_norm}")
-                        continue
-                if target_langs_norm and tb_target_norm:
-                    if tb_target_norm not in target_langs_norm:
-                        print(f"[DEBUG search_termbases] Skipping '{termbase['name']}' - target lang mismatch: '{tb_target_norm}' not in {target_langs_norm}")
-                        continue
+                # Skip termbases whose language PAIR doesn't match the search.
+                # DIRECTION-AGNOSTIC: the term matching below is bidirectional
+                # (it searches both source_term and target_term and swaps as
+                # needed), so a termbase stored in the REVERSE orientation must
+                # still be searched — e.g. the PATENTS termbase is declared
+                # en→nl, but a Dutch→English lookup must still find its terms.
+                # We therefore accept the termbase if its declared languages
+                # line up with the From/To pair in EITHER direction. A side with
+                # no declared TB language is never used to exclude.
+                src_ok_fwd = (not source_langs_norm) or (not tb_source_norm) or (tb_source_norm in source_langs_norm)
+                tgt_ok_fwd = (not target_langs_norm) or (not tb_target_norm) or (tb_target_norm in target_langs_norm)
+                src_ok_rev = (not target_langs_norm) or (not tb_source_norm) or (tb_source_norm in target_langs_norm)
+                tgt_ok_rev = (not source_langs_norm) or (not tb_target_norm) or (tb_target_norm in source_langs_norm)
+                if not ((src_ok_fwd and tgt_ok_fwd) or (src_ok_rev and tgt_ok_rev)):
+                    print(f"[DEBUG search_termbases] Skipping '{termbase['name']}' - language pair mismatch: TB=({tb_source_norm},{tb_target_norm}) search=src{source_langs_norm}/tgt{target_langs_norm}")
+                    continue
                 
                 print(f"[DEBUG search_termbases] Searching in '{termbase['name']}'")
                 terms = self.termbase_mgr.get_terms(termbase_id, connection=connection)

@@ -142,7 +142,8 @@ class TMMetadataManager:
                     tm.description, tm.created_date, tm.modified_date, tm.last_used,
                     COUNT(tu.id) as actual_count,
                     tm.is_project_tm, tm.read_only, tm.project_id,
-                    COALESCE(tm.bridged_to_trados, 0) as bridged_to_trados
+                    COALESCE(tm.bridged_to_trados, 0) as bridged_to_trados,
+                    COALESCE(tm.superlookup_enabled, 1) as superlookup_enabled
                 FROM translation_memories tm
                 LEFT JOIN translation_units tu ON tm.tm_id = tu.tm_id
                 GROUP BY tm.id
@@ -166,6 +167,9 @@ class TMMetadataManager:
                     'read_only': bool(row[11]) if len(row) > 11 else False,
                     'project_id': row[12] if len(row) > 12 else None,
                     'bridged_to_trados': bool(row[13]) if len(row) > 13 else False,
+                    # SuperLookup inclusion (default True/included if the
+                    # column predates this row — see database_manager migration).
+                    'superlookup_enabled': bool(row[14]) if len(row) > 14 else True,
                 })
             
             return tms
@@ -315,7 +319,7 @@ class TMMetadataManager:
             now = datetime.now().isoformat()
             
             cursor.execute("""
-                INSERT OR REPLACE INTO tm_activation (tm_id, project_id, is_active, activated_date)
+                INSERT OR REPLACE INTO tm_activation (tm_db_id, project_id, is_active, activated_date)
                 VALUES (?, ?, 1, ?)
             """, (tm_db_id, project_id, now))
             
@@ -337,7 +341,7 @@ class TMMetadataManager:
             now = datetime.now().isoformat()
 
             cursor.execute("""
-                INSERT OR REPLACE INTO tm_activation (tm_id, project_id, is_active, activated_date)
+                INSERT OR REPLACE INTO tm_activation (tm_db_id, project_id, is_active, activated_date)
                 VALUES (?, ?, 0, ?)
             """, (tm_db_id, project_id, now))
 
@@ -364,7 +368,7 @@ class TMMetadataManager:
             if project_id != 0:
                 cursor.execute("""
                     SELECT is_active FROM tm_activation
-                    WHERE tm_id = ? AND project_id = ?
+                    WHERE tm_db_id = ? AND project_id = ?
                 """, (tm_db_id, project_id))
                 row = cursor.fetchone()
                 if row is not None:
@@ -373,7 +377,7 @@ class TMMetadataManager:
             # Fall back to global (project_id=0) only if no project-specific record
             cursor.execute("""
                 SELECT is_active FROM tm_activation
-                WHERE tm_id = ? AND project_id = 0
+                WHERE tm_db_id = ? AND project_id = 0
             """, (tm_db_id,))
             row = cursor.fetchone()
             if row is not None:
@@ -412,7 +416,7 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = ? AND ta.is_active = 1
             """, (project_id,))
             result = [row[0] for row in cursor.fetchall()]
@@ -421,10 +425,10 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = 0 AND ta.is_active = 1
                 AND tm.id NOT IN (
-                    SELECT tm_id FROM tm_activation WHERE project_id = ?
+                    SELECT tm_db_id FROM tm_activation WHERE project_id = ?
                 )
             """, (project_id,))
             result.extend(row[0] for row in cursor.fetchall())
@@ -467,7 +471,7 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = ? AND ta.is_active = 1 AND tm.read_only = 0
             """, (project_id,))
             result = [row[0] for row in cursor.fetchall()]
@@ -476,10 +480,10 @@ class TMMetadataManager:
             cursor.execute("""
                 SELECT DISTINCT tm.tm_id
                 FROM translation_memories tm
-                INNER JOIN tm_activation ta ON tm.id = ta.tm_id
+                INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id
                 WHERE ta.project_id = 0 AND ta.is_active = 1 AND tm.read_only = 0
                 AND tm.id NOT IN (
-                    SELECT tm_id FROM tm_activation WHERE project_id = ?
+                    SELECT tm_db_id FROM tm_activation WHERE project_id = ?
                 )
             """, (project_id,))
             result.extend(row[0] for row in cursor.fetchall())
@@ -666,4 +670,29 @@ class TMMetadataManager:
             return True
         except Exception as e:
             self.log(f"✗ Error setting bridged_to_trados status: {e}")
+            return False
+
+    def set_superlookup_enabled(self, tm_db_id: int, enabled: bool) -> bool:
+        """Set whether SuperLookup searches this TM.
+
+        Independent of the Read flag (tm_activation.is_active): this is the
+        single switch that controls SuperLookup inclusion, so a TM can be
+        searched by SuperLookup whether or not it's Read-active for the
+        current project (and vice versa). Global per TM, no project context.
+        """
+        try:
+            cursor = self.db_manager.cursor
+
+            cursor.execute("""
+                UPDATE translation_memories
+                SET superlookup_enabled = ?
+                WHERE id = ?
+            """, (1 if enabled else 0, tm_db_id))
+
+            self.db_manager.connection.commit()
+            status = "included in" if enabled else "excluded from"
+            self.log(f"✓ TM {tm_db_id} {status} SuperLookup")
+            return True
+        except Exception as e:
+            self.log(f"✗ Error setting superlookup_enabled status: {e}")
             return False

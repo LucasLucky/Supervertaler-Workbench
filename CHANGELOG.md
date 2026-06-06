@@ -2,10 +2,100 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.238 (May 31, 2026)
+**Current Version:** v1.10.250 (June 4, 2026)
 
 
-## v1.10.238 – May 31, 2026
+## v1.10.250 – June 4, 2026
+
+### Added (TMs)
+
+- **"Update active TMs" can now send segments to several TMs at once.** The Bulk Operations ▸ Update active TMs ("Send Segments to TM") dialog used to show how many writable TMs you had but only let you pick one from a dropdown, so updating three TMs meant running it three times. The target picker is now a checklist — tick every TM you want — and the run writes to all of them in a single pass with one combined progress bar and a per-TM summary of how many segments went to each. Each segment is filtered and cleaned once and then written to every selected TM, so adding a second or third target only costs the extra writes.
+
+
+## v1.10.249 – June 4, 2026
+
+### Fixed (Voice)
+
+- **The "show log" internal voice command opens the detached Log window again.** It still tried to switch to a "Log" tab, but the Log stopped being a tab in a v1.10.x UI change (it is now a detached window) — so the command silently did nothing. It now opens the detached Log window, the same as the toolbar 📋 Log button and Tools ▸ Log Window. The other built-in internal actions (navigation, confirm, copy/clear, translate, SuperLookup, concordance, dictation, "show editor") were verified to still map to live handlers.
+
+
+## v1.10.248 – June 4, 2026
+
+### Fixed (Voice)
+
+- **Pause Always-On now reliably arms whenever Always-On is listening.** The recordable Pause-Always-On hotkey (for external dictation tools) was only ever registered *lazily* — as a side effect of the push-to-talk listener being created. If you drive dictation entirely from an external tool and never use the Workbench push-to-talk, that listener might never come up, leaving the pause key registered to nothing: Always-On kept the microphone and the external tool's speech bled into Vosk as `[unk]` noise. The pause hotkey is now (re-)armed every time Always-On starts, so it is live exactly when it matters, independent of push-to-talk. (Note for users pausing via an AutoHotkey-remapped media key: use the `~` prefix on the hotkey so the native key still propagates to the Workbench's keyboard hook.)
+
+### Changed (Trados export)
+
+- **Trados return-package export now asks before shipping internal segment comments.** Segment notes/comments are internal by default — they can hold AI review rationale round-tripped in via the bilingual re-import, or any private working note. The SDLRPX / SDLXLIFF export now prompts when a project has comments and, unless you explicitly tick the box, leaves them out of the exported file so they never reach the client.
+
+
+## v1.10.247 – June 2, 2026
+
+### Added (SuperLookup)
+
+- **A dedicated "🔍 SuperLookup" column on the TMs and Termbases tabs — the single, independent switch for what SuperLookup searches.** Until now, SuperLookup searched exactly the TMs and termbases that had the **Read** flag set (v1.10.168 tied the two together). That meant you couldn't keep just a couple of TMs Read during a project while still having SuperLookup search *all* of them — the same applied to termbases. SuperLookup inclusion is now controlled by its own teal-tick column, **fully decoupled from Read**: a TM or termbase can be searched by SuperLookup whether or not it's Read-active for the current project, and vice versa. Each tab gets a "Select All / Clear All SuperLookup" bulk toggle to match the other columns. The flag is **global per resource** (one setting per TM/termbase, the same in every project), backed by a new `superlookup_enabled` column that **defaults to on for every existing TM and termbase** on upgrade — so SuperLookup keeps searching everything until you deliberately exclude something. The search reads matches straight from the database, so a SuperLookup-enabled but Read-off resource is searched correctly.
+
+
+## v1.10.246 – June 1, 2026
+
+### Added (Voice)
+
+- **Pause Always-On with your own (recordable) hotkey, for external dictation tools.** If you drive a separate dictation tool (Wispr Flow, Dragon, …) with its own key, Always-On can now step off the microphone while that key is engaged. The hotkey is **recorded, not typed**, so it works with odd keys — including media keys like fast-forward — that can't be expressed as text. Two modes: **Hold** (Always-On pauses only while the key is held, resumes on release — pairs with hold-to-talk tools) and **Toggle** (press to pause, press again to resume). Set it in the Voice tab under "⏸️ Pause Always-On for external dictation": click **Record key**, press your key, pick the mode. Built on the existing global keyboard hook (a passive observer — your other app still receives the key), so it works even when the Workbench isn't focused.
+
+### Fixed (Superlookup)
+
+- **Beijerterm web resource now uses the live deep-link URL.** It still pointed at the old MediaWiki search path (`/w/index.php?search=…`), which 404s since Beijerterm moved to its new Cloudflare-hosted database. It now opens `https://beijerterm.com/?q={query}&from={sl}&to={tl}` with ISO 639-1 language codes, so a Dutch→English lookup lands straight on the matching results in the right direction.
+
+
+## v1.10.245 – June 1, 2026
+
+### Changed (migration safety)
+
+- **Structural migrations now take an automatic backup first, and verify themselves afterward.** Before a table-rebuild or column-rename migration runs (such as the v1.10.244 identifier changes), the app writes a consistent, timestamped snapshot of the database — `<db>.pre-migration-<timestamp>.bak`, via SQLite's online backup API, safe even with the DB open — so *every* user gets a restore point, not just those who made one by hand. After migrating, it verifies the structural change actually took (e.g. catching an old bundled SQLite that couldn't rename a column) and logs loudly instead of running on a mismatched schema. The backup runs **only when a structural migration is actually pending** (never on a normal launch), and is best-effort: a backup failure is logged but doesn't block the otherwise-transactional migrations. Delete the `.pre-migration-*.bak` file once the upgrade is confirmed working.
+
+
+## v1.10.244 – June 1, 2026
+
+### Changed (schema — TM/termbase identifier disambiguation)
+
+- **Completed the identifier cleanup with a one-time schema migration that runs automatically on first launch.** Two long-standing data-model traps are removed: (1) `tm_activation.tm_id` — which actually holds the *numeric* registry id, not the string slug — is renamed to **`tm_db_id`**, ending the name collision with `translation_units.tm_id` (the slug) that caused the v1.10.242 "0 TM matches" bug; (2) `termbase_terms.termbase_id` is converted from **TEXT to INTEGER**, so it joins `termbases.id` by plain equality and the CASTs that papered over the type mismatch are now redundant. The migration preserves every row and the `id` primary key (the full-text index and the term-synonyms link both depend on it), rebuilds the FTS index, and is **idempotent**. It was validated on a copy of a real **93,480-term / 1.5M-unit** database: all data intact, **zero foreign-key violations**, search results unchanged before and after. (As always, keep a backup; the migration was designed to be safe and was rehearsed on a full-size copy, but schema changes deserve one.)
+
+
+## v1.10.243 – June 1, 2026
+
+### Changed (TM/termbase identifier robustness + a documented convention)
+
+- **Hardened the identifier handling that caused the v1.10.242 "0 TM matches" bug and documented the rule so it stops recurring.** A new module, `modules/identifier_conventions.py`, states the single convention: a TM's content is keyed by its **string slug** (`tm_id`, what `translation_units.tm_id` stores), a termbase's content by its **numeric `id`** (stored as TEXT in `termbase_terms.termbase_id`), and `name` is **display-only — never an identifier**. (Plus the gotcha that `tm_activation.tm_id` confusingly holds the numeric registry id, not the slug.) Two concrete hardenings: SuperLookup's TM selection no longer falls back to a numeric id when a slug is missing — it skips and logs, rather than silently poisoning the search filter; and `termbase_manager.get_terms()` now casts explicitly (`CAST(? AS TEXT)`) instead of relying on SQLite's implicit coercion, while keeping its index usable. A new test suite, `tests/test_identifier_conventions.py`, locks the rules: a string slug finds TM rows, a numeric id finds none, and a numeric termbase id correctly resolves the TEXT-stored content key.
+
+
+## v1.10.242 – June 1, 2026
+
+### Fixed
+
+- **SuperLookup returned zero TM matches whenever a TM was active — the real cause** (reported by a user, who confirmed it persisted after the v1.10.239–240 fixes). `get_selected_tm_ids()` returned each active TM's *numeric* registry id (`translation_memories.id`), but the TM search filters on `translation_units.tm_id`, which stores the TM's *string* slug (`BEIJER`, `patents`, …). The resulting `tm_id IN (4, 5, …)` clause matched no rows, so TM concordance silently returned nothing while termbase search (which uses different ids) worked fine. It now returns the string slug, still gating activation on the numeric id. Verified on real data: a representative Dutch→English query went from **0 → 100** TM matches. (The v1.10.239–240 language-matching work was a genuine fix for a *different* latent bug — regional/name variants — but was never the cause of this symptom.)
+
+
+## v1.10.241 – June 1, 2026
+
+### Changed (language handling — consolidated into one authority)
+
+- **All language-code normalisation now flows through a single module** (`modules/language_codes.py`), ending a long-standing class of "no results when a language direction is set" bugs (the SuperLookup termbase and TM misses fixed in v1.10.239–240 were two symptoms). The codebase had **six** separate normalisers across four modules — including a method defined twice with *opposite* behaviour — each handling the `nl` / `nl-NL` / `nl-BE` / `Dutch` / `Dutch (Belgium)` variants differently, or not at all, so different features disagreed about whether two languages matched. The legacy helpers (`get_base_lang_code`, `get_simple_lang_code`, `get_lang_match_variants`, `normalize_lang_variant`, `languages_are_compatible`, `lang_to_code`, and both `_normalize_language_code` methods) are kept for compatibility but now **all delegate to the one authority**, so every feature shares the same name↔code table and matching policy. Policy: regional variants are preserved for storage and display, but matching is on the **base** code (`nl-BE`, `nl-NL`, `nl` and `Dutch` all match), so lookups stop missing. A new equivalence test (`tests/test_language_codes.py`) locks this in so the divergence cannot creep back.
+
+
+## v1.10.240 – June 1, 2026
+
+### Fixed
+
+- **SuperLookup found no TM matches when a specific language direction was set** (e.g. Dutch → English), even for text plainly present in the TMs (reported by a user). The concordance search's "smart" language filter compared the From/To values against each TM row's language tags using raw, exact string membership. But the From/To dropdowns can pass full names (`Dutch`/`English`) or regional variants (`nl-BE`), while stored rows are tagged inconsistently (`nl`, `nl-NL`, `Dutch`, …) — so `nl` was never "in" `['Dutch']` and every row was discarded. Both sides are now compared on their base language code (`Dutch` → `nl`, `nl-BE` → `nl`), so a Dutch → English search matches `nl → en` rows however either side was tagged, and reverse-oriented rows are swapped into the correct order. Verified against real data: 0 → 99 matches for a representative query, consistent across every language-tag format.
+
+
+## v1.10.239 – June 1, 2026
+
+### Fixed
+
+- **SuperLookup found no termbase matches when a specific language direction was set** (e.g. Dutch → English), only working with From/To set to "Any" (reported by a user). The termbase language filter required the termbase to be declared in exactly the search direction, so a termbase stored in the *reverse* orientation — for example a termbase declared English → Dutch — was skipped entirely before the (already bidirectional) term matching ran. The filter is now direction-agnostic: a termbase is searched whenever its language pair matches the From/To pair in either orientation. In practice this restored every reverse-oriented termbase to Dutch → English lookups (one user had ten such termbases silently excluded). Unrelated language pairs are still correctly excluded.
+- **Termbase searches could miss terms whose language was untagged or regional.** The terminology search filter treated a term's literal `unknown` language tag as a real language (excluding it under any language filter instead of falling back to the termbase's declared languages), and matched language codes too strictly so a regional variant such as `en-US` was not found by a plain `en` search. Language matching is now case-insensitive, treats untagged/`unknown` terms as inheriting the termbase's languages, and matches regional variants. The change only ever adds matches, so no existing result is affected.
 
 ### Fixed
 

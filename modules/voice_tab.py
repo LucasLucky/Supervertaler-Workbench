@@ -283,6 +283,65 @@ class VoiceTab(QWidget):
         alwayson_group.setLayout(ao_layout)
         left_layout.addWidget(alwayson_group)
 
+        # --- Pause Always-On for external dictation ---
+        # A user-RECORDED global hotkey (works with odd keys like media
+        # fast-forward) that pauses Always-On while an external dictation
+        # tool holds the mic. Hold = paused while held; Toggle = press to
+        # pause / press to resume. Recorded, not typed, via the global hook.
+        pause_group = QGroupBox("⏸️ Pause Always-On for external dictation")
+        pause_layout = QVBoxLayout()
+
+        pk_row = QHBoxLayout()
+        pk_row.addWidget(QLabel("Hotkey:"))
+        self._voice_pause_label = QLabel("Not set")
+        self._voice_pause_label.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace; "
+            "font-size: 9pt; padding: 2px 6px; "
+            "background-color: #F5F5F5; border: 1px solid #DDD; border-radius: 3px;"
+        )
+        # Share with the app so capture/clear handlers can update it directly.
+        try:
+            self._parent_app._voice_pause_hotkey_label = self._voice_pause_label
+        except Exception:
+            pass
+        pk_row.addWidget(self._voice_pause_label)
+        self._voice_pause_record_btn = QPushButton("⏺ Record key")
+        self._voice_pause_record_btn.setToolTip(
+            "Click, then press the key you use to start your external "
+            "dictation tool (e.g. the media fast-forward key)."
+        )
+        self._voice_pause_record_btn.clicked.connect(self._on_record_pause_hotkey)
+        pk_row.addWidget(self._voice_pause_record_btn)
+        clear_pause_btn = QPushButton("Clear")
+        clear_pause_btn.clicked.connect(self._on_clear_pause_hotkey)
+        pk_row.addWidget(clear_pause_btn)
+        pk_row.addStretch()
+        pause_layout.addLayout(pk_row)
+
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Mode:"))
+        self._voice_pause_mode_combo = QComboBox()
+        self._voice_pause_mode_combo.addItem("Hold (pause while held)", "hold")
+        self._voice_pause_mode_combo.addItem("Toggle (press to pause / resume)", "toggle")
+        self._voice_pause_mode_combo.currentIndexChanged.connect(self._on_pause_mode_changed)
+        mode_row.addWidget(self._voice_pause_mode_combo)
+        mode_row.addStretch()
+        pause_layout.addLayout(mode_row)
+
+        pause_info = QLabel(
+            "Record the key your external dictation tool uses — media keys work too. "
+            "In <b>Hold</b> mode Always-On pauses only while you hold the key and resumes "
+            "when you release it (pair with hold-to-talk tools like Wispr&nbsp;Flow). "
+            "Use <b>Toggle</b> if your tool starts/stops on a single tap."
+        )
+        pause_info.setTextFormat(Qt.TextFormat.RichText)
+        pause_info.setWordWrap(True)
+        pause_info.setStyleSheet("font-size: 8pt; color: #666;")
+        pause_layout.addWidget(pause_info)
+
+        pause_group.setLayout(pause_layout)
+        left_layout.addWidget(pause_group)
+
         # --- Dictation (push-to-talk faster-whisper) ---
         # Engine is hard-pinned to faster-whisper here in v1.9.493+: the
         # OpenAI API option was removed because local models cover the
@@ -697,6 +756,44 @@ class VoiceTab(QWidget):
         self._sync_alwayson_from_listener()
         self._ahk_status_label.setText(self._ahk_status_text())
         self._refresh_hotkey_label()
+        self._refresh_voice_pause_ui()
+
+    # ── Pause-Always-On hotkey (record-a-key) ───────────────────────────
+
+    def _on_record_pause_hotkey(self):
+        fn = getattr(self._parent_app, '_begin_voice_pause_capture', None)
+        if callable(fn):
+            self._voice_pause_label.setText("Press a key…")
+            fn()
+
+    def _on_clear_pause_hotkey(self):
+        fn = getattr(self._parent_app, '_clear_voice_pause_hotkey', None)
+        if callable(fn):
+            fn()
+        self._voice_pause_label.setText("Not set")
+
+    def _on_pause_mode_changed(self, idx: int):
+        mode = self._voice_pause_mode_combo.itemData(idx) or 'hold'
+        self._set_dictation_keys(voice_pause_mode=mode)
+
+    def _refresh_voice_pause_ui(self):
+        """Sync the pause-hotkey label + mode dropdown from saved settings."""
+        loader = getattr(self._parent_app, 'load_dictation_settings', None)
+        ds = loader() if callable(loader) else {}
+        spec = ds.get('voice_pause_hotkey') or ''
+        try:
+            from modules.voice_hotkey_listener import parse_serialized_chord, describe_chord
+            chord = parse_serialized_chord(spec) if spec else None
+            self._voice_pause_label.setText(describe_chord(chord) if chord else "Not set")
+        except Exception:
+            self._voice_pause_label.setText(spec or "Not set")
+        combo = getattr(self, '_voice_pause_mode_combo', None)
+        if combo is not None:
+            i = combo.findData(ds.get('voice_pause_mode', 'hold'))
+            if i >= 0:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(i)
+                combo.blockSignals(False)
 
     def showEvent(self, event):
         super().showEvent(event)

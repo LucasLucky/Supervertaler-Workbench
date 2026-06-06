@@ -1154,18 +1154,26 @@ def _insert_comment_defs(content: str, seg_to_cmt: Dict[str, Tuple[str, str]],
 
     cmt_defs_block = ''.join(cmt_defs_xml_parts)
 
-    # Insert into existing <cmt-defs> or create new one
+    # Insert the <cmt-defs> so every comment marker has a matching definition.
+    # NB: use str.replace / a lambda (not a regex replacement string) because
+    # cmt_defs_block can contain backslashes or "\1"-like sequences from the
+    # comment text, which re.sub would mis-interpret as group references.
     if '<cmt-defs>' in content:
-        content = content.replace('</cmt-defs>', cmt_defs_block + '</cmt-defs>')
-    elif re.search(r'xmlns="http://sdl\.com/FileTypes/SdlXliff/1\.0"', content):
-        # Has doc-info with SDL namespace – insert <cmt-defs> before </doc-info>
-        # The doc-info element uses SDL namespace as default, so children are unprefixed
-        content = re.sub(
-            r'(</doc-info>)',
-            '<cmt-defs>' + cmt_defs_block + '</cmt-defs>' + r'\1',
-            content,
-            count=1
-        )
+        content = content.replace('</cmt-defs>', cmt_defs_block + '</cmt-defs>', 1)
+    elif '</doc-info>' in content:
+        # Existing doc-info – add <cmt-defs> just before it closes.
+        content = content.replace(
+            '</doc-info>', '<cmt-defs>' + cmt_defs_block + '</cmt-defs></doc-info>', 1)
+    else:
+        # No <doc-info> at all (some source SDLXLIFFs omit it). Create one right
+        # after the <xliff …> open tag, exactly where Trados puts it — otherwise
+        # the comment markers we add below would reference undefined comments and
+        # Trados throws "Object reference not set to an instance of an object"
+        # when opening the return package.
+        doc_info = ('<doc-info xmlns="http://sdl.com/FileTypes/SdlXliff/1.0">'
+                    '<cmt-defs>' + cmt_defs_block + '</cmt-defs></doc-info>')
+        content = re.sub(r'(<xliff\b[^>]*>)', lambda m: m.group(1) + doc_info,
+                         content, count=1)
     return content
 
 

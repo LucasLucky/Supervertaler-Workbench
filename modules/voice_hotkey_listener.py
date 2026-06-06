@@ -172,6 +172,82 @@ def parse_qt_shortcut(spec: str) -> Optional[frozenset]:
 
 
 # ---------------------------------------------------------------------------
+# Recorded ("captured") chords — including media / odd keys
+# ---------------------------------------------------------------------------
+# `parse_qt_shortcut` only understands typed names. Keys like media
+# fast-forward can't be typed, so the UI lets the user *record* one: the
+# global hook captures the raw vk(s) and we store/describe them by code.
+# Serialized form is "CTRL+VK176" (modifiers by name, keys as VK<int>), kept
+# deliberately distinct from Qt-style strings so both round-trip cleanly.
+
+# Friendly display labels for vks the typed parser can't name.
+_VK_FRIENDLY = {
+    0xB0: 'Media Next / Fast-Forward', 0xB1: 'Media Prev / Rewind',
+    0xB2: 'Media Stop', 0xB3: 'Media Play/Pause',
+    0xAD: 'Volume Mute', 0xAE: 'Volume Down', 0xAF: 'Volume Up',
+    0xB4: 'Launch Mail', 0xB5: 'Select Media',
+    0xB6: 'Launch App 1', 0xB7: 'Launch App 2',
+    0x20: 'Space', 0x09: 'Tab', 0x08: 'Backspace',
+    0x0D: 'Enter', 0x1B: 'Esc', 0x2E: 'Delete', 0x2D: 'Insert',
+    0x24: 'Home', 0x23: 'End', 0x21: 'PageUp', 0x22: 'PageDown',
+    0x25: 'Left', 0x26: 'Up', 0x27: 'Right', 0x28: 'Down',
+    0x6B: 'Num +', 0x6D: 'Num -', 0x6A: 'Num *', 0x6F: 'Num /', 0x6E: 'Num .',
+    **{0x70 + i: f'F{i + 1}' for i in range(24)},   # F1–F24
+    **{0x60 + i: f'Num {i}' for i in range(10)},     # numpad 0–9
+}
+
+_MODIFIER_ORDER = ['CTRL', 'ALT', 'ALTGR', 'SHIFT', 'META']
+
+
+def vk_label(vk: int) -> str:
+    """Human-readable label for a single vk (for the settings UI)."""
+    if vk in _VK_FRIENDLY:
+        return _VK_FRIENDLY[vk]
+    if 0x41 <= vk <= 0x5A or 0x30 <= vk <= 0x39:  # A–Z, 0–9
+        return chr(vk)
+    return f'Key 0x{vk:02X}'
+
+
+def describe_chord(chord) -> str:
+    """Pretty label for a chord, e.g. frozenset({'CTRL', 176}) → 'Ctrl + Media Next / Fast-Forward'."""
+    if not chord:
+        return ''
+    mods = [m.title() for m in _MODIFIER_ORDER if m in chord]
+    keys = [vk_label(k) for k in sorted(t for t in chord if isinstance(t, int))]
+    return ' + '.join(mods + keys)
+
+
+def serialize_chord(chord) -> str:
+    """Chord → storable string, e.g. frozenset({'CTRL', 176}) → 'CTRL+VK176'."""
+    if not chord:
+        return ''
+    mods = [m for m in _MODIFIER_ORDER if m in chord]
+    keys = [f'VK{k}' for k in sorted(t for t in chord if isinstance(t, int))]
+    return '+'.join(mods + keys)
+
+
+def parse_serialized_chord(spec: str):
+    """Inverse of `serialize_chord`. Falls back to `parse_qt_shortcut` if the
+    string isn't our VK form, so typed shortcuts ("Ctrl+Shift+Space") still work."""
+    if not spec:
+        return None
+    tokens = set()
+    for part in spec.split('+'):
+        p = part.strip()
+        if not p:
+            continue
+        up = p.upper()
+        if up in ('CTRL', 'SHIFT', 'ALT', 'ALTGR', 'META'):
+            tokens.add(up)
+        elif up.startswith('VK') and up[2:].isdigit():
+            tokens.add(int(up[2:]))
+        else:
+            # Not our serialized form — treat the whole spec as Qt-style.
+            return parse_qt_shortcut(spec)
+    return frozenset(tokens) if tokens else None
+
+
+# ---------------------------------------------------------------------------
 # Matcher – pure logic, no Qt, no pynput
 # ---------------------------------------------------------------------------
 class HotkeyMatcher:
@@ -272,6 +348,7 @@ class GlobalHotkeyListener(QObject):
 
     chord_pressed = pyqtSignal(str)   # binding_id
     chord_released = pyqtSignal(str)  # binding_id
+    captured = pyqtSignal(object)     # frozenset chord, from record-a-key mode
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -281,6 +358,8 @@ class GlobalHotkeyListener(QObject):
         )
         self._listener = None
         self._available = False
+        self._capturing = False
+        self._capture_pressed: set = set()
 
     # --- public API -------------------------------------------------------
 
@@ -296,8 +375,28 @@ class GlobalHotkeyListener(QObject):
         self._matcher.register(binding_id, chord)
         return True
 
+    def register_serialized(self, binding_id: str, spec: str) -> bool:
+        """Register a binding from a serialized chord ('CTRL+VK176') or a
+        typed Qt shortcut. Returns True if it parsed."""
+        chord = parse_serialized_chord(spec)
+        if chord is None:
+            return False
+        self._matcher.register(binding_id, chord)
+        return True
+
     def unregister(self, binding_id: str) -> None:
         self._matcher.unregister(binding_id)
+
+    def begin_capture(self) -> None:
+        """Enter record-a-key mode: the next non-modifier press (plus any
+        modifiers held with it) is emitted via the ``captured`` signal and
+        capture ends. Keys are NOT passed to the matcher while capturing."""
+        self._capturing = True
+        self._capture_pressed = set()
+
+    def cancel_capture(self) -> None:
+        self._capturing = False
+        self._capture_pressed = set()
 
     def start(self) -> bool:
         """Start the listener thread. Returns True on success."""
@@ -333,10 +432,24 @@ class GlobalHotkeyListener(QObject):
 
     def _on_pynput_press(self, key):
         vk = self._vk_for(key)
-        if vk is not None:
-            self._matcher.on_press(vk)
+        if vk is None:
+            return
+        if self._capturing:
+            token = normalize_vk(vk)
+            self._capture_pressed.add(token)
+            # A non-modifier (integer) token is the "primary" key and ends
+            # capture; bare modifiers just accumulate until one arrives.
+            if isinstance(token, int):
+                chord = frozenset(self._capture_pressed)
+                self._capturing = False
+                self._capture_pressed = set()
+                self.captured.emit(chord)
+            return
+        self._matcher.on_press(vk)
 
     def _on_pynput_release(self, key):
+        if self._capturing:
+            return
         vk = self._vk_for(key)
         if vk is not None:
             self._matcher.on_release(vk)
