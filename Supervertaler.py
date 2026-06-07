@@ -10761,7 +10761,7 @@ class SupervertalerQt(QMainWindow):
         )
         translate_menu.addAction(translate_all_pretranslated_action)
 
-        translate_pending_action = QAction(self.tr("Translate all not-started & pre-translated"), self)
+        translate_pending_action = QAction(self.tr("Translate all not-started && pre-translated"), self)
         translate_pending_action.setShortcut("Ctrl+Shift+T")
         translate_pending_action.triggered.connect(
             lambda checked=False: self.translate_multiple_segments("all_not_started_pretranslated")
@@ -49598,7 +49598,7 @@ class SupervertalerQt(QMainWindow):
         self.fr_sets_toggle = QToolButton()
         self.fr_sets_toggle.setArrowType(Qt.ArrowType.RightArrow)
         self.fr_sets_toggle.setCheckable(True)
-        self.fr_sets_toggle.setText(self.tr("  F&R Sets: Save and Run Multiple Find and Replace Operations"))
+        self.fr_sets_toggle.setText(self.tr("  F&&R Sets: Save and Run Multiple Find and Replace Operations"))
         self.fr_sets_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.fr_sets_toggle.setStyleSheet("QToolButton { font-weight: bold; border: none; }")
         toggle_layout.addWidget(self.fr_sets_toggle)
@@ -50980,7 +50980,7 @@ class SupervertalerQt(QMainWindow):
             layout.addWidget(source_group)
 
         # ─── AI & Prompts ───
-        ai_group = QGroupBox(self.tr("AI & Prompts"))
+        ai_group = QGroupBox(self.tr("AI && Prompts"))
         ai_layout = QVBoxLayout(ai_group)
 
         primary_prompt_text = "None"

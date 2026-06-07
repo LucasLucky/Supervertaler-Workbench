@@ -1427,8 +1427,8 @@ Click to toggle</source>
           <context context-type="linenumber">10729</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.Translate_all_not-started___pre-translated">
-        <source>Translate all not-started &amp; pre-translated</source>
+      <trans-unit id="SupervertalerQt.Translate_all_not-started____pre-translated">
+        <source>Translate all not-started &amp;&amp; pre-translated</source>
         <target state="signed-off">翻译所有未开始句段和预翻译句段</target>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
@@ -4700,7 +4700,7 @@ Database not initialized.</source>
       </trans-unit>
       <trans-unit id="SupervertalerQt.b_Document_Context__for_QuickLauncher_AI_prompts____b">
         <source>&lt;b&gt;Document Context (for QuickLauncher AI prompts):&lt;/b&gt;</source>
-        <target state="signed-off">&lt;B&gt;文档上下文（用于 QuickLauncher AI 提示词）：&lt;/b&gt;</target>
+        <target state="signed-off">&lt;b&gt;文档上下文（用于 QuickLauncher AI 提示词）：&lt;/b&gt;</target>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
@@ -8766,9 +8766,9 @@ File: {name}</source>
           <context context-type="linenumber">49389</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.F_R_Sets__Save_and_Run_Multiple_Find_and_Replace_Operations">
-        <source>  F&amp;R Sets: Save and Run Multiple Find and Replace Operations</source>
-        <target state="translated">  查找替换集：保存和运行多个查找替换操作(&amp;R)</target>
+      <trans-unit id="SupervertalerQt.F__R_Sets__Save_and_Run_Multiple_Find_and_Replace_Operations">
+        <source>  F&amp;&amp;R Sets: Save and Run Multiple Find and Replace Operations</source>
+        <target state="translated">  查找替换集：保存和运行多个查找替换操作</target>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>
@@ -8838,8 +8838,8 @@ File: {name}</source>
           <context context-type="linenumber">50771</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="SupervertalerQt.AI___Prompts">
-        <source>AI &amp; Prompts</source>
+      <trans-unit id="SupervertalerQt.AI____Prompts">
+        <source>AI &amp;&amp; Prompts</source>
         <target state="signed-off">AI 和提示词</target>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
