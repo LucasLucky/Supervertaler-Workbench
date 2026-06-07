@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.251 (June 7, 2026)
+**Current Version:** v1.10.252 (June 7, 2026)
+
+
+## v1.10.252 – June 7, 2026
+
+### Added (Find & Replace)
+
+- **Find & Replace can now reset edited segments back to Draft, and does so by default.** When a replace changes a target segment that was Confirmed, Proofread or Approved, its status now drops to Draft so the segments that Find & Replace touched are easy to spot and re-check. This applies to "Replace this", "Replace all" and F&R Sets batch runs. A new "Reset edited to Draft" checkbox in the Find & Replace dialog lets you turn it off; the choice is remembered between sessions. Undo (Ctrl+Z) restores the original text and status together.
+
+### Fixed (Find & Replace)
+
+- **"Replace this" (single replace) is now undoable.** It previously changed the target without recording an undo step; Ctrl+Z now reverts a single replace, including any status change.
 
 
 ## v1.10.251 – June 7, 2026

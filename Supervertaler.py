@@ -49643,6 +49643,35 @@ class SupervertalerQt(QMainWindow):
         self.regex_cb.toggled.connect(_on_regex_toggled)
         options_layout.addWidget(self.regex_cb)
 
+        # Separator before the status-handling option
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.Shape.VLine)
+        sep3.setFrameShadow(QFrame.Shadow.Sunken)
+        options_layout.addWidget(sep3)
+
+        # "Reset edited to Draft" – on by default. When a replace changes a
+        # target segment that was Confirmed/Proofread/Approved, drop it back to
+        # Draft so the segments Find & Replace touched are easy to spot and
+        # re-check. Single source of truth is self.fr_demote_to_draft (read by
+        # all replace paths); persisted in the "ui" settings section.
+        if getattr(self, 'fr_demote_to_draft', None) is None:
+            try:
+                _demote_default = self._load_settings_section("ui").get("fr_demote_edited_to_draft", True)
+            except Exception:
+                _demote_default = True
+            self.fr_demote_to_draft = bool(_demote_default)
+        self.fr_demote_cb = CheckmarkCheckBox(self.tr("Reset edited to Draft"))
+        self.fr_demote_cb.setChecked(bool(self.fr_demote_to_draft))
+        self.fr_demote_cb.setToolTip(self.tr(
+            "When a replace changes a target segment, reset its status to Draft if it\n"
+            "was Confirmed, Proofread or Approved. This makes the segments that Find &\n"
+            "Replace touched easy to spot and re-check. Undo (Ctrl+Z) restores the\n"
+            "original text and status together.\n"
+            "Applies to Replace this, Replace all and F&R Sets batch runs."
+        ))
+        self.fr_demote_cb.toggled.connect(lambda checked: self._set_fr_demote_to_draft(checked))
+        options_layout.addWidget(self.fr_demote_cb)
+
         options_layout.addStretch()
         main_v_layout.addLayout(options_layout)
         
@@ -49863,6 +49892,28 @@ class SupervertalerQt(QMainWindow):
                 f"The Find pattern is not a valid regular expression:\n\n{e}")
             return None
 
+    def _fr_status_after_edit(self, old_status: str) -> str:
+        """Status a segment should carry after a Find & Replace edit changed it.
+
+        When the "Reset edited to Draft" option is on (the default), a finished
+        status (Confirmed / Proofread / Approved) drops to ``draft`` so the
+        translator can see exactly which segments Find & Replace touched.
+        Otherwise the status is left unchanged."""
+        if getattr(self, 'fr_demote_to_draft', True) and old_status in ("confirmed", "proofread", "approved"):
+            return "draft"
+        return old_status
+
+    def _set_fr_demote_to_draft(self, enabled: bool):
+        """Persist the demote-on-edit preference (live-saved from the F&R dialog
+        checkbox). Single source of truth for all three replace paths."""
+        self.fr_demote_to_draft = bool(enabled)
+        try:
+            ui = self._load_settings_section("ui")
+            ui["fr_demote_edited_to_draft"] = bool(enabled)
+            self._save_settings_section("ui", ui)
+        except Exception as e:
+            self.log(f"⚠ Could not save F&R demote preference: {e}")
+
     def _fr_run_set_batch(self, fr_set: FindReplaceSet):
         """Run all enabled operations in a F&R Set as a batch (optimized for speed)."""
         enabled_ops = [op for op in fr_set.operations if op.enabled and op.find_text]
@@ -49917,6 +49968,7 @@ class SupervertalerQt(QMainWindow):
             # OPTIMIZATION: Re-enable UI updates and refresh only target column cells
             self.table.setUpdatesEnabled(True)
             # Update all target cells in-place (batch operations can affect many segments)
+            _demote = getattr(self, 'fr_demote_to_draft', True)
             for row in range(len(self.current_project.segments)):
                 segment = self.current_project.segments[row]
                 target_widget = self.table.cellWidget(row, 3)
@@ -49928,7 +49980,11 @@ class SupervertalerQt(QMainWindow):
                         display_text, _ = strip_outer_wrapping_tags(display_text)
                     target_widget.setPlainText(display_text)
                     target_widget.blockSignals(False)
+                # Statuses may have been demoted to Draft during the batch.
+                if _demote:
+                    self._update_status_cell(row, segment)
             self.table.viewport().update()
+            self.update_progress_stats()
         
         QMessageBox.information(
             self.find_replace_dialog,
@@ -50026,9 +50082,12 @@ class SupervertalerQt(QMainWindow):
                         segment.source = new_text
                     else:
                         _undo_old_status = segment.status
+                        _new_status = self._fr_status_after_edit(_undo_old_status)
                         segment.target = new_text
+                        if _new_status != _undo_old_status:
+                            segment.status = _new_status
                         try:
-                            self.record_undo_state(segment.id, old_text, new_text, _undo_old_status, _undo_old_status)
+                            self.record_undo_state(segment.id, old_text, new_text, _undo_old_status, _new_status)
                         except Exception:
                             pass  # never let undo failure break the actual operation
 
@@ -50354,13 +50413,23 @@ class SupervertalerQt(QMainWindow):
         if col == 2:
             segment.source = new_text
         else:
+            old_status = segment.status
+            old_target = segment.target
             segment.target = new_text
-        
+            # Optionally reset a finished segment to Draft so the change shows.
+            new_status = self._fr_status_after_edit(old_status)
+            if new_status != old_status:
+                segment.status = new_status
+                self._update_status_cell(row, segment)
+                self.update_progress_stats()
+            # Make a single "Replace this" undoable (text and status together).
+            self.record_undo_state(segment.id, old_target, new_text, old_status, new_status)
+
         # Update table
         item = self.table.item(row, col)
         if item:
             item.setText(segment.target)
-        
+
         self.project_modified = True
         self.update_window_title()
         
@@ -50511,8 +50580,14 @@ class SupervertalerQt(QMainWindow):
                         old_target = segment.target
                         old_status = segment.status
                         segment.target = new_text
+                        # Optionally reset a finished segment to Draft so the
+                        # change is visible, and refresh its status cell.
+                        new_status = self._fr_status_after_edit(old_status)
+                        if new_status != old_status:
+                            segment.status = new_status
+                            self._update_status_cell(row, segment)
                         # Record undo state for find/replace operation
-                        self.record_undo_state(segment.id, old_target, new_text, old_status, old_status)
+                        self.record_undo_state(segment.id, old_target, new_text, old_status, new_status)
                     
                     # OPTIMIZATION: Update only the affected cell widget in-place
                     cell_widget = self.table.cellWidget(row, col)
@@ -50527,7 +50602,9 @@ class SupervertalerQt(QMainWindow):
             
             self.project_modified = True
             self.update_window_title()
-            
+            # Confirmed/Draft counts may have changed if segments were demoted.
+            self.update_progress_stats()
+
             # Clear matches
             self.find_matches = []
             
