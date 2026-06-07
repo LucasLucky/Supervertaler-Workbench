@@ -10107,9 +10107,24 @@ class SupervertalerQt(QMainWindow):
         progress_layout.addWidget(self.progress_words_label)
 
         # Segments confirmed label
+        # The confirmed percentage can be measured two ways: by source word
+        # count (default) or by segment count. Word-based progress is steadier
+        # on short documents, where confirming a single long segment swings the
+        # segment percentage a lot. Click the label to switch (also available
+        # as a checkbox under View Settings); the choice persists in the "ui"
+        # settings section as ``confirmed_progress_basis``.
+        self._confirmed_progress_basis = "words"
+        try:
+            _basis = self._load_settings_section("ui").get("confirmed_progress_basis")
+            if _basis in ("segments", "words"):
+                self._confirmed_progress_basis = _basis
+        except Exception:
+            pass
         self.progress_confirmed_label = QLabel(self.tr("Confirmed: --"))
         self.progress_confirmed_label.setStyleSheet("color: #555; font-size: 11px;")
-        self.progress_confirmed_label.setToolTip(self.tr("Confirmed segments / Total segments (percentage)"))
+        self.progress_confirmed_label.setToolTip(self.tr("Confirmed segments / Total segments (percentage)\nClick to switch between segment- and word-based percentage"))
+        self.progress_confirmed_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.progress_confirmed_label.mousePressEvent = lambda e: self._show_confirmed_basis_menu()
         progress_layout.addWidget(self.progress_confirmed_label)
 
         # Remaining segments label
@@ -10292,6 +10307,7 @@ class SupervertalerQt(QMainWindow):
             total_words = 0
             translated_words = 0
             confirmed_count = 0
+            confirmed_words = 0
             remaining_count = 0
 
             # Statuses that indicate "done" (confirmed or higher)
@@ -10311,6 +10327,7 @@ class SupervertalerQt(QMainWindow):
                 # Count confirmed (or higher status)
                 if segment.status in confirmed_statuses:
                     confirmed_count += 1
+                    confirmed_words += source_words
 
                 # Count remaining (not_started, pretranslated, or rejected)
                 if segment.status in unfinished_statuses:
@@ -10318,7 +10335,16 @@ class SupervertalerQt(QMainWindow):
 
             # Calculate percentages
             word_percent = (translated_words / total_words * 100) if total_words > 0 else 0
-            confirmed_percent = (confirmed_count / total_segments * 100) if total_segments > 0 else 0
+            # The confirmed percentage honours the user's chosen basis (segment
+            # count vs source word count) – see the status-bar label setup.
+            if getattr(self, '_confirmed_progress_basis', 'words') == 'words':
+                confirmed_percent = (confirmed_words / total_words * 100) if total_words > 0 else 0
+                confirmed_text = f"Confirmed: {confirmed_words}/{total_words} words ({confirmed_percent:.0f}%)"
+                confirmed_tip = self.tr("Confirmed words / Total words (percentage)\nClick to switch to segment-based percentage")
+            else:
+                confirmed_percent = (confirmed_count / total_segments * 100) if total_segments > 0 else 0
+                confirmed_text = f"Confirmed: {confirmed_count}/{total_segments} ({confirmed_percent:.0f}%)"
+                confirmed_tip = self.tr("Confirmed segments / Total segments (percentage)\nClick to switch to word-based percentage")
 
             # Update labels with color-coding based on progress
             word_color = self._get_progress_color(word_percent)
@@ -10328,7 +10354,8 @@ class SupervertalerQt(QMainWindow):
             self.progress_words_label.setText(f"Words: {translated_words}/{total_words} ({word_percent:.0f}%)")
             self.progress_words_label.setStyleSheet(f"color: {word_color}; font-size: 11px;")
 
-            self.progress_confirmed_label.setText(f"Confirmed: {confirmed_count}/{total_segments} ({confirmed_percent:.0f}%)")
+            self.progress_confirmed_label.setText(confirmed_text)
+            self.progress_confirmed_label.setToolTip(confirmed_tip)
             self.progress_confirmed_label.setStyleSheet(f"color: {confirmed_color}; font-size: 11px;")
 
             self.progress_remaining_label.setText(f"Remaining: {remaining_count}")
@@ -10371,6 +10398,59 @@ class SupervertalerQt(QMainWindow):
             return "#c60"  # Orange
         else:
             return "#080"  # Green
+
+    def _show_confirmed_basis_menu(self):
+        """Pop a small menu to switch the confirmed percentage between
+        segment-count and word-count basis (triggered by clicking the
+        status-bar Confirmed label)."""
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QAction, QActionGroup, QCursor
+
+        menu = QMenu(self)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+
+        current = getattr(self, '_confirmed_progress_basis', 'words')
+        seg_action = QAction(self.tr("Percentage by segment count"), self)
+        seg_action.setCheckable(True)
+        seg_action.setChecked(current == "segments")
+        seg_action.triggered.connect(lambda: self._set_confirmed_progress_basis("segments"))
+        group.addAction(seg_action)
+        menu.addAction(seg_action)
+
+        word_action = QAction(self.tr("Percentage by word count"), self)
+        word_action.setCheckable(True)
+        word_action.setChecked(current == "words")
+        word_action.triggered.connect(lambda: self._set_confirmed_progress_basis("words"))
+        group.addAction(word_action)
+        menu.addAction(word_action)
+
+        menu.exec(QCursor.pos())
+
+    def _set_confirmed_progress_basis(self, basis: str):
+        """Persist the confirmed-percentage basis and refresh the status bar.
+
+        Single source of truth for both the status-bar label click and the
+        View Settings checkbox; keeps the checkbox in sync if it exists."""
+        if basis not in ("segments", "words"):
+            return
+        if getattr(self, '_confirmed_progress_basis', 'words') == basis:
+            return
+        self._confirmed_progress_basis = basis
+        try:
+            ui = self._load_settings_section("ui")
+            ui["confirmed_progress_basis"] = basis
+            self._save_settings_section("ui", ui)
+        except Exception as e:
+            self.log(f"⚠ Could not save confirmed-progress preference: {e}")
+        # Keep the View Settings checkbox in step (block its signal so we don't
+        # loop back into this method).
+        cb = getattr(self, '_confirmed_words_checkbox', None)
+        if cb is not None:
+            cb.blockSignals(True)
+            cb.setChecked(basis == "words")
+            cb.blockSignals(False)
+        self.update_progress_stats()
 
     def create_menus(self):
         """Create application menus"""
@@ -24130,6 +24210,51 @@ class SupervertalerQt(QMainWindow):
 
         grid_display_group.setLayout(grid_display_layout)
         layout.addWidget(grid_display_group)
+
+        # Status Bar section
+        status_bar_group = QGroupBox(self.tr("📊 Status Bar"))
+        status_bar_layout = QVBoxLayout()
+
+        status_bar_info = QLabel(
+            self.tr("Configure the progress indicators shown in the bottom status bar.")
+        )
+        status_bar_info.setStyleSheet("font-size: 8pt; padding: 8px; border-radius: 2px;")
+        status_bar_info.setWordWrap(True)
+        status_bar_layout.addWidget(status_bar_info)
+
+        # Confirmed-percentage basis checkbox. Live-saves via the same single
+        # source of truth as clicking the status-bar "Confirmed" label, so the
+        # two always agree.
+        confirmed_words_layout = QHBoxLayout()
+        # Resolve the current basis without depending on UI build order: prefer
+        # the in-memory value, fall back to the persisted setting, then default.
+        _basis = getattr(self, '_confirmed_progress_basis', None)
+        if _basis not in ("segments", "words"):
+            try:
+                _basis = self._load_settings_section("ui").get("confirmed_progress_basis")
+            except Exception:
+                _basis = None
+            if _basis not in ("segments", "words"):
+                _basis = "words"
+        self._confirmed_words_checkbox = CheckmarkCheckBox(self.tr("Show confirmed progress by word count (instead of segment count)"))
+        self._confirmed_words_checkbox.setChecked(_basis == "words")
+        self._confirmed_words_checkbox.setToolTip(self.tr(
+            "When enabled (default), the Confirmed percentage in the status bar is the\n"
+            "share of source words in confirmed segments. Word-based progress is\n"
+            "steadier on short documents, where confirming one long segment would\n"
+            "otherwise swing the segment-count percentage a lot.\n"
+            "When disabled, it is the share of confirmed segments.\n"
+            "You can also switch this by clicking the Confirmed label in the status bar."
+        ))
+        self._confirmed_words_checkbox.toggled.connect(
+            lambda checked: self._set_confirmed_progress_basis("words" if checked else "segments")
+        )
+        confirmed_words_layout.addWidget(self._confirmed_words_checkbox)
+        confirmed_words_layout.addStretch()
+        status_bar_layout.addLayout(confirmed_words_layout)
+
+        status_bar_group.setLayout(status_bar_layout)
+        layout.addWidget(status_bar_group)
 
         # Match Panel & Tag Colors section
         results_group = QGroupBox(self.tr("📋 Match Panel && Tag Colors"))

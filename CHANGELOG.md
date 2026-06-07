@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.250 (June 4, 2026)
+**Current Version:** v1.10.251 (June 7, 2026)
+
+
+## v1.10.251 – June 7, 2026
+
+### Added (Status bar)
+
+- **The status-bar "Confirmed" percentage can now be measured by word count, and that is the new default.** Previously it was always the share of *confirmed segments*, which can swing noticeably on short documents where a single long segment is a large fraction of the whole. It now defaults to the share of *source words* in confirmed segments, giving a steadier, more precise reading of how much work is actually done. Click the "Confirmed" label in the status bar to switch between word-based and segment-based at any time, or use the new checkbox under Settings ▸ View ▸ Status Bar. The choice is remembered between sessions.
 
 
 ## v1.10.250 – June 4, 2026
