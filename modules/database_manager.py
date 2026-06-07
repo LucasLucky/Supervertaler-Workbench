@@ -821,6 +821,30 @@ class DatabaseManager:
     # TRANSLATION MEMORY METHODS
     # ============================================
     
+    def _normalize_lang(self, value):
+        """Normalise a language label to a canonical code before it is stored on
+        a translation unit ('English'/'en-US'/'Dutch (Belgium)' -> 'en'/'en-US'/'nl-BE').
+
+        Callers pass whatever the project holds, which for some projects is a
+        display name ('English'/'Dutch') rather than a code. Storing those
+        verbatim left a TM with a mix of name- and code-tagged rows, which
+        defeated the Trados bridge's per-row source/target orientation and
+        inserted the wrong language. Routing every write through
+        ``language_codes.canonical`` (the single normalisation authority)
+        converts display names to codes while preserving any region subtag
+        ("keep region, match on base"), so a TM's rows stay consistent. Falls
+        back to the original value if the normaliser is unavailable or doesn't
+        recognise the input, so a write never fails here.
+        """
+        try:
+            try:
+                from modules import language_codes as _lc
+            except ImportError:
+                import language_codes as _lc
+            return _lc.canonical(value) or (value or '')
+        except Exception:
+            return value or ''
+
     def add_translation_unit(self, source: str, target: str, source_lang: str,
                             target_lang: str, tm_id: str = 'project',
                             project_id: str = None, context_before: str = None,
@@ -852,6 +876,11 @@ class DatabaseManager:
         if not self._tm_id_exists(tm_id):
             self.log(f"⚠️ Refusing to add TU: tm_id '{tm_id}' has no row in translation_memories (orphan write blocked)")
             return None
+
+        # Store languages as canonical codes so a TM never mixes display
+        # names and codes across rows (which reverses bridged-TM matches).
+        source_lang = self._normalize_lang(source_lang)
+        target_lang = self._normalize_lang(target_lang)
 
         # Generate hash from NORMALIZED source for consistent exact matching
         # This handles invisible differences like Unicode normalization, whitespace variations
@@ -940,6 +969,11 @@ class DatabaseManager:
         if not self._tm_id_exists(tm_id):
             self.log(f"⚠️ Refusing batch insert: tm_id '{tm_id}' has no row in translation_memories (orphan write blocked)")
             return 0
+
+        # Canonicalise the pair's languages once (a batch is single-direction)
+        # so stored rows never mix display names with codes – see _normalize_lang.
+        source_lang = self._normalize_lang(source_lang)
+        target_lang = self._normalize_lang(target_lang)
 
         inserted = 0
         try:

@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.252 (June 7, 2026)
+**Current Version:** v1.10.253 (June 7, 2026)
+
+
+## v1.10.253 – June 7, 2026
+
+### Fixed (Translation Memory)
+
+- **TM writes now store language codes consistently, fixing reversed matches in the Trados bridge.** When a segment was saved to a TM, the project's languages were written verbatim – which for some projects meant display names ("English"/"Dutch") instead of codes ("en"/"nl"). A TM that accumulated a mix of name- and code-tagged rows confused the Supervertaler for Trados bridge's per-row source/target orientation, so a bridged match could come back reversed and insert the wrong language. Every TM write now normalises languages through `language_codes` (names become codes, any region subtag is preserved), so new rows are always consistent. Existing rows are unaffected; the Trados plugin also handles legacy name-tagged rows on its side.
 
 
 ## v1.10.252 – June 7, 2026
