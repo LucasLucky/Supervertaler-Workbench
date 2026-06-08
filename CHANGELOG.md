@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.254 (June 8, 2026)
+**Current Version:** v1.10.255 (June 8, 2026)
+
+
+## v1.10.255 – June 8, 2026
+
+### Changed (Re-importable Text)
+
+- **Re-importable Text targets now stay on one line, with hard breaks written as a `[newline]` token.** The Bilingual Text (AI-friendly) export previously spread a multi-line target across several physical lines; an in-target line break (e.g. a two-line subtitle) is now encoded as the literal token `[newline]`, so every segment field occupies exactly one line and the whole block is a clean fixed-shape record. This is the most robust shape for LLM editing — a bare `\n` tempts the model to expand it back into a real break, whereas a bracketed placeholder is left verbatim like the inline tags (and, being letters-in-brackets, it is **not** counted by the structural-tag guard, unlike `<br>` would be). On re-import the token is decoded back to a real line break, so round-tripping a subtitle keeps its two-line layout. Re-import stays **backward-compatible**: files exported before this change (genuinely multi-line targets) still import unchanged. Comments are unaffected and may still span several lines.
 
 
 ## v1.10.254 – June 8, 2026

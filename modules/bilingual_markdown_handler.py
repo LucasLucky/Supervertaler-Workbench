@@ -46,9 +46,16 @@ Design notes / deliberate differences from the Trados original
   the line-oriented parser stays simple. The source hash is computed over the
   *written* (flattened) form, so it round-trips consistently. Source is never
   written back to the segment, so no information is lost in practice.
-* **Targets may be multi-line.** The target is everything from the target
-  language line up to the ``Status:`` line or the blank line that ends the block,
-  so a translation containing a line break round-trips correctly.
+* **Targets are single-line; in-target breaks use a ``[newline]`` token.** On
+  export, a hard line break inside the target (e.g. a two-line subtitle) is
+  written as the literal token ``[newline]`` so every segment field stays on one
+  physical line — the most robust shape for AI agents (a bare ``\n`` invites the
+  model to expand it back into a real break; a bracketed word reads as a
+  preserve-verbatim placeholder, like the inline tags, and is not caught by the
+  tag-integrity regex). On import the token is decoded back to ``\n``. For
+  backward compatibility the parser ALSO still accepts a genuinely multi-line
+  target (everything up to the ``Status:``/blank line), so files exported before
+  this change re-import unchanged.
 * **Status round-trips.** The Trados build parsed the ``Status:`` line but never
   applied it. Here it is applied: if the editor changed the status line it wins;
   otherwise a segment whose target changed is marked ``draft``.
@@ -71,6 +78,11 @@ EXPORT_VERSION = "1.0"
 SIDECAR_SUFFIX = ".svexport.json"
 LOCK_PREFIX = "🔒 "  # U+1F512 + space, prepended to a locked segment's Status line
 FILE_HEADER_PREFIX = "## 📄 File: "  # U+1F4C4
+# Inline marker for a hard line break inside a target, so the target stays on one
+# physical line on export (decoded back to "\n" on import). A bracketed word is
+# preferred over a bare "\n" because LLM agents tend to expand "\n" into a real
+# newline when editing, whereas a placeholder token is left verbatim.
+NEWLINE_TOKEN = "[newline]"
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +245,9 @@ def build_markdown(
     lines.append("")
     lines.append("  HOW TO EDIT THIS FILE")
     lines.append(f"  - Do not change the [SEGMENT N] markers or the {src_code}: source lines.")
-    lines.append(f"  - Edit the {tgt_code}: target text freely (it may span several lines).")
+    lines.append(f"  - Edit the {tgt_code}: target text freely, but keep it on ONE line;")
+    lines.append(f"    write the literal token [newline] where a line break is needed")
+    lines.append(f"    (e.g. to split a subtitle into two lines).")
     lines.append("  - Edit or add a comment on the Comment: line (leave it blank if none).")
     if status_choices:
         lines.append(f"  - You may set Status: to one of: {', '.join(status_choices)}.")
@@ -251,8 +265,9 @@ def build_markdown(
 
         lines.append(f"[SEGMENT {seg.number:0{pad}d}]")
         lines.append(f"{src_code}: {_flatten_source(seg.source)}")
-        # Target may legitimately be multi-line; write it verbatim after the code.
-        target = _normalise_newlines(seg.target)
+        # Keep the target on ONE physical line: encode hard breaks as [newline]
+        # tokens (decoded back to "\n" on import). See module docstring.
+        target = _normalise_newlines(seg.target).replace("\n", NEWLINE_TOKEN)
         lines.append(f"{tgt_code}: {target}")
         if seg.status_label:
             status_text = seg.status_label
@@ -445,7 +460,10 @@ def _parse_block(number: int, block: List[str]) -> ParsedMdSegment:
             if _terminates_target(block[i]):
                 break
             target_lines.append(block[i])
-        target = "\n".join(target_lines).strip()
+        # Decode the inline line-break token back to a real newline. Old files
+        # with a genuinely multi-line target have no token, so this is a no-op
+        # for them — keeping the parser backward-compatible.
+        target = "\n".join(target_lines).replace(NEWLINE_TOKEN, "\n").strip()
 
     # Status line (first one in the block).
     for line in block:
@@ -717,6 +735,20 @@ if __name__ == "__main__":
     # Locked status line had the 🔒 prefix stripped.
     assert parsed[2].status_label == "Draft", parsed[2].status_label
     print("parse OK")
+
+    # New single-line encoding: the in-target break is written as [newline] and
+    # the target sits on ONE physical line in the exported text.
+    assert "Regel een[newline]regel twee" in md, md
+    assert "Regel een\nregel twee" not in md, "target must be single-line on export"
+    # Backward compatibility: a genuinely multi-line target (old-style file)
+    # still parses, with the break preserved as a real newline.
+    legacy = ("[SEGMENT 0001]\n"
+              "EN: Hello world\n"
+              "NL: Regel een\nregel twee\n"
+              "Status: Draft\nComment:\n")
+    lp = parse_markdown(legacy)
+    assert lp[0].target == "Regel een\nregel twee", repr(lp[0].target)
+    print("newline-token + backward-compat OK")
 
     # Sidecar + diffing.
     sidecar = build_sidecar(
