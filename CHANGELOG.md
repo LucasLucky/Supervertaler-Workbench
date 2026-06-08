@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.256 (June 8, 2026)
+**Current Version:** v1.10.257 (June 8, 2026)
+
+
+## v1.10.257 – June 8, 2026
+
+### Changed (Re-importable Text)
+
+- **The source line now shows its original line breaks as `[newline]`, instead of being flattened to spaces.** Re-importable Text previously wrote a multi-line source (e.g. a two-line subtitle cue) on one line with the breaks turned into spaces, which made the source look like its line endings had gone missing — and hid cases where a target was missing a break that the source has. Source breaks are now encoded with the same `[newline]` token as the target, so the source stays on one physical line while its original structure stays visible. The source is read-only and never written back, so it isn't decoded; the source-tamper hash is now computed over the `[newline]`-encoded form so it still round-trips. **Backward-compatible**: files exported before this (space-flattened source) carry their own matching sidecar hashes, so they re-import unchanged. Symmetric with the target encoding added in v1.10.255.
 
 
 ## v1.10.256 – June 8, 2026

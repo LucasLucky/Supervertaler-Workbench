@@ -41,11 +41,15 @@ Design notes / deliberate differences from the Trados original
   <sup>``) may be freely added/removed by the editor; *structural* tags
   (numbered placeholders, memoQ/Trados/DéjàVu tags) are counted and a mismatch
   blocks the segment under strict mode — mirroring the Trados tag-integrity gate.
-* **Source is flattened to one physical line on export.** A segment whose source
-  contains hard line breaks is written on a single line (newlines → spaces) so
-  the line-oriented parser stays simple. The source hash is computed over the
-  *written* (flattened) form, so it round-trips consistently. Source is never
-  written back to the segment, so no information is lost in practice.
+* **Source line breaks are shown as ``[newline]`` (same as the target).** A hard
+  break inside the source — e.g. a two-line subtitle cue — is written as the
+  literal ``[newline]`` token so the source stays on one physical line while its
+  original line structure stays visible (handy for spotting a target that is
+  missing a break the source has). The source is read-only and never written
+  back, so it is not decoded; the source hash is computed over this written
+  (``[newline]``-encoded) form, so tamper detection round-trips. Files exported
+  before this used a space-flattened source, and their own sidecar hashes match
+  that form, so they still re-import unchanged.
 * **Targets are single-line; in-target breaks use a ``[newline]`` token.** On
   export, a hard line break inside the target (e.g. a two-line subtitle) is
   written as the literal token ``[newline]`` so every segment field stays on one
@@ -190,11 +194,13 @@ class MdExportSegment:
     comment: str = ""           # segment comment text (Workbench seg.notes); "" omits the Comment: line
 
 
-def _flatten_source(text: str) -> str:
-    """Collapse a (possibly multi-line) source to a single physical line."""
+def _encode_breaks(text: str) -> str:
+    """Render a (possibly multi-line) value on ONE physical line, writing each
+    hard line break as the literal ``[newline]`` token. Shared by source and
+    target so every segment field stays on a single line."""
     if not text:
         return ""
-    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
+    return _normalise_newlines(text).replace("\n", NEWLINE_TOKEN)
 
 
 def _normalise_newlines(text: str) -> str:
@@ -245,8 +251,8 @@ def build_markdown(
     lines.append("")
     lines.append("  HOW TO EDIT THIS FILE")
     lines.append(f"  - Do not change the [SEGMENT N] markers or the {src_code}: source lines.")
-    lines.append(f"  - The {src_code}: source is shown on one line for reference; its original")
-    lines.append(f"    line breaks are not significant.")
+    lines.append(f"    (A [newline] in a {src_code}: source marks a break in the original,")
+    lines.append(f"    read-only source — e.g. a two-line subtitle.)")
     lines.append(f"  - Edit the {tgt_code}: target text freely, but keep it on ONE line;")
     lines.append(f"    write the literal token [newline] where a line break is needed")
     lines.append(f"    (e.g. to split a subtitle into two lines).")
@@ -266,11 +272,11 @@ def build_markdown(
             last_file = seg.file_name
 
         lines.append(f"[SEGMENT {seg.number:0{pad}d}]")
-        lines.append(f"{src_code}: {_flatten_source(seg.source)}")
-        # Keep the target on ONE physical line: encode hard breaks as [newline]
-        # tokens (decoded back to "\n" on import). See module docstring.
-        target = _normalise_newlines(seg.target).replace("\n", NEWLINE_TOKEN)
-        lines.append(f"{tgt_code}: {target}")
+        # Both source and target stay on ONE physical line: hard breaks become
+        # [newline] tokens. The target is decoded back to "\n" on import; the
+        # source is read-only reference. See module docstring.
+        lines.append(f"{src_code}: {_encode_breaks(seg.source)}")
+        lines.append(f"{tgt_code}: {_encode_breaks(seg.target)}")
         if seg.status_label:
             status_text = seg.status_label
             if seg.locked:
@@ -302,7 +308,7 @@ def build_sidecar(
         seg_objs.append({
             "number": seg.number,
             "segment_id": seg.segment_id,
-            "source_hash": hash_prefix(_flatten_source(seg.source)),
+            "source_hash": hash_prefix(_encode_breaks(seg.source)),
             "status": seg.status_key or "",
             "source_file_name": seg.file_name or "",
             "is_locked": bool(seg.locked),
@@ -750,6 +756,16 @@ if __name__ == "__main__":
               "Status: Draft\nComment:\n")
     lp = parse_markdown(legacy)
     assert lp[0].target == "Regel een\nregel twee", repr(lp[0].target)
+    # Source breaks are now ALSO shown as [newline] (read-only reference); the
+    # sidecar hash is computed over that same encoded form.
+    assert "EN: Line one[newline]line two" in md, md          # EN is the source here
+    assert parsed[2].source == "Line one[newline]line two", repr(parsed[2].source)
+    _sc = build_sidecar(segs, project_name="D", source_file_name="d",
+                        source_language="English", target_language="Dutch",
+                        tool_version="x", export_file_path="d",
+                        timestamp_utc="2026-06-08T00:00:00Z")
+    assert hash_prefix(parsed[2].source) == _sc["segments"][2]["source_hash"], \
+        "source hash must cover the [newline]-encoded source"
     print("newline-token + backward-compat OK")
 
     # Sidecar + diffing.
