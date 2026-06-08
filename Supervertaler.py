@@ -10545,9 +10545,11 @@ class SupervertalerQt(QMainWindow):
         import_memoq_xliff_action.triggered.connect(self.import_memoq_xliff)
         memoq_submenu.addAction(import_memoq_xliff_action)
 
-        import_cafetran_action = QAction(self.tr("&CafeTran Bilingual Table (DOCX)..."), self)
+        # CafeTran submenu - group all CafeTran imports together
+        cafetran_submenu = import_menu.addMenu(self.tr("&CafeTran"))
+        import_cafetran_action = QAction(self.tr("Bilingual &Table (DOCX)..."), self)
         import_cafetran_action.triggered.connect(self.import_cafetran_bilingual)
-        import_menu.addAction(import_cafetran_action)
+        cafetran_submenu.addAction(import_cafetran_action)
 
         # Trados submenu - group all Trados imports together
         trados_submenu = import_menu.addMenu(self.tr("&Trados Studio"))
@@ -10568,15 +10570,17 @@ class SupervertalerQt(QMainWindow):
         import_sdlppx_action.triggered.connect(self.import_sdlppx_package)
         trados_submenu.addAction(import_sdlppx_action)
 
-        # Phrase (Memsource) import
-        import_phrase_bilingual_action = QAction(self.tr("&Phrase (Memsource) Bilingual (DOCX)..."), self)
+        # Phrase (Memsource) submenu
+        phrase_submenu = import_menu.addMenu(self.tr("&Phrase (Memsource)"))
+        import_phrase_bilingual_action = QAction(self.tr("&Bilingual (DOCX)..."), self)
         import_phrase_bilingual_action.triggered.connect(self.import_phrase_bilingual)
-        import_menu.addAction(import_phrase_bilingual_action)
+        phrase_submenu.addAction(import_phrase_bilingual_action)
 
-        # Déjà Vu X3 import
-        import_dejavu_action = QAction(self.tr("&Déjà Vu X3 Bilingual (RTF)..."), self)
+        # Déjà Vu X3 submenu
+        dejavu_submenu = import_menu.addMenu(self.tr("&Déjà Vu X3"))
+        import_dejavu_action = QAction(self.tr("&Bilingual (RTF)..."), self)
         import_dejavu_action.triggered.connect(self.import_dejavu_bilingual)
-        import_menu.addAction(import_dejavu_action)
+        dejavu_submenu.addAction(import_dejavu_action)
 
         # GNU gettext .po / .pot import (Linux/Django/WordPress l10n)
         import_po_action = QAction(self.tr("&GNU gettext (.po / .pot)..."), self)
@@ -10663,9 +10667,11 @@ class SupervertalerQt(QMainWindow):
         export_memoq_xliff_action.triggered.connect(self.export_memoq_xliff)
         memoq_export_submenu.addAction(export_memoq_xliff_action)
 
-        export_cafetran_action = QAction(self.tr("&CafeTran Bilingual Table - Translated (DOCX)..."), self)
+        # CafeTran submenu - group all CafeTran exports together
+        cafetran_export_submenu = export_menu.addMenu(self.tr("&CafeTran"))
+        export_cafetran_action = QAction(self.tr("Bilingual &Table - Translated (DOCX)..."), self)
         export_cafetran_action.triggered.connect(self.export_cafetran_bilingual)
-        export_menu.addAction(export_cafetran_action)
+        cafetran_export_submenu.addAction(export_cafetran_action)
 
         # Trados submenu - group all Trados exports together
         trados_export_submenu = export_menu.addMenu(self.tr("&Trados Studio"))
@@ -10682,10 +10688,11 @@ class SupervertalerQt(QMainWindow):
         export_sdlrpx_action.triggered.connect(self.export_sdlrpx_package)
         trados_export_submenu.addAction(export_sdlrpx_action)
 
-        # Phrase (Memsource) export
-        export_phrase_bilingual_action = QAction(self.tr("&Phrase (Memsource) Bilingual - Translated (DOCX)..."), self)
+        # Phrase (Memsource) submenu
+        phrase_export_submenu = export_menu.addMenu(self.tr("&Phrase (Memsource)"))
+        export_phrase_bilingual_action = QAction(self.tr("&Bilingual - Translated (DOCX)..."), self)
         export_phrase_bilingual_action.triggered.connect(self.export_phrase_bilingual)
-        export_menu.addAction(export_phrase_bilingual_action)
+        phrase_export_submenu.addAction(export_phrase_bilingual_action)
 
         # GNU gettext .po / .pot export (Linux/Django/WordPress l10n)
         export_po_action = QAction(self.tr("&GNU gettext - Translated (.po)..."), self)
@@ -10693,10 +10700,11 @@ class SupervertalerQt(QMainWindow):
         export_po_action.triggered.connect(self.export_po_file)
         export_menu.addAction(export_po_action)
 
-        # Déjà Vu X3 export
-        export_dejavu_action = QAction(self.tr("&Déjà Vu X3 Bilingual - Translated (RTF)..."), self)
+        # Déjà Vu X3 submenu
+        dejavu_export_submenu = export_menu.addMenu(self.tr("&Déjà Vu X3"))
+        export_dejavu_action = QAction(self.tr("&Bilingual - Translated (RTF)..."), self)
         export_dejavu_action.triggered.connect(self.export_dejavu_bilingual)
-        export_menu.addAction(export_dejavu_action)
+        dejavu_export_submenu.addAction(export_dejavu_action)
 
         export_menu.addSeparator()
 

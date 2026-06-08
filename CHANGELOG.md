@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.257 (June 8, 2026)
+**Current Version:** v1.10.258 (June 8, 2026)
+
+
+## v1.10.258 – June 8, 2026
+
+### Changed (Import/Export menus)
+
+- **CafeTran, Phrase (Memsource) and Déjà Vu X3 each now have their own Import and Export submenu, like memoQ and Trados Studio.** Previously these three sat as top-level entries whose labels ("CafeTran Bilingual Table (DOCX)…", "Phrase (Memsource) Bilingual (DOCX)…", "Déjà Vu X3 Bilingual (RTF)…") collided at a glance with the generic "Bilingual Table (DOCX)" under **🔁 Supervertaler Re-importable**, making it look as though the same format was listed twice. Every CAT tool's formats are now grouped under its own named submenu, so the menus read consistently and the ambiguity is gone. No functionality changed — the same importers and exporters, now one level down under their tool's name.
 
 
 ## v1.10.257 – June 8, 2026
