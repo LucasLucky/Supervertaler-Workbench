@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.255 (June 8, 2026)
+**Current Version:** v1.10.256 (June 8, 2026)
+
+
+## v1.10.256 – June 8, 2026
+
+### Changed (Re-importable Text)
+
+- **The Re-importable Text header now spells out that the source line is flattened to one line on purpose.** The `NL:`/`EN:` source is exported on a single physical line for reference and is never written back to the project, so its original line breaks are dropped (turned into spaces). Read on its own that looked like the breaks had gone "missing". The `HOW TO EDIT THIS FILE` header now states plainly that the source is shown on one line for reference and its original line breaks are not significant — clarifying for both human proofreaders and AI agents that, unlike the editable target, the source is a flattened read-only reference. No behaviour change; documentation/header text only.
 
 
 ## v1.10.255 – June 8, 2026

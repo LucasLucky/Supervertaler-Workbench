@@ -245,6 +245,8 @@ def build_markdown(
     lines.append("")
     lines.append("  HOW TO EDIT THIS FILE")
     lines.append(f"  - Do not change the [SEGMENT N] markers or the {src_code}: source lines.")
+    lines.append(f"  - The {src_code}: source is shown on one line for reference; its original")
+    lines.append(f"    line breaks are not significant.")
     lines.append(f"  - Edit the {tgt_code}: target text freely, but keep it on ONE line;")
     lines.append(f"    write the literal token [newline] where a line break is needed")
     lines.append(f"    (e.g. to split a subtitle into two lines).")
