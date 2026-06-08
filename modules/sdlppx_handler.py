@@ -1056,12 +1056,13 @@ def _replace_seg_attributes(content: str, xliff_file: SDLXLIFFFile,
         # Trados "Translated" = confirmed, "ApprovedTranslation" = reviewer-approved
         _status_to_conf = {
             'draft': 'Draft',
+            'translated': 'Translated',
             'confirmed': 'Translated',
             'approved': 'ApprovedTranslation',
             'proofread': 'ApprovedTranslation',
             'rejected': 'RejectedTranslation',
         }
-        new_conf = _status_to_conf.get(matching_segment.status)
+        new_conf = _status_to_conf.get((matching_segment.status or '').lower())
         if new_conf:
             # Update conf – replace existing or add if missing
             # (applies to ALL translated segments, including TM matches)
@@ -1440,13 +1441,20 @@ class StandaloneSDLXLIFFHandler:
         """Return target language from first loaded file."""
         return self.xliff_files[0].target_lang if self.xliff_files else ''
 
-    def update_translations(self, translations: Dict[str, str]) -> int:
+    def update_translations(self, translations: Dict[str, str],
+                            statuses: Optional[Dict[str, str]] = None) -> int:
         """
         Batch update translations by segment_id → target_text.
+
+        ``statuses`` optionally maps segment_id → the project's status key
+        ('confirmed', 'approved', 'draft', …) so the export carries the real
+        confirmation level through to the Trados ``conf`` attribute. Defaults
+        to 'draft' when a segment's status isn't supplied.
 
         Returns:
             Number of segments updated
         """
+        statuses = statuses or {}
         count = 0
         for xliff_file in self.xliff_files:
             for segment in xliff_file.segments:
@@ -1455,7 +1463,7 @@ class StandaloneSDLXLIFFHandler:
                     if segment.target_text != new_text:
                         segment.modified = True
                     segment.target_text = new_text
-                    segment.status = 'draft'
+                    segment.status = statuses.get(segment.segment_id, 'draft')
                     count += 1
         return count
 
@@ -1716,7 +1724,8 @@ class TradosPackageHandler:
         
         return False
     
-    def update_translations(self, translations: Dict[str, str]) -> int:
+    def update_translations(self, translations: Dict[str, str],
+                            statuses: Optional[Dict[str, str]] = None) -> int:
         """
         Batch update translations.
         
@@ -1726,9 +1735,11 @@ class TradosPackageHandler:
         Returns:
             Number of segments updated
         """
+        statuses = statuses or {}
         count = 0
         for segment_id, target_text in translations.items():
-            if self.update_segment(segment_id, target_text):
+            if self.update_segment(segment_id, target_text,
+                                   statuses.get(segment_id, 'draft')):
                 count += 1
         return count
     

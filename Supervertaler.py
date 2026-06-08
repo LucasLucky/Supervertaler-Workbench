@@ -38581,6 +38581,32 @@ class SupervertalerQt(QMainWindow):
                 translations[seg_id] = target_text
         return translations
 
+    def _build_sdlxliff_statuses_dict(self):
+        """Build segment_id -> status key for SDLXLIFF export, mirroring
+        _build_sdlxliff_translations_dict so each exported segment carries the
+        project's confirmation level. The handler maps these to the Trados
+        ``conf`` attribute (confirmed→Translated, approved/proofread→
+        ApprovedTranslation, …). Without it the exporter defaulted every
+        segment to Draft, so even a fully-confirmed project shipped as Draft.
+        """
+        statuses = {}
+        for segment in self.current_project.segments:
+            target_text = segment.target.strip() if segment.target else ''
+            if not target_text:
+                continue
+            seg_id = getattr(segment, 'sdl_segment_id', '')
+            if not seg_id:
+                notes = getattr(segment, 'notes', '') or ''
+                if "Segment:" in notes:
+                    for part in notes.split("|"):
+                        part = part.strip()
+                        if part.startswith("Segment:"):
+                            seg_id = part.replace("Segment:", "").strip()
+                            break
+            if seg_id:
+                statuses[seg_id] = getattr(segment, 'status', '') or 'draft'
+        return statuses
+
     def _build_sdlxliff_comments_dict(self):
         """Build segment_id -> comment_text mapping for SDLXLIFF comment export."""
         segment_comments = {}
@@ -38750,7 +38776,8 @@ class SupervertalerQt(QMainWindow):
                              f"sdl_id='{sid}'")
 
             # Update the handler with translations
-            updated = self.sdlppx_handler.update_translations(translations)
+            updated = self.sdlppx_handler.update_translations(
+                translations, self._build_sdlxliff_statuses_dict())
             self.log(f"  Handler matched: {updated} of {len(translations)} segments")
 
             if updated == 0 and translations:
@@ -39370,7 +39397,8 @@ class SupervertalerQt(QMainWindow):
                 return
 
             # Update handler with translations, comments, and translator name
-            updated = handler.update_translations(translations)
+            updated = handler.update_translations(
+                translations, self._build_sdlxliff_statuses_dict())
             handler.segment_comments = segment_comments
             handler.username = self.get_translator_name()
             self.log(f"Updated {updated} segment(s) in SDLXLIFF handler, {len(segment_comments)} comment(s)")

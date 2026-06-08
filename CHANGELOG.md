@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.258 (June 8, 2026)
+**Current Version:** v1.10.259 (June 8, 2026)
+
+
+## v1.10.259 – June 8, 2026
+
+### Fixed (Trados export)
+
+- **SDLXLIFF / SDLRPX export now carries each segment's confirmation status — confirmed segments export as Trados "Translated" instead of "Draft".** The return-package and standalone-SDLXLIFF exporters built only a `segment_id → target_text` map and then hard-set every segment's status to `draft` (`update_translations`/`update_segment` defaulted to it), so even a 100%-confirmed project was delivered with **all segments marked Draft** (unconfirmed) when the client opened the package in Trados Studio. The status→`conf` mapping (`confirmed → Translated`, `approved`/`proofread → ApprovedTranslation`, `rejected → RejectedTranslation`) was already correct but never received anything but `draft`. The export now builds a parallel `segment_id → status` map alongside the translations and passes it through, so each `<sdl:seg conf="…">` reflects the real Workbench status. Backward-compatible: callers that don't pass statuses still default to `draft`; the conf lookup is now case-insensitive and also recognises `translated`.
 
 
 ## v1.10.258 – June 8, 2026
