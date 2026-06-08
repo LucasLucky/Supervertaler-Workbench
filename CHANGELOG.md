@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.253 (June 7, 2026)
+**Current Version:** v1.10.254 (June 8, 2026)
+
+
+## v1.10.254 – June 8, 2026
+
+### Fixed (Export)
+
+- **Multi-file DOCX export no longer silently drops the 2nd+ sentence of multi-segment paragraphs.** When Okapi sentence-segmentation split one source paragraph into several grid rows (sharing an `okapi_tu_id`, numbered by `okapi_segment_index`), the per-file export path used for **multi-file projects** sent each row to the sidecar at its own segment index. But the sidecar re-reads the original paragraph as a single text unit, so its merge loop discards every segment with index ≥ 1 — silently losing the 2nd, 3rd, … sentence of each affected paragraph. On a real two-file job this dropped 72 translated segments from the delivered documents even though every one was present and confirmed in the grid. The single-file export path already had the fix (group rows by text-unit, concatenate, send one entry at index 0); `_export_file_as_docx` now applies the same workaround, so multi-file exports round-trip every sentence. (This is the same failure mode fixed for the single-file/IDML path back in v1.9.470, recurring here because the multi-file path never received the guard.)
+
+### Added (Export)
+
+- **Post-export word-count safeguard.** After writing a translated DOCX, Supervertaler now counts the words actually present in the file and compares them against the words it expected to write (the sum of each segment's target text, falling back to source for untranslated segments). If the exported file contains noticeably fewer words than expected — the signature of text being silently dropped on the round-trip — a warning dialog lists the affected file(s) and how many words appear to be missing, so the discrepancy is caught **before delivery** rather than by the client. It runs automatically on every DOCX export (Okapi merge and the python-docx fallback, single- and multi-file). Tags, numbers and punctuation are counted identically on both sides, so a real drop shows up as a clear shortfall while incidental differences stay within tolerance. The check is deliberately coarse (it catches material losses, not a single short segment) and fully configurable in `settings.json` under the `"export"` section: `"word_count_check_enabled"` (default `true`) and `"word_count_check_threshold"` (default `0.95`).
 
 
 ## v1.10.253 – June 7, 2026

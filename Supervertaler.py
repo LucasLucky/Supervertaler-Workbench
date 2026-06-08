@@ -14813,12 +14813,16 @@ class SupervertalerQt(QMainWindow):
             self._attach_segment_notes_as_docx_comments(file_path, segments)
 
             self.log(f"✓ Exported {len(segments)} segments to: {os.path.basename(file_path)}")
-            
+
             QMessageBox.information(
                 self, "Export Complete",
                 f"Successfully exported {translated_count} translated segments to:\n\n{os.path.basename(file_path)}"
             )
-            
+
+            # Post-export safeguard: warn if the file looks like it lost text.
+            wc = self._verify_export_word_count(segments, file_path)
+            self._show_export_word_count_warning([wc])
+
         except ImportError:
             QMessageBox.critical(
                 self, "Missing Dependency",
@@ -15182,6 +15186,147 @@ class SupervertalerQt(QMainWindow):
                     f"comment(s) had no matching paragraph in the exported DOCX"
                 )
 
+    # ──────────────────────────────────────────────────────────────────
+    #  Post-export word-count safeguard
+    # ──────────────────────────────────────────────────────────────────
+    # After writing a translated DOCX we count the words actually present
+    # in the file and compare against the words we expected to write (the
+    # sum over segments of the target text, falling back to source for
+    # untranslated segments). A large shortfall means text was silently
+    # dropped on the round-trip — exactly the failure mode where a
+    # multi-segment Okapi text unit lost its 2nd+ sentences. This is a
+    # coarse, tolerance-based check: tags, numbers and punctuation are
+    # counted identically on both sides, so a real drop (e.g. 72 missing
+    # segments) shows up as a clear ratio shortfall while incidental
+    # differences stay within tolerance.
+
+    # Warn when the exported file has fewer than this fraction of the
+    # expected words. Overridable via settings.json → "export" section.
+    EXPORT_WORD_COUNT_DEFAULT_THRESHOLD = 0.95
+
+    @staticmethod
+    def _count_words(text: str) -> int:
+        """Count whitespace-delimited word tokens, ignoring inline/markup
+        tags (<b>, <cf …>, <x1/>, {1}, …) so the count is comparable
+        between a target-cell string and the run text read back from a
+        DOCX (where those tags are formatting, not text)."""
+        if not text:
+            return 0
+        import re as _re
+        text = _re.sub(r'<[^>]+>', ' ', text)   # strip angle-bracket tags
+        text = _re.sub(r'[{\[]\d+[}\]]', ' ', text)  # strip {1} / [1} placeholders
+        return len([t for t in text.split() if t])
+
+    def _count_expected_target_words(self, segments) -> int:
+        """Sum of word counts across all segments' export text (target if
+        translated, else source — mirroring what the exporter writes)."""
+        total = 0
+        for seg in segments:
+            tgt = getattr(seg, 'target', '') or ''
+            text = tgt if tgt.strip() else (getattr(seg, 'source', '') or '')
+            total += self._count_words(text)
+        return total
+
+    def _count_exported_docx_words(self, path: str):
+        """Count visible run-text words in an exported DOCX. Returns an int,
+        or None if the file isn't a DOCX or can't be read (caller skips the
+        check). Counts document body, headers, footers, foot/endnotes —
+        i.e. everything that can correspond to a translatable segment — but
+        NOT comments (which aren't target segments)."""
+        if not path or not path.lower().endswith('.docx'):
+            return None
+        import zipfile
+        import re as _re
+        try:
+            chunks = []
+            with zipfile.ZipFile(path) as z:
+                wanted = [
+                    n for n in z.namelist()
+                    if _re.match(r'word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$', n)
+                ]
+                for n in wanted:
+                    xml = z.read(n).decode('utf-8', 'replace')
+                    chunks.extend(_re.findall(r'<w:t\b[^>]*>(.*?)</w:t>', xml, flags=_re.DOTALL))
+            text = ' '.join(chunks)
+            # Unescape the handful of XML entities that appear in run text.
+            for ent, ch in (('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'),
+                            ('&quot;', '"'), ('&apos;', "'")):
+                text = text.replace(ent, ch)
+            return self._count_words(text)
+        except Exception as e:
+            self.log(f"      ⚠️ Export word-count check: could not read "
+                     f"{os.path.basename(path)} ({e})")
+            return None
+
+    def _verify_export_word_count(self, segments, output_path, context_label: str = ""):
+        """Compare expected vs. actual words in a freshly-exported DOCX.
+
+        Returns a result dict (or None if the check was disabled, the file
+        isn't a DOCX, or it couldn't be read). Always logs the outcome;
+        never shows UI — callers decide how to surface a shortfall.
+        """
+        export_cfg = self._load_settings_section("export") or {}
+        if not export_cfg.get("word_count_check_enabled", True):
+            return None
+
+        actual = self._count_exported_docx_words(output_path)
+        if actual is None:
+            return None  # non-DOCX or unreadable — nothing to compare
+
+        expected = self._count_expected_target_words(segments)
+        threshold = export_cfg.get("word_count_check_threshold",
+                                   self.EXPORT_WORD_COUNT_DEFAULT_THRESHOLD)
+        try:
+            threshold = float(threshold)
+        except (TypeError, ValueError):
+            threshold = self.EXPORT_WORD_COUNT_DEFAULT_THRESHOLD
+
+        ratio = (actual / expected) if expected > 0 else 1.0
+        ok = ratio >= threshold
+        label = context_label or os.path.basename(output_path)
+
+        marker = "🔢" if ok else "⚠️"
+        self.log(f"      {marker} Export word-count check [{label}]: "
+                 f"{actual}/{expected} words ({ratio:.0%}; "
+                 f"threshold {threshold:.0%})")
+        if not ok:
+            self.log(f"      ⚠️ Possible dropped text in export: {label} has only "
+                     f"{ratio:.0%} of the expected words — review before delivery.")
+
+        return {
+            'expected': expected, 'actual': actual, 'ratio': ratio,
+            'ok': ok, 'threshold': threshold, 'label': label, 'path': output_path,
+        }
+
+    def _show_export_word_count_warning(self, results):
+        """Show a single non-blocking warning dialog for any export results
+        that fell below the word-count threshold. `results` is a list of
+        dicts from _verify_export_word_count (None entries ignored)."""
+        low = [r for r in (results or []) if r and not r['ok']]
+        if not low:
+            return
+        lines = []
+        for r in low:
+            missing = max(0, r['expected'] - r['actual'])
+            lines.append(
+                f"• {r['label']}: {r['actual']} of {r['expected']} expected words "
+                f"({r['ratio']:.0%}) — ~{missing} word(s) may be missing"
+            )
+        detail = "\n".join(lines)
+        QMessageBox.warning(
+            self,
+            self.tr("Possible Missing Text in Export"),
+            self.tr(
+                "The exported document(s) contain noticeably fewer words than the "
+                "translated segments, which can mean text was dropped during export:\n\n"
+                "{detail}\n\n"
+                "Please open the file(s) and check before delivering. If the "
+                "difference is expected (e.g. lots of numbers or comments), you can "
+                "adjust or disable this check in settings.json (\"export\" → "
+                "\"word_count_check_threshold\" / \"word_count_check_enabled\")."
+            ).format(detail=detail)
+        )
+
     def _try_okapi_merge_export(self, segments, original_path, output_path):
         """Attempt to export via Okapi sidecar merge. Returns True on success, False to fall back."""
         try:
@@ -15302,6 +15447,9 @@ class SupervertalerQt(QMainWindow):
                 f"{os.path.basename(output_path)}\n\n"
                 f"Used Okapi Framework merge for faithful format preservation."
             )
+            # Post-export safeguard: warn if the file looks like it lost text.
+            wc = self._verify_export_word_count(segments, result_path)
+            self._show_export_word_count_warning([wc])
             return True
 
         except FileNotFoundError:
@@ -35489,7 +35637,8 @@ class SupervertalerQt(QMainWindow):
         exported_count = 0
         total_segments_exported = 0
         files_missing_originals = []  # Track files where we couldn't preserve formatting
-        
+        word_count_results = []  # Post-export word-count safeguard, one per DOCX file
+
         for idx, file_info in enumerate(files):
             if progress_dialog.wasCanceled():
                 self.log("❌ Export cancelled by user")
@@ -35549,6 +35698,9 @@ class SupervertalerQt(QMainWindow):
                         format_note = " (no original - plain text)"
                         files_missing_originals.append(file_name)
                     self._export_file_as_docx(file_segments, output_path, original_path if path_exists else None)
+                    word_count_results.append(
+                        self._verify_export_word_count(file_segments, output_path, context_label=file_name)
+                    )
 
                 elif file_format == "bilingual":
                     # Export as bilingual table
@@ -35589,7 +35741,10 @@ class SupervertalerQt(QMainWindow):
             "Export Complete",
             message
         )
-    
+
+        # Post-export safeguard: one combined warning if any DOCX looks short.
+        self._show_export_word_count_warning(word_count_results)
+
     def _export_file_as_txt(self, segments: list, output_path: str):
         """Export segments to a plain text file, grouping by paragraph_id."""
         import re
@@ -35649,7 +35804,25 @@ class SupervertalerQt(QMainWindow):
                 and self.okapi_sidecar and self.okapi_sidecar.is_running()
                 and any(getattr(s, 'okapi_tu_id', '') for s in segments)):
             try:
-                translations = []
+                # Build translations list, ONE entry per Okapi text-unit ID.
+                #
+                # Why one-per-TU and not one-per-segment: the sidecar applies
+                # SRX sentence segmentation only inside its extract helper –
+                # it doesn't re-segment the underlying ITextUnit. So when
+                # /merge re-opens the original file and reads the same TU,
+                # srcSegments.count() == 1 and the merge loop drops any
+                # MergeSegment with segmentIndex >= 1 (FilterService.java),
+                # silently losing the 2nd, 3rd, … sentences of every
+                # paragraph. This is the SAME workaround as the single-file
+                # Okapi export path; the multi-file per-file path was
+                # missing it, which dropped every okapi_segment_index >= 1
+                # segment from multi-file exports (reported on a real job).
+                #
+                # Group all per-sentence segments back by okapi_tu_id, sort
+                # by okapi_segment_index, concatenate with a single space,
+                # and send one merge entry per TU at segmentIndex=0.
+                from collections import defaultdict as _defaultdict
+                tu_groups = _defaultdict(list)  # tu_id → [(seg_idx, translation)]
                 skipped = 0
                 for seg in segments:
                     tu_id = getattr(seg, 'okapi_tu_id', '') or ''
@@ -35663,13 +35836,28 @@ class SupervertalerQt(QMainWindow):
                     # Strip Supervertaler-only tags Okapi wouldn't know.
                     translation = re.sub(r'</?(?:bi|li-[bo]|li)>', '',
                                          translation)
+                    tu_groups[tu_id].append((seg_idx, translation))
+
+                translations = []
+                for tu_id, sub_segs in tu_groups.items():
+                    sub_segs.sort(key=lambda pair: pair[0])
+                    combined = ' '.join(t for _, t in sub_segs)
+                    # Strip Okapi-internal run tags (<run1>, …) that can leak
+                    # through when SRX splits inside an inline run; they
+                    # unbalance Okapi's tag stack and crash the OOXML writer.
+                    combined = re.sub(r'</?run\d+>', '', combined)
                     translations.append({
                         'id': tu_id,
-                        'segmentIndex': seg_idx,
-                        'translation': translation,
+                        'segmentIndex': 0,
+                        'translation': combined,
                     })
 
                 if translations:
+                    multi_tu_count = sum(1 for sub in tu_groups.values() if len(sub) > 1)
+                    if multi_tu_count:
+                        self.log(f"      🔧 Combining sub-segments for merge: "
+                                 f"{multi_tu_count} text-unit(s) had multiple "
+                                 f"sentences (concatenated for /merge)")
                     src_lang = self.current_project.source_lang
                     trg_lang = self.current_project.target_lang
                     self.log(f"      🔧 Okapi merge ({len(translations)} segments)…")
