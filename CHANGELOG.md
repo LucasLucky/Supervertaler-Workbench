@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.259 (June 8, 2026)
+**Current Version:** v1.10.260 (June 9, 2026)
+
+
+## v1.10.260 – June 9, 2026
+
+### Fixed (AI · Prompt Manager)
+
+- **The Prompt Manager's left column no longer clips on shorter screens.** Sections 1–4 (System / Custom / Attached Prompts / Image Context) sat in a box with a hard-coded 150px minimum height. Because an explicit `setMinimumHeight` overrides a layout's content-driven minimum, on a short laptop screen the box was free to shrink below its content and clip sections 2–4. The floor is removed (the box now sizes to its content) and the whole left column is wrapped in a vertical scroll area, so a short viewport scrolls instead of compressing. Normal/tall screens are unchanged — the column fills the pane and the library tree still stretches to fill.
 
 
 ## v1.10.259 – June 8, 2026

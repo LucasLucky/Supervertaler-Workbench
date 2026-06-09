@@ -1207,7 +1207,11 @@ class UnifiedPromptManagerQt:
         # / Image Context) – all styled numbered group boxes from
         # _create_active_config_panel.
         config_group = self._create_active_config_panel()
-        config_group.setMinimumHeight(150)
+        # v1.10.260: no artificial minimum-height floor here. An explicit
+        # setMinimumHeight overrides the layout's content-driven minimum, so a
+        # 150px floor let this box shrink below its content and clip sections
+        # 2-4 on shorter laptop screens. Let the content drive the minimum; the
+        # surrounding QScrollArea (below) absorbs any overflow by scrolling.
         left_layout.addWidget(config_group)
 
         # Section 5: Prompt Library (styled group containing button row
@@ -1237,7 +1241,20 @@ class UnifiedPromptManagerQt:
         left_layout.addLayout(preview_row)
         
         left_panel.setMinimumWidth(300)
-        main_splitter.addWidget(left_panel)
+
+        # v1.10.260: wrap the whole left column in a vertical scroll area so the
+        # numbered sections keep their natural size on shorter screens and the
+        # column scrolls instead of compressing/clipping. widgetResizable keeps
+        # it filling the splitter pane on tall screens (the library tree still
+        # stretches to fill); the scrollbar only appears when the viewport is
+        # too short to show everything.
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setWidget(left_panel)
+        left_scroll.setMinimumWidth(300)
+        main_splitter.addWidget(left_scroll)
         
         # Right: stack of Prompt Editor (default) + Image Context viewer.
         # v1.10.176: the previously-separate "🎯 Image Context" sub-tab
