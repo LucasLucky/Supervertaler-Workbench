@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.260 (June 9, 2026)
+**Current Version:** v1.10.261 (June 10, 2026)
+
+
+## v1.10.261 – June 10, 2026
+
+### Fixed (Import)
+
+- **Importing a document now keeps the project's language pair instead of silently switching the target to English.** The Import Document / Import Plain Text / Import Folder dialogs offered only a hardcoded list of 12 languages; if the project's source or target language wasn't in it (e.g. **Slovak**), the dialog couldn't pre-select it and quietly fell back to the first item (English) — so a Russian→Slovak project imported as Russian→English. The dialogs now use the full canonical language set (52 languages, from `modules/language_codes.py`), and pre-selection is matched via `base_code` and **inserts-and-selects** the language if it is somehow not listed, so a project's language pair can never be silently dropped to English again. Reported by a user importing a Russian→Slovak project.
 
 
 ## v1.10.260 – June 9, 2026

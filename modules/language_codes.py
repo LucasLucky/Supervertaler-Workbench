@@ -283,3 +283,11 @@ def match_variants(value) -> list:
     if can and can not in out:
         out.append(can)
     return out
+
+
+def available_pairs() -> list:
+    """(English-name, ISO code) pairs for language pickers — the full canonical
+    set, sorted by English name. Single source for the import / new-project
+    dialogs so no language is silently missing from a dropdown."""
+    return sorted(((name, code) for code, name in _ISO_TO_ENGLISH.items()),
+                  key=lambda t: t[0].lower())

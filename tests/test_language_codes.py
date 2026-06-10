@@ -128,3 +128,18 @@ def test_the_actual_bug_that_started_this():
     assert lc.same_language("Dutch", "nl")
     assert lc.same_language("nl-BE", "nl")
     assert lc.base_code("Dutch") == lc.base_code("nl-NL") == "nl"
+
+
+def test_available_pairs_covers_picker_languages():
+    """Guards the import-dialog language fix (v1.10.261): the canonical picker
+    set must include the languages the old hardcoded 12-item list dropped, and
+    base_code must resolve code/name/region forms to the same picker code, so a
+    project's language can't silently fall back to English on import."""
+    from modules.language_codes import available_pairs, base_code
+    pairs = available_pairs()
+    codes = {c for _, c in pairs}
+    for code in ("sk", "cs", "uk", "ru", "en", "nl"):
+        assert code in codes, f"{code} missing from available_pairs()"
+    assert ("Slovak", "sk") in pairs
+    assert [n for n, _ in pairs] == sorted((n for n, _ in pairs), key=str.lower)
+    assert base_code("sk") == base_code("Slovak") == base_code("sk-SK") == "sk"
