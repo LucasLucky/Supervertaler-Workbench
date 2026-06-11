@@ -53,7 +53,7 @@ python Supervertaler.py
 
 | Resource | Description |
 |----------|-------------|
-| [Online Manual](https://help.supervertaler.com/workbench/) | Quick start, guides, and troubleshooting |
+| [Online Manual](https://docs.supervertaler.com/workbench/) | Quick start, guides, and troubleshooting |
 | [Changelog](CHANGELOG.md) | Complete version history |
 | [Keyboard Shortcuts](docs/guides/KEYBOARD_SHORTCUTS.md) | Shortcut reference |
 | [FAQ](FAQ.md) | Common questions |
@@ -73,7 +73,7 @@ python Supervertaler.py
 ## Contributing
 
 - [Report bugs](https://github.com/Supervertaler/Supervertaler-Workbench/issues)
-- [Request features](https://github.com/orgs/Supervertaler/discussions)
+- [Request features](https://forum.supervertaler.com/)
 - [Contributing guide](CONTRIBUTING.md)
 
 ### Translations

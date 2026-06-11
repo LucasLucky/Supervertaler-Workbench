@@ -250,6 +250,6 @@ When importing glossaries or translation resources, run this tool first to ensur
 ## Need More Help?
 
 - **Report Issues:** [GitHub Issues](https://github.com/michaelbeijer/Supervertaler/issues)
-- **Ask Questions:** [GitHub Discussions](https://github.com/michaelbeijer/Supervertaler/discussions)
+- **Ask Questions:** [Supervertaler Forum](https://forum.supervertaler.com/)
 - **View Source Code:** [Modules on GitHub](https://github.com/michaelbeijer/Supervertaler/tree/main/modules)
 

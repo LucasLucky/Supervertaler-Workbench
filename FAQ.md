@@ -1243,7 +1243,7 @@ Michael Beijer, a professional translator, created Supervertaler to:
 **For Everyone:**
 - Use it professionally and share your experience!
 - Write blog posts or reviews
-- Help other users in GitHub Discussions
+- Help other users on the Supervertaler Forum
 
 ---
 
@@ -1313,7 +1313,7 @@ Michael Beijer, a professional translator, created Supervertaler to:
 1. 📖 **Read the guides** - Check docs/ folder for detailed guides
 2. 🔍 **Search GitHub Issues** - Your question may already be answered
 3. 💬 **Open a GitHub Issue** - Ask anything, get detailed answers
-4. 🤝 **GitHub Discussions** - Community tips and workflows
+4. 🤝 **Supervertaler Forum** - Community tips and workflows
 
 **Found a Bug?**  
 → [Report it on GitHub](https://github.com/Supervertaler/Supervertaler-Workbench/issues)
