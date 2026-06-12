@@ -41410,14 +41410,18 @@ class SupervertalerQt(QMainWindow):
                 if self.debug_mode_enabled:
                     self.log(f"🔔 textChanged FIRED: segment_id={segment_id}, new_text='{new_text[:20] if new_text else 'EMPTY'}...'")
 
-                # CRITICAL: Ignore spurious textChanged event from Qt's queued document changes
-                # When signals are unblocked after setPlainText(), Qt delivers queued events
-                # This flag prevents false TM saves during grid load/filter/refresh operations
-                if not editor_widget._initial_load_complete:
-                    editor_widget._initial_load_complete = True
-                    if self.debug_mode_enabled:
-                        self.log(f"🔔 textChanged IGNORED (initial load) for segment {segment_id}")
-                    return
+                # Mark that we've seen the first textChanged on this editor, but
+                # do NOT swallow it. We used to return here unconditionally to
+                # drop Qt's spurious queued event after a grid-load setPlainText
+                # — but that also ate a *genuine* first edit that arrives as a
+                # single event, most visibly **clearing** a cell: the empty
+                # value never reached segment.target, so the old translation
+                # survived save + reload (and kept showing in the Preview).
+                # The idempotent guard below (new_text == old_target → return)
+                # already absorbs the spurious event (it re-delivers unchanged
+                # text), so a real change must be allowed through even when it's
+                # the first one seen.
+                editor_widget._initial_load_complete = True
 
                 if self._suppress_target_change_handlers:
                     if self.debug_mode_enabled:
@@ -41452,6 +41456,11 @@ class SupervertalerQt(QMainWindow):
                 if self.debug_mode_enabled:
                     self.log(f"📝 BEFORE update: seg {segment_id} target='{target_segment.target[:30] if target_segment.target else 'EMPTY'}...', status={target_segment.status}, obj_id={id(target_segment)}")
                 target_segment.target = new_text
+
+                # Live-update the Document Preview (debounced, no-op when the
+                # Preview tab is hidden) so the rendered text tracks edits and
+                # flips source→translation as you type / clears back to source.
+                self._schedule_preview_refresh()
 
                 # If invisible markers are active, re-apply them so the widget display
                 # stays in sync (e.g. ↵ after Shift+Enter when Show Invisibles is on).
@@ -43104,6 +43113,32 @@ class SupervertalerQt(QMainWindow):
         target_scroll = max(0, min(target_scroll, scrollbar.maximum()))
         
         scrollbar.setValue(target_scroll)
+
+    def _schedule_preview_refresh(self, delay_ms: int = 200):
+        """Debounced live refresh of the Document Preview.
+
+        Only re-renders while the Preview tab is actually visible — when it's
+        hidden the refresh is skipped (it re-renders on show via
+        _on_right_tab_changed), so editing stays cheap. Called on every target
+        edit and on confirm so the preview tracks the document live: text flips
+        from source to translation as you type, and the status background
+        colours update as you confirm.
+        """
+        try:
+            if not getattr(self, 'right_tabs', None) or not hasattr(self, '_preview_tab_index'):
+                return
+            if self.right_tabs.currentIndex() != self._preview_tab_index:
+                return  # hidden — will refresh when its tab is next shown
+            timer = getattr(self, '_preview_refresh_timer', None)
+            if timer is None:
+                from PyQt6.QtCore import QTimer
+                timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.timeout.connect(self.refresh_preview)
+                self._preview_refresh_timer = timer
+            timer.start(delay_ms)
+        except Exception:
+            pass
 
     def refresh_preview(self):
         """Refresh all preview tabs with current document content"""
@@ -56627,6 +56662,9 @@ class SupervertalerQt(QMainWindow):
         # Record undo state for Ctrl+Enter confirmation
         self.record_undo_state(segment_id, old_target, segment.target, old_status, 'confirmed')
         self.update_status_icon(current_row, 'confirmed')
+        # Live-update the Preview so the segment's status background colour
+        # changes as you confirm (debounced; no-op when the Preview is hidden).
+        self._schedule_preview_refresh()
         self.project_modified = True
         self.log(f"✅ Segment {segment.id} confirmed")
 

@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.266 (June 12, 2026)
+**Current Version:** v1.10.267 (June 12, 2026)
+
+
+## v1.10.267 – June 12, 2026
+
+### Fixed
+
+- **Clearing a target cell now sticks — the emptied translation is no longer kept in the project, the export, or the Preview.** Emptying a target box is a single edit event, and a guard meant to ignore Qt's first (spurious) `textChanged` after a grid load was swallowing it: the empty value never reached `segment.target`, so the old translation survived in memory, was written back to the `.svproj` file on save, reappeared after reopening, and kept showing in the Preview even though the cell looked empty. The first real edit is now allowed through (the separate idempotent guard already absorbs Qt's spurious event), so clearing a segment persists like any other edit. (Typed edits were unaffected — they emit many events; only single-event edits such as clearing were dropped.)
+
+### Improved
+
+- **The Document Preview now updates live.** As you type in a target cell the preview re-renders (debounced) — text flips from the source language to your translation and back to source if you clear it — and the per-segment status background colours update as you confirm. It still refreshes whenever you switch to the Preview tab (v1.10.266). The re-render only runs while the Preview is actually visible, so editing stays responsive when it's hidden.
 
 
 ## v1.10.266 – June 12, 2026
