@@ -1533,7 +1533,7 @@ class TermLensWidget(QWidget):
         self._btn_help.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_help.setToolTip(
             "Open help for TermLens (F1)\n\n"
-            "Opens https://help.supervertaler.com/workbench/termbases/termlens/\n"
+            "Opens https://docs.supervertaler.com/workbench/termbases/termlens/\n"
             "in your browser."
         )
         self._btn_help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -1669,7 +1669,7 @@ class TermLensWidget(QWidget):
         """Open the TermLens help page in the user's default browser.
 
         Routed through the global ``help_system.open_help`` helper so the
-        URL resolution (Topics constant → full help.supervertaler.com URL)
+        URL resolution (Topics constant → full docs.supervertaler.com URL)
         stays consistent with F1 and every other in-app ? button. Wrapped
         in try/except because the help-system module is optional from
         the widget's perspective — if it fails to import for any reason,

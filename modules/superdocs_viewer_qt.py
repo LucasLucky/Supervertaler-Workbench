@@ -8,7 +8,7 @@ packaged builds.
 
 def __getattr__(name):
     raise ImportError(
-        "The 'modules.superdocs_viewer_qt' module has been removed. Visit https://help.supervertaler.com/ for documentation."
+        "The 'modules.superdocs_viewer_qt' module has been removed. Visit https://docs.supervertaler.com/ for documentation."
     )
 
 

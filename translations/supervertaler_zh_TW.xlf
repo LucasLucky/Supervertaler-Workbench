@@ -2540,10 +2540,10 @@ Extract images to see them here</source>
       <trans-unit id="SupervertalerQt.Supervertaler_Help_is_now_available_online.__Visit_https___h">
         <source>📚 Supervertaler Help is now available online.
 
-Visit https://help.supervertaler.com/workbench/ to view the documentation.</source>
+Visit https://docs.supervertaler.com/workbench/ to view the documentation.</source>
         <target state="translated">📚 Supervertaler 幫助現已在線提供。
 
-訪問 https://help.supervertaler.com/workbench/ 查看文檔。</target>
+訪問 https://docs.supervertaler.com/workbench/ 查看文檔。</target>
         <context-group purpose="location">
           <context context-type="x-qt-context">SupervertalerQt</context>
           <context context-type="sourcefile">Supervertaler.py</context>

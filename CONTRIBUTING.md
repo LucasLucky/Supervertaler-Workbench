@@ -7,7 +7,7 @@ Supervertaler is a professional desktop translation application built with **Pyt
 ## Quick links
 
 - Issues: https://github.com/Supervertaler/Supervertaler-Workbench/issues
-- Documentation: https://help.supervertaler.com/workbench/
+- Documentation: https://docs.supervertaler.com/workbench/
 
 ## Bug reports
 

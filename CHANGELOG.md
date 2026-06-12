@@ -2,10 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.261 (June 10, 2026)
+**Current Version:** v1.10.262 (June 12, 2026)
 
 
-## v1.10.261 – June 10, 2026
+## v1.10.262 – June 12, 2026
+
+### Fixed (SuperLookup)
+
+- **SuperLookup's horizontal (table) results no longer show every entry's text twice, overlapping itself.** Each Source/Target cell is drawn by a transparent read-only `QTextEdit` overlay (for the yellow search-term highlighting and native word selection), while the `QTableWidgetItem` underneath carries the same text purely as the click-to-sort key. Qt changed its table painting between 6.8 and 6.9: the view now paints the underlying item's text *through* the transparent overlay, and because the item text is vertically centred while the overlay is top-aligned, you got two slightly offset copies of every cell — only one of them carrying the highlight. The fix colours the sort-key item fully transparent (`QColor(0,0,0,0)`), so it stays sortable but is no longer painted. Affects both the TMs and Termbases result tables. The bug only appeared for users on PyQt6/Qt **6.9 or newer** (recent `pip install` pulls 6.9–6.11); installs on 6.8.x were unaffected, which is why it had not surfaced before. Reported in issue #221.
 
 ### Fixed (Import)
 

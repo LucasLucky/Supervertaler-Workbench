@@ -11209,7 +11209,7 @@ class SupervertalerQt(QMainWindow):
         # Place Supervertaler Help at the top of the Help menu
         superdocs_action = QAction(self.tr("Supervertaler Workbench Help"), self)
         superdocs_action.setToolTip(self.tr("Open the Workbench documentation in your browser"))
-        superdocs_action.triggered.connect(lambda: self._open_url("https://help.supervertaler.com/workbench/"))
+        superdocs_action.triggered.connect(lambda: self._open_url("https://docs.supervertaler.com/workbench/"))
         help_menu.addAction(superdocs_action)
 
         setup_wizard_action = QAction(self.tr("🚀 Setup Wizard..."), self)
@@ -12878,7 +12878,7 @@ class SupervertalerQt(QMainWindow):
         # The embedded docs viewer was removed in favor of online documentation.
         placeholder = QWidget()
         layout = QVBoxLayout(placeholder)
-        label = QLabel(self.tr("📚 Supervertaler Help is now available online.\n\nVisit https://help.supervertaler.com/workbench/ to view the documentation."))
+        label = QLabel(self.tr("📚 Supervertaler Help is now available online.\n\nVisit https://docs.supervertaler.com/workbench/ to view the documentation."))
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet("color: #888; font-size: 12px;")
         layout.addWidget(label)
@@ -57965,12 +57965,12 @@ class SupervertalerQt(QMainWindow):
         """Open the online Supervertaler Help in the user's browser."""
         try:
             # Prefer opening the published online docs
-            self._open_url("https://help.supervertaler.com/workbench/")
+            self._open_url("https://docs.supervertaler.com/workbench/")
         except Exception:
             QMessageBox.information(
                 self,
                 "Supervertaler Help",
-                "Supervertaler Help is available online at https://help.supervertaler.com/workbench/"
+                "Supervertaler Help is available online at https://docs.supervertaler.com/workbench/"
             )
 
     def check_for_updates(self):
@@ -63098,6 +63098,15 @@ class _NumericTableWidgetItem(QTableWidgetItem):
             return super().__lt__(other)
 
 
+# Fully-transparent brush for SuperLookup result-table sort-key items. The
+# visible text in those cells is drawn by a _ReadOnlyHtmlCell overlaid via
+# setCellWidget; the QTableWidgetItem underneath exists only to give the
+# column a sort key. On Qt 6.9+ the view paints that item text through the
+# transparent overlay (issue #221), so we colour it transparent — invisible
+# but still sortable. A QBrush with QColor(0,0,0,0) suppresses the paint.
+_TRANSPARENT_SORT_KEY = QBrush(QColor(0, 0, 0, 0))
+
+
 class _ReadOnlyHtmlCell(QTextEdit):
     """Read-only QTextEdit for Superlookup results table cells.
 
@@ -66177,18 +66186,26 @@ class SuperlookupTab(QWidget):
             row = self.tm_results_table.rowCount()
             self.tm_results_table.insertRow(row)
 
-            # Source – QTextEdit cell widget with highlighting + text selection
+            # Source – QTextEdit cell widget with highlighting + text selection.
+            # The underlying QTableWidgetItem carries the plain text purely as
+            # the click-to-sort key (v1.10.173); the visible text comes from the
+            # transparent _ReadOnlyHtmlCell overlaid via setCellWidget. On Qt
+            # 6.9+ the view paints the item text *through* the transparent
+            # overlay, producing a doubled / offset duplicate (issue #221) — so
+            # we render the sort-key text invisible while keeping it sortable.
             source_item = QTableWidgetItem(result.source)
             source_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            source_item.setForeground(_TRANSPARENT_SORT_KEY)
             self.tm_results_table.setItem(row, 0, source_item)
             source_editor = _ReadOnlyHtmlCell(
                 result.source, search_term=search_text,
                 parent=self.tm_results_table, bold=False)
             self.tm_results_table.setCellWidget(row, 0, source_editor)
 
-            # Target – same pattern
+            # Target – same pattern (see note above re: #221 transparent sort key)
             target_item = QTableWidgetItem(result.target)
             target_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            target_item.setForeground(_TRANSPARENT_SORT_KEY)
             self.tm_results_table.setItem(row, 1, target_item)
             target_editor = _ReadOnlyHtmlCell(
                 result.target, search_term=search_text,
@@ -66413,18 +66430,22 @@ class SuperlookupTab(QWidget):
             domain = metadata.get('domain', '')
             notes = metadata.get('notes', '')
             
-            # Source term – QTextEdit with syntax highlighter for native text selection
+            # Source term – QTextEdit with syntax highlighter for native text
+            # selection. Transparent sort-key item to avoid Qt 6.9+ text
+            # doubling through the overlay (issue #221 — see display_tm_results).
             source_item = QTableWidgetItem(result.source)
             source_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            source_item.setForeground(_TRANSPARENT_SORT_KEY)
             self.termbase_results_table.setItem(row, 0, source_item)
             source_editor = _ReadOnlyHtmlCell(
                 result.source, search_term=search_text,
                 parent=self.termbase_results_table, bold=False)
             self.termbase_results_table.setCellWidget(row, 0, source_editor)
 
-            # Target term – same pattern
+            # Target term – same pattern (see #221 note above)
             target_item = QTableWidgetItem(result.target)
             target_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            target_item.setForeground(_TRANSPARENT_SORT_KEY)
             self.termbase_results_table.setItem(row, 1, target_item)
             target_editor = _ReadOnlyHtmlCell(
                 result.target, search_term=search_text,

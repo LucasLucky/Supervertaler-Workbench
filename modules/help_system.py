@@ -22,7 +22,7 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import QApplication
 
 
-DOCS_BASE_URL = "https://help.supervertaler.com"
+DOCS_BASE_URL = "https://docs.supervertaler.com"
 
 # Property key stored on widgets to identify their help topic
 _HELP_TOPIC_PROPERTY = "_help_topic"
@@ -31,7 +31,7 @@ _HELP_TOPIC_PROPERTY = "_help_topic"
 class Topics:
     """Help topic identifiers, each holding a path appended to ``DOCS_BASE_URL``.
 
-    The unified help site at https://help.supervertaler.com (Astro
+    The unified help site at https://docs.supervertaler.com (Astro
     Starlight on Cloudflare Pages, sources from the Supervertaler-Help
     repo) uses **folder-based URLs**: every page's URL mirrors its
     on-disk path under ``workbench/`` or ``trados/``. README.md files
