@@ -53723,6 +53723,7 @@ class SupervertalerQt(QMainWindow):
         """
         if not hasattr(self, 'table') or not self.table:
             return
+        from PyQt6.QtGui import QTextCursor as _QTextCursor, QTextCharFormat as _QTextCharFormat
         for col in (2, 3):
             editor = self.table.cellWidget(row, col)
             if editor is None or not hasattr(editor, 'setPlainText'):
@@ -53731,6 +53732,19 @@ class SupervertalerQt(QMainWindow):
             editor.blockSignals(True)
             try:
                 editor.setPlainText(current_text)
+                # setPlainText re-inserts the text using the editor's *current*
+                # char format. If the caret happened to be resting inside an
+                # amber comment range when this clear runs (e.g. deleting the
+                # comment you just clicked into), that current format carries
+                # the amber background, so the whole cell would come back
+                # yellow — issue #223, where deleting a comment painted the
+                # entire segment instead of clearing the word. Explicitly reset
+                # every character to a default format so no inherited background
+                # survives; the caller re-applies anchor highlights for any
+                # remaining comments.
+                _clear_cur = _QTextCursor(editor.document())
+                _clear_cur.select(_QTextCursor.SelectionType.Document)
+                _clear_cur.setCharFormat(_QTextCharFormat())
             finally:
                 editor.blockSignals(False)
 

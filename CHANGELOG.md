@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.264 (June 12, 2026)
+**Current Version:** v1.10.265 (June 12, 2026)
+
+
+## v1.10.265 – June 12, 2026
+
+### Fixed
+
+- **Deleting an anchored comment no longer paints the whole segment yellow.** When a comment was deleted, the cell's amber comment highlight is cleared by resetting the cell text and re-applying the remaining anchors. But the reset (`setPlainText`) re-inserts the text using the editor's *current* character format — so if the caret happened to be resting inside the highlighted word (e.g. you'd just clicked into the comment you were deleting), the amber background under the cursor was inherited by the entire re-inserted segment, turning the whole cell yellow instead of clearing it. The clear now explicitly resets every character to a default format, independent of caret position. Reported in issue #223.
 
 
 ## v1.10.264 – June 12, 2026
