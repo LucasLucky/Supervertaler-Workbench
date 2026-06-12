@@ -28630,6 +28630,17 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, '_assistant_tab_index') and index == self._assistant_tab_index:
                 if hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
                     self.prompt_manager_qt._on_assistant_shown()
+            # Re-render the document Preview whenever it becomes visible. The
+            # preview is otherwise only rebuilt on a full grid (re)load, so
+            # translating segments in place left it showing the stale (often
+            # all-source) render from when the document was first loaded
+            # (issue #224). Refreshing on show keeps it in step with the
+            # current target text and segment statuses.
+            if hasattr(self, '_preview_tab_index') and index == self._preview_tab_index:
+                try:
+                    self.refresh_preview()
+                except Exception as e:
+                    self.log(f"⚠ Preview refresh on show failed: {e}")
         right_tabs.currentChanged.connect(_on_right_tab_changed)
 
         # Allow right panel to expand larger for better splitter flexibility

@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.265 (June 12, 2026)
+**Current Version:** v1.10.266 (June 12, 2026)
+
+
+## v1.10.266 – June 12, 2026
+
+### Fixed
+
+- **The Preview tab now shows your translations instead of the source text.** The document preview was only rebuilt on a full grid (re)load, so translating segments in place never refreshed it — opening the Preview tab showed the stale render from when the document was first loaded, i.e. all source text (greyed/italic, since each segment looked untranslated), even while the status background colours had moved on. The preview now re-renders every time its tab becomes visible, so it reflects the current target text and segment statuses. Reported in issue #224.
 
 
 ## v1.10.265 – June 12, 2026
