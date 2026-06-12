@@ -3512,11 +3512,11 @@ class ReadOnlyGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                "Please select text in both Source and Target cells before adding to termbase.\\n\\n"
-                "Workflow:\\n"
-                "1. Select term in source cell\\n"
-                "2. Press Tab to cycle to target cell\\n"
-                "3. Select corresponding translation\\n"
+                "Please select text in both Source and Target cells before adding to termbase.\n\n"
+                "Workflow:\n"
+                "1. Select term in source cell\n"
+                "2. Press Tab to cycle to target cell\n"
+                "3. Select corresponding translation\n"
                 f"4. Press {format_shortcut_for_display('Ctrl+Alt+T')} (or right-click) to add to termbase"
             )
             return
@@ -4774,11 +4774,11 @@ class EditableGridTextEditor(QTextEdit):
             QMessageBox.warning(
                 self,
                 "Selection Required",
-                "Please select text in both Source and Target cells before adding to glossary.\\n\\n"
-                "Workflow:\\n"
-                "1. Select term in source/target cell\\n"
-                "2. Press Tab to cycle to other cell\\n"
-                "3. Select corresponding term\\n"
+                "Please select text in both Source and Target cells before adding to glossary.\n\n"
+                "Workflow:\n"
+                "1. Select term in source/target cell\n"
+                "2. Press Tab to cycle to other cell\n"
+                "3. Select corresponding term\n"
                 f"4. Press {format_shortcut_for_display('Ctrl+Alt+T')} (or right-click) to add to glossary"
             )
             return
@@ -17203,7 +17203,7 @@ class SupervertalerQt(QMainWindow):
             except Exception:
                 pass
 
-            QMessageBox.information(self, "Term Added", f"Successfully added term pair to {success_count} termbase(s):\\n\\nSource: {source_text}\\nTarget: {target_text}\\n\\nDomain: {metadata['domain'] or '(none)'}")
+            QMessageBox.information(self, "Term Added", f"Successfully added term pair to {success_count} termbase(s):\n\nSource: {source_text}\nTarget: {target_text}\n\nDomain: {metadata['domain'] or '(none)'}")
             
             # Keep in-memory termbase search/index in sync with DB so new term appears immediately
             try:

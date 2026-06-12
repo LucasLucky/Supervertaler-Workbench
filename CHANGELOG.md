@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.263 (June 12, 2026)
+**Current Version:** v1.10.264 (June 12, 2026)
+
+
+## v1.10.264 – June 12, 2026
+
+### Fixed
+
+- **Line breaks in the "add to termbase/glossary" dialogs now render correctly instead of showing literal `\n` characters.** The "Selection Required" warnings (and the "Term Added" confirmation) were written with escaped `\\n` in ordinary Python strings, so the backslash-n reached the message box verbatim instead of breaking the line. The workflow steps are now shown on separate lines as intended. Reported in issue #220.
 
 
 ## v1.10.263 – June 12, 2026
