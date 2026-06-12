@@ -1,0 +1,18 @@
+# The "New issue" chooser. Confirmed Workbench bugs stay on GitHub (the Bug
+# template below); feature requests, questions and general discussion are
+# routed to the Supervertaler Forum. blank_issues_enabled stays true so the
+# maintainer can still open roadmap / [Feature] issues directly.
+blank_issues_enabled: true
+contact_links:
+  - name: 💡 Feature requests & ideas
+    url: https://forum.supervertaler.com/viewforum.php?f=2
+    about: Suggest features and discuss ideas on the Supervertaler Forum – that's where roadmap and community discussion happen.
+  - name: ❓ Questions & how-to help
+    url: https://forum.supervertaler.com/viewforum.php?f=2
+    about: For usage questions, setup help and general discussion of the Workbench, please post on the Supervertaler Forum.
+  - name: 🧩 Supervertaler for Trados (plugin)
+    url: https://forum.supervertaler.com/viewforum.php?f=14
+    about: This tracker is for the free Workbench app – for the Trados Studio plugin, use the Supervertaler Forum.
+  - name: 🗣️ General discussion
+    url: https://forum.supervertaler.com/viewforum.php?f=17
+    about: Tips, workflows and anything else about Supervertaler.
