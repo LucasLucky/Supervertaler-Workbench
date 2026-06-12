@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.267 (June 12, 2026)
+**Current Version:** v1.10.268 (June 12, 2026)
+
+
+## v1.10.268 – June 12, 2026
+
+### Improved
+
+- **Opening a project now shows a real percentage progress bar while the grid builds**, instead of an indeterminate spinner — the dominant cost when opening a large project, and the phase most likely to make the app look frozen (the macOS "beach ball"). The dialog already pumped the event loop so the OS never marked the app unresponsive; it now also fills a determinate bar from 0–100% across the segment rows, then returns to a spinner for the brief finalisation steps (TM init, etc.). Addresses issue #169. (Imports already showed determinate progress via the shared import-progress dialog.)
 
 
 ## v1.10.267 – June 12, 2026

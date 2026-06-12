@@ -30728,6 +30728,15 @@ class SupervertalerQt(QMainWindow):
             QApplication.processEvents()
 
             def _grid_progress(done, total):
+                # Show a real filling % bar for the grid-build phase (the
+                # dominant cost when opening a large project) instead of the
+                # indeterminate spinner — issue #169 ("% progress bar instead
+                # of beach ball"). Switch the dialog to determinate on the
+                # first callback once the row total is known.
+                if total > 0:
+                    if progress.maximum() != total:
+                        progress.setRange(0, total)
+                    progress.setValue(min(done, total))
                 progress.setLabelText(
                     f"Loading segments into grid… ({done:,} / {total:,})"
                 )
@@ -30735,6 +30744,9 @@ class SupervertalerQt(QMainWindow):
 
             self.load_segments_to_grid(progress_callback=_grid_progress)
 
+            # Back to an indeterminate spinner for the quick finalisation phases
+            # below (TM init, etc.), which have no meaningful per-item total.
+            progress.setRange(0, 0)
             progress.setLabelText("Initialising translation memory…")
             QApplication.processEvents()
             self.initialize_tm_database()  # Initialize TM for this project
