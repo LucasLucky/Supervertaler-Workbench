@@ -26,6 +26,53 @@ from pathlib import Path
 from difflib import SequenceMatcher
 
 
+# ── CJK / space-less script helpers (for fuzzy-TM retrieval) ──────────────
+# Chinese/Japanese/Korean write words with no separating spaces, so the
+# default unicode61 FTS tokenizer indexes a whole run as a single token and
+# can't retrieve similar-but-not-identical segments as fuzzy candidates. We
+# maintain a parallel trigram-tokenised FTS index (CJK rows only) and query it
+# with the source's overlapping 3-grams instead. See the trigram FTS table in
+# init_database() and _search_single_tm_fuzzy().
+
+def _dbm_is_cjk_char(ch: str) -> bool:
+    o = ord(ch)
+    return (
+        0x4E00 <= o <= 0x9FFF or    # CJK Unified Ideographs
+        0x3400 <= o <= 0x4DBF or    # CJK Extension A
+        0x3040 <= o <= 0x30FF or    # Hiragana + Katakana
+        0xAC00 <= o <= 0xD7AF or    # Hangul syllables
+        0xF900 <= o <= 0xFAFF       # CJK Compatibility Ideographs
+    )
+
+
+def _dbm_contains_cjk(text: str) -> bool:
+    return bool(text) and any(_dbm_is_cjk_char(c) for c in text)
+
+
+# GLOB pattern matching any CJK/Kana/Hangul character – used to gate the
+# trigram FTS triggers/populate to CJK rows only (verified against SQLite GLOB).
+_CJK_GLOB = "*[一-鿿㐀-䶿぀-ヿ가-힯]*"
+
+
+def _cjk_trigrams(text: str, cap: int = 40) -> List[str]:
+    """Overlapping 3-character windows of `text` that contain at least one CJK
+    character, de-duplicated and capped. Used to build the trigram-FTS MATCH
+    query for a CJK source segment."""
+    s = (text or "").strip()
+    grams: List[str] = []
+    seen = set()
+    for i in range(len(s) - 2):
+        g = s[i:i + 3]
+        if g in seen:
+            continue
+        if any(_dbm_is_cjk_char(c) for c in g):
+            seen.add(g)
+            grams.append(g)
+            if len(grams) >= cap:
+                break
+    return grams
+
+
 def _normalize_for_matching(text: str) -> str:
     """Normalize text for exact matching.
 
@@ -254,7 +301,65 @@ class DatabaseManager:
                 VALUES (new.id, new.source_text, new.target_text);
             END
         """)
-        
+
+        # CJK fuzzy-retrieval index. The unicode61 FTS above indexes a space-less
+        # CJK run as one token, so similar (non-identical) Chinese/Japanese
+        # segments can't be found as fuzzy candidates. A trigram-tokenised index
+        # makes them retrievable. To avoid burdening English-only TMs with a
+        # second large index, the triggers and the one-time populate only index
+        # rows that actually contain CJK/Kana/Hangul characters. Wrapped in
+        # try/except: the trigram tokenizer needs SQLite >= 3.34 — on older
+        # builds we skip it and CJK fuzzy retrieval falls back to the unicode61
+        # path (degraded, but functional).
+        self._trigram_fts_available = False
+        try:
+            self.cursor.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='translation_units_trigram'")
+            _trigram_existed = self.cursor.fetchone() is not None
+
+            self.cursor.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS translation_units_trigram
+                USING fts5(source_text, target_text,
+                           content=translation_units, content_rowid=id,
+                           tokenize='trigram')
+            """)
+            self.cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS tu_trig_insert AFTER INSERT ON translation_units
+                WHEN new.source_text GLOB '{_CJK_GLOB}' OR new.target_text GLOB '{_CJK_GLOB}'
+                BEGIN
+                    INSERT INTO translation_units_trigram(rowid, source_text, target_text)
+                    VALUES (new.id, new.source_text, new.target_text);
+                END
+            """)
+            self.cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS tu_trig_delete AFTER DELETE ON translation_units BEGIN
+                    DELETE FROM translation_units_trigram WHERE rowid = old.id;
+                END
+            """)
+            self.cursor.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS tu_trig_update AFTER UPDATE ON translation_units BEGIN
+                    DELETE FROM translation_units_trigram WHERE rowid = old.id;
+                    INSERT INTO translation_units_trigram(rowid, source_text, target_text)
+                    SELECT new.id, new.source_text, new.target_text
+                    WHERE new.source_text GLOB '{_CJK_GLOB}' OR new.target_text GLOB '{_CJK_GLOB}';
+                END
+            """)
+
+            # One-time populate from existing CJK rows (migration for DBs that
+            # predate this index). Only runs the first time the table is created.
+            if not _trigram_existed:
+                self.cursor.execute(f"""
+                    INSERT INTO translation_units_trigram(rowid, source_text, target_text)
+                    SELECT id, source_text, target_text FROM translation_units
+                    WHERE source_text GLOB '{_CJK_GLOB}' OR target_text GLOB '{_CJK_GLOB}'
+                """)
+            self._trigram_fts_available = True
+        except Exception as e:
+            try:
+                self.log(f"⚠ Trigram FTS unavailable; CJK fuzzy retrieval uses the fallback path: {e}")
+            except Exception:
+                pass
+
         # ============================================
         # TRANSLATION MEMORY METADATA
         # ============================================
@@ -1595,6 +1700,11 @@ class DatabaseManager:
             source_clean = sd['clean']
             source_len = sd['clean_len']
             source_words = sd['words']
+            # CJK/space-less sources collapse to a single "word", so the word-
+            # overlap pre-filter below would wrongly reject every non-identical
+            # candidate. Skip it for them and let the length + char-level
+            # quick_ratio/SequenceMatcher gates decide.
+            source_is_cjk = _dbm_contains_cjk(source_clean)
 
             if source_len == 0:
                 continue
@@ -1613,8 +1723,9 @@ class DatabaseManager:
                     continue
 
                 # Pre-filter 2: Word overlap (cheap set intersection)
-                # If word overlap is too low, SequenceMatcher won't hit threshold
-                if source_words and cand['words']:
+                # If word overlap is too low, SequenceMatcher won't hit threshold.
+                # Skipped for CJK sources (see source_is_cjk above).
+                if not source_is_cjk and source_words and cand['words']:
                     overlap = len(source_words & cand['words'])
                     max_words = max(len(source_words), len(cand['words']))
                     if max_words > 0 and overlap / max_words < threshold * 0.5:
@@ -1720,7 +1831,18 @@ class DatabaseManager:
         
         # Quote each term to prevent FTS5 syntax errors
         fts_query = ' OR '.join(f'"{term}"' for term in search_terms_for_query)
-        
+        fts_table = 'translation_units_fts'
+
+        # CJK source: the unicode61 index can't retrieve similar space-less
+        # segments (a whole run is one token), so query the trigram index with
+        # the source's overlapping 3-grams instead. Falls back to the word query
+        # above if the trigram index is unavailable or yields no CJK trigrams.
+        if getattr(self, '_trigram_fts_available', False) and _dbm_contains_cjk(text_without_tags):
+            grams = _cjk_trigrams(text_without_tags)
+            if grams:
+                fts_query = ' OR '.join('"' + g.replace('"', '""') + '"' for g in grams)
+                fts_table = 'translation_units_trigram'
+
         # Get base language codes for comparison
         src_base = get_base_lang_code(source_lang) if source_lang else None
         tgt_base = get_base_lang_code(target_lang) if target_lang else None
@@ -1736,8 +1858,8 @@ class DatabaseManager:
             # Search this specific TM (or all if tm_id is None)
             tm_results = self._search_single_tm_fuzzy(
                 source, fts_query, [tm_id] if tm_id else None,
-                threshold, max_results, src_base, tgt_base, 
-                source_lang, target_lang, bidirectional
+                threshold, max_results, src_base, tgt_base,
+                source_lang, target_lang, bidirectional, fts_table
             )
             all_results.extend(tm_results)
         
@@ -1760,17 +1882,26 @@ class DatabaseManager:
                                  threshold: float, max_results: int,
                                  src_base: str, tgt_base: str,
                                  source_lang: str, target_lang: str,
-                                 bidirectional: bool) -> List[Dict]:
-        """Search a single TM (or all TMs if tm_ids is None) for fuzzy matches"""
+                                 bidirectional: bool,
+                                 fts_table: str = 'translation_units_fts') -> List[Dict]:
+        """Search a single TM (or all TMs if tm_ids is None) for fuzzy matches.
+
+        fts_table selects which FTS index to retrieve candidates from:
+        the default unicode61 'translation_units_fts', or the CJK
+        'translation_units_trigram' for space-less source segments.
+        """
         from modules.tmx_generator import get_lang_match_variants
-        
+        # Internal, fixed table name (never user input) – safe to interpolate.
+        if fts_table not in ('translation_units_fts', 'translation_units_trigram'):
+            fts_table = 'translation_units_fts'
+
         # Build query for this TM
-        query = """
-            SELECT tu.*, 
-                   bm25(translation_units_fts) as relevance
+        query = f"""
+            SELECT tu.*,
+                   bm25({fts_table}) as relevance
             FROM translation_units tu
-            JOIN translation_units_fts ON tu.id = translation_units_fts.rowid
-            WHERE translation_units_fts MATCH ?
+            JOIN {fts_table} ON tu.id = {fts_table}.rowid
+            WHERE {fts_table} MATCH ?
         """
         params = [fts_query]
         
@@ -1827,12 +1958,12 @@ class DatabaseManager:
         
         # If bidirectional, also search reverse direction
         if bidirectional and src_base and tgt_base:
-            query = """
-                SELECT tu.*, 
-                       bm25(translation_units_fts) as relevance
+            query = f"""
+                SELECT tu.*,
+                       bm25({fts_table}) as relevance
                 FROM translation_units tu
-                JOIN translation_units_fts ON tu.id = translation_units_fts.rowid
-                WHERE translation_units_fts MATCH ?
+                JOIN {fts_table} ON tu.id = {fts_table}.rowid
+                WHERE {fts_table} MATCH ?
             """
             params = [fts_query]
             

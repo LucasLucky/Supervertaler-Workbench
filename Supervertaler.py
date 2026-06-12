@@ -2689,6 +2689,17 @@ def _is_cjk_char(ch: str) -> bool:
     )
 
 
+def _contains_cjk(text: str) -> bool:
+    """True if any character is in a space-less script (Chinese, Japanese,
+    Korean, Thai). Used to switch term matching from word-boundary (\\bterm\\b)
+    to substring: those scripts write words with no separating spaces and
+    attach particles/compounds directly to a term (값으로, 第二电压値), so a
+    word-boundary never fires inside a run and the term would never match.
+    Substring matching is the right behaviour for such terms; European terms
+    keep word boundaries because they don't contain these characters."""
+    return bool(text) and any(_is_cjk_char(c) for c in text)
+
+
 def _canon_path(p: str) -> str:
     """Canonical path for case/separator-insensitive comparison (on Windows the
     same file can be spelled with different drive-letter case or slashes)."""
@@ -7514,7 +7525,25 @@ class PreTranslationWorker(QThread):
             batch_prompt_parts.append("3. Format: Each translation MUST start with its segment number, a period, then the translation")
             batch_prompt_parts.append("4. Line breaks: If the source segment contains line breaks, preserve them in your translation.")
             batch_prompt_parts.append("   The number label (e.g. '40.') appears only ONCE at the start; continuation lines have no number.")
-            batch_prompt_parts.append("5. NO explanations, NO commentary, ONLY the numbered translations\n")
+            # Inline-tag preservation rule – only added when the batch actually
+            # contains numbered <N> markers (SDLXLIFF/Trados inline tags), so
+            # plain-text batches don't carry irrelevant tag instructions. Added
+            # after reports that some models (Mistral Large) began emitting
+            # empty pairs (<1></1>) or otherwise mangling the markers.
+            _next_rule = 5
+            _has_inline_tags = any(
+                re.search(r'</?\d+/?>', seg.source or '') for _, seg in batch_segments
+            )
+            if _has_inline_tags:
+                batch_prompt_parts.append(
+                    f"{_next_rule}. Inline tags: some segments contain numbered tags like "
+                    "<1>…</1> (paired) or <2/> (standalone). Keep EVERY tag, with the same "
+                    "numbers, exactly as written – angle brackets, digits, no spaces. A paired "
+                    "tag MUST wrap the translated word(s) it wrapped in the source; NEVER output "
+                    "an empty pair like <1></1> with the text left outside it. Tags may be "
+                    "reordered to fit natural target-language word order.")
+                _next_rule += 1
+            batch_prompt_parts.append(f"{_next_rule}. NO explanations, NO commentary, ONLY the numbered translations\n")
 
             batch_prompt_parts.append("**SEGMENTS TO TRANSLATE:**\n")
 
@@ -17693,7 +17722,10 @@ class SupervertalerQt(QMainWindow):
                                 import re
                                 source_lower = source_text.lower().strip()
                                 try:
-                                    if any(c in source_lower for c in '.%,/-'):
+                                    if _contains_cjk(source_lower):
+                                        # CJK/Thai: substring match (see _contains_cjk)
+                                        pattern = re.compile(re.escape(source_lower))
+                                    elif any(c in source_lower for c in '.%,/-'):
                                         pattern = re.compile(r'(?<!\w)' + re.escape(source_lower) + r'(?!\w)')
                                     else:
                                         pattern = re.compile(r'\b' + re.escape(source_lower) + r'\b')
@@ -31270,8 +31302,13 @@ class SupervertalerQt(QMainWindow):
                 # Pre-compile regex pattern for word-boundary matching
                 # This avoids recompiling the same pattern thousands of times
                 try:
+                    if _contains_cjk(source_term_lower):
+                        # CJK/Thai: no inter-word spaces, so match as a substring
+                        # (a word-boundary would never fire inside a run). See
+                        # _contains_cjk.
+                        pattern = re.compile(re.escape(source_term_lower))
                     # Handle terms with punctuation differently
-                    if any(c in source_term_lower for c in '.%,/-'):
+                    elif any(c in source_term_lower for c in '.%,/-'):
                         pattern = re.compile(r'(?<!\w)' + re.escape(source_term_lower) + r'(?!\w)')
                     else:
                         pattern = re.compile(r'\b' + re.escape(source_term_lower) + r'\b')
@@ -31299,7 +31336,9 @@ class SupervertalerQt(QMainWindow):
                             continue
                         variant_lower = variant.lower()
                         try:
-                            if any(c in variant_lower for c in '.%,/-'):
+                            if _contains_cjk(variant_lower):
+                                v_pattern = re.compile(re.escape(variant_lower))
+                            elif any(c in variant_lower for c in '.%,/-'):
                                 v_pattern = re.compile(
                                     r'(?<!\w)' + re.escape(variant_lower) + r'(?!\w)')
                             else:
@@ -31330,7 +31369,9 @@ class SupervertalerQt(QMainWindow):
                     if len(syn_lower) < 2:
                         continue
                     try:
-                        if any(c in syn_lower for c in '.%,/-'):
+                        if _contains_cjk(syn_lower):
+                            syn_pattern = re.compile(re.escape(syn_lower))
+                        elif any(c in syn_lower for c in '.%,/-'):
                             syn_pattern = re.compile(
                                 r'(?<!\w)' + re.escape(syn_lower) + r'(?!\w)')
                         else:
@@ -59246,6 +59287,14 @@ class SupervertalerQt(QMainWindow):
                 
                 # Add the segment to translate
                 prompt_parts.append("")
+                # Inline-tag preservation – only when the segment carries numbered
+                # <N> markers, so plain segments aren't burdened with the rule.
+                if re.search(r'</?\d+/?>', segment.source or ''):
+                    prompt_parts.append(
+                        "Keep any numbered tags (<1>…</1> paired, <2/> standalone) exactly as "
+                        "written, with the same numbers. A paired tag MUST wrap the translated "
+                        "word(s) it wrapped in the source – never output an empty pair like <1></1> "
+                        "with the text left outside it.")
                 prompt_parts.append("Translate this segment accurately. Output ONLY the translation:")
                 prompt_parts.append(segment.source)
                 prompt_parts.append("")

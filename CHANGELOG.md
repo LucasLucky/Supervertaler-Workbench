@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.268 (June 12, 2026)
+**Current Version:** v1.10.269 (June 12, 2026)
+
+
+## v1.10.269 – June 12, 2026
+
+### Improved (CJK terminology + translation memory)
+
+- **Termbase matching now works for Chinese, Japanese, and Korean.** Term recognition validated every hit with a word-boundary check (`\bterm\b`), which never fires inside a continuous CJK run — so a glossary term like 电压 (voltage) or 값 (value) was never highlighted in running text (it only worked in the rare case the term happened to sit next to a space or punctuation). Terms that contain CJK/Thai characters are now matched as substrings, so they highlight wherever they appear; terms in spaced languages keep word-boundary matching, so nothing changes for English/European glossaries (e.g. "cat" still does not match inside "category").
+- **Fuzzy translation-memory matching now works for Chinese and Japanese.** Fuzzy candidate retrieval relied on whitespace tokenisation (FTS5's default tokenizer indexes a whole space-less run as one token, and a word-overlap pre-filter treated each Chinese segment as a single "word"), so a 90%-similar Chinese segment was discarded before it was ever scored. A trigram-based index is now maintained for CJK content (only — spaced-language TMs are unaffected), and the batch matcher's word-overlap pre-filter is skipped for CJK sources, so near-matches in Chinese/Japanese TMs surface correctly. Exact and concordance matching were already fine. (The CJK trigram index is built once on first open, gracefully skipped on SQLite builds older than 3.34.)
+
+### Improved (AI · inline tags)
+
+- **Inline-tag preservation rule added to AI translation prompts.** When a segment contains numbered inline tags (`<1>…</1>`, `<2/>`), the batch and local-model prompts now instruct the model to keep every tag exactly and wrap the translated words rather than emit an empty pair — added after a report that Mistral Large began mangling tags. The rule is only included when a segment actually has tags, so plain-text batches are unaffected.
 
 
 ## v1.10.268 – June 12, 2026
