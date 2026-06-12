@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.262 (June 12, 2026)
+**Current Version:** v1.10.263 (June 12, 2026)
+
+
+## v1.10.263 – June 12, 2026
+
+### Added
+
+- **Help → Community Forum** menu item, opening the new [Supervertaler Forum](https://forum.supervertaler.com/) in your browser. The forum is now the home for questions, feature requests, tips, and Trados plugin support; confirmed Workbench bugs can still be filed on GitHub.
 
 
 ## v1.10.262 – June 12, 2026

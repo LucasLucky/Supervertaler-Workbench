@@ -11254,6 +11254,11 @@ class SupervertalerQt(QMainWindow):
 
         help_menu.addSeparator()
 
+        forum_action = QAction(self.tr("💬 Community Forum"), self)
+        forum_action.setToolTip(self.tr("Ask questions, request features and share tips on the Supervertaler Forum"))
+        forum_action.triggered.connect(lambda: self._open_url("https://forum.supervertaler.com/"))
+        help_menu.addAction(forum_action)
+
         github_action = QAction(self.tr("🔗 GitHub Repository"), self)
         github_action.triggered.connect(lambda: self._open_url("https://github.com/Supervertaler/Supervertaler-Workbench"))
         help_menu.addAction(github_action)
