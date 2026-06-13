@@ -11228,16 +11228,13 @@ class SupervertalerQt(QMainWindow):
         # Documentation links (GitHub URLs for universal access)
         # Removed internal manual link – documentation migrated to GitBook
 
-        # Context-sensitive help (F1)
-        context_help_action = QAction(self.tr("Context Help"), self)
-        context_help_action.setShortcut("F1")
-        context_help_action.setToolTip(self.tr("Open help for the focused panel (F1)"))
-        context_help_action.triggered.connect(lambda: open_help())
-        help_menu.addAction(context_help_action)
-
-        # Place Supervertaler Help at the top of the Help menu
+        # Single Help-menu entry → the Workbench documentation home. The old
+        # "Context Help" entry was removed (it merely opened the docs home, not
+        # an actual context page, and duplicated this item). Context-sensitive
+        # help is unaffected: the global F1 event filter (install_help_system)
+        # still opens the page for whichever panel is focused.
         superdocs_action = QAction(self.tr("Supervertaler Workbench Help"), self)
-        superdocs_action.setToolTip(self.tr("Open the Workbench documentation in your browser"))
+        superdocs_action.setToolTip(self.tr("Open the Workbench documentation in your browser (press F1 for help on the current panel)"))
         superdocs_action.triggered.connect(lambda: self._open_url("https://docs.supervertaler.com/workbench/"))
         help_menu.addAction(superdocs_action)
 

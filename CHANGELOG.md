@@ -10,6 +10,7 @@ All notable changes to Supervertaler Workbench are documented in this file.
 ### Changed
 
 - **The Help menu's community link now points to GitHub Discussions** (renamed from "💬 Community Forum" to "💬 Community Discussions"). The self-hosted forum has been retired in favour of the organisation-level [GitHub Discussions](https://github.com/orgs/Supervertaler/discussions) board, which spans both Workbench and the Trados plugin and is where the existing community engagement already lives. The old `forum.supervertaler.com` address redirects there.
+- **The Help menu now has a single documentation entry.** The redundant "Context Help" item was removed – it only opened the docs home page (not an actual context-specific page) and duplicated "Supervertaler Workbench Help". Context-sensitive help is unchanged: pressing **F1** anywhere still opens the documentation page for the focused panel (driven by the global help event filter, independent of the menu).
 
 
 ## v1.10.269 – June 12, 2026
