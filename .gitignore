@@ -253,3 +253,21 @@ plan.md
 
 # Claude worktrees
 .claude/worktrees/
+.claude/launch.json
+.claude/settings.local.json
+
+# Private dev notes / scratch — NEVER commit (may contain user names, drafts)
+.dev/
+
+# PyPI / pip build artefacts (wheels + sdists)
+dist-pypi/
+pip_dist/
+
+# Generated GitHub release-body / release-notes drafts
+release-body-*.md
+.release-notes-*.md
+
+# SECURITY: client / working translation data — NEVER commit
+*.svexport.json
+*_bilingual.txt
+*_bilingual.txt.svexport.json
