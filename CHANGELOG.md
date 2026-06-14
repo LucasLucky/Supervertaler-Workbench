@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.270 (June 13, 2026)
+**Current Version:** v1.10.271 (June 14, 2026)
+
+
+## v1.10.271 – June 14, 2026
+
+### Added
+
+- **A "🔄 Swap" button now sits between the source and target language selectors when importing.** One click swaps the two languages, so reversing a pair no longer means reopening both dropdowns. It appears in the single-file import, simple-text import and multi-file folder import dialogs, and in the TMX-to-TM language picker. The existing Swap button on the default Translation Language Pair setting is unchanged – the new buttons reuse its style for consistency.
 
 
 ## v1.10.270 – June 13, 2026

@@ -20681,7 +20681,22 @@ class SupervertalerQt(QMainWindow):
                 src_combo.addItem(lang)
             src_layout.addWidget(src_combo)
             lang_layout.addLayout(src_layout)
-            
+
+            # Swap source/target, centred between the two rows
+            swap_row = QHBoxLayout()
+            swap_row.addStretch()
+            swap_btn = QPushButton(self.tr("🔄 Swap"))
+            swap_btn.setToolTip(self.tr("Swap source and target languages"))
+
+            def _swap_tmx_langs():
+                _s, _t = src_combo.currentIndex(), tgt_combo.currentIndex()
+                src_combo.setCurrentIndex(_t)
+                tgt_combo.setCurrentIndex(_s)
+            swap_btn.clicked.connect(_swap_tmx_langs)
+            swap_row.addWidget(swap_btn)
+            swap_row.addStretch()
+            lang_layout.addLayout(swap_row)
+
             # Target language combo
             tgt_layout = QHBoxLayout()
             tgt_layout.addWidget(QLabel(self.tr("Target:")))
@@ -20788,7 +20803,22 @@ class SupervertalerQt(QMainWindow):
                         src_combo.addItem(lang)
                     src_layout.addWidget(src_combo)
                     lang_layout.addLayout(src_layout)
-                    
+
+                    # Swap source/target, centred between the two rows
+                    swap_row = QHBoxLayout()
+                    swap_row.addStretch()
+                    swap_btn = QPushButton(self.tr("🔄 Swap"))
+                    swap_btn.setToolTip(self.tr("Swap source and target languages"))
+
+                    def _swap_tmx_langs():
+                        _s, _t = src_combo.currentIndex(), tgt_combo.currentIndex()
+                        src_combo.setCurrentIndex(_t)
+                        tgt_combo.setCurrentIndex(_s)
+                    swap_btn.clicked.connect(_swap_tmx_langs)
+                    swap_row.addWidget(swap_btn)
+                    swap_row.addStretch()
+                    lang_layout.addLayout(swap_row)
+
                     # Target language combo
                     tgt_layout = QHBoxLayout()
                     tgt_layout.addWidget(QLabel(self.tr("Target:")))
@@ -32989,11 +33019,18 @@ class SupervertalerQt(QMainWindow):
         _select_lang_in_combo(source_combo, last_source)
         _select_lang_in_combo(target_combo, last_target)
 
-        arrow = QLabel(" → ")
-        arrow.setStyleSheet("font-weight: bold; font-size: 14px;")
+        swap_btn = QPushButton(self.tr("🔄 Swap"))
+        swap_btn.setToolTip(self.tr("Swap source and target languages"))
+
+        def _swap_import_langs():
+            s_idx, t_idx = source_combo.currentIndex(), target_combo.currentIndex()
+            source_combo.setCurrentIndex(t_idx)
+            target_combo.setCurrentIndex(s_idx)
+        swap_btn.clicked.connect(_swap_import_langs)
+
         lang_layout.addWidget(QLabel(self.tr("Source:")))
         lang_layout.addWidget(source_combo)
-        lang_layout.addWidget(arrow)
+        lang_layout.addWidget(swap_btn)
         lang_layout.addWidget(QLabel(self.tr("Target:")))
         lang_layout.addWidget(target_combo)
         lang_layout.addStretch()
@@ -33785,9 +33822,6 @@ class SupervertalerQt(QMainWindow):
 
         _select_lang_in_combo(source_combo, last_source)
 
-        arrow_label = QLabel(" → ")
-        arrow_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-
         target_label = QLabel(self.tr("Target:"))
         target_combo = QComboBox()
         for name, code in languages:
@@ -33795,9 +33829,18 @@ class SupervertalerQt(QMainWindow):
 
         _select_lang_in_combo(target_combo, last_target)
 
+        swap_btn = QPushButton(self.tr("🔄 Swap"))
+        swap_btn.setToolTip(self.tr("Swap source and target languages"))
+
+        def _swap_langs():
+            s_idx, t_idx = source_combo.currentIndex(), target_combo.currentIndex()
+            source_combo.setCurrentIndex(t_idx)
+            target_combo.setCurrentIndex(s_idx)
+        swap_btn.clicked.connect(_swap_langs)
+
         lang_layout.addWidget(source_label)
         lang_layout.addWidget(source_combo)
-        lang_layout.addWidget(arrow_label)
+        lang_layout.addWidget(swap_btn)
         lang_layout.addWidget(target_label)
         lang_layout.addWidget(target_combo)
         lang_layout.addStretch()
@@ -34922,9 +34965,6 @@ class SupervertalerQt(QMainWindow):
 
         _select_lang_in_combo(source_combo, last_source)
 
-        arrow_label = QLabel(" → ")
-        arrow_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-
         target_label = QLabel(self.tr("Target:"))
         target_combo = QComboBox()
         for name, code in languages:
@@ -34932,9 +34972,18 @@ class SupervertalerQt(QMainWindow):
 
         _select_lang_in_combo(target_combo, last_target)
 
+        swap_btn = QPushButton(self.tr("🔄 Swap"))
+        swap_btn.setToolTip(self.tr("Swap source and target languages"))
+
+        def _swap_langs():
+            s_idx, t_idx = source_combo.currentIndex(), target_combo.currentIndex()
+            source_combo.setCurrentIndex(t_idx)
+            target_combo.setCurrentIndex(s_idx)
+        swap_btn.clicked.connect(_swap_langs)
+
         lang_layout.addWidget(source_label)
         lang_layout.addWidget(source_combo)
-        lang_layout.addWidget(arrow_label)
+        lang_layout.addWidget(swap_btn)
         lang_layout.addWidget(target_label)
         lang_layout.addWidget(target_combo)
         lang_layout.addStretch()
