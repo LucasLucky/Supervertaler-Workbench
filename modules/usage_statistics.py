@@ -10,6 +10,7 @@ on app startup. The payload contains only:
   - System locale
   - Platform (win32, darwin, linux)
   - Architecture (x86_64, arm64, etc.)
+  - Display scale, Windows text size, and the in-app UI font scale (percentages)
   - Product identifier ("workbench")
 
 No personal data, no translation content, no termbase info, no tracking.
@@ -39,16 +40,20 @@ def send_ping(settings_path: Path, app_version: str) -> None:
     Runs in a background thread – never blocks the UI.
     Call this once during app startup.
     """
+    # Capture the display scale on the calling (GUI) thread — querying the Qt
+    # screen from the worker thread is not safe.
+    display_scale = _get_display_scale()
     thread = threading.Thread(
         target=_send_ping_background,
-        args=(settings_path, app_version),
+        args=(settings_path, app_version, display_scale),
         daemon=True,
         name="UsageStatsPing",
     )
     thread.start()
 
 
-def _send_ping_background(settings_path: Path, app_version: str) -> None:
+def _send_ping_background(settings_path: Path, app_version: str,
+                         display_scale: str = "unknown") -> None:
     """Background worker – sends the ping. All exceptions swallowed silently."""
     try:
         settings = _load_settings(settings_path)
@@ -73,6 +78,9 @@ def _send_ping_background(settings_path: Path, app_version: str) -> None:
             "locale": _get_locale(),
             "platform": sys.platform,
             "arch": _get_arch(),
+            "display_scale": display_scale,
+            "text_scale": _get_text_scale(),
+            "ui_scale": _get_ui_scale(settings),
         }
 
         # Use urllib to avoid requiring 'requests' just for this
@@ -234,5 +242,54 @@ def _get_arch() -> str:
         bits = struct.calcsize("P") * 8
         machine = platform.machine().lower()
         return f"{machine}_{bits}bit" if machine else f"{bits}bit"
+    except Exception:
+        return "unknown"
+
+
+def _get_display_scale() -> str:
+    """Display scale as a percentage string (e.g. '175'; '200' on a Retina
+    screen), from the Qt primary screen's device pixel ratio. Must be called
+    from the GUI thread."""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            screen = app.primaryScreen()
+            if screen is not None:
+                pct = int(round(screen.devicePixelRatio() * 100))
+                if 50 <= pct <= 600:
+                    return str(pct)
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _get_text_scale() -> str:
+    """Windows accessibility 'Text size' (%). Windows-only; 'unknown' elsewhere
+    (the setting doesn't exist on macOS/Linux)."""
+    if sys.platform != "win32":
+        return "unknown"
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Accessibility") as key:
+            val, _ = winreg.QueryValueEx(key, "TextScaleFactor")
+            pct = int(val)
+            return str(pct) if 50 <= pct <= 600 else "unknown"
+    except FileNotFoundError:
+        return "100"  # key/value absent → Windows default of 100%
+    except Exception:
+        return "unknown"
+
+
+def _get_ui_scale(settings: dict) -> str:
+    """In-app Workbench UI font scale (%) – the 'Global UI Font Scale' setting.
+    Defaults to 100 when unset."""
+    try:
+        for container in (settings.get("general", {}), settings, settings.get("ui", {})):
+            if isinstance(container, dict) and "global_ui_font_scale" in container:
+                pct = int(container["global_ui_font_scale"])
+                return str(pct) if 10 <= pct <= 600 else "unknown"
+        return "100"
     except Exception:
         return "unknown"
