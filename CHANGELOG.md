@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.276 (June 15, 2026)
+**Current Version:** v1.10.277 (June 15, 2026)
+
+
+## v1.10.277 – June 15, 2026
+
+### Fixed (TM matches)
+
+- **The 100% TM match now shows even when you return to a segment you were already on.** Selecting a cell skipped *all* match lookups when it decided you were "staying on the same row" (a performance guard meant for in-cell editing). After certain navigation — editing a segment, jumping to the top with Ctrl+Home and being taken back — you could land on a segment that was definitely in the TM and see no match no matter how long you waited. The instant exact-match lookup now runs before that guard, so TM display is never skipped; only the heavier fuzzy/MT/LLM work is still debounced.
 
 
 ## v1.10.276 – June 15, 2026

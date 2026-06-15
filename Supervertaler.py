@@ -46004,21 +46004,14 @@ class SupervertalerQt(QMainWindow):
         if self.debug_mode_enabled:
             self.log(f"🎯 on_cell_selected called: row {current_row}, col {current_col}")
 
-        # 🚫 GUARD: Don't re-run lookups if we're staying on the same row
-        # This prevents lookups when user edits text (focus changes within same row)
-        if hasattr(self, '_last_selected_row') and self._last_selected_row == current_row:
-            if self.debug_mode_enabled:
-                self.log(f"⏭️ Skipping lookup - already on row {current_row}")
-            return
-        self._last_selected_row = current_row
-
-        # ⚡ INSTANT exact-TM lookup on EVERY selection — synchronous, and
-        # independent of the cache, the termbase, the debounce below AND of
-        # filtering. Exact match is one indexed source_hash query, so a 100%
-        # match shows the moment you land on a segment, however fast you click or
-        # however you've filtered. Fuzzy/MT/LLM still arrive via the debounced
-        # full lookup. This is the cure for "clicked a segment that's definitely
-        # in the TM and saw no match".
+        # ⚡ INSTANT exact-TM lookup — runs BEFORE the same-row guard so a 100%
+        # match is (re)asserted whenever you're on a segment, even when returning
+        # to the same row after an edit. The guard below only skips the HEAVY
+        # (fuzzy/MT/LLM/termbase) work; TM display must never be skipped. This is
+        # synchronous and independent of the cache, the termbase and filtering —
+        # one indexed source_hash query, idempotent. The cure for "landed on a
+        # segment that's definitely in the TM and saw no match, no matter how
+        # long I waited".
         try:
             if self.current_project and 0 <= current_row < self.table.rowCount():
                 _id_item = self.table.item(current_row, 0)
@@ -46029,6 +46022,14 @@ class SupervertalerQt(QMainWindow):
                         self._show_instant_tm_match(_seg)
         except Exception:
             pass
+
+        # 🚫 GUARD: Don't re-run the HEAVY (fuzzy/MT/LLM/termbase) lookups if we're
+        # staying on the same row — the instant TM match above has already run.
+        if hasattr(self, '_last_selected_row') and self._last_selected_row == current_row:
+            if self.debug_mode_enabled:
+                self.log(f"⏭️ Skipping heavy lookup - already on row {current_row}")
+            return
+        self._last_selected_row = current_row
 
         # ⚡ FAST PATH: Defer heavy lookups for ALL navigation (arrow keys, Ctrl+Enter, AND mouse clicks)
         # This makes segment navigation feel INSTANT - cursor moves first, lookups happen after
