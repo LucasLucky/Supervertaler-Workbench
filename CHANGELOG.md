@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.273 (June 15, 2026)
+**Current Version:** v1.10.274 (June 15, 2026)
+
+
+## v1.10.274 – June 15, 2026
+
+### Changed (Preview)
+
+- **The live Preview pane is now document-first.** The old three-fill scheme (blue confirmed, green unconfirmed, yellow current) made the preview look like a highlighter test. It now follows a memoQ-style minimal look: **confirmed** segments are shown as clean, untinted final text; only **unconfirmed** segments carry a single faint amber tint ("still to do"); and the **current** segment is marked by a thin blue outline box rather than a fill, so position never competes with status. Empty segments still show their source in grey italic. The pane reads like the finished document, with just enough colour to see what's left and where you are.
 
 
 ## v1.10.273 – June 15, 2026

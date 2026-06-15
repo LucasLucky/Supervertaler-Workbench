@@ -43067,8 +43067,43 @@ class SupervertalerQt(QMainWindow):
         scroll_area.setWidgetResizable(True)
         scroll_area.setStyleSheet("border: none;")
 
-        # Create the preview text widget
-        preview_text = QTextEdit()
+        # Create the preview text widget. A tiny QTextEdit subclass draws a thin
+        # outline box around the current segment (memoQ-style) directly in the
+        # viewport — Qt char formats can't render a per-run border, so we paint it
+        # ourselves. Position is shown as a frame, never a fill, so it never
+        # competes with the status tint.
+        class _PreviewTextEdit(QTextEdit):
+            current_box_range = None  # (start_pos, end_pos) of the current segment
+
+            def paintEvent(self, event):
+                super().paintEvent(event)
+                rng = self.current_box_range
+                if not rng:
+                    return
+                try:
+                    from PyQt6.QtGui import QPainter, QPen
+                    start, end = rng
+                    c = self.textCursor()
+                    c.setPosition(max(0, start))
+                    r1 = self.cursorRect(c)
+                    c.setPosition(min(end, self.document().characterCount() - 1))
+                    r2 = self.cursorRect(c)
+                    top = min(r1.top(), r2.top()) - 3
+                    bottom = max(r1.bottom(), r2.bottom()) + 3
+                    vp = self.viewport().rect()
+                    left = vp.left() + 3
+                    right = vp.right() - 3
+                    painter = QPainter(self.viewport())
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                    pen = QPen(QColor('#2563eb'))  # blue = "you are here" (position, not status)
+                    pen.setWidth(1)
+                    painter.setPen(pen)
+                    painter.drawRoundedRect(left, top, right - left, bottom - top, 4, 4)
+                    painter.end()
+                except Exception:
+                    pass
+
+        preview_text = _PreviewTextEdit()
         preview_text.setReadOnly(True)
         preview_text.setStyleSheet("""
             QTextEdit {
@@ -43241,37 +43276,29 @@ class SupervertalerQt(QMainWindow):
             if target_start is None:
                 continue
             
-            # Update highlighting - need to re-render to show new selection
-            # Store the new current segment ID and re-render
+            # Update highlighting without a full re-render (Option A).
             widget.current_highlighted_segment_id = segment_id
-            
-            # Clear existing formatting and re-apply with new highlight
             cursor = preview_text.textCursor()
-            
-            # First, remove any existing yellow highlight from ALL segments
+
+            # Re-apply status tints: confirmed reads clean (no tint), anything
+            # unconfirmed gets the single faint amber tint. The current segment is
+            # shown by the outline box (set below), not a fill.
             for (start_pos, end_pos), seg_id in widget.segment_positions.items():
                 cursor.setPosition(start_pos)
                 cursor.setPosition(end_pos, QTextCursor.MoveMode.KeepAnchor)
                 fmt = cursor.charFormat()
-                # Reset background - use white or status-based color
-                if seg_id == segment_id:
-                    fmt.setBackground(QColor('#fff9c4'))  # Yellow for current
+                seg = next((s for s in self.current_project.segments if s.id == seg_id), None)
+                if seg and seg.status in ('confirmed', 'approved', 'proofread'):
+                    fmt.setBackground(QColor('white'))  # done → blends with the page
                 else:
-                    # Find the segment to get its status
-                    seg = next((s for s in self.current_project.segments if s.id == seg_id), None)
-                    if seg:
-                        if seg.status == 'not_started':
-                            fmt.setBackground(QColor('#ffe6e6'))  # Light red
-                        elif seg.status in ('draft', 'pretranslated'):
-                            fmt.setBackground(QColor('#e6ffe6'))  # Light green
-                        elif seg.status in ('confirmed', 'approved', 'proofread'):
-                            fmt.setBackground(QColor('#e6f3ff'))  # Light blue
-                        else:
-                            fmt.setBackground(QColor('white'))
-                    else:
-                        fmt.setBackground(QColor('white'))
+                    fmt.setBackground(QColor('#fff5e0'))  # unconfirmed → faint amber
                 cursor.mergeCharFormat(fmt)
-            
+
+            # Move the current-segment outline box and repaint it
+            if hasattr(preview_text, 'current_box_range'):
+                preview_text.current_box_range = (target_start, target_end)
+                preview_text.viewport().update()
+
             # Now scroll to the target segment, centered in viewport
             scroll_cursor = preview_text.textCursor()
             scroll_cursor.setPosition(target_start)
@@ -43353,6 +43380,8 @@ class SupervertalerQt(QMainWindow):
         preview_text = widget.preview_text
         preview_text.clear()
         widget.segment_positions = {}
+        if hasattr(preview_text, 'current_box_range'):
+            preview_text.current_box_range = None
 
         if not self.current_project or not self.current_project.segments:
             return
@@ -43525,19 +43554,16 @@ class SupervertalerQt(QMainWindow):
                 display_text = seg.source if seg.source else ""
                 is_translated = False
 
-            # Set background based on status
-            if seg.status == 'not_started':
-                char_format.setBackground(QColor('#ffe6e6'))  # Light red
-            elif seg.status in ('draft', 'pretranslated'):
-                char_format.setBackground(QColor('#e6ffe6'))  # Light green
-            elif seg.status in ('confirmed', 'approved', 'proofread'):
-                char_format.setBackground(QColor('#e6f3ff'))  # Light blue
+            # Status background (Option A — memoQ-minimal): a confirmed segment
+            # reads as clean final text with no tint; anything unconfirmed gets a
+            # single faint amber tint ("still to do"). The current segment is
+            # marked by a thin blue outline box drawn in the viewport (see
+            # _PreviewTextEdit.paintEvent), not a fill, so position never competes
+            # with status.
+            if seg.status in ('confirmed', 'approved', 'proofread'):
+                char_format.setBackground(QColor('white'))  # done → blends with the page
             else:
-                char_format.setBackground(QColor('white'))
-
-            # Highlight current segment
-            if seg.id == current_segment_id:
-                char_format.setBackground(QColor('#fff9c4'))  # Light yellow
+                char_format.setBackground(QColor('#fff5e0'))  # unconfirmed → faint amber
 
             # Gray out untranslated text
             if not is_translated:
@@ -43554,9 +43580,10 @@ class SupervertalerQt(QMainWindow):
             end_pos = cursor.position()
             widget.segment_positions[(start_pos, end_pos)] = seg.id
             
-            # Track position of current segment for scrolling
+            # Track position of current segment for scrolling + the outline box
             if seg.id == current_segment_id:
                 widget.current_segment_start_pos = start_pos
+                preview_text.current_box_range = (start_pos, end_pos)
 
             # Note: Line breaks are now handled at the START of each segment based on context
             # This ensures running text flows naturally while paragraphs are separated
