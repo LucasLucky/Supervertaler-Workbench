@@ -19141,20 +19141,50 @@ class SupervertalerQt(QMainWindow):
 
                 def on_ai_toggle(checked, tb_id=tb['id'], tb_name=tb['name']):
                     if checked:
-                        # Show warning when enabling
                         from PyQt6.QtWidgets import QMessageBox
+                        # Count this termbase's terms so we can warn about large or
+                        # general-purpose termbases, which bloat every translation
+                        # prompt with terms irrelevant to the current segment. Mirrors
+                        # the large-termbase guard in Supervertaler for Trados.
+                        try:
+                            self.db_manager.cursor.execute(
+                                "SELECT COUNT(*) FROM termbase_terms WHERE termbase_id = CAST(? AS TEXT)",
+                                (tb_id,))
+                            term_count = self.db_manager.cursor.fetchone()[0] or 0
+                        except Exception:
+                            term_count = 0
+
+                        # Threshold mirrors the Trados plugin's AutoPrompt warning.
+                        LARGE_TERMBASE_AI_WARNING = 50
+
                         msg = QMessageBox()
-                        msg.setWindowTitle(self.tr("Enable AI Injection"))
-                        msg.setText(f"Enable AI injection for '{tb_name}'?")
-                        msg.setInformativeText(
-                            "When enabled, ALL terms from this termbase will be sent to the LLM "
-                            "with every translation request.\n\n"
-                            "This helps the AI consistently use your preferred terminology "
-                            "throughout the translation.\n\n"
-                            "Recommended for small, curated termbases (< 500 terms)."
-                        )
-                        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+                        if term_count > LARGE_TERMBASE_AI_WARNING:
+                            msg.setIcon(QMessageBox.Icon.Warning)
+                            msg.setWindowTitle(self.tr("Large termbase"))
+                            msg.setText(f"'{tb_name}' contains {term_count:,} terms.")
+                            msg.setInformativeText(
+                                "With AI injection on, the terms from this termbase that appear in "
+                                "each segment are sent to the LLM. Even with that filtering, a large "
+                                "or general-purpose termbase injects many incidental matches — common "
+                                "words that merely happen to appear in the segment — which crowd the "
+                                "prompt, can make results worse, and cost more.\n\n"
+                                "Best results come from a small, project-specific termbase — typically "
+                                "a few dozen carefully chosen terms. Consider enabling AI only on a "
+                                "compact termbase.\n\n"
+                                "Enable AI injection anyway?"
+                            )
+                            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                            msg.setDefaultButton(QMessageBox.StandardButton.No)
+                        else:
+                            msg.setWindowTitle(self.tr("Enable AI Injection"))
+                            msg.setText(f"Enable AI injection for '{tb_name}'?")
+                            msg.setInformativeText(
+                                "Terms from this termbase that appear in each segment will be sent to "
+                                "the LLM, helping the AI use your preferred terminology consistently."
+                            )
+                            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+
                         if msg.exec() != QMessageBox.StandardButton.Yes:
                             # User cancelled - revert checkbox
                             sender = termbase_table.cellWidget(termbase_table.currentRow(), 7)

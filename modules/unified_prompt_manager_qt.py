@@ -38,6 +38,58 @@ from modules.chat_backend import ChatBackend
 from modules.chat_view_widget import ChatViewWidget
 
 
+def _term_contains_cjk(text: str) -> bool:
+    """True if any character is in a space-less script (Chinese, Japanese,
+    Korean, Thai), so term matching must use substring rather than word
+    boundaries (mirrors the term-recognition logic in Supervertaler.py)."""
+    if not text:
+        return False
+    for ch in text:
+        o = ord(ch)
+        if (0x4E00 <= o <= 0x9FFF or 0x3400 <= o <= 0x4DBF or
+                0x3040 <= o <= 0x30FF or 0xAC00 <= o <= 0xD7AF or
+                0x0E00 <= o <= 0x0E7F or 0xF900 <= o <= 0xFAFF or
+                0x20000 <= o <= 0x2FA1F):
+            return True
+    return False
+
+
+def filter_relevant_glossary_terms(glossary_terms: list, source_text: str) -> list:
+    """Keep only the glossary terms whose source term actually appears in the
+    segment being translated, so the prompt isn't crowded with terminology
+    irrelevant to this segment (which dilutes the AI and costs tokens). Mirrors
+    the relevance filter in Supervertaler for Trados (PromptGenerator
+    .FilterRelevantTerms): whole-word/phrase match for spaced languages,
+    substring match for CJK/Thai, and single-character Latin terms are skipped
+    (a one-letter abbreviation would match stray lone letters in the text)."""
+    if not glossary_terms:
+        return glossary_terms or []
+    if not source_text:
+        return []
+
+    text_upper = source_text.upper()
+    relevant = []
+    for term in glossary_terms:
+        st = (term.get('source_term') or '').strip()
+        if not st:
+            continue
+        is_cjk = _term_contains_cjk(st)
+        if not is_cjk and len(st) < 2:
+            continue  # lone Latin letters match incidental characters
+        st_upper = st.upper()
+        if is_cjk:
+            if st_upper in text_upper:
+                relevant.append(term)
+        else:
+            try:
+                if re.search(r'\b' + re.escape(st_upper) + r'\b', text_upper):
+                    relevant.append(term)
+            except re.error:
+                if st_upper in text_upper:
+                    relevant.append(term)
+    return relevant
+
+
 # ============================================================================
 # AutoPrompt: worker thread + save dialog (v1.10.157)
 # ============================================================================
@@ -3914,7 +3966,12 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
         # Combine
         final_prompt = system_template + library_prompts
 
-        # Glossary injection (if terms provided)
+        # Glossary injection (if terms provided). Only inject terms that are
+        # actually present in this segment — sending an entire termbase with
+        # every request crowds the prompt with irrelevant terminology, which
+        # dilutes the AI and wastes tokens (mirrors the Trados plugin).
+        if glossary_terms:
+            glossary_terms = filter_relevant_glossary_terms(glossary_terms, source_text)
         if glossary_terms:
             final_prompt += "\n\n# TERMBASE\n\n"
             final_prompt += "Use these approved terms in your translation:\n\n"

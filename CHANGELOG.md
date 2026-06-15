@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.271 (June 14, 2026)
+**Current Version:** v1.10.272 (June 15, 2026)
+
+
+## v1.10.272 – June 15, 2026
+
+### Improved (AI · termbases)
+
+- **Only terms relevant to each segment are now sent to the AI.** When a termbase is enabled for AI injection, Supervertaler used to send *all* of its terms with every translation request. It now injects only the terms that actually appear in the segment being translated — whole-word/phrase matching for spaced languages, substring matching for Chinese/Japanese/Korean/Thai, and single-character Latin terms are skipped. This keeps the prompt focused, improves consistency, and cuts token use, so you can keep a larger termbase attached without bloating every request. (Mirrors the relevance filter in Supervertaler for Trados.)
+- **Heads-up when enabling AI on a large termbase.** Ticking the **AI** column on a termbase with more than 50 terms now shows a warning: even with per-segment filtering, a large or general-purpose termbase injects many incidental matches (common words that merely appear in the segment), which crowd the prompt. The recommendation is a small, project-specific termbase. Small termbases keep the original lightweight confirmation.
 
 
 ## v1.10.271 – June 14, 2026
