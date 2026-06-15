@@ -46012,6 +46012,24 @@ class SupervertalerQt(QMainWindow):
             return
         self._last_selected_row = current_row
 
+        # ⚡ INSTANT exact-TM lookup on EVERY selection — synchronous, and
+        # independent of the cache, the termbase, the debounce below AND of
+        # filtering. Exact match is one indexed source_hash query, so a 100%
+        # match shows the moment you land on a segment, however fast you click or
+        # however you've filtered. Fuzzy/MT/LLM still arrive via the debounced
+        # full lookup. This is the cure for "clicked a segment that's definitely
+        # in the TM and saw no match".
+        try:
+            if self.current_project and 0 <= current_row < self.table.rowCount():
+                _id_item = self.table.item(current_row, 0)
+                if _id_item:
+                    _seg = next((s for s in self.current_project.segments
+                                 if s.id == int(_id_item.text())), None)
+                    if _seg:
+                        self._show_instant_tm_match(_seg)
+        except Exception:
+            pass
+
         # ⚡ FAST PATH: Defer heavy lookups for ALL navigation (arrow keys, Ctrl+Enter, AND mouse clicks)
         # This makes segment navigation feel INSTANT - cursor moves first, lookups happen after
         # Reset any navigation flags
@@ -46283,6 +46301,11 @@ class SupervertalerQt(QMainWindow):
                         'reverse_match': batch_match.get('reverse_match', False),
                     }]
                     self.set_compare_panel_matches(segment.id, search_source, tm_matches, [])
+
+                # ⚡ ALWAYS show the exact (100%) TM match instantly on selection —
+                # synchronous, cache-independent, never blocked by a termbase match
+                # or the debounced async worker. Fuzzy matches still stream in below.
+                self._show_instant_tm_match(segment)
 
                 # Update Preview panel - scroll to and highlight this segment
                 self._scroll_preview_to_segment(segment_id)
@@ -51229,33 +51252,43 @@ class SupervertalerQt(QMainWindow):
         tb_count = len(termbase_matches) if termbase_matches else 0
         self.log(f"   ✓ Found {tb_count} termbase matches")
         
-        # 4. Force fresh TM search
+        # 4. Force fresh TM search. The previous block searched via self.tm_manager
+        #    and a tm_settings['tms']/read shape that DON'T EXIST in this app, so F5
+        #    always found 0 TM matches — and step 7b below then CLEARED the Match
+        #    Panel. Do it properly: an exact (100%) lookup now (instant), with
+        #    fuzzy/MT/LLM streaming in via the async worker scheduled at the end.
         self.log("   🔍 Searching translation memories...")
         tm_matches = []
-        if hasattr(self, 'tm_manager') and self.tm_manager:
-            try:
-                # Get enabled TMs
-                tm_settings = getattr(self.current_project, 'tm_settings', {})
-                enabled_tms = tm_settings.get('tms', [])
-                activated_tm_ids = [tm['tm_id'] for tm in enabled_tms if tm.get('read', False)]
-                
-                if activated_tm_ids:
-                    source_lang = self.current_project.source_lang if self.current_project else None
-                    target_lang = self.current_project.target_lang if self.current_project else None
-                    
-                    tm_matches = self.tm_manager.search_fuzzy(
-                        segment.source,
-                        source_lang=source_lang,
-                        target_lang=target_lang,
-                        tm_ids=activated_tm_ids,
-                        max_results=self.general_settings.get('match_limit_TM', 10),
-                        min_similarity=0.3
-                    )
-            except Exception as e:
-                self.log(f"   ⚠️ TM search error: {e}")
-        
+        try:
+            dbm = getattr(self, 'db_manager', None) or getattr(getattr(self, 'tm_database', None), 'db', None)
+            tm_ids = None
+            if getattr(self.current_project, 'tm_settings', None):
+                tm_ids = self.current_project.tm_settings.get('activated_tm_ids')
+            if dbm is not None and not (isinstance(tm_ids, list) and len(tm_ids) == 0):
+                search_source = segment.source
+                if self.hide_outer_wrapping_tags:
+                    search_source, _ = strip_outer_wrapping_tags(search_source)
+                exact = dbm.get_exact_match(
+                    source=search_source, tm_ids=tm_ids,
+                    source_lang=getattr(getattr(self, 'tm_database', None), 'source_lang', None),
+                    target_lang=getattr(getattr(self, 'tm_database', None), 'target_lang', None),
+                    touch=False)
+                if exact:
+                    _meta = getattr(self.tm_database, 'tm_metadata', {}) or {}
+                    _tid = exact.get('tm_id', '')
+                    tm_matches = [{
+                        'source': exact.get('source_text', ''),
+                        'target': exact.get('target_text', ''),
+                        'similarity': 1.0,
+                        'tm_name': _meta.get(_tid, {}).get('name', _tid) if isinstance(_meta, dict) else _tid,
+                        'tm_id': _tid,
+                        'reverse_match': bool(exact.get('reverse_match', False)),
+                    }]
+        except Exception as e:
+            self.log(f"   ⚠️ TM search error: {e}")
+
         tm_count = len(tm_matches) if tm_matches else 0
-        self.log(f"   ✓ Found {tm_count} TM matches")
+        self.log(f"   ✓ Found {tm_count} exact TM match(es); fuzzy/MT/LLM will stream in")
         
         # 5. Get NT matches (fresh)
         nt_matches = self.find_nt_matches_in_source(segment.source)
@@ -51384,6 +51417,12 @@ class SupervertalerQt(QMainWindow):
         except Exception as e:
             self.log(f"   ⚠️ Highlighting error: {e}")
         
+        # Fuzzy/MT/LLM stream in asynchronously (the exact match is already shown).
+        try:
+            self._schedule_mt_and_llm_matches(segment)
+        except Exception:
+            pass
+
         # Show status
         total_matches = tb_count + tm_count + nt_count
         self.statusBar().showMessage(f"🔄 Refreshed: {tb_count} termbase, {tm_count} TM, {nt_count} NT matches", 5000)
@@ -62507,6 +62546,86 @@ class SupervertalerQt(QMainWindow):
         text_color = theme.text if panel_type != 'warning' else theme.text
 
         return f"background-color: {bg_color}; color: {text_color}; {extra_styles}"
+
+    def _show_instant_tm_match(self, segment) -> bool:
+        """Look up the exact (100%) TM match synchronously and show it in the Match
+        Panel *immediately* — independent of the prefetch cache, the termbase, the
+        debounce and the async fuzzy worker.
+
+        Exact matching is a single indexed source_hash lookup, so it is fast enough
+        to run on the main thread on every click. This is the cure for "I clicked
+        into a segment that's definitely in the TM and saw no match": the lookup now
+        always runs, the moment you land, no matter how fast you navigate or whether
+        a termbase match covers the whole segment. Fuzzy (sub-100%) matches still
+        stream in afterwards via the async worker. Returns True if a match was shown.
+        """
+        try:
+            if not getattr(self, 'enable_tm_matching', True):
+                return False
+            # Always-connected main DB manager (the TM lives in the same file);
+            # fall back to the TMDatabase's manager.
+            dbm = getattr(self, 'db_manager', None) or getattr(getattr(self, 'tm_database', None), 'db', None)
+            if dbm is None or not hasattr(dbm, 'get_exact_match'):
+                return False
+            # Active TMs straight from the in-memory project settings — no DB query,
+            # so this is cheap enough to run on every click, even during filtering.
+            tm_ids = None
+            if self.current_project and getattr(self.current_project, 'tm_settings', None):
+                tm_ids = self.current_project.tm_settings.get('activated_tm_ids')
+            if isinstance(tm_ids, list) and len(tm_ids) == 0:
+                return False  # no TMs active for this project
+
+            search_source = segment.source
+            if self.hide_outer_wrapping_tags:
+                search_source, _ = strip_outer_wrapping_tags(search_source)
+
+            exact = dbm.get_exact_match(
+                source=search_source,
+                tm_ids=tm_ids,
+                source_lang=getattr(getattr(self, 'tm_database', None), 'source_lang', None),
+                target_lang=getattr(getattr(self, 'tm_database', None), 'target_lang', None),
+                touch=False,
+            )
+            if not exact:
+                return False
+
+            tm_meta = getattr(self.tm_database, 'tm_metadata', {}) or {}
+            _tmid = exact.get('tm_id', '')
+            tm_name = tm_meta.get(_tmid, {}).get('name', _tmid) if isinstance(tm_meta, dict) else _tmid
+            tm_match = {
+                'source': exact.get('source_text', search_source),
+                'target': exact.get('target_text', ''),
+                'tm_name': tm_name,
+                'tm_id': _tmid,
+                'match_pct': 100,
+                'reverse_match': bool(exact.get('reverse_match', False)),
+            }
+            self.set_compare_panel_matches(
+                segment.id, search_source, [tm_match],
+                getattr(self, '_compare_panel_mt_matches', []),
+            )
+
+            # Keep the prefetch cache consistent so the later cache-hit render (and
+            # any re-render) shows the same TM instead of TM=0.
+            try:
+                from modules.translation_results_panel import TranslationMatch
+                mo = TranslationMatch(
+                    source=tm_match['source'], target=tm_match['target'], relevance=100,
+                    metadata={'tm_name': tm_name, 'tm_id': _tmid,
+                              'reverse_match': tm_match['reverse_match']},
+                    match_type='TM', compare_source=tm_match['source'], provider_code='TM')
+                with self.translation_matches_cache_lock:
+                    entry = self.translation_matches_cache.get(segment.id)
+                    if entry is None:
+                        self.translation_matches_cache[segment.id] = {
+                            "LLM": [], "NT": [], "MT": [], "TM": [mo], "Termbases": []}
+                    else:
+                        entry["TM"] = [mo]
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
 
     def _schedule_mt_and_llm_matches(self, segment, termbase_matches=None):
         """Schedule MT and LLM matches with debouncing - only call APIs when user stops clicking"""

@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.274 (June 15, 2026)
+**Current Version:** v1.10.275 (June 15, 2026)
+
+
+## v1.10.275 – June 15, 2026
+
+### Fixed (TM matches — instant & reliable)
+
+- **The exact (100%) TM match now shows the instant you land on a segment — always.** It is looked up synchronously on every selection, independently of the prefetch cache, the termbase, the debounce and filtering. Previously, if a segment was served from cache (which happened for almost every segment on term-heavy projects), or you were navigating quickly, or filtering, the TM panel could sit on "(No TM match)" for a segment that was definitely in the TM until you waited or pressed F5. A whole-segment termbase match no longer suppresses the TM lookup either. (Fuzzy/MT/LLM matches still stream in just after, as before.)
+- **F5 / the 🔄 button now actually refreshes TM matches.** The refresh searched the TM through an internal object and settings shape that no longer exist, so it always found zero TM matches and then blanked the Match panel. It now performs a real exact lookup and re-schedules fuzzy/MT/LLM, so pressing F5 reliably brings matches back.
 
 
 ## v1.10.274 – June 15, 2026
