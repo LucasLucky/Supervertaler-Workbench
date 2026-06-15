@@ -1111,7 +1111,7 @@ class DatabaseManager:
 
     def get_exact_match(self, source: str, tm_ids: List[str] = None,
                        source_lang: str = None, target_lang: str = None,
-                       bidirectional: bool = True) -> Optional[Dict]:
+                       bidirectional: bool = True, touch: bool = True) -> Optional[Dict]:
         """
         Get exact match from TM
 
@@ -1121,6 +1121,9 @@ class DatabaseManager:
             source_lang: Filter by source language (base code matching: 'en' matches 'en-US', 'en-GB', etc.)
             target_lang: Filter by target language (base code matching)
             bidirectional: If True, search both directions (nl→en AND en→nl)
+            touch: If True (default), bump the matched row's usage_count (a write).
+                   Set False for read-only callers such as the background prefetch
+                   worker, which must not write on every segment it scans.
 
         Returns: Dictionary with match data or None
         """
@@ -1186,16 +1189,17 @@ class DatabaseManager:
         row = self.cursor.fetchone()
         
         if row:
-            # Update usage count
-            self.cursor.execute("""
-                UPDATE translation_units 
-                SET usage_count = usage_count + 1 
-                WHERE id = ?
-            """, (row['id'],))
-            self.connection.commit()
-            
+            # Update usage count (skipped for read-only callers, e.g. prefetch)
+            if touch:
+                self.cursor.execute("""
+                    UPDATE translation_units
+                    SET usage_count = usage_count + 1
+                    WHERE id = ?
+                """, (row['id'],))
+                self.connection.commit()
+
             return dict(row)
-        
+
         # If bidirectional and no forward match, try reverse direction
         if bidirectional and src_base and tgt_base:
             # Search where our source text is in the target field (reverse direction)
@@ -1237,14 +1241,15 @@ class DatabaseManager:
             row = self.cursor.fetchone()
             
             if row:
-                # Update usage count
-                self.cursor.execute("""
-                    UPDATE translation_units 
-                    SET usage_count = usage_count + 1 
-                    WHERE id = ?
-                """, (row['id'],))
-                self.connection.commit()
-                
+                # Update usage count (skipped for read-only callers, e.g. prefetch)
+                if touch:
+                    self.cursor.execute("""
+                        UPDATE translation_units
+                        SET usage_count = usage_count + 1
+                        WHERE id = ?
+                    """, (row['id'],))
+                    self.connection.commit()
+
                 # Swap source/target since this is a reverse match
                 result = dict(row)
                 result['source_text'], result['target_text'] = result['target_text'], result['source_text']

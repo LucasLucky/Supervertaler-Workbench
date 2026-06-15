@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.272 (June 15, 2026)
+**Current Version:** v1.10.273 (June 15, 2026)
+
+
+## v1.10.273 – June 15, 2026
+
+### Fixed
+
+- **Translation memory matches reappear in the Match panel.** On projects where almost every segment has a termbase hit (typical of patent and other technical work), the background match-prefetch cached each segment with its termbase matches but **no TM**, and the Match panel then rendered that cache and showed "(No TM match)" — even for segments that had a 100% match in an active, populated TM. The prefetch now also looks up the exact (100%) TM match (read-only, via the indexed source hash), so the cache is complete and matches show instantly; fuzzy matches continue to stream in as you navigate. Your TMs, their activation and their contents were never affected — only the cached display was hiding them.
 
 
 ## v1.10.272 – June 15, 2026

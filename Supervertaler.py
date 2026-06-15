@@ -32035,6 +32035,24 @@ class SupervertalerQt(QMainWindow):
                 thread_db_cursor = thread_db_connection.cursor()
         except Exception:
             pass  # Continue without thread-local connection - will use cache only
+
+        # Active TM ids for this project (computed once, thread-safely, on our own
+        # cursor). Lets the prefetch cache carry exact (100%) TM matches so the
+        # match panel shows them instantly instead of "(No TM match)". Mirrors
+        # TMMetadataManager.get_active_tm_ids() but runs on the worker connection.
+        active_tm_ids = None
+        try:
+            pid = getattr(self.current_project, 'id', None) if self.current_project else None
+            if pid and thread_db_cursor is not None:
+                thread_db_cursor.execute(
+                    "SELECT DISTINCT tm.tm_id FROM translation_memories tm "
+                    "INNER JOIN tm_activation ta ON tm.id = ta.tm_db_id "
+                    "WHERE ta.project_id = ? AND ta.is_active = 1",
+                    (pid,),
+                )
+                active_tm_ids = [r[0] for r in thread_db_cursor.fetchall()]
+        except Exception:
+            active_tm_ids = None
         
         try:
             for idx, segment_id in enumerate(segment_ids):
@@ -32059,7 +32077,7 @@ class SupervertalerQt(QMainWindow):
                     continue
                 
                 # Fetch TM/termbase matches (pass cursor for thread-safe termbase lookups)
-                matches = self._fetch_all_matches_for_segment(segment, thread_db_cursor)
+                matches = self._fetch_all_matches_for_segment(segment, thread_db_cursor, tm_ids=active_tm_ids)
 
                 # Count matches for logging and proactive highlighting
                 tm_count = len(matches.get("TM", []))
@@ -32106,15 +32124,18 @@ class SupervertalerQt(QMainWindow):
                 except:
                     pass
     
-    def _fetch_all_matches_for_segment(self, segment, thread_db_cursor=None):
+    def _fetch_all_matches_for_segment(self, segment, thread_db_cursor=None, tm_ids=None):
         """
         Fetch TM, MT, and LLM matches for a single segment.
         Used by prefetch worker. Returns matches_dict with all match types.
-        
+
         Args:
             segment: The segment to fetch matches for
             thread_db_cursor: Optional thread-local database cursor for termbase searches.
                               If provided and segment not in termbase_cache, will do direct lookup.
+            tm_ids: Active TM ids for the project. When provided (with a cursor), the
+                    exact (100%) TM match is looked up here so it is cached and shown
+                    instantly; fuzzy TM still streams in on-demand via TMSearchWorker.
         """
         from modules.translation_results_panel import TranslationMatch
         
@@ -32138,10 +32159,48 @@ class SupervertalerQt(QMainWindow):
         source_lang_code = self._convert_language_to_code(source_lang)
         target_lang_code = self._convert_language_to_code(target_lang)
         
-        # 1. TM matches - SKIP in prefetch worker (TM search not thread-safe)
-        # TM will be fetched on-demand when user navigates to segment
-        pass
-        
+        # 1. TM matches — cheap exact (100%) lookup on the worker's own cursor.
+        # Previously skipped entirely ("not thread-safe"), which meant the prefetch
+        # cached every segment with TM=[]. Since patent segments almost always have
+        # termbase hits, those TM-less entries were cached as "complete" and the
+        # match panel then showed "(No TM match)" even for segments that DO have a
+        # 100% match. Looking the exact match up here (read-only, touch=False, uses
+        # the indexed source_hash) makes the cache correct. Fuzzy TM still streams
+        # in on-demand via TMSearchWorker on navigation.
+        if self.enable_tm_matching and thread_db_cursor is not None and tm_ids:
+            try:
+                from modules.database_manager import DatabaseManager
+                _dbm = DatabaseManager.__new__(DatabaseManager)
+                _dbm.connection = thread_db_cursor.connection
+                _dbm.cursor = thread_db_cursor
+                _dbm.log = lambda _m: None
+                exact = _dbm.get_exact_match(
+                    source=segment.source,
+                    tm_ids=tm_ids,
+                    source_lang=source_lang_code,
+                    target_lang=target_lang_code,
+                    touch=False,
+                )
+                if exact:
+                    tm_meta = getattr(self.tm_database, 'tm_metadata', {}) or {}
+                    _tmid = exact.get('tm_id', '')
+                    tm_name = tm_meta.get(_tmid, {}).get('name', _tmid) if isinstance(tm_meta, dict) else _tmid
+                    matches_dict["TM"].append(TranslationMatch(
+                        source=exact.get('source_text', ''),
+                        target=exact.get('target_text', ''),
+                        relevance=100,
+                        metadata={
+                            'tm_name': tm_name,
+                            'tm_id': _tmid,
+                            'reverse_match': bool(exact.get('reverse_match', False)),
+                        },
+                        match_type='TM',
+                        compare_source=exact.get('source_text', ''),
+                        provider_code='TM',
+                    ))
+            except Exception:
+                pass  # On-demand worker will still fetch TM on navigation
+
         # 2. MT matches (if enabled)
         if self.enable_mt_matching:
             # Use the same MT fetching logic as the main search
