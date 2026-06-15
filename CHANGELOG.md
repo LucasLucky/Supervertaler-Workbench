@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.275 (June 15, 2026)
+**Current Version:** v1.10.276 (June 15, 2026)
+
+
+## v1.10.276 – June 15, 2026
+
+### Fixed (TM matches)
+
+- **The instant TM match no longer flickers away.** After landing on a segment, the 100% match could appear and then vanish a moment later — and pressing F5 showed it briefly before blanking it — because the background lookup blanked the Match panel just before refilling it (and the refill didn't always run). The panel now re-asserts the exact match instead of clearing it, so a 100% match stays put while fuzzy matches load. This covers the awkward paths too (Ctrl+Enter jumping back to an unconfirmed segment, clicking around then returning).
 
 
 ## v1.10.275 – June 15, 2026

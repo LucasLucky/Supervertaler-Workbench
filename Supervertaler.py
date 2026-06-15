@@ -62704,8 +62704,12 @@ class SupervertalerQt(QMainWindow):
             self._compare_panel_tm_matches = []  # Reset TM matches list for navigation
             self._compare_panel_mt_matches = []  # Reset MT matches list for navigation
             
-            # Update Match Panel with current source immediately (before TM/MT lookup)
-            self.set_compare_panel_matches(segment.id, segment.source, [], [])
+            # Re-assert the exact (100%) TM match for the new segment instead of
+            # blanking the panel — otherwise the instant match shown on selection
+            # flickers away here while fuzzy loads. Only clear when there is no
+            # exact match (fuzzy then streams in via the worker below).
+            if not self._show_instant_tm_match(segment):
+                self.set_compare_panel_matches(segment.id, segment.source, [], [])
             
             # Prepare matches dict - use the stored termbase matches from immediate display
             matches_dict = {
