@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.280 (June 16, 2026)
+**Current Version:** v1.10.281 (June 16, 2026)
+
+
+## v1.10.281 – June 16, 2026
+
+### Fixed (TM · database upgrade)
+
+- **The one-time `target_hash` upgrade (v1.10.280) is now fast and robust on large/real-world TMs.** `translation_units` has triggers that keep its full-text search indexes in sync on every row change. The v1.10.280 backfill updated every row directly, which fired those triggers for each of (potentially millions of) rows — needlessly rebuilding a full-text entry per row, and failing outright on databases whose FTS triggers raise an error. The upgrade now suspends those update-triggers for the duration of the backfill (the `target_hash` value has nothing to do with full-text content) and restores them immediately afterwards, all in a single transaction that rolls back cleanly if interrupted. On a ~1.5-million-unit, 1.2 GB TM the upgrade completes in about a minute, after which reverse exact matches are a ~0.1 ms indexed lookup instead of an ~0.8 s full scan.
 
 
 ## v1.10.280 – June 16, 2026

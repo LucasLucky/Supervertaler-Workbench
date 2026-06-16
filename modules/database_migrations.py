@@ -606,13 +606,23 @@ def migrate_translation_units_target_hash(db_manager) -> bool:
     equals a TM entry's target — into an indexed lookup instead of a target_text
     full-table scan, which on a large TM froze the grid for seconds on every click.
 
-    The index's presence is the "done" marker, so the migration is resumable: if a
-    backfill is interrupted, the column exists but the index doesn't, and the next
-    startup re-runs and finishes. Checking for the index is an instant
-    sqlite_master lookup, so there's no per-startup full scan.
+    translation_units carries AFTER UPDATE triggers that keep the FTS5 / trigram
+    full-text indexes in sync (tu_fts_update, tu_trig_update). They fire on *any*
+    update, so a naive backfill would rebuild an FTS row for every one of
+    (potentially millions of) rows — agonisingly slow, and it fails outright if
+    an FTS shadow table is in an inconsistent state ("database disk image is
+    malformed"). target_hash is unrelated to the full-text content, so we drop
+    those AFTER UPDATE triggers for the backfill and restore them immediately
+    after. The whole thing runs in one transaction: if anything fails or is
+    interrupted, it rolls back to the original state (triggers intact, no index)
+    and re-runs cleanly on the next launch.
+
+    The index's presence is the "done" marker, so checking whether the migration
+    is needed is an instant sqlite_master lookup — no per-startup scan.
     """
     try:
         cursor = db_manager.cursor
+        conn = db_manager.connection
 
         # Guard: table may be absent on a partially-built DB.
         cursor.execute(
@@ -626,44 +636,71 @@ def migrate_translation_units_target_hash(db_manager) -> bool:
         if cursor.fetchone():
             return True
 
-        # Add the column if it isn't there yet (idempotent / resumable).
-        cols = {row[1] for row in cursor.execute("PRAGMA table_info(translation_units)")}
-        if 'target_hash' not in cols:
-            print("📊 Adding 'target_hash' column to translation_units...")
-            cursor.execute("ALTER TABLE translation_units ADD COLUMN target_hash TEXT")
-
-        # Backfill every row's target_hash, walking the primary key in batches so a
-        # huge TM neither loads into memory at once nor degrades to repeated scans.
         import hashlib
         from modules.database_manager import _normalize_for_matching
 
-        last_id = 0
+        # The AFTER UPDATE triggers we must suspend during the backfill (saved so
+        # we can recreate them verbatim). INSERT/DELETE triggers don't fire on an
+        # UPDATE, so we leave them alone.
+        update_triggers = cursor.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='trigger' "
+            "AND tbl_name='translation_units' "
+            "AND instr(lower(sql), 'after update') > 0"
+        ).fetchall()
+
+        old_isolation = conn.isolation_level
+        conn.isolation_level = None  # manage the transaction explicitly
         total = 0
-        while True:
-            rows = cursor.execute(
-                "SELECT id, target_text FROM translation_units "
-                "WHERE id > ? ORDER BY id LIMIT 5000",
-                (last_id,),
-            ).fetchall()
-            if not rows:
-                break
-            updates = [
-                (hashlib.md5(_normalize_for_matching(t or '').encode('utf-8')).hexdigest(), rid)
-                for (rid, t) in rows
-            ]
-            cursor.executemany(
-                "UPDATE translation_units SET target_hash = ? WHERE id = ?", updates)
-            db_manager.connection.commit()
-            last_id = rows[-1][0]
-            total += len(updates)
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+
+            if 'target_hash' not in {r[1] for r in cursor.execute("PRAGMA table_info(translation_units)")}:
+                print("📊 Adding 'target_hash' column to translation_units...")
+                cursor.execute("ALTER TABLE translation_units ADD COLUMN target_hash TEXT")
+
+            for name, _sql in update_triggers:
+                cursor.execute(f"DROP TRIGGER IF EXISTS {name}")
+
+            # Backfill, walking the primary key in batches so a huge TM neither
+            # loads into memory at once nor degrades to repeated scans.
+            last_id = 0
+            while True:
+                rows = cursor.execute(
+                    "SELECT id, target_text FROM translation_units "
+                    "WHERE id > ? ORDER BY id LIMIT 10000",
+                    (last_id,),
+                ).fetchall()
+                if not rows:
+                    break
+                cursor.executemany(
+                    "UPDATE translation_units SET target_hash = ? WHERE id = ?",
+                    [(hashlib.md5(_normalize_for_matching(t or '').encode('utf-8')).hexdigest(), rid)
+                     for (rid, t) in rows],
+                )
+                last_id = rows[-1][0]
+                total += len(rows)
+
+            # Restore the FTS-sync triggers exactly as they were.
+            for name, sql in update_triggers:
+                if sql:
+                    cursor.execute(sql)
+
+            # Create the index LAST — its existence marks the migration complete.
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tu_target_hash ON translation_units(target_hash)")
+
+            cursor.execute("COMMIT")
+        except Exception:
+            try:
+                cursor.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            conn.isolation_level = old_isolation
 
         if total:
             print(f"📊 Backfilled target_hash for {total} translation unit(s)")
-
-        # Create the index LAST — its existence marks the migration complete.
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tu_target_hash ON translation_units(target_hash)")
-        db_manager.connection.commit()
         print("✅ translation_units.target_hash ready — reverse exact matches are now indexed")
         return True
 
