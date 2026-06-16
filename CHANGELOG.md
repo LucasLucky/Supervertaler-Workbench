@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.278 (June 16, 2026)
+**Current Version:** v1.10.279 (June 16, 2026)
+
+
+## v1.10.279 – June 16, 2026
+
+### Fixed (performance)
+
+- **Clicking between segments is fast again.** Since v1.10.275 the 100% TM match was looked up synchronously the instant you landed on a segment. For any segment *without* a same-direction (forward) match, that lookup also searched the reverse direction — matching on the target text, which has no database index — so it fell back to scanning the entire TM on the UI thread, on every click. On a large TM that froze the grid for up to a few seconds before the cursor appeared. The instant lookup is now forward-only (a single indexed lookup, ~0.1 ms), and reverse-direction exact matches still appear a moment later via the background worker — exactly as they did before v1.10.275. No matches are lost; the freeze is gone.
 
 
 ## v1.10.278 – June 16, 2026

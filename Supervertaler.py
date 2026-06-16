@@ -62605,11 +62605,21 @@ class SupervertalerQt(QMainWindow):
             if self.hide_outer_wrapping_tags:
                 search_source, _ = strip_outer_wrapping_tags(search_source)
 
+            # v1.10.279: forward-only here. The forward exact match is a single
+            # indexed source_hash lookup (~0.1 ms), safe to run on the UI thread
+            # on every click. The *reverse* (bidirectional) direction matches on
+            # `target_text`, which has no index, so it degrades to a full table
+            # scan — multiple seconds on a large TM. Running that synchronously on
+            # every selection (added in v1.10.275) is what made clicking between
+            # segments feel sluggish. Reverse exact matches still appear: the
+            # debounced background TM worker does the bidirectional lookup off the
+            # main thread and streams the result in just after.
             exact = dbm.get_exact_match(
                 source=search_source,
                 tm_ids=tm_ids,
                 source_lang=getattr(getattr(self, 'tm_database', None), 'source_lang', None),
                 target_lang=getattr(getattr(self, 'tm_database', None), 'target_lang', None),
+                bidirectional=False,
                 touch=False,
             )
             if not exact:
