@@ -9985,6 +9985,49 @@ class SupervertalerQt(QMainWindow):
         if dlg.exec() == dlg.DialogCode.Accepted and dlg.selected_target_term:
             self.insert_termlens_text(dlg.selected_target_term)
 
+    def _quicktrans_base_pair(self):
+        """The project's (source, target) language pair for QuickTrans, before
+        any auto-detect or manual override. Prefers the open project's pair,
+        falling back to the app defaults."""
+        proj = getattr(self, 'current_project', None)
+        if proj and getattr(proj, 'source_lang', None) and getattr(proj, 'target_lang', None):
+            return (proj.source_lang, proj.target_lang)
+        return (getattr(self, 'source_language', 'English'),
+                getattr(self, 'target_language', 'Dutch'))
+
+    def set_quicktrans_direction_override(self, src, tgt):
+        """Record a manual QuickTrans direction chosen in the popup's language
+        selector. It's tagged with the base pair it was set against, so it stays
+        sticky for later popups but is automatically dropped once the project /
+        default pair is changed elsewhere (Settings → Language Pair, project
+        switch, etc.)."""
+        self._quicktrans_lang_override = {
+            'src': src, 'tgt': tgt, 'base': self._quicktrans_base_pair(),
+        }
+
+    def resolve_quicktrans_direction(self, text):
+        """Resolve the (source, target) direction for a QuickTrans request.
+
+        Priority: a sticky manual override (if still valid for the current base
+        pair) → otherwise per-text auto-detection → otherwise the base pair.
+        """
+        base = self._quicktrans_base_pair()
+        override = getattr(self, '_quicktrans_lang_override', None)
+        if override and override.get('base') == base:
+            return override['src'], override['tgt']
+        # Stale (pair changed elsewhere) or none → forget it and auto-detect.
+        if override:
+            self._quicktrans_lang_override = None
+        try:
+            from modules.lang_detect import resolve_direction
+            return resolve_direction(text, base[0], base[1])
+        except Exception as e:
+            try:
+                self.log(f"QuickTrans language auto-detect skipped: {e}")
+            except Exception:
+                pass
+            return base
+
     def show_mt_quick_popup(self, text_override: str = None):
         """Show GT4T-style MT Quick Lookup popup with translations from all enabled MT engines.
 
@@ -10044,24 +10087,9 @@ class SupervertalerQt(QMainWindow):
             # Import and create the popup
             from modules.quicktrans import MTQuickPopup
 
-            # Get project languages - prefer project settings over app defaults
-            if self.current_project:
-                source_lang = self.current_project.source_lang or 'en'
-                target_lang = self.current_project.target_lang or 'nl'
-            else:
-                source_lang = getattr(self, 'source_language', 'en')
-                target_lang = getattr(self, 'target_language', 'nl')
-
-            # Bidirectional QuickTrans: if the selected text is actually in the
-            # project's target language, flip the direction so it's translated
-            # back to the source. Falls back to the project pair when detection
-            # is uncertain, so this never makes things worse.
-            try:
-                from modules.lang_detect import resolve_direction
-                source_lang, target_lang = resolve_direction(
-                    text_to_translate, source_lang, target_lang)
-            except Exception as e:
-                self.log(f"QuickTrans language auto-detect skipped: {e}")
+            # Resolve direction: sticky manual override (chosen in the popup's
+            # language selector) → else per-text auto-detect → else project pair.
+            source_lang, target_lang = self.resolve_quicktrans_direction(text_to_translate)
 
             # Create popup
             popup = MTQuickPopup(
@@ -10835,7 +10863,14 @@ class SupervertalerQt(QMainWindow):
 
         exit_action = QAction(self.tr("E&xit"), self)
         exit_action.setShortcut(QKeySequence.StandardKey.Quit)
-        exit_action.triggered.connect(self.close)
+        # v1.10.278: route Exit / ⌘Q (and, on macOS, the role-merged
+        # "Quit Supervertaler" app-menu item this action becomes) through
+        # the real-quit path. Connecting to self.close() goes straight into
+        # closeEvent with _really_quit still False, so when close_to_tray is
+        # enabled the app merely *hides* — leaving macOS users unable to quit
+        # at all except by force-killing. _tray_quit sets _really_quit first
+        # so closeEvent terminates instead of backgrounding to the tray.
+        exit_action.triggered.connect(self._tray_quit)
         file_menu.addAction(exit_action)
 
         # Edit Menu
@@ -21694,18 +21729,8 @@ class SupervertalerQt(QMainWindow):
         source_label = QLabel(self.tr("Source Language:"))
         source_combo = QComboBox()
         
-        # Available languages (from Tkinter version)
-        available_languages = [
-            "Afrikaans", "Albanian", "Arabic", "Armenian", "Basque", "Bengali",
-            "Bulgarian", "Catalan", "Chinese (Simplified)", "Chinese (Traditional)",
-            "Croatian", "Czech", "Danish", "Dutch", "English", "Estonian",
-            "Finnish", "French", "Galician", "Georgian", "German", "Greek",
-            "Hebrew", "Hindi", "Hungarian", "Icelandic", "Indonesian", "Irish",
-            "Italian", "Japanese", "Korean", "Latvian", "Lithuanian", "Macedonian",
-            "Malay", "Norwegian", "Persian", "Polish", "Portuguese", "Romanian",
-            "Russian", "Serbian", "Slovak", "Slovenian", "Spanish", "Swahili",
-            "Swedish", "Thai", "Turkish", "Ukrainian", "Urdu", "Vietnamese", "Welsh"
-        ]
+        # Canonical language list, shared with the QuickTrans popup selector.
+        from modules.quicktrans import AVAILABLE_LANGUAGES as available_languages
         source_combo.addItems(available_languages)
         source_combo.setCurrentText(self.source_language)
         
@@ -68650,23 +68675,14 @@ class SuperlookupTab(QWidget):
                 print("[QuickTrans] ERROR: Could not find main window")
                 return
 
-            # Get project languages - prefer project settings over app defaults
-            if hasattr(main_window, 'current_project') and main_window.current_project:
-                source_lang = main_window.current_project.source_lang or 'en'
-                target_lang = main_window.current_project.target_lang or 'nl'
+            # Resolve direction the same way as the in-app popup: sticky manual
+            # override (chosen in the popup's language selector) → else per-text
+            # auto-detect → else project pair.
+            if hasattr(main_window, 'resolve_quicktrans_direction'):
+                source_lang, target_lang = main_window.resolve_quicktrans_direction(text)
             else:
                 source_lang = getattr(main_window, 'source_language', 'English')
                 target_lang = getattr(main_window, 'target_language', 'Dutch')
-
-            # Bidirectional: if the captured text is actually in the project's
-            # target language, flip so it's translated back to the source. Same
-            # behaviour as the in-app popup (show_mt_quick_popup). Falls back to
-            # the project direction when detection is uncertain.
-            try:
-                from modules.lang_detect import resolve_direction
-                source_lang, target_lang = resolve_direction(text, source_lang, target_lang)
-            except Exception as e:
-                print(f"[QuickTrans] language auto-detect skipped: {e}")
 
             # Import and show MT Quick Lookup popup
             from modules.quicktrans import MTQuickPopup

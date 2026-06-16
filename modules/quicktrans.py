@@ -14,7 +14,7 @@ Features:
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QScrollArea, QWidget, QPushButton, QApplication, QSizePolicy
+    QScrollArea, QWidget, QPushButton, QApplication, QSizePolicy, QComboBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSettings
 from PyQt6.QtGui import QKeySequence, QShortcut, QCursor, QFont
@@ -63,6 +63,23 @@ _AI_PROVIDER_CODES = {"CL", "GPT", "GEM", "OLL", "CUS"}
 
 def _is_ai_code(code: str) -> bool:
     return code in _AI_PROVIDER_CODES
+
+
+# Canonical list of translation languages, shared by the QuickTrans popup's
+# language-pair selector and Settings → Language Pair (Supervertaler.py imports
+# this so the two stay in sync). Full display names – the same strings the
+# project stores and the MT/LLM call functions expect.
+AVAILABLE_LANGUAGES = [
+    "Afrikaans", "Albanian", "Arabic", "Armenian", "Basque", "Bengali",
+    "Bulgarian", "Catalan", "Chinese (Simplified)", "Chinese (Traditional)",
+    "Croatian", "Czech", "Danish", "Dutch", "English", "Estonian",
+    "Finnish", "French", "Galician", "Georgian", "German", "Greek",
+    "Hebrew", "Hindi", "Hungarian", "Icelandic", "Indonesian", "Irish",
+    "Italian", "Japanese", "Korean", "Latvian", "Lithuanian", "Macedonian",
+    "Malay", "Norwegian", "Persian", "Polish", "Portuguese", "Romanian",
+    "Russian", "Serbian", "Slovak", "Slovenian", "Spanish", "Swahili",
+    "Swedish", "Thai", "Turkish", "Ukrainian", "Urdu", "Vietnamese", "Welsh",
+]
 
 
 @dataclass
@@ -479,6 +496,9 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         self.suggestion_items: List[MTSuggestionItem] = []
         self.selected_index = -1
         self.worker = None
+        # Guards the language-pair selector's change handler so the initial
+        # setCurrentText() during build doesn't trigger a spurious re-fetch.
+        self._lang_bar_ready = False
 
         self.setup_ui()
         self.setup_shortcuts()
@@ -632,6 +652,12 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
 
         container_layout.addWidget(source_frame)
 
+        # Language-pair selector. Pre-set to the (possibly auto-detected)
+        # direction this popup was opened with; changing it re-fetches in the
+        # new direction and makes that pair sticky for subsequent QuickTrans
+        # popups (see _on_lang_pair_changed → parent_app override).
+        container_layout.addWidget(self._build_lang_bar())
+
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -730,6 +756,135 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
             "border: none; padding: 6px 2px 1px 2px; }"
         )
         return lbl
+
+    def _build_lang_bar(self) -> QWidget:
+        """Build the source → target language-pair selector shown under the
+        source text. Lets the user correct a wrong auto-detected direction in
+        place; the choice re-fetches and sticks for later popups."""
+        bar = QWidget()
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(2, 0, 2, 0)
+        row.setSpacing(6)
+
+        lbl = QLabel("Languages:")
+        lbl.setStyleSheet("font-size: 9px; color: #666; font-weight: bold; border: none;")
+        row.addWidget(lbl, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        combo_style = (
+            "QComboBox { font-size: 10px; padding: 1px 4px; border: 1px solid #cfcfcf; "
+            "border-radius: 3px; background: white; }"
+        )
+
+        self.src_combo = QComboBox()
+        self.src_combo.addItems(AVAILABLE_LANGUAGES)
+        self.src_combo.setFixedHeight(22)
+        self.src_combo.setMaximumWidth(160)
+        self.src_combo.setStyleSheet(combo_style)
+        self.src_combo.setToolTip("Source language – what the selected text is in")
+
+        arrow = QLabel("→")
+        arrow.setStyleSheet("font-size: 12px; color: #888; border: none;")
+
+        self.tgt_combo = QComboBox()
+        self.tgt_combo.addItems(AVAILABLE_LANGUAGES)
+        self.tgt_combo.setFixedHeight(22)
+        self.tgt_combo.setMaximumWidth(160)
+        self.tgt_combo.setStyleSheet(combo_style)
+        self.tgt_combo.setToolTip("Target language – what to translate into")
+
+        # Pre-select the direction the popup opened with. setCurrentText is a
+        # no-op for an unknown value (e.g. a raw 'en' code), which only leaves
+        # the first item selected – names are the normal case from callers.
+        self.src_combo.setCurrentText(self.source_lang)
+        self.tgt_combo.setCurrentText(self.target_lang)
+
+        swap_btn = QPushButton("⇄")
+        swap_btn.setFixedSize(22, 22)
+        swap_btn.setToolTip("Swap source and target languages")
+        swap_btn.setStyleSheet(
+            "QPushButton { border: 1px solid #cfcfcf; border-radius: 3px; background: white; "
+            "font-size: 12px; } QPushButton:hover { background-color: #e0e0e0; }"
+        )
+        swap_btn.clicked.connect(self._on_swap_langs)
+
+        row.addWidget(self.src_combo, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(arrow, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self.tgt_combo, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(swap_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch()
+
+        # Connect after the initial setCurrentText so building the bar doesn't
+        # fire the change handler.
+        self.src_combo.currentTextChanged.connect(self._on_lang_pair_changed)
+        self.tgt_combo.currentTextChanged.connect(self._on_lang_pair_changed)
+        self._lang_bar_ready = True
+        return bar
+
+    def _on_swap_langs(self):
+        """Swap the two combos and re-fetch once (not twice for the two
+        currentTextChanged signals the swap would otherwise emit)."""
+        s = self.src_combo.currentText()
+        t = self.tgt_combo.currentText()
+        self._lang_bar_ready = False
+        self.src_combo.setCurrentText(t)
+        self.tgt_combo.setCurrentText(s)
+        self._lang_bar_ready = True
+        self._on_lang_pair_changed()
+
+    def _on_lang_pair_changed(self, *_):
+        """A combo changed: adopt the new direction, persist it as the sticky
+        QuickTrans override on the main app, and re-fetch."""
+        if not getattr(self, '_lang_bar_ready', False):
+            return
+        new_src = self.src_combo.currentText()
+        new_tgt = self.tgt_combo.currentText()
+        if not new_src or not new_tgt:
+            return
+        if new_src == self.source_lang and new_tgt == self.target_lang:
+            return
+        self.source_lang = new_src
+        self.target_lang = new_tgt
+        # Make the pick sticky: subsequent popups reuse it (until the project /
+        # default pair is changed elsewhere). Best-effort – the popup still
+        # works for this one fetch even if the host doesn't expose the hook.
+        try:
+            if self.parent_app and hasattr(self.parent_app, 'set_quicktrans_direction_override'):
+                self.parent_app.set_quicktrans_direction_override(new_src, new_tgt)
+        except Exception:
+            pass
+        self._reset_and_refetch()
+
+    def _clear_suggestions(self):
+        """Tear down all result rows / section headers, keeping the loading
+        label and trailing stretch so the layout can be repopulated."""
+        layout = self.suggestions_layout
+        for i in reversed(range(layout.count())):
+            w = layout.itemAt(i).widget()
+            if w is None or w is self.loading_label:
+                continue  # keep the trailing stretch and the loading label
+            w.setParent(None)
+            w.deleteLater()
+        self.suggestions = []
+        self.suggestion_items = []
+        self.selected_index = -1
+        self._mt_header = None
+        self._ai_header = None
+        self.loading_label.setText("⏳ Fetching translations...")
+        self.loading_label.show()
+
+    def _reset_and_refetch(self):
+        """Stop any in-flight workers, clear results, and fetch again in the
+        current (just-changed) direction."""
+        if self.worker and self.worker.isRunning():
+            self.worker.quit()
+            self.worker.wait(1000)
+        self.worker = None
+        for w in list(getattr(self, '_fetch_workers', []) or []):
+            if w.isRunning():
+                w.wait(500)
+        self._fetch_workers = []
+        self._clear_suggestions()
+        self.start_fetching()
 
     def start_fetching(self):
         """Start fetching translations from all enabled providers.

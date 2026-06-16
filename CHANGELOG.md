@@ -2,7 +2,22 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.277 (June 15, 2026)
+**Current Version:** v1.10.278 (June 16, 2026)
+
+
+## v1.10.278 – June 16, 2026
+
+### Fixed (macOS quit)
+
+- **Supervertaler Workbench can now be quit on macOS.** With "Close to tray" enabled, ⌘Q, the **Quit Supervertaler** app-menu item, and **File → Exit** all merely hid the window to the menu-bar tray instead of quitting — so the only way to actually close the app was to force-kill it. The Exit action (which macOS turns into the role-merged Quit item and binds to ⌘Q) was wired straight to the window close, which falls into the close-to-tray "hide" path. It now goes through the real-quit path, so quitting genuinely terminates the app on every platform. Clicking the window's close button still hides to tray as designed, keeping the Clipboard Manager and SuperLookup hotkeys running in the background.
+
+### Added (QuickTrans)
+
+- **Pick the translation direction right in the QuickTrans popup.** A source → target language selector now sits under the captured text, with a **⇄ swap** button. It opens pre-set to the direction QuickTrans auto-detected, so you can correct a wrong guess in place; changing it re-fetches immediately in the new direction. Your choice is **sticky** — later QuickTrans popups reuse it until the project (or default) language pair changes elsewhere, at which point it's dropped and auto-detection takes over again. The popup and Settings → Language Pair now draw from one shared language list, so the two can't drift apart.
+
+### Improved (QuickTrans auto-detect)
+
+- **A single shared word no longer flips the translation direction.** Direction auto-detection now requires a clear lead, not a one-word edge, so a false friend common to both languages (e.g. "was" in Dutch and English) can't override the project's known source → target pair. The Dutch stop-word set was also expanded for steadier detection.
 
 
 ## v1.10.277 – June 15, 2026

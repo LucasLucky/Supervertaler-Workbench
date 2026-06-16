@@ -20,7 +20,8 @@ _STOPWORDS = {
            "it", "at", "on"},
     "nl": {"de", "het", "een", "en", "van", "dat", "voor", "met", "op", "aan",
            "te", "zijn", "door", "niet", "wordt", "worden", "bij", "naar", "om",
-           "deze", "ook", "maar", "of"},
+           "deze", "ook", "maar", "of", "was", "dan", "meer", "als", "uit",
+           "over", "heeft"},
     "de": {"der", "die", "das", "und", "zu", "den", "von", "mit", "dem", "des",
            "ein", "eine", "auf", "für", "nicht", "werden", "wird", "bei", "durch",
            "auch", "sich", "im"},
@@ -80,8 +81,12 @@ def detect_language_code(text, candidate_langs):
 
     scores = {c: sum(1 for t in tokens if t in _STOPWORDS[c]) for c in codes}
     ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
-    if ranked[0][1] == 0 or ranked[0][1] == ranked[1][1]:
-        return None   # no stopword hits, or a tie
+    # Require a clear margin, not just a 1-hit edge: a single false-friend word
+    # (e.g. "was", common to both Dutch and English) must not be enough to flip
+    # the caller's known direction. Below the margin we return None and the
+    # caller keeps the project's own source -> target pair.
+    if ranked[0][1] == 0 or (ranked[0][1] - ranked[1][1]) < 2:
+        return None   # no stopword hits, or not a confident enough lead
     return ranked[0][0]
 
 
