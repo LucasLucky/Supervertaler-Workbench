@@ -235,7 +235,11 @@ class DatabaseManager:
                 
                 -- Fast exact matching
                 source_hash TEXT NOT NULL,
-                
+                -- Fast *reverse* exact matching: md5 of the normalised target,
+                -- so an opposite-direction exact match (our source == a TM
+                -- entry's target) is an indexed lookup instead of a full scan.
+                target_hash TEXT,
+
                 -- Metadata
                 created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 modified_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -250,10 +254,14 @@ class DatabaseManager:
         
         # Indexes for translation_units
         self.cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tu_source_hash 
+            CREATE INDEX IF NOT EXISTS idx_tu_source_hash
             ON translation_units(source_hash)
         """)
-        
+        # idx_tu_target_hash (for reverse exact matching) is created by
+        # migrate_translation_units_target_hash, which also backfills the
+        # column on existing databases. Creating it here would fail on a
+        # pre-target_hash DB where the column isn't added until that migration.
+
         self.cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_tu_tm_id 
             ON translation_units(tm_id)
@@ -991,6 +999,9 @@ class DatabaseManager:
         # This handles invisible differences like Unicode normalization, whitespace variations
         normalized_source = _normalize_for_matching(source)
         source_hash = hashlib.md5(normalized_source.encode('utf-8')).hexdigest()
+        # Same for the target, so reverse (opposite-direction) exact matches are
+        # an indexed lookup rather than a target_text full-table scan.
+        target_hash = hashlib.md5(_normalize_for_matching(target).encode('utf-8')).hexdigest()
 
         try:
             # If overwrite mode, delete ALL existing entries with same source_hash and tm_id
@@ -1004,13 +1015,13 @@ class DatabaseManager:
             self.cursor.execute("""
                 INSERT INTO translation_units
                 (source_text, target_text, source_lang, target_lang, tm_id,
-                 project_id, context_before, context_after, source_hash, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 project_id, context_before, context_after, source_hash, target_hash, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source_hash, target_text, tm_id) DO UPDATE SET
                     usage_count = usage_count + 1,
                     modified_date = CURRENT_TIMESTAMP
             """, (source, target, source_lang, target_lang, tm_id,
-                  project_id, context_before, context_after, source_hash, notes))
+                  project_id, context_before, context_after, source_hash, target_hash, notes))
 
             self.connection.commit()
             return self.cursor.lastrowid
@@ -1085,17 +1096,18 @@ class DatabaseManager:
             for source, target in entries:
                 normalized_source = _normalize_for_matching(source)
                 source_hash = hashlib.md5(normalized_source.encode('utf-8')).hexdigest()
+                target_hash = hashlib.md5(_normalize_for_matching(target).encode('utf-8')).hexdigest()
 
                 self.cursor.execute("""
                     INSERT INTO translation_units
                     (source_text, target_text, source_lang, target_lang, tm_id,
-                     project_id, context_before, context_after, source_hash, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     project_id, context_before, context_after, source_hash, target_hash, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(source_hash, target_text, tm_id) DO UPDATE SET
                         usage_count = usage_count + 1,
                         modified_date = CURRENT_TIMESTAMP
                 """, (source, target, source_lang, target_lang, tm_id,
-                      None, None, None, source_hash, None))
+                      None, None, None, source_hash, target_hash, None))
                 inserted += 1
 
             self.connection.commit()
@@ -1202,12 +1214,17 @@ class DatabaseManager:
 
         # If bidirectional and no forward match, try reverse direction
         if bidirectional and src_base and tgt_base:
-            # Search where our source text is in the target field (reverse direction)
+            # Search where our source text is in the target field (reverse direction).
+            # Matched via the indexed target_hash (md5 of the normalised target) using
+            # the same hash variants computed for the forward lookup, so this is an
+            # index SEARCH rather than a target_text full-table scan. Rows written
+            # before the target_hash migration have NULL target_hash and simply
+            # don't match here (the background worker still backfills on use).
             query = """
-                SELECT * FROM translation_units 
-                WHERE target_text = ?
+                SELECT * FROM translation_units
+                WHERE (target_hash = ? OR target_hash = ? OR target_hash = ? OR target_hash = ?)
             """
-            params = [source]
+            params = [source_hash, normalized_hash, source_no_tags_hash, normalized_no_tags_hash]
             
             if tm_ids:
                 placeholders = ','.join('?' * len(tm_ids))
@@ -2155,6 +2172,10 @@ class DatabaseManager:
         new_source_stripped = new_source.strip()
         new_target_stripped = new_target.strip()
         new_hash = hashlib.md5(new_source_stripped.lower().encode('utf-8')).hexdigest()
+        # Keep target_hash in step with the edited target so reverse exact
+        # matching stays correct after an edit.
+        new_target_hash = hashlib.md5(
+            _normalize_for_matching(new_target_stripped).encode('utf-8')).hexdigest()
 
         # Update FTS5 index
         try:
@@ -2168,10 +2189,10 @@ class DatabaseManager:
         # Update main table
         self.cursor.execute("""
             UPDATE translation_units
-            SET source_text = ?, target_text = ?, source_hash = ?,
+            SET source_text = ?, target_text = ?, source_hash = ?, target_hash = ?,
                 modified_date = CURRENT_TIMESTAMP
             WHERE id = ?
-        """, (new_source_stripped, new_target_stripped, new_hash, entry_id))
+        """, (new_source_stripped, new_target_stripped, new_hash, new_target_hash, entry_id))
 
         self.connection.commit()
         return True

@@ -357,6 +357,11 @@ def run_all_migrations(db_manager) -> bool:
     if not create_clipboard_history_table(db_manager):
         success = False
 
+    # Migration 5b: translation_units.target_hash (+ index) for fast reverse
+    # exact matching. Additive and independent of the others.
+    if not migrate_translation_units_target_hash(db_manager):
+        success = False
+
     # Migration 6: Disambiguate tm_activation.tm_id (numeric id) -> tm_db_id
     if not migrate_tm_activation_column_name(db_manager):
         success = False
@@ -436,6 +441,20 @@ def check_and_migrate(db_manager) -> bool:
         if needs_ai_inject:
             print("⚠️ Migration needed - termbases.ai_inject column missing")
 
+        # target_hash for reverse exact matching. Gate on the index existing
+        # (instant sqlite_master lookup, and the migration's completion marker)
+        # so we never run a per-startup scan to detect it.
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='translation_units'")
+        tu_exists = cursor.fetchone() is not None
+        needs_target_hash = False
+        if tu_exists:
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tu_target_hash'")
+            needs_target_hash = cursor.fetchone() is None
+        if needs_target_hash:
+            print("⚠️ Migration needed - translation_units.target_hash index missing")
+
         # Identifier-disambiguation migrations (2026-06-01):
         # tm_activation.tm_id -> tm_db_id, and termbase_terms.termbase_id TEXT -> INTEGER.
         cursor.execute("PRAGMA table_info(tm_activation)")
@@ -453,7 +472,7 @@ def check_and_migrate(db_manager) -> bool:
         structural = needs_tm_activation_rename or needs_termbase_id_int
 
         if (needs_migration or needs_synonyms_table or needs_ai_inject or needs_clipboard_table
-                or structural):
+                or needs_target_hash or structural):
             # Structural migrations (table rebuild / column rename) get a
             # consistent timestamped backup first — the safety net every user
             # gets, since these are the first non-additive migrations we ship.
@@ -574,6 +593,82 @@ def migrate_termbase_ai_inject(db_manager) -> bool:
 
     except Exception as e:
         print(f"❌ ai_inject migration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def migrate_translation_units_target_hash(db_manager) -> bool:
+    """Add translation_units.target_hash (+ idx_tu_target_hash) and backfill it.
+
+    target_hash is the md5 of the *normalised* target text, mirroring source_hash.
+    It turns a reverse (opposite-direction) exact match — our segment's source
+    equals a TM entry's target — into an indexed lookup instead of a target_text
+    full-table scan, which on a large TM froze the grid for seconds on every click.
+
+    The index's presence is the "done" marker, so the migration is resumable: if a
+    backfill is interrupted, the column exists but the index doesn't, and the next
+    startup re-runs and finishes. Checking for the index is an instant
+    sqlite_master lookup, so there's no per-startup full scan.
+    """
+    try:
+        cursor = db_manager.cursor
+
+        # Guard: table may be absent on a partially-built DB.
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='translation_units'")
+        if not cursor.fetchone():
+            return True
+
+        # Index present → already migrated.
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tu_target_hash'")
+        if cursor.fetchone():
+            return True
+
+        # Add the column if it isn't there yet (idempotent / resumable).
+        cols = {row[1] for row in cursor.execute("PRAGMA table_info(translation_units)")}
+        if 'target_hash' not in cols:
+            print("📊 Adding 'target_hash' column to translation_units...")
+            cursor.execute("ALTER TABLE translation_units ADD COLUMN target_hash TEXT")
+
+        # Backfill every row's target_hash, walking the primary key in batches so a
+        # huge TM neither loads into memory at once nor degrades to repeated scans.
+        import hashlib
+        from modules.database_manager import _normalize_for_matching
+
+        last_id = 0
+        total = 0
+        while True:
+            rows = cursor.execute(
+                "SELECT id, target_text FROM translation_units "
+                "WHERE id > ? ORDER BY id LIMIT 5000",
+                (last_id,),
+            ).fetchall()
+            if not rows:
+                break
+            updates = [
+                (hashlib.md5(_normalize_for_matching(t or '').encode('utf-8')).hexdigest(), rid)
+                for (rid, t) in rows
+            ]
+            cursor.executemany(
+                "UPDATE translation_units SET target_hash = ? WHERE id = ?", updates)
+            db_manager.connection.commit()
+            last_id = rows[-1][0]
+            total += len(updates)
+
+        if total:
+            print(f"📊 Backfilled target_hash for {total} translation unit(s)")
+
+        # Create the index LAST — its existence marks the migration complete.
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tu_target_hash ON translation_units(target_hash)")
+        db_manager.connection.commit()
+        print("✅ translation_units.target_hash ready — reverse exact matches are now indexed")
+        return True
+
+    except Exception as e:
+        print(f"❌ target_hash migration failed: {e}")
         import traceback
         traceback.print_exc()
         return False

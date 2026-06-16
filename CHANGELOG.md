@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.279 (June 16, 2026)
+**Current Version:** v1.10.280 (June 16, 2026)
+
+
+## v1.10.280 – June 16, 2026
+
+### Changed (performance · TM)
+
+- **Reverse (opposite-direction) exact matches are instant again — without the lag.** A TM stores each pair with a fixed direction; sometimes the exact sentence you need is in the TM the *other way round* (e.g. your current English source equals the English *target* of an old NL→EN entry). Finding that meant searching the target column, which had no index, so it fell back to scanning the whole TM — the cause of the per-click sluggishness worked around in v1.10.279 (which skipped reverse matches on the click thread). This release adds an indexed `target_hash` column mirroring the existing `source_hash`, so reverse exact matches are now a sub-millisecond indexed lookup. The instant on-click TM lookup does both directions again, and reverse matches appear immediately instead of a beat later.
+- **One-time database upgrade on first launch.** Existing translation memories get the new `target_hash` column filled in automatically the first time you open this version. On a very large TM this adds a short, one-off delay at startup (shown in the console); it's resumable if interrupted and runs only once.
 
 
 ## v1.10.279 – June 16, 2026
