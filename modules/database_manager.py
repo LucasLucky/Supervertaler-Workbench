@@ -296,15 +296,22 @@ class DatabaseManager:
             END
         """)
         
+        # translation_units_fts is an EXTERNAL-CONTENT FTS5 table (content=…), so
+        # rows must be removed with the special 'delete' command carrying the OLD
+        # column values — a plain `DELETE … WHERE rowid` makes FTS5 read the
+        # (already-changed/gone) content row and raises "database disk image is
+        # malformed". See migrate_fts_external_content_delete.
         self.cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS tu_fts_delete AFTER DELETE ON translation_units BEGIN
-                DELETE FROM translation_units_fts WHERE rowid = old.id;
+                INSERT INTO translation_units_fts(translation_units_fts, rowid, source_text, target_text)
+                VALUES ('delete', old.id, old.source_text, old.target_text);
             END
         """)
-        
+
         self.cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS tu_fts_update AFTER UPDATE ON translation_units BEGIN
-                DELETE FROM translation_units_fts WHERE rowid = old.id;
+                INSERT INTO translation_units_fts(translation_units_fts, rowid, source_text, target_text)
+                VALUES ('delete', old.id, old.source_text, old.target_text);
                 INSERT INTO translation_units_fts(rowid, source_text, target_text)
                 VALUES (new.id, new.source_text, new.target_text);
             END
@@ -325,11 +332,15 @@ class DatabaseManager:
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='translation_units_trigram'")
             _trigram_existed = self.cursor.fetchone() is not None
 
+            # Regular (self-contained) FTS5 — NOT external-content. This index
+            # only holds the CJK subset of rows (see the gated triggers below),
+            # which an external-content table can't represent: external content
+            # assumes every content row is indexed, so removing a non-indexed
+            # row's tokens corrupts it ("malformed"). A regular table stores its
+            # own copy of the (tiny) CJK text and supports plain rowid deletes.
             self.cursor.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS translation_units_trigram
-                USING fts5(source_text, target_text,
-                           content=translation_units, content_rowid=id,
-                           tokenize='trigram')
+                USING fts5(source_text, target_text, tokenize='trigram')
             """)
             self.cursor.execute(f"""
                 CREATE TRIGGER IF NOT EXISTS tu_trig_insert AFTER INSERT ON translation_units

@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.281 (June 16, 2026)
+**Current Version:** v1.10.282 (June 16, 2026)
+
+
+## v1.10.282 – June 16, 2026
+
+### Fixed (TM · database integrity)
+
+- **Editing or deleting a TM entry no longer fails silently.** The full-text search indexes on the TM were created as "external-content" FTS5 tables, but their keep-in-sync triggers removed rows with a plain `DELETE … WHERE rowid`, which is invalid for external content — so SQLite raised *"database disk image is malformed"* on **every update or delete of a TM unit**. The error was swallowed by the surrounding code, so the symptom was simply that edits to existing TM entries (and the internal "usage count" bump on each match) quietly didn't take. The sync triggers now use FTS5's proper `'delete'` command, the main full-text index is rebuilt once to clear anything left stale by the old behaviour, and the CJK trigram index is rebuilt as a regular self-contained table (external content can't correctly represent the CJK-only subset it holds). After this, TM edits, deletes, merges and concordance search all behave correctly.
+- **One-time database upgrade on first launch.** Like the previous `target_hash` upgrade, this repair runs automatically the first time you open this version and, on a very large TM, adds a short one-off delay at startup (shown in the console). It runs only once.
 
 
 ## v1.10.281 – June 16, 2026

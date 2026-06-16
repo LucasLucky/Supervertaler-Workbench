@@ -362,6 +362,11 @@ def run_all_migrations(db_manager) -> bool:
     if not migrate_translation_units_target_hash(db_manager):
         success = False
 
+    # Migration 5c: fix the external-content FTS5 sync triggers so TM-row
+    # updates/deletes stop raising "database disk image is malformed".
+    if not migrate_fts_external_content_delete(db_manager):
+        success = False
+
     # Migration 6: Disambiguate tm_activation.tm_id (numeric id) -> tm_db_id
     if not migrate_tm_activation_column_name(db_manager):
         success = False
@@ -455,6 +460,15 @@ def check_and_migrate(db_manager) -> bool:
         if needs_target_hash:
             print("⚠️ Migration needed - translation_units.target_hash index missing")
 
+        # FTS external-content delete fix: gated on the fts delete trigger using
+        # the 'delete' command (instant sqlite_master check).
+        cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='tu_fts_delete'")
+        _ftsrow = cursor.fetchone()
+        needs_fts_fix = bool(_ftsrow and _ftsrow[0]) and "'delete'" not in _ftsrow[0]
+        if needs_fts_fix:
+            print("⚠️ Migration needed - FTS sync triggers use invalid external-content deletes")
+
         # Identifier-disambiguation migrations (2026-06-01):
         # tm_activation.tm_id -> tm_db_id, and termbase_terms.termbase_id TEXT -> INTEGER.
         cursor.execute("PRAGMA table_info(tm_activation)")
@@ -472,7 +486,7 @@ def check_and_migrate(db_manager) -> bool:
         structural = needs_tm_activation_rename or needs_termbase_id_int
 
         if (needs_migration or needs_synonyms_table or needs_ai_inject or needs_clipboard_table
-                or needs_target_hash or structural):
+                or needs_target_hash or needs_fts_fix or structural):
             # Structural migrations (table rebuild / column rename) get a
             # consistent timestamped backup first — the safety net every user
             # gets, since these are the first non-additive migrations we ship.
@@ -706,6 +720,113 @@ def migrate_translation_units_target_hash(db_manager) -> bool:
 
     except Exception as e:
         print(f"❌ target_hash migration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def migrate_fts_external_content_delete(db_manager) -> bool:
+    """Fix the FTS5 sync triggers on translation_units.
+
+    Both full-text indexes were created as EXTERNAL-CONTENT FTS5 (content=…), but
+    their delete/update triggers used `DELETE … WHERE rowid`, which is invalid for
+    external content: FTS5 then reads the already-changed/removed content row and
+    raises "database disk image is malformed" on ANY update or delete of a
+    translation_units row. That silently broke TM-entry edits and the usage
+    'touch'. Fixes:
+      • translation_units_fts (indexes every row) keeps external content, but now
+        removes rows with the special 'delete' command carrying the OLD values,
+        then rebuilds once to clear tokens orphaned by past bad deletes.
+      • translation_units_trigram (indexes only the CJK subset) is recreated as a
+        regular self-contained FTS5 table — external content can't represent a
+        subset — so its plain rowid-delete triggers become correct.
+
+    Idempotent and gated on the fts delete trigger already using the 'delete'
+    command (an instant sqlite_master check, so no per-startup work once done).
+    """
+    try:
+        cursor = db_manager.cursor
+        conn = db_manager.connection
+
+        row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='tu_fts_delete'"
+        ).fetchone()
+        if not row or not row[0]:
+            return True  # no FTS triggers on this DB — nothing to fix
+        if "'delete'" in row[0]:
+            return True  # already migrated
+
+        from modules.database_manager import _CJK_GLOB
+
+        # Preserve the existing trigram triggers so we can recreate them verbatim
+        # against the rebuilt (regular) trigram table — they are already correct
+        # for a self-contained FTS5 (plain rowid INSERT/DELETE).
+        trig_triggers = cursor.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='trigger' "
+            "AND name IN ('tu_trig_insert','tu_trig_delete','tu_trig_update')"
+        ).fetchall()
+        trigram_row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='translation_units_trigram'"
+        ).fetchone()
+        trigram_is_external = bool(
+            trigram_row and trigram_row[0] and 'content=' in trigram_row[0].replace(' ', ''))
+
+        old_isolation = conn.isolation_level
+        conn.isolation_level = None
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+
+            # 1) Correct the external-content fts delete/update triggers.
+            cursor.execute("DROP TRIGGER IF EXISTS tu_fts_delete")
+            cursor.execute("DROP TRIGGER IF EXISTS tu_fts_update")
+            cursor.execute("""
+                CREATE TRIGGER tu_fts_delete AFTER DELETE ON translation_units BEGIN
+                    INSERT INTO translation_units_fts(translation_units_fts, rowid, source_text, target_text)
+                    VALUES ('delete', old.id, old.source_text, old.target_text);
+                END""")
+            cursor.execute("""
+                CREATE TRIGGER tu_fts_update AFTER UPDATE ON translation_units BEGIN
+                    INSERT INTO translation_units_fts(translation_units_fts, rowid, source_text, target_text)
+                    VALUES ('delete', old.id, old.source_text, old.target_text);
+                    INSERT INTO translation_units_fts(rowid, source_text, target_text)
+                    VALUES (new.id, new.source_text, new.target_text);
+                END""")
+
+            # 2) Rebuild fts to clear any tokens orphaned by past bad deletes.
+            cursor.execute("INSERT INTO translation_units_fts(translation_units_fts) VALUES('rebuild')")
+
+            # 3) Recreate the trigram index as a regular FTS5 table (only if it
+            #    exists and is still external-content).
+            if trigram_is_external:
+                for name, _sql in trig_triggers:
+                    cursor.execute(f"DROP TRIGGER IF EXISTS {name}")
+                cursor.execute("DROP TABLE IF EXISTS translation_units_trigram")
+                cursor.execute(
+                    "CREATE VIRTUAL TABLE translation_units_trigram "
+                    "USING fts5(source_text, target_text, tokenize='trigram')")
+                for name, sql in trig_triggers:
+                    if sql:
+                        cursor.execute(sql)
+                cursor.execute(
+                    "INSERT INTO translation_units_trigram(rowid, source_text, target_text) "
+                    "SELECT id, source_text, target_text FROM translation_units "
+                    f"WHERE source_text GLOB '{_CJK_GLOB}' OR target_text GLOB '{_CJK_GLOB}'")
+
+            cursor.execute("COMMIT")
+        except Exception:
+            try:
+                cursor.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            conn.isolation_level = old_isolation
+
+        print("✅ FTS sync triggers fixed — TM edits/deletes no longer raise 'malformed'")
+        return True
+
+    except Exception as e:
+        print(f"❌ FTS trigger migration failed: {e}")
         import traceback
         traceback.print_exc()
         return False
