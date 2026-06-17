@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.283 (June 17, 2026)
+**Current Version:** v1.10.284 (June 17, 2026)
+
+
+## v1.10.284 – June 17, 2026
+
+### Fixed (startup · Python 3.10 / 3.11 compatibility)
+
+- **The source/code version now starts on Python 3.10 and 3.11 again.** Running `python Supervertaler.py` crashed at startup with `SyntaxError: invalid character '–' (U+2013)` pointing at `modules/unified_prompt_manager_qt.py`. The real cause wasn't the en-dash: the AI-prompt builder nested a triple-quoted f-string inside another triple-quoted f-string using the *same* `"""` delimiter — syntax that only became legal in Python 3.12 (PEP 701). On 3.10/3.11 the parser closed the outer string early and then tried to parse the prose that followed as code, tripping on the first non-ASCII character. The inner f-string now uses `'''` (a different delimiter, matching the four sibling blocks in the same function), so it parses on 3.10, 3.11 and 3.12 alike. Verified by compiling the whole app on all three. Affected only the run-from-source path; the packaged builds (which ship a 3.12+ runtime) were never affected. Reported by a user switching to the code version.
 
 
 ## v1.10.283 – June 17, 2026

@@ -5071,7 +5071,7 @@ SEGMENT COUNT: {segment_count}
 
 {analysis_summary}
 
-{f"""=== MULTI-FILE PROJECT INFORMATION ===
+{f'''=== MULTI-FILE PROJECT INFORMATION ===
 {file_manifest}
 
 IMPORTANT: This is a multi-file project. Your generated prompt MUST include a MULTI-FILE GUIDANCE
@@ -5079,7 +5079,7 @@ section that lists each file with its detected domain and register, and instruct
 to adapt its translation style, terminology choices, and register when moving between files.
 Each file may have a different domain (legal, technical, marketing, etc.) – the prompt must
 acknowledge this and provide file-specific guidance.
-""" if file_manifest else ""}=== DOMAIN-SPECIFIC ROLE ===
+''' if file_manifest else ""}=== DOMAIN-SPECIFIC ROLE ===
 {template['role']}
 
 === PROJECT CONTEXT (document content) ===
