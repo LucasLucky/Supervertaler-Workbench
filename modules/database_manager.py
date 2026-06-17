@@ -1172,10 +1172,19 @@ class DatabaseManager:
         src_base = get_base_lang_code(source_lang) if source_lang else None
         tgt_base = get_base_lang_code(target_lang) if target_lang else None
 
-        # Search using all hash variants
+        # Search using all hash variants.
+        #
+        # PERF (v1.10.283): force idx_tu_source_hash and use IN(...) instead of a
+        # 4-way OR. On a large TM (this user's is 1.5M+ rows) SQLite's planner
+        # otherwise picks idx_tu_tm_id and scans the *entire* matching TM — ~700 ms
+        # per call, which is what made every segment click hang for seconds on
+        # Windows. source_hash is an md5 and extremely selective (≤ a couple dozen
+        # rows across the whole DB), so an index SEARCH here is sub-millisecond.
+        # The 4-way OR defeated the optimizer; IN(...) with an explicit INDEXED BY
+        # is index-friendly. idx_tu_source_hash is always present (base schema).
         query = """
-            SELECT * FROM translation_units
-            WHERE (source_hash = ? OR source_hash = ? OR source_hash = ? OR source_hash = ?)
+            SELECT * FROM translation_units INDEXED BY idx_tu_source_hash
+            WHERE source_hash IN (?, ?, ?, ?)
         """
         params = [source_hash, normalized_hash, source_no_tags_hash, normalized_no_tags_hash]
         
@@ -1231,9 +1240,13 @@ class DatabaseManager:
             # index SEARCH rather than a target_text full-table scan. Rows written
             # before the target_hash migration have NULL target_hash and simply
             # don't match here (the background worker still backfills on use).
+            # PERF (v1.10.283): same index-forcing rationale as the forward query —
+            # force idx_tu_target_hash + IN(...) so the reverse lookup is an index
+            # SEARCH rather than a tm_id scan. (idx_tu_target_hash is created by
+            # migrate_translation_units_target_hash, which runs at startup.)
             query = """
-                SELECT * FROM translation_units
-                WHERE (target_hash = ? OR target_hash = ? OR target_hash = ? OR target_hash = ?)
+                SELECT * FROM translation_units INDEXED BY idx_tu_target_hash
+                WHERE target_hash IN (?, ?, ?, ?)
             """
             params = [source_hash, normalized_hash, source_no_tags_hash, normalized_no_tags_hash]
             
@@ -1404,10 +1417,15 @@ class DatabaseManager:
             chunk = all_hashes_list[i:i + max_hash_params]
 
             placeholders = ','.join('?' * len(chunk))
+            # PERF (v1.10.283): force idx_tu_source_hash. Without the hint SQLite
+            # picks idx_tu_tm_id and scans the whole TM (~545 ms/chunk on a 1.5M-row
+            # DB); with it the prefetch chunk is ~6 ms. Same root cause as the fix in
+            # get_exact_match(). The IN-list is already index-friendly — only the
+            # planner's index *choice* needed forcing.
             query = (
                 f"SELECT id, source_text, target_text, source_lang, target_lang, "
                 f"tm_id, source_hash, usage_count "
-                f"FROM translation_units "
+                f"FROM translation_units INDEXED BY idx_tu_source_hash "
                 f"WHERE source_hash IN ({placeholders})"
                 f"{lang_sql}"
             )

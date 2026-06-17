@@ -1769,6 +1769,20 @@ class TermLensWidget(QWidget):
                     font.setBold(self.current_font_bold)
                     block.source_label.setFont(font)
     
+    def showEvent(self, event):
+        """Flush a deferred TermLens render queued while this panel was hidden.
+
+        Pairs with the visibility guard at the top of update_with_matches: when
+        the panel was off-screen we stashed the latest segment's data instead of
+        building widgets. Now that it's visible, render that pending data so the
+        panel reflects the current segment.
+        """
+        super().showEvent(event)
+        pending = getattr(self, '_pending_update', None)
+        if pending is not None:
+            self._pending_update = None
+            self.update_with_matches(*pending)
+
     def update_with_matches(self, source_text: str, termbase_matches: List[Dict], nt_matches: List[Dict] = None, status_hint: str = None):
         """
         Update the TermLens display with pre-computed termbase and NT matches
@@ -1781,6 +1795,18 @@ class TermLensWidget(QWidget):
             nt_matches: Optional list of NT match dicts with 'text', 'start', 'end', 'list_name' keys
             status_hint: Optional hint about why there might be no matches (e.g., 'no_termbases_activated', 'wrong_language')
         """
+        # ⚡ PERF (v1.10.283): rendering builds one TermBlock/NTBlock widget per
+        # source token and is the dominant per-click cost (~50–280 ms, and it runs
+        # for BOTH the under-grid and Match-Panel TermLens on every segment click).
+        # When this instance isn't visible (under-grid panel collapsed, or Match
+        # Panel on a background tab) there's no point building those widgets now —
+        # stash the latest data and render lazily on showEvent. This roughly halves
+        # per-click TermLens cost whenever only one of the two panels is on screen.
+        if not self.isVisible():
+            self._pending_update = (source_text, termbase_matches, nt_matches, status_hint)
+            return
+        self._pending_update = None
+
         self.current_source = source_text
         # Store matches for theme refresh
         self._last_termbase_matches = termbase_matches

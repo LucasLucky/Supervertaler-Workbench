@@ -62605,6 +62605,17 @@ class SupervertalerQt(QMainWindow):
             if self.hide_outer_wrapping_tags:
                 search_source, _ = strip_outer_wrapping_tags(search_source)
 
+            # ⚡ DEDUP GUARD: this method is currently driven 2–3× per click
+            # (focusInEvent → selectRow → on_selection_changed → on_cell_selected,
+            # the manual on_cell_selected in focusInEvent, AND the deferred
+            # _on_cell_selected_full). The exact (100%) match for a given segment +
+            # source does not change while you sit on it, so once we've shown it we
+            # can skip the repeat query + panel rebuild entirely. Cleared on TM
+            # refresh / edit via `self._instant_tm_guard = None`.
+            _guard_key = (segment.id, search_source)
+            if getattr(self, '_instant_tm_guard', None) == _guard_key:
+                return True
+
             # Both directions are single indexed-hash lookups now: forward via
             # idx_tu_source_hash and reverse via idx_tu_target_hash (added in
             # v1.10.280). Together they're well under a millisecond even on a
@@ -62622,6 +62633,9 @@ class SupervertalerQt(QMainWindow):
                 touch=False,
             )
             if not exact:
+                # Remember the miss too, so repeat calls in the same click burst
+                # don't re-run the query.
+                self._instant_tm_guard = _guard_key
                 return False
 
             tm_meta = getattr(self.tm_database, 'tm_metadata', {}) or {}
@@ -62639,6 +62653,10 @@ class SupervertalerQt(QMainWindow):
                 segment.id, search_source, [tm_match],
                 getattr(self, '_compare_panel_mt_matches', []),
             )
+
+            # Mark this segment+source as shown so the redundant repeat calls in the
+            # same click burst short-circuit at the guard above.
+            self._instant_tm_guard = _guard_key
 
             # Keep the prefetch cache consistent so the later cache-hit render (and
             # any re-render) shows the same TM instead of TM=0.

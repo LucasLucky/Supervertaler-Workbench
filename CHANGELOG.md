@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.282 (June 16, 2026)
+**Current Version:** v1.10.283 (June 17, 2026)
+
+
+## v1.10.283 – June 17, 2026
+
+### Fixed (performance · TM)
+
+- **Clicking between segments is near-instant again, even on a very large TM.** Despite the v1.10.279–281 work, every segment click still froze the grid for up to ~4 seconds on Windows with a big TM (the cursor took seconds to appear, while the matches showed instantly). The real cause was the exact-match query itself: it matched the source against four hash variants with `source_hash = ? OR source_hash = ? OR …`, and on a 1.5-million-row TM SQLite's planner gave up on that OR and instead used the `tm_id` index — scanning *every row of the active TM* (~700 ms) on every click, for the **forward** direction too, not just reverse. The query now uses `source_hash IN (…)` with an explicit `INDEXED BY idx_tu_source_hash` (and the matching `idx_tu_target_hash` for the reverse direction), turning the ~700 ms scan into a ~0.3 ms indexed lookup. The same fix is applied to the background prefetch worker's batch lookup (~545 ms → ~6 ms per chunk), so it no longer thrashes a large database. (This was instant on macOS all along only because that machine's TM is far smaller.)
+- **The instant on-click TM match no longer runs two or three times per click.** Focusing a target cell drove the same exact-match + Match-Panel update up to three times in a single click (the row-selection cascade, the manual selection trigger, and the deferred lookup all re-ran it). It now runs once per segment via an idempotent guard.
+
+### Changed (performance · TermLens)
+
+- **TermLens only renders when it's on screen.** The TermLens display rebuilds one chip widget per source token, and it was doing so for *both* the under-grid and Match-Panel TermLens on every click — even the one hidden on a background tab or collapsed panel. Whichever TermLens isn't currently visible now stashes the latest segment's data and renders it lazily the moment it's shown, roughly halving the per-click TermLens cost in the common single-panel layout.
 
 
 ## v1.10.282 – June 16, 2026
