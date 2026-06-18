@@ -339,7 +339,7 @@ try:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QHeaderView, QMenuBar, QMenu,
         QFileDialog, QMessageBox, QToolBar, QLabel, QComboBox,
-        QPushButton, QSpinBox, QSplitter, QTextEdit, QStatusBar,
+        QPushButton, QSpinBox, QDoubleSpinBox, QSplitter, QTextEdit, QStatusBar,
         QStyledItemDelegate, QInputDialog, QDialog, QLineEdit, QRadioButton,
         QButtonGroup, QDialogButtonBox, QTabWidget, QGroupBox, QGridLayout, QCheckBox,
         QProgressBar, QProgressDialog, QFormLayout, QTabBar, QPlainTextEdit, QAbstractItemDelegate,
@@ -8332,9 +8332,17 @@ class SupervertalerQt(QMainWindow):
         # Configure the persistent token-usage ledger (metadata only; on by
         # default, matching the Trados plugin). Writes to
         # <user_data>/workbench/usage/usage-YYYY-MM.jsonl.
+        self.monthly_budget_usd = 0.0
         try:
             from modules import usage_log
-            usage_log.configure(self.user_data_path, __version__, enabled=True)
+            _enabled = True
+            try:
+                _gp = self.load_general_settings()
+                _enabled = bool(_gp.get('persist_usage_log', True))
+                self.monthly_budget_usd = float(_gp.get('monthly_budget_usd', 0.0) or 0.0)
+            except Exception:
+                pass
+            usage_log.configure(self.user_data_path, __version__, enabled=_enabled)
         except Exception:
             pass
 
@@ -22658,6 +22666,34 @@ class SupervertalerQt(QMainWindow):
 
         prefs_layout.addSpacing(10)
 
+        # --- AI Cost Monitoring ---
+        cost_header = QLabel(self.tr("<b>AI Cost Monitoring:</b>"))
+        prefs_layout.addWidget(cost_header)
+
+        self._usage_log_cb = CheckmarkCheckBox(self.tr("Keep a persistent token-usage log (for cost monitoring)"))
+        self._usage_log_cb.setChecked(general_prefs.get('persist_usage_log', True))
+        self._usage_log_cb.setToolTip(self.tr(
+            "Append every AI call's tokens and cost to a monthly log file under your\n"
+            "workbench/usage folder. Metadata only — never the prompt or response text.\n"
+            "View it via Tools → Token Usage & Costs."))
+        prefs_layout.addWidget(self._usage_log_cb)
+
+        budget_row = QHBoxLayout()
+        budget_row.addWidget(QLabel(self.tr("  Monthly budget (USD, 0 = none):")))
+        self._budget_spin = QDoubleSpinBox()
+        self._budget_spin.setDecimals(2)
+        self._budget_spin.setMinimum(0.0)
+        self._budget_spin.setMaximum(100000.0)
+        self._budget_spin.setValue(float(general_prefs.get('monthly_budget_usd', 0.0) or 0.0))
+        self._budget_spin.setToolTip(self.tr(
+            "A soft monthly spend limit. When this month's logged AI cost reaches it,\n"
+            "starting a batch translation warns you (it never blocks). 0 disables it."))
+        budget_row.addWidget(self._budget_spin)
+        budget_row.addStretch()
+        prefs_layout.addLayout(budget_row)
+
+        prefs_layout.addSpacing(10)
+
         # --- Translation Memory ---
         tm_header = QLabel(self.tr("<b>Translation Memory:</b>"))
         prefs_layout.addWidget(tm_header)
@@ -26962,6 +26998,16 @@ class SupervertalerQt(QMainWindow):
         general_prefs['batch_size'] = batch_size_spin.value()
         general_prefs['surrounding_segments'] = surrounding_spin.value()
         general_prefs['use_full_context'] = full_context_cb.isChecked()
+        if getattr(self, '_usage_log_cb', None) is not None:
+            general_prefs['persist_usage_log'] = self._usage_log_cb.isChecked()
+        if getattr(self, '_budget_spin', None) is not None:
+            general_prefs['monthly_budget_usd'] = float(self._budget_spin.value())
+        try:
+            from modules import usage_log as _ul
+            _ul.set_enabled(general_prefs.get('persist_usage_log', True))
+            self.monthly_budget_usd = float(general_prefs.get('monthly_budget_usd', 0.0) or 0.0)
+        except Exception:
+            pass
         general_prefs['context_window_size'] = context_slider.value()
         # Save TM check mode settings
         general_prefs['check_tm_before_api'] = not tm_no_check_rb.isChecked()
@@ -27088,6 +27134,16 @@ class SupervertalerQt(QMainWindow):
         general_prefs['batch_size'] = batch_size_spin.value()
         general_prefs['surrounding_segments'] = surrounding_spin.value()
         general_prefs['use_full_context'] = full_context_cb.isChecked()
+        if getattr(self, '_usage_log_cb', None) is not None:
+            general_prefs['persist_usage_log'] = self._usage_log_cb.isChecked()
+        if getattr(self, '_budget_spin', None) is not None:
+            general_prefs['monthly_budget_usd'] = float(self._budget_spin.value())
+        try:
+            from modules import usage_log as _ul
+            _ul.set_enabled(general_prefs.get('persist_usage_log', True))
+            self.monthly_budget_usd = float(general_prefs.get('monthly_budget_usd', 0.0) or 0.0)
+        except Exception:
+            pass
         general_prefs['context_window_size'] = context_slider.value()
         general_prefs['quicklauncher_context_percent'] = quicklauncher_context_slider.value()
         # Save TM check mode settings
@@ -60838,6 +60894,27 @@ class SupervertalerQt(QMainWindow):
                 profile_key = (profile.get('api_key') or '').strip()
                 if profile_key:
                     custom_api_key = profile_key
+
+        # Warn-only monthly-budget pre-flight (advisory; never blocks). LLM only.
+        if translation_provider_type == 'LLM':
+            try:
+                from modules import usage_log
+                _budget = float(getattr(self, 'monthly_budget_usd', 0.0) or 0.0)
+                if _budget > 0:
+                    _spent = usage_log.month_to_date_cost()
+                    if _spent >= _budget:
+                        from PyQt6.QtWidgets import QMessageBox
+                        _n = len(segments_needing_translation)
+                        _reply = QMessageBox.question(
+                            self, self.tr("Monthly budget reached"),
+                            self.tr(
+                                "You have used ${:.2f} of your ${:.2f} monthly AI budget.\n\n"
+                                "Start this batch of {} segment(s) anyway?").format(_spent, _budget, _n),
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        if _reply != QMessageBox.StandardButton.Yes:
+                            return
+            except Exception:
+                pass
 
         worker = PreTranslationWorker(
             self,
