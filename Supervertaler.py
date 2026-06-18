@@ -11271,6 +11271,20 @@ class SupervertalerQt(QMainWindow):
         log_window_action.setToolTip(self.tr("Open the session log in a separate window that can be moved to another screen"))
         tools_menu.addAction(log_window_action)
 
+        usage_report_action = QAction(self.tr("💰 &Token Usage && Costs..."), self)
+        usage_report_action.setToolTip(self.tr("Token usage and cost totals from the usage log, with CSV/Excel export"))
+
+        def _open_usage_report():
+            try:
+                from modules.usage_report_dialog import UsageReportDialog
+                budget = float(getattr(self, 'monthly_budget_usd', 0.0) or 0.0)
+                UsageReportDialog(self, budget=budget).exec()
+            except Exception as e:
+                print(f"[Usage report] failed to open: {e}")
+
+        usage_report_action.triggered.connect(lambda: _open_usage_report())
+        tools_menu.addAction(usage_report_action)
+
         tools_menu.addSeparator()
 
         settings_action = QAction(self.tr("&Settings..."), self)
