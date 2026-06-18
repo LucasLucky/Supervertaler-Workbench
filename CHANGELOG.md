@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.285 (June 18, 2026)
+**Current Version:** v1.10.286 (June 18, 2026)
+
+
+## v1.10.286 – June 18, 2026
+
+### Fixed (DOCX import · Word comments)
+
+- **Word comments now import onto the right segments.** Importing a `.docx` that carried several review comments attached them **all to the first segment** instead of to the passages they belonged to. The anchor parser captured only the highlighted run — often a single mid-sentence word such as *"werkwijze"* — and that word frequently also appears in the document title, so the matcher (which compared only the **start** of each segment) couldn't tell the title from the body and gave up to the top of the document. The importer now captures the run text **from the highlight to the end of its paragraph** (e.g. *"werkwijze voor het sorteren van zware…"*) and matches a segment by **containing** that context (longest first), so each comment lands on its own segment — even when the highlighted word repeats elsewhere, and even when one paragraph was split into several segments. Reported with a 3-comment patent document where all three collapsed onto segment 1.
 
 
 ## v1.10.285 – June 18, 2026

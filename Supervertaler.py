@@ -44990,31 +44990,37 @@ class SupervertalerQt(QMainWindow):
         import re as _re
 
         def _norm(s):
-            # Drop Supervertaler inline tags and trim, for text matching.
-            return _re.sub(r'<[^>]+>', '', s or '').strip()
+            # Drop Supervertaler inline tags, collapse whitespace and casefold,
+            # so a comment's anchor context matches a segment's source despite
+            # tag markup, spacing and case differences.
+            return _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', '', s or '')).strip().casefold()
 
         norm_sources = [(seg, _norm(seg.source)) for seg in segments]
 
         def _best_segment(anchor):
+            # The anchor is the run text from the highlighted span to the end of
+            # its paragraph (see docx_comments._parse_anchor_spans), so we locate
+            # the segment by *containment*: the segment whose source contains the
+            # anchor context. We try the full context first (most specific) and
+            # fall back to shorter prefixes, so a paragraph that Okapi split into
+            # several segments still matches on its first segment, while text that
+            # merely repeats a word (e.g. the title vs. the body) is disambiguated
+            # by the longer needle.
             a = _norm(anchor)
-            if len(a) < 4:
+            if len(a) < 6:
                 return None
-            best, best_len = None, 0
-            for seg, src in norm_sources:
-                if len(src) < 4:
+            for length in (len(a), 60, 40, 24, 12):
+                if length > len(a):
                     continue
-                n = 0
-                for x, y in zip(src, a):
-                    if x == y:
-                        n += 1
-                    else:
-                        break
-                # Accept when the common prefix covers most of the shorter
-                # string (so "MANUAL" matches "MANUAL001…", and a heading
-                # matches its own segment, but loose 1-2 char hits don't).
-                if n >= 4 and n >= int(min(len(src), len(a)) * 0.6) and n > best_len:
-                    best, best_len = seg, n
-            return best
+                needle = a[:length]
+                if len(needle) < 6:
+                    break
+                hits = [seg for seg, src in norm_sources
+                        if len(src) >= 6 and needle in src]
+                if hits:
+                    # Unique → done; ambiguous → first in document order.
+                    return hits[0]
+            return None
 
         attached = 0
         unplaced = 0

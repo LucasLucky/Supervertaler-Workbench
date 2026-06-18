@@ -65,40 +65,44 @@ def _parse_comments_xml(data: bytes) -> Dict[str, Dict[str, str]]:
     return out
 
 
-# How much anchor text to capture from the START of a comment range. We
-# only need enough to locate the segment the comment sits on; capturing the
-# whole range is unreliable (Word duplicates drawing text via
-# mc:AlternateContent, and reviewers sometimes select huge blocks).
-_ANCHOR_MAX = 80
+# How much context to capture from the START of a comment range. We capture
+# from the comment's start through the end of its paragraph (capped), NOT just
+# the highlighted span: the highlighted word alone is often ambiguous — e.g. a
+# word that also appears in the document title — whereas the run of text that
+# follows it uniquely identifies the segment. Capturing the whole range is
+# unreliable anyway (Word duplicates drawing text via mc:AlternateContent, and
+# reviewers sometimes select huge blocks).
+_ANCHOR_MAX = 100
 
 
 def _parse_anchor_spans(data: bytes) -> Dict[str, str]:
-    """Return {comment_id: anchor_text} where anchor_text is the run text at
-    the START of the comment range (capped at ~80 chars).
+    """Return {comment_id: anchor_text} where anchor_text is the run text from
+    the START of the comment range to the end of that paragraph (capped at
+    ~100 chars).
 
-    We walk document.xml in order; while a comment id is "open" (between its
-    commentRangeStart and commentRangeEnd) we accumulate run text until the
-    cap, then stop for that id. Consecutive exact-duplicate runs are skipped
-    to absorb Word's mc:AlternateContent (Choice/Fallback) doubling.
+    We walk document.xml in order. When a comment id's range opens we begin
+    accumulating run text and keep going *past* commentRangeEnd until the cap
+    or the end of the start paragraph — so even a one-word highlight yields
+    enough following context to locate its segment unambiguously. Consecutive
+    exact-duplicate runs are skipped to absorb Word's mc:AlternateContent
+    (Choice/Fallback) doubling.
     """
     spans: Dict[str, List[str]] = {}
     done: set = set()
-    active: set = set()
+    capturing: set = set()
 
     for _evt, el in ET.iterparse(_BytesReader(data), events=("end",)):
         tag = el.tag
         if tag == _q("commentRangeStart"):
             cid = el.get(_q("id"))
-            if cid is not None:
-                active.add(cid)
+            if cid is not None and cid not in done:
+                capturing.add(cid)
                 spans.setdefault(cid, [])
-        elif tag == _q("commentRangeEnd"):
-            active.discard(el.get(_q("id")))
-        elif tag == _q("t") and active:
+        elif tag == _q("t") and capturing:
             txt = el.text or ""
             if not txt:
                 continue
-            for cid in list(active):
+            for cid in list(capturing):
                 if cid in done:
                     continue
                 buf = spans[cid]
@@ -109,6 +113,10 @@ def _parse_anchor_spans(data: bytes) -> Dict[str, str]:
                 buf.append(txt)
                 if sum(len(p) for p in buf) >= _ANCHOR_MAX:
                     done.add(cid)
+        elif tag == _q("p"):
+            # End of a paragraph: stop capturing anything that started in it so
+            # the anchor context never bleeds into unrelated later text.
+            capturing.clear()
 
     return {cid: "".join(parts).strip()[:_ANCHOR_MAX]
             for cid, parts in spans.items()}
