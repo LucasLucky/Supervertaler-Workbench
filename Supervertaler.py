@@ -7160,7 +7160,21 @@ class PreTranslationWorker(QThread):
         """Main translation loop - runs in background thread."""
         import time
         import re
-        
+
+        # Attribute this batch worker's AI calls in the persistent usage ledger
+        # (thread-local; the worker thread is short-lived). Only LLM calls log.
+        try:
+            from modules import usage_log
+            _proj = getattr(self.parent_app, 'current_project', None)
+            usage_log.set_context(
+                task='BatchTranslate',
+                project=getattr(_proj, 'name', None),
+                src_lang=getattr(_proj, 'source_lang', None),
+                tgt_lang=getattr(_proj, 'target_lang', None),
+            )
+        except Exception:
+            pass
+
         # For TM provider, create thread-local database connection
         # SQLite connections can't be shared across threads
         self._thread_local_db = None
@@ -8314,7 +8328,16 @@ class SupervertalerQt(QMainWindow):
         # content but no pointer exists, so a fresh dev install still does
         # the right thing without a special case.
         self.user_data_path = get_user_data_path()
-        
+
+        # Configure the persistent token-usage ledger (metadata only; on by
+        # default, matching the Trados plugin). Writes to
+        # <user_data>/workbench/usage/usage-YYYY-MM.jsonl.
+        try:
+            from modules import usage_log
+            usage_log.configure(self.user_data_path, __version__, enabled=True)
+        except Exception:
+            pass
+
         # Ensure user_data directory exists (creates empty folder if missing)
         # BUT only if we're not going to show the dialog (which will create the chosen folder)
         if not self._needs_data_location_dialog:

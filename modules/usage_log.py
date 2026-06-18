@@ -82,6 +82,24 @@ class UsageContext:
         return False
 
 
+def set_context(task=None, project=None, file=None, src_lang=None,
+                tgt_lang=None, client=None) -> None:
+    """Set the thread-local attribution for subsequent AI calls on this thread.
+    Used by the batch worker thread (which is short-lived, so an explicit clear
+    is optional). Prefer :class:`UsageContext` on the main thread."""
+    _ctx.task = task
+    _ctx.project = project
+    _ctx.file = file
+    _ctx.src_lang = src_lang
+    _ctx.tgt_lang = tgt_lang
+    _ctx.client = client
+
+
+def clear_context() -> None:
+    for k in ("task", "project", "file", "src_lang", "tgt_lang", "client"):
+        setattr(_ctx, k, None)
+
+
 def _project_key(project: Optional[str]) -> str:
     if not project:
         return ""
