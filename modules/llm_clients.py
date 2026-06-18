@@ -35,6 +35,7 @@ Usage:
 
 import os
 import sys
+import time
 from typing import Dict, Optional, Literal, List, Tuple
 from dataclasses import dataclass
 
@@ -764,45 +765,21 @@ class LLMClient:
         Returns:
             Translated text
         """
-        # Use custom prompt if provided, otherwise build simple prompt
-        if custom_prompt:
-            prompt = custom_prompt
-        else:
-            # Build prompt
-            prompt = f"Translate the following text from {source_lang} to {target_lang}:\n\n{text}"
-
-            if context:
-                prompt = f"Context: {context}\n\n{prompt}"
-
-        # Log warning if images provided but model doesn't support vision
-        if images and not self.model_supports_vision(self.provider, self.model):
-            print(f"⚠️ Warning: Model {self.model} doesn't support vision. Images will be ignored.")
-            images = None  # Don't pass to API
-
-        # Call appropriate provider
-        if self.provider in ("openai", "custom_openai"):
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
-        elif self.provider == "claude":
-            result = self._call_claude(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
-        elif self.provider == "gemini":
-            result = self._call_gemini(prompt, max_tokens=max_tokens, images=images, system_prompt=system_prompt)
-        elif self.provider == "mistral":
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
-        elif self.provider == "deepseek":
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
-        elif self.provider == "openrouter":
-            result = self._call_openai(prompt, max_tokens=max_tokens, images=None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
-        elif self.provider == "ollama":
-            result = self._call_ollama(prompt, max_tokens=max_tokens, system_prompt=system_prompt)
-        else:
-            raise ValueError(f"Unsupported provider: {self.provider}")
-
-        # Post-process: clean translation response to remove prompt remnants,
-        # unless skip_cleaning is set (e.g. for prompt generation where
-        # translation-related keywords are expected content, not remnants)
-        if not skip_cleaning:
-            result = self._clean_translation_response(result, prompt)
-
+        # Delegate to translate_with_usage so that EVERY translation call flows
+        # through the single token-usage logging path (translate_with_usage
+        # records to the usage ledger). Behaviour is otherwise identical.
+        result, _usage = self.translate_with_usage(
+            text=text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            context=context,
+            custom_prompt=custom_prompt,
+            max_tokens=max_tokens,
+            images=images,
+            system_prompt=system_prompt,
+            skip_cleaning=skip_cleaning,
+            enable_prompt_caching=enable_prompt_caching,
+        )
         return result
 
     def translate_with_usage(
@@ -837,6 +814,7 @@ class LLMClient:
         if images and not self.model_supports_vision(self.provider, self.model):
             images = None
 
+        _t0 = time.perf_counter()
         if self.provider in ("openai", "custom_openai", "mistral", "deepseek", "openrouter"):
             result, usage = self._call_openai_with_usage(prompt, max_tokens=max_tokens, images=images if self.provider in ("openai", "custom_openai") else None, system_prompt=system_prompt, enable_prompt_caching=enable_prompt_caching)
         elif self.provider == "claude":
@@ -851,6 +829,20 @@ class LLMClient:
 
         if not skip_cleaning:
             result = self._clean_translation_response(result, prompt)
+
+        # Record this call to the persistent usage ledger (best-effort, metadata
+        # only). When the provider returned no usage, estimate via chars/4.
+        try:
+            from modules import usage_log as _usage_log
+            _est_in = 0 if usage else (len(prompt) + 3) // 4
+            _est_out = 0 if usage else (len(result) + 3) // 4
+            _usage_log.record(
+                self.provider, self.model, usage or {},
+                estimated_input=_est_in, estimated_output=_est_out,
+                duration_s=time.perf_counter() - _t0,
+            )
+        except Exception:
+            pass
 
         return result, usage
 

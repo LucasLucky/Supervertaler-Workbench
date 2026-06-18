@@ -20,9 +20,12 @@ import json
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-# Providers whose models are never billed via these list prices (local, or the
-# user is billed by their own endpoint). estimate_cost() returns 0.0 for these.
-_FREE_PROVIDERS = ("ollama", "custom_openai")
+# Providers whose models are never billed via these list prices (local). Only
+# Ollama is unconditionally free. custom_openai (self-hosted / OpenAI-compatible
+# endpoints) falls through to the price list, so a custom model gains a cost
+# figure as soon as its id + rate are added to pricing.json — otherwise its
+# cost is reported as unknown (None), not free.
+_FREE_PROVIDERS = ("ollama",)
 
 
 def _load_pricing() -> Dict[str, Tuple[float, float]]:
