@@ -17,6 +17,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from modules.llm_clients import LLMClient, load_api_keys
 from modules.llm_pricing import estimate_cost
+from modules import usage_log
 
 
 class ChatBackend(QObject):
@@ -196,15 +197,19 @@ class ChatBackend(QObject):
 
         try:
             start = time.time()
-            response_text, usage = self.llm_client.translate_with_usage(
-                text="",
-                source_lang="en",
-                target_lang="en",
-                custom_prompt=prompt,
-                system_prompt=system_prompt,
-                skip_cleaning=is_analysis,
-                images=images,
-            )
+            # Tag these calls as "Chat" in the usage ledger (the default task is
+            # "Translate"). is_analysis covers the chat panel's analysis actions,
+            # which are still chat-panel AI usage.
+            with usage_log.UsageContext(task="Chat"):
+                response_text, usage = self.llm_client.translate_with_usage(
+                    text="",
+                    source_lang="en",
+                    target_lang="en",
+                    custom_prompt=prompt,
+                    system_prompt=system_prompt,
+                    skip_cleaning=is_analysis,
+                    images=images,
+                )
             elapsed = time.time() - start
 
             tokens_in = usage.get('input_tokens', 0)

@@ -2,7 +2,20 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.284 (June 17, 2026)
+**Current Version:** v1.10.285 (June 18, 2026)
+
+
+## v1.10.285 – June 18, 2026
+
+### Added (Token Usage & Costs)
+
+- **A persistent token-usage log and a built-in Usage & Costs report.** Every AI call now appends one metadata-only line to a monthly file (`…\Supervertaler\workbench\usage\usage-YYYY-MM.jsonl`) recording the model, token counts, cost, project, file and language pair — **never the prompt or response text**. Open **Tools → 💰 Token Usage & Costs…** to total it by Project, Client, Model, Provider, Task, Day or Month over This month / Last 3 months / This year / All time, and **export the detailed ledger to CSV or Excel** for invoicing or analysis. The log uses the **same schema as the Supervertaler for Trados plugin**, so if you use both, their logs merge into one analysis.
+- **Provider-reported token counts.** For OpenAI, Claude, Gemini, Mistral, DeepSeek and OpenRouter the figures are the **exact numbers the provider's API reported** for that call (flagged `actual`), including the cached-token breakdown. When a provider returns no usage data (local Ollama models, or an occasional unparseable response) the record falls back to a `characters ÷ 4` estimate, flagged `estimated`.
+- **Cache-aware cost.** Cached input tokens are priced at each provider's cache discount (e.g. Claude cache reads at 10% of the input rate and writes at 125%, OpenAI cache reads at 50%, Gemini 2.5+/3 at 25%) rather than the full input rate — matching how the Trados plugin computes cost, so the two products agree to the cent for the same call.
+- **A monthly budget with a soft warning.** Set an optional **Monthly budget (USD)** in **Settings → AI Settings → AI Cost Monitoring** (cents allowed; `0` disables). Once this month's logged spend reaches it, starting a batch translation shows a warn-and-continue prompt. It is advisory and **never blocks**.
+- **A single, shared price list.** Costs come from a canonical `pricing.json` bundled with the app and shared verbatim with the Trados plugin. Copy `modules/pricing.json` to `…\Supervertaler\pricing.json` to price a custom or self-hosted model, or to override any rate for both products at once. Until a rate is set, a custom model's **tokens are still logged**, with the cost marked unknown rather than guessed; local models (Ollama) are priced at `0`.
+
+The whole feature is **on by default** and can be switched off in **Settings → AI Settings → AI Cost Monitoring**. Chat-panel calls are logged under the **Chat** task. See the docs: [Token Usage & Costs](https://docs.supervertaler.com/workbench/ai-translation/usage-costs/).
 
 
 ## v1.10.284 – June 17, 2026
