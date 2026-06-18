@@ -22,7 +22,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from modules.llm_pricing import estimate_cost
+from modules.llm_pricing import compute_actual_cost
 
 # ── Module configuration (set once at app start) ─────────────────────────────
 _config = {"root": None, "version": "", "enabled": True}
@@ -135,7 +135,11 @@ def record(provider: str, model: str, usage: Optional[Dict],
             out_tokens = int(estimated_output or 0)
             source = "estimated"
 
-        cost = estimate_cost(provider, model, in_regular + cache_read + cache_write, out_tokens)
+        # Cache-aware cost: cached input is billed below the full input rate
+        # (per-provider multipliers), matching the Trados plugin exactly. For the
+        # estimated path (no provider usage), cache_read/cache_write are 0 so this
+        # reduces to the plain input-rate calculation.
+        cost = compute_actual_cost(provider, model, in_regular, cache_read, cache_write, out_tokens)
         cost_known = cost is not None
 
         project = _ctx_get("project")
