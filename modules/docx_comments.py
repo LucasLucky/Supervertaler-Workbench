@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 import zipfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from xml.etree import ElementTree as ET
 
 # WordprocessingML main namespace
@@ -75,21 +75,30 @@ def _parse_comments_xml(data: bytes) -> Dict[str, Dict[str, str]]:
 _ANCHOR_MAX = 100
 
 
-def _parse_anchor_spans(data: bytes) -> Dict[str, str]:
-    """Return {comment_id: anchor_text} where anchor_text is the run text from
-    the START of the comment range to the end of that paragraph (capped at
-    ~100 chars).
+def _parse_anchor_spans(data: bytes) -> Tuple[Dict[str, Dict[str, Any]], int]:
+    """Walk ``document.xml`` and return ``(spans, total_chars)``.
 
-    We walk document.xml in order. When a comment id's range opens we begin
-    accumulating run text and keep going *past* commentRangeEnd until the cap
-    or the end of the start paragraph — so even a one-word highlight yields
-    enough following context to locate its segment unambiguously. Consecutive
-    exact-duplicate runs are skipped to absorb Word's mc:AlternateContent
-    (Choice/Fallback) doubling.
+    ``spans`` maps ``comment_id -> {"anchor": <text>, "offset": <int>}``:
+
+    * ``anchor`` is the run text from the START of the comment range to the end
+      of that paragraph (capped at ~100 chars). When a comment id's range opens
+      we accumulate run text and keep going *past* commentRangeEnd until the cap
+      or the end of the start paragraph — so even a one-word highlight yields
+      enough following context to locate its segment. Consecutive exact-duplicate
+      runs are skipped to absorb Word's mc:AlternateContent (Choice/Fallback)
+      doubling.
+    * ``offset`` is the number of body-text characters seen *before* the
+      comment's range start, in document order — a position fingerprint used to
+      tell apart segments that have identical text.
+
+    ``total_chars`` is the total body-text length, so a caller can compare a
+    comment's offset to a segment's cumulative offset as a fraction of the whole.
     """
     spans: Dict[str, List[str]] = {}
+    offsets: Dict[str, int] = {}
     done: set = set()
     capturing: set = set()
+    running = 0  # body-text characters seen so far, in document order
 
     for _evt, el in ET.iterparse(_BytesReader(data), events=("end",)):
         tag = el.tag
@@ -98,7 +107,8 @@ def _parse_anchor_spans(data: bytes) -> Dict[str, str]:
             if cid is not None and cid not in done:
                 capturing.add(cid)
                 spans.setdefault(cid, [])
-        elif tag == _q("t") and capturing:
+                offsets.setdefault(cid, running)
+        elif tag == _q("t"):
             txt = el.text or ""
             if not txt:
                 continue
@@ -113,13 +123,16 @@ def _parse_anchor_spans(data: bytes) -> Dict[str, str]:
                 buf.append(txt)
                 if sum(len(p) for p in buf) >= _ANCHOR_MAX:
                     done.add(cid)
+            running += len(txt)
         elif tag == _q("p"):
             # End of a paragraph: stop capturing anything that started in it so
             # the anchor context never bleeds into unrelated later text.
             capturing.clear()
 
-    return {cid: "".join(parts).strip()[:_ANCHOR_MAX]
-            for cid, parts in spans.items()}
+    spans_out = {cid: {"anchor": "".join(parts).strip()[:_ANCHOR_MAX],
+                       "offset": offsets.get(cid, 0)}
+                 for cid, parts in spans.items()}
+    return spans_out, running
 
 
 class _BytesReader:
@@ -143,11 +156,14 @@ def parse_docx_comments(docx_path: str) -> List[Dict[str, Any]]:
     """Extract Word comments from a .docx.
 
     Returns a list of dicts (in comment-id order) with keys:
-        id, author, date, initials, text, anchor_text
+        id, author, date, initials, text, anchor_text, char_offset, doc_chars
 
-    ``anchor_text`` is the highlighted run text the comment is attached to
-    (may be empty if the comment has no range, e.g. a whole-paragraph
-    comment). Returns [] if the document has no comments.
+    ``anchor_text`` is the run text from the highlighted span to the end of its
+    paragraph (may be empty for a comment with no range). ``char_offset`` is the
+    body-text position of the comment's anchor and ``doc_chars`` the total body
+    length — together a document-order fingerprint used by
+    :func:`match_comments_to_segments` to disambiguate identical segments.
+    Returns [] if the document has no comments.
     """
     try:
         with zipfile.ZipFile(docx_path) as z:
@@ -155,12 +171,13 @@ def parse_docx_comments(docx_path: str) -> List[Dict[str, Any]]:
             if "word/comments.xml" not in names:
                 return []
             comments = _parse_comments_xml(z.read("word/comments.xml"))
-            anchors: Dict[str, str] = {}
+            anchors: Dict[str, Dict[str, Any]] = {}
+            doc_chars = 0
             if "word/document.xml" in names:
                 try:
-                    anchors = _parse_anchor_spans(z.read("word/document.xml"))
+                    anchors, doc_chars = _parse_anchor_spans(z.read("word/document.xml"))
                 except Exception:
-                    anchors = {}
+                    anchors, doc_chars = {}, 0
     except (zipfile.BadZipFile, KeyError, OSError):
         return []
 
@@ -174,12 +191,81 @@ def parse_docx_comments(docx_path: str) -> List[Dict[str, Any]]:
         info = comments[cid]
         if not info["text"]:
             continue
+        a = anchors.get(cid, {})
         result.append({
             "id": cid,
             "author": info["author"],
             "date": info["date"],
             "initials": info["initials"],
             "text": info["text"],
-            "anchor_text": anchors.get(cid, ""),
+            "anchor_text": a.get("anchor", ""),
+            "char_offset": a.get("offset", 0),
+            "doc_chars": doc_chars,
         })
     return result
+
+
+# ── Matching comments to Supervertaler segments ──────────────────────────────
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
+
+
+def _norm_for_match(s: str) -> str:
+    """Tag-stripped, whitespace-collapsed, casefolded form for text matching."""
+    return _WS_RE.sub(" ", _TAG_RE.sub("", s or "")).strip().casefold()
+
+
+def match_comments_to_segments(comments: List[Dict[str, Any]],
+                               segment_sources: List[str]) -> List[Any]:
+    """Map each parsed comment to the index of its best segment.
+
+    ``comments`` is the list from :func:`parse_docx_comments`; ``segment_sources``
+    is the segment source strings in document order. Returns a list the same
+    length as ``comments`` of 0-based segment indices, or ``None`` where no
+    confident match was found (the caller decides the fallback, e.g. top).
+
+    A comment is matched by *containment* of its anchor context (longest prefix
+    first, so a paragraph Okapi split into several segments still matches on its
+    first segment). When several segments match — identical or boilerplate text —
+    the tie is broken by **document position**: the comment's character offset
+    vs each candidate segment's cumulative offset, each as a fraction of its
+    own total, so the comment lands on the occurrence the reviewer actually
+    highlighted rather than always the first.
+    """
+    norm_sources = [_norm_for_match(s) for s in segment_sources]
+    # Cumulative tag-stripped length before each segment, for positional ties.
+    seg_cum: List[int] = []
+    acc = 0
+    for s in segment_sources:
+        seg_cum.append(acc)
+        acc += len(_TAG_RE.sub("", s or ""))
+    seg_total = acc or 1
+
+    return [_match_one(_norm_for_match(c.get("anchor_text", "")),
+                       c.get("char_offset"), c.get("doc_chars"),
+                       norm_sources, seg_cum, seg_total)
+            for c in comments]
+
+
+def _match_one(anchor, char_offset, doc_chars, norm_sources, seg_cum, seg_total):
+    if len(anchor) < 6:
+        return None
+    target_frac = None
+    if isinstance(char_offset, int) and isinstance(doc_chars, int) and doc_chars > 0:
+        target_frac = char_offset / doc_chars
+    for length in (len(anchor), 60, 40, 24, 12):
+        if length > len(anchor):
+            continue
+        needle = anchor[:length]
+        if len(needle) < 6:
+            break
+        hits = [i for i, src in enumerate(norm_sources)
+                if len(src) >= 6 and needle in src]
+        if not hits:
+            continue
+        if len(hits) == 1 or target_frac is None:
+            return hits[0]
+        # Several matches (identical/boilerplate text): pick the one closest in
+        # document position to where the comment's anchor actually sits.
+        return min(hits, key=lambda i: abs((seg_cum[i] / seg_total) - target_frac))
+    return None

@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.286 (June 18, 2026)
+**Current Version:** v1.10.287 (June 18, 2026)
+
+
+## v1.10.287 – June 18, 2026
+
+### Fixed (DOCX import · Word comments on repeated text)
+
+- **Imported Word comments now land on the right occurrence when several segments share identical text.** Building on the previous fix, matching a comment by its anchor text alone can't tell apart genuinely identical segments (repeated boilerplate, identical table rows, a stand-alone *"Yes."*) — it would attach to the first copy. The importer now also reads the comment's **position in the document** (Word stores exactly where each comment is anchored) and, when more than one segment matches the text, picks the copy **closest in document position** to where the comment actually sits. The matching logic moved into `modules/docx_comments.py` (`match_comments_to_segments`) and is covered by unit tests.
 
 
 ## v1.10.286 – June 18, 2026

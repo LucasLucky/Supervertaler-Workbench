@@ -20,7 +20,10 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.docx_comments import parse_docx_comments
+from modules.docx_comments import (
+    match_comments_to_segments,
+    parse_docx_comments,
+)
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -106,3 +109,49 @@ def test_no_comments_file_returns_empty(tmp_path):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("word/document.xml", _DOCUMENT_XML)
     assert parse_docx_comments(path) == []
+
+
+def test_char_offset_is_recorded_in_document_order(tmp_path):
+    comments = {c["id"]: c for c in parse_docx_comments(_make_docx(tmp_path))}
+    # Comment 0 (2nd paragraph) sits before comment 1 (3rd paragraph).
+    assert comments["0"]["char_offset"] < comments["1"]["char_offset"]
+    assert comments["0"]["doc_chars"] > 0
+
+
+# ── match_comments_to_segments ───────────────────────────────────────────────
+
+def test_match_basic_containment():
+    """Mid-sentence anchors map to the segment that contains them, not the
+    title that merely shares the highlighted word."""
+    segments = [
+        "Een werkwijze voor het scheiden van afval",                 # 0 title
+        "De uitvinding betreft een werkwijze voor het sorteren.",    # 1 body
+        "In Europa worden jaarlijks miljoenen voertuigen afgedankt.",  # 2
+    ]
+    comments = [
+        {"anchor_text": "werkwijze voor het sorteren.", "char_offset": 50, "doc_chars": 120},
+        {"anchor_text": "Europa worden jaarlijks miljoenen", "char_offset": 95, "doc_chars": 120},
+    ]
+    assert match_comments_to_segments(comments, segments) == [1, 2]
+
+
+def test_match_identical_segments_use_position():
+    """Five identical segments; the comment on the 4th must NOT collapse to the
+    first — document position picks the right occurrence."""
+    dup = "The quick brown fox jumps over the lazy dog every single day."
+    segments = ["Intro paragraph number one here.", dup, "A divider line.",
+                dup, dup, dup, "Closing paragraph at the very end here."]
+    # doc_chars ~ sum of segment lengths; place the anchor near the 4th 'dup'
+    # (index 4). Cumulative offset of index 4 ≈ start of its text.
+    seg_lens = [len(s) for s in segments]
+    offset_to_idx4 = sum(seg_lens[:4])
+    total = sum(seg_lens)
+    comments = [{"anchor_text": dup, "char_offset": offset_to_idx4, "doc_chars": total}]
+    assert match_comments_to_segments(comments, segments) == [4]
+
+
+def test_match_unplaced_returns_none():
+    segments = ["Totally unrelated content about widgets and gadgets."]
+    comments = [{"anchor_text": "something that does not appear anywhere here at all",
+                 "char_offset": 0, "doc_chars": 100}]
+    assert match_comments_to_segments(comments, segments) == [None]

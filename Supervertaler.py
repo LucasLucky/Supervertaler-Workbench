@@ -44979,7 +44979,7 @@ class SupervertalerQt(QMainWindow):
         if not segments:
             return 0
         try:
-            from modules.docx_comments import parse_docx_comments
+            from modules.docx_comments import parse_docx_comments, match_comments_to_segments
             comments = parse_docx_comments(docx_path)
         except Exception as e:
             self.log(f"      ⚠️ Could not read Word comments: {e}")
@@ -44987,49 +44987,24 @@ class SupervertalerQt(QMainWindow):
         if not comments:
             return 0
 
-        import re as _re
-
-        def _norm(s):
-            # Drop Supervertaler inline tags, collapse whitespace and casefold,
-            # so a comment's anchor context matches a segment's source despite
-            # tag markup, spacing and case differences.
-            return _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', '', s or '')).strip().casefold()
-
-        norm_sources = [(seg, _norm(seg.source)) for seg in segments]
-
-        def _best_segment(anchor):
-            # The anchor is the run text from the highlighted span to the end of
-            # its paragraph (see docx_comments._parse_anchor_spans), so we locate
-            # the segment by *containment*: the segment whose source contains the
-            # anchor context. We try the full context first (most specific) and
-            # fall back to shorter prefixes, so a paragraph that Okapi split into
-            # several segments still matches on its first segment, while text that
-            # merely repeats a word (e.g. the title vs. the body) is disambiguated
-            # by the longer needle.
-            a = _norm(anchor)
-            if len(a) < 6:
-                return None
-            for length in (len(a), 60, 40, 24, 12):
-                if length > len(a):
-                    continue
-                needle = a[:length]
-                if len(needle) < 6:
-                    break
-                hits = [seg for seg, src in norm_sources
-                        if len(src) >= 6 and needle in src]
-                if hits:
-                    # Unique → done; ambiguous → first in document order.
-                    return hits[0]
-            return None
+        # Map each Word comment to a segment index by anchor-context containment,
+        # with document position breaking ties between identically-worded
+        # segments (see modules.docx_comments.match_comments_to_segments).
+        try:
+            seg_indices = match_comments_to_segments(comments, [seg.source for seg in segments])
+        except Exception as e:
+            self.log(f"      ⚠️ Could not place Word comments: {e}")
+            seg_indices = [None] * len(comments)
 
         attached = 0
         unplaced = 0
         touched_segs = []
-        for c in comments:
-            seg = _best_segment(c.get('anchor_text', ''))
-            if seg is None:
+        for c, idx in zip(comments, seg_indices):
+            if idx is None:
                 seg = segments[0]
                 unplaced += 1
+            else:
+                seg = segments[idx]
             seg.comments.append(Comment(
                 text=c.get('text', ''),
                 author=(c.get('author') or 'Reviewer'),
