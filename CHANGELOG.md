@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.291 (June 19, 2026)
+**Current Version:** v1.10.292 (June 19, 2026)
+
+
+## v1.10.292 – June 19, 2026
+
+### Changed (Menus · new top-level Translate menu)
+
+- **Translation now has its own top-level menu.** The single-segment and batch translate commands used to live under **Edit**, which was an awkward home for the app's primary action. They're now grouped in a dedicated **Translate** menu (between Edit and Bulk Operations): *Translate Current Segment* (Ctrl+T), the *Batch Translate* submenu (Ctrl+Shift+T and all its scope variants), and *Proofread Translation…*. The menu opens with Alt+R, since Alt+T already belongs to Tools.
+- **Proofread Translation… moved from Bulk Operations into Translate.** It's an AI action like translation, so "translate, then proofread" now reads as one menu. Bulk Operations keeps the non-AI segment housekeeping (status changes, copy-source, clean tags, update TM, pseudo-translate).
+- No handler logic changed and all shortcuts are unchanged — purely a menu reorganization for discoverability. Help docs updated to match.
 
 
 ## v1.10.291 – June 19, 2026

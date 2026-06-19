@@ -10927,14 +10927,23 @@ class SupervertalerQt(QMainWindow):
         goto_action.triggered.connect(self.show_goto_dialog)
         edit_menu.addAction(goto_action)
         
-        edit_menu.addSeparator()
-        
-        translate_action = QAction(self.tr("&Translate Segment"), self)
+        # Translate — first-class top-level menu (v1.10.292). Groups the single
+        # "Translate Current Segment" command with all the Batch Translate
+        # variants (and Proofread) in one obvious place; this stuff was
+        # previously split awkwardly under Edit. Created here, before the Bulk
+        # Operations menu, so it lands right after Edit in the menubar. Uses the
+        # Alt+R accelerator because Alt+T already belongs to the Tools menu.
+        self.translate_menu = menubar.addMenu(self.tr("T&ranslate"))
+        translate_top_menu = self.translate_menu
+
+        translate_action = QAction(self.tr("🌐 &Translate Current Segment"), self)
         translate_action.setShortcut("Ctrl+T")
         translate_action.triggered.connect(self.translate_current_segment)
-        edit_menu.addAction(translate_action)
+        translate_top_menu.addAction(translate_action)
 
-        translate_menu = edit_menu.addMenu(self.tr("Batch &Translate"))
+        translate_top_menu.addSeparator()
+
+        translate_menu = translate_top_menu.addMenu(self.tr("Batch &Translate"))
 
         translate_selected_not_started_action = QAction(self.tr("Translate selected not-started segments"), self)
         translate_selected_not_started_action.triggered.connect(
@@ -10989,6 +10998,15 @@ class SupervertalerQt(QMainWindow):
             lambda checked=False: self.translate_multiple_segments("filtered_segments")
         )
         translate_menu.addAction(translate_filtered_action)
+
+        translate_top_menu.addSeparator()
+
+        # Proofread is an AI action like translation, so it belongs in the
+        # Translate menu rather than under Bulk Operations (v1.10.292).
+        proofread_action = QAction(self.tr("✅ &Proofread Translation..."), self)
+        proofread_action.setToolTip(self.tr("Use AI to proofread and verify translation quality"))
+        proofread_action.triggered.connect(self.show_proofread_dialog)
+        translate_top_menu.addAction(proofread_action)
 
         # Bulk Operations — promoted to a top-level menubar menu in v1.10.145
         # (was a submenu under Edit). It's a sizeable, distinct category of
@@ -11063,11 +11081,6 @@ class SupervertalerQt(QMainWindow):
         clean_tags_action.setToolTip(self.tr("Remove formatting tags from selected segments"))
         clean_tags_action.triggered.connect(self.show_clean_tags_dialog)
         bulk_menu.addAction(clean_tags_action)
-
-        proofread_action = QAction(self.tr("✅ &Proofread Translation..."), self)
-        proofread_action.setToolTip(self.tr("Use AI to proofread and verify translation quality"))
-        proofread_action.triggered.connect(self.show_proofread_dialog)
-        bulk_menu.addAction(proofread_action)
 
         edit_menu.addSeparator()
 
