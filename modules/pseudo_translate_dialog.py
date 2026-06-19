@@ -15,14 +15,12 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QRadioButton,
     QSpinBox,
     QVBoxLayout,
 )
@@ -32,6 +30,7 @@ from modules.pseudo_translate import (
     MODE_PLAIN,
     pseudo_translate_text,
 )
+from modules.styled_widgets import CheckmarkCheckBox, CheckmarkRadioButton
 
 
 class PseudoTranslateDialog(QDialog):
@@ -54,27 +53,40 @@ class PseudoTranslateDialog(QDialog):
         layout.addWidget(intro)
 
         # ── Scope ──
+        # Only offer radio choices when there's actually more than one scope.
+        # With no selection and no filter there's just "all", so a lone radio
+        # would look like an unchecked option you can't interact with — show a
+        # plain label instead.
         scope_group = QGroupBox("Apply to")
         scope_layout = QVBoxLayout(scope_group)
         self._scope_buttons = QButtonGroup(self)
-        self._rb_all = QRadioButton(f"All segments ({total})")
-        scope_layout.addWidget(self._rb_all)
-        self._scope_buttons.addButton(self._rb_all)
-
+        self._rb_all = None
         self._rb_filtered = None
-        if filtered_count:
-            self._rb_filtered = QRadioButton(f"Filtered / visible segments ({filtered_count})")
-            scope_layout.addWidget(self._rb_filtered)
-            self._scope_buttons.addButton(self._rb_filtered)
-
         self._rb_selected = None
-        if selected_count:
-            self._rb_selected = QRadioButton(f"Selected segments ({selected_count})")
-            scope_layout.addWidget(self._rb_selected)
-            self._scope_buttons.addButton(self._rb_selected)
 
-        # Default: honour an explicit selection, otherwise the whole document.
-        (self._rb_selected or self._rb_all).setChecked(True)
+        if not filtered_count and not selected_count:
+            scope_layout.addWidget(QLabel(f"All {total} segments."))
+        else:
+            self._rb_all = CheckmarkRadioButton(f"All segments ({total})")
+            scope_layout.addWidget(self._rb_all)
+            self._scope_buttons.addButton(self._rb_all)
+
+            if filtered_count:
+                self._rb_filtered = CheckmarkRadioButton(
+                    f"Filtered / visible segments ({filtered_count})"
+                )
+                scope_layout.addWidget(self._rb_filtered)
+                self._scope_buttons.addButton(self._rb_filtered)
+
+            if selected_count:
+                self._rb_selected = CheckmarkRadioButton(
+                    f"Selected segments ({selected_count})"
+                )
+                scope_layout.addWidget(self._rb_selected)
+                self._scope_buttons.addButton(self._rb_selected)
+
+            # Default: honour an explicit selection, otherwise the whole document.
+            (self._rb_selected or self._rb_all).setChecked(True)
         layout.addWidget(scope_group)
 
         # ── Length expansion ──
@@ -101,8 +113,8 @@ class PseudoTranslateDialog(QDialog):
         char_group = QGroupBox("Characters")
         char_layout = QVBoxLayout(char_group)
         self._mode_buttons = QButtonGroup(self)
-        self._rb_accents = QRadioButton("Accented characters (test diacritics, encoding, fonts)")
-        self._rb_plain = QRadioButton("Plain words (length + markers only)")
+        self._rb_accents = CheckmarkRadioButton("Accented characters (test diacritics, encoding, fonts)")
+        self._rb_plain = CheckmarkRadioButton("Plain words (length + markers only)")
         self._rb_accents.setChecked(True)
         char_layout.addWidget(self._rb_accents)
         char_layout.addWidget(self._rb_plain)
@@ -111,7 +123,7 @@ class PseudoTranslateDialog(QDialog):
         layout.addWidget(char_group)
 
         # ── Boundary markers ──
-        self._markers = QCheckBox(
+        self._markers = CheckmarkCheckBox(
             "Wrap each segment in ⟦ ⟧ boundary markers (spot dropped / merged segments)"
         )
         self._markers.setChecked(True)

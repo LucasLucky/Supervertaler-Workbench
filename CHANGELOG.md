@@ -2,7 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.290 (June 19, 2026)
+**Current Version:** v1.10.291 (June 19, 2026)
+
+
+## v1.10.291 – June 19, 2026
+
+### Fixed (Pseudo-translate dialog · invisible checkboxes/radios)
+
+- **The Pseudo-translate dialog's radio buttons and checkboxes rendered as empty squares with no visible checked state** — the "All segments" option in particular looked like a checkbox you were meant to tick but couldn't. The dialog (new in v1.10.290) used raw `QRadioButton`/`QCheckBox`, which don't show their checked state under the app theme; it now uses the app's styled `CheckmarkRadioButton` / `CheckmarkCheckBox`, so selections paint the standard green indicator. Reported by Michael with a screenshot.
+- **When there's only one possible scope (no selection, no filter), "Apply to" now shows a plain "All N segments." label** instead of a single always-on radio that looked interactive but couldn't be toggled.
+
+### Changed (internal · shared widget moved to modules)
+
+- **`CheckmarkRadioButton` moved out of `Supervertaler.py` into `modules/styled_widgets.py`**, next to `CheckmarkCheckBox` (whose docstring already designates it the home for widgets reused in 3+ places). No behaviour change; it's now importable by other modules (e.g. the pseudo-translate dialog) without reaching back into the main file.
 
 
 ## v1.10.290 – June 19, 2026

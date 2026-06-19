@@ -9,8 +9,8 @@ If you tweak the look of one of these widgets, the change applies
 everywhere automatically. Don't paste local copies back into other files.
 """
 from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPainter, QPen, QColor
-from PyQt6.QtWidgets import QCheckBox, QPushButton, QStyleOptionButton
+from PyQt6.QtGui import QPainter, QPen, QColor, QBrush
+from PyQt6.QtWidgets import QCheckBox, QPushButton, QRadioButton, QStyleOptionButton
 
 
 class CheckmarkCheckBox(QCheckBox):
@@ -276,3 +276,66 @@ class HelpButton(QPushButton):
     def set_topic(self, topic: str):
         """Re-target an existing button at a different help page."""
         self._topic = topic
+
+
+class CheckmarkRadioButton(QRadioButton):
+    """Standard Supervertaler styled radio button.
+
+    Matches :class:`CheckmarkCheckBox` (same 16px indicator, green-when-checked
+    look) but round, with a manually-painted white centre dot so the checked
+    state is clearly visible under the app theme — raw QRadioButton renders an
+    empty indicator here.
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QRadioButton {
+                font-size: 9pt;
+                spacing: 6px;
+            }
+            QRadioButton::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #999;
+                border-radius: 9px;
+                background-color: white;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #4CAF50;
+                border-color: #4CAF50;
+            }
+            QRadioButton::indicator:hover {
+                border-color: #666;
+            }
+            QRadioButton::indicator:checked:hover {
+                background-color: #45a049;
+                border-color: #45a049;
+            }
+        """)
+
+    def paintEvent(self, event):
+        """Draw a white centre dot on top of the indicator when checked."""
+        super().paintEvent(event)
+        if not self.isChecked():
+            return
+
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+        indicator_rect = self.style().subElementRect(
+            self.style().SubElement.SE_RadioButtonIndicator, opt, self
+        )
+        if not indicator_rect.isValid():
+            return
+
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QBrush(QColor("white")))
+            painter.setPen(Qt.PenStyle.NoPen)
+            center = indicator_rect.center()
+            center_pt = QPointF(center.x(), center.y())
+            radius = indicator_rect.width() * 0.25
+            painter.drawEllipse(center_pt, radius, radius)
+        finally:
+            painter.end()

@@ -297,7 +297,7 @@ from modules.pseudo_translate_dialog import run_pseudo_translation  # Pseudo-tra
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
-from modules.styled_widgets import CheckmarkCheckBox, PurpleCheckmarkCheckBox, TealCheckmarkCheckBox
+from modules.styled_widgets import CheckmarkCheckBox, PurpleCheckmarkCheckBox, TealCheckmarkCheckBox, CheckmarkRadioButton
 from modules.statuses import (
     STATUSES,
     DEFAULT_STATUS,
@@ -68827,70 +68827,6 @@ class PinkCheckmarkCheckBox(QCheckBox):
                 painter.drawLine(QPointF(check_x2, check_y2), QPointF(check_x3, check_y3))
                 painter.drawLine(QPointF(check_x1, check_y1), QPointF(check_x2, check_y2))
                 
-                painter.end()
-
-
-class CheckmarkRadioButton(QRadioButton):
-    """Custom radio button with green background when checked"""
-    
-    def __init__(self, text="", parent=None):
-        super().__init__(text, parent)
-        self.setStyleSheet("""
-            QRadioButton {
-                font-size: 9pt;
-                spacing: 6px;
-            }
-            QRadioButton::indicator {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #999;
-                border-radius: 9px;
-                background-color: white;
-            }
-            QRadioButton::indicator:checked {
-                background-color: #4CAF50;
-                border-color: #4CAF50;
-            }
-            QRadioButton::indicator:hover {
-                border-color: #666;
-            }
-            QRadioButton::indicator:checked:hover {
-                background-color: #45a049;
-                border-color: #45a049;
-            }
-        """)
-    
-    def paintEvent(self, event):
-        """Override paint event to draw white dot when checked"""
-        super().paintEvent(event)
-        
-        if self.isChecked():
-            from PyQt6.QtWidgets import QStyleOptionButton
-            from PyQt6.QtGui import QPainter, QBrush, QColor
-            from PyQt6.QtCore import Qt, QPointF
-            
-            opt = QStyleOptionButton()
-            self.initStyleOption(opt)
-            indicator_rect = self.style().subElementRect(
-                self.style().SubElement.SE_RadioButtonIndicator,
-                opt,
-                self
-            )
-            
-            if indicator_rect.isValid():
-                painter = QPainter(self)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                painter.setBrush(QBrush(QColor("white")))
-                painter.setPen(Qt.PenStyle.NoPen)
-                
-                # Draw white dot in center
-                center = indicator_rect.center()
-                center_pt = QPointF(center.x(), center.y())
-                
-                # Dot size: 25% of width radius (50% diameter)
-                radius = indicator_rect.width() * 0.25
-                
-                painter.drawEllipse(center_pt, radius, radius)
                 painter.end()
 
 
