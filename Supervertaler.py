@@ -294,6 +294,7 @@ if sys.platform == 'win32':
 import pyperclip  # For clipboard operations in Superlookup
 from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.pseudo_translate_dialog import run_pseudo_translation  # Pseudo-translation export test (dialog + apply)
+from modules.project_assets import bundle_source, resolve_source_path  # Project-folder source bundling (issue #228)
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
@@ -30876,14 +30877,18 @@ class SupervertalerQt(QMainWindow):
             # pseudo-translated project exported an earlier project's document.)
             self.original_docx = None
             self.current_document_path = None
-            if getattr(self.current_project, 'original_docx_path', None):
-                docx_path = self.current_project.original_docx_path
-                if os.path.exists(docx_path):
+            stored_source = getattr(self.current_project, 'original_docx_path', None)
+            if stored_source:
+                # New projects store this RELATIVE to the project folder
+                # (project-folder model, #228); legacy projects store an
+                # absolute path. resolve_source_path handles both.
+                docx_path = resolve_source_path(stored_source, os.path.dirname(file_path))
+                if docx_path and os.path.exists(docx_path):
                     self.original_docx = docx_path
                     self.current_document_path = docx_path
                     self.log(f"✓ Restored original DOCX path: {Path(docx_path).name}")
                 else:
-                    self.log(f"⚠️ Original DOCX not found (export will rebuild from segments): {docx_path}")
+                    self.log(f"⚠️ Original DOCX not found (export will rebuild from segments): {stored_source}")
             
             # Restore SDLPPX handler for Trados package projects
             if hasattr(self.current_project, 'sdlppx_source_path') and self.current_project.sdlppx_source_path:
@@ -32725,10 +32730,31 @@ class SupervertalerQt(QMainWindow):
                 'sound_effects_map': getattr(self, 'sound_effects_map', {}),
             }
             
-            # Save original DOCX path for structure-preserving export
+            # Bundle the source document into the project folder (source/) and
+            # store it RELATIVE to the .svproj, so the project is portable and
+            # can never bind to an unrelated file (project-folder model, #228).
+            # A directory source (multi-file/folder projects) keeps the legacy
+            # absolute path. Bundling is a one-time copy: once original_docx is
+            # the bundled file, later saves are no-ops.
             original_path = getattr(self, 'original_docx', None) or getattr(self, 'current_document_path', None)
             if original_path and os.path.exists(original_path):
-                self.current_project.original_docx_path = original_path
+                if os.path.isfile(original_path):
+                    project_dir = os.path.dirname(os.path.abspath(file_path))
+                    try:
+                        rel = bundle_source(original_path, project_dir)
+                        if rel:
+                            self.current_project.original_docx_path = rel
+                            bundled_abs = os.path.normpath(os.path.join(project_dir, rel))
+                            self.original_docx = bundled_abs
+                            self.current_document_path = bundled_abs
+                        else:
+                            self.current_project.original_docx_path = original_path
+                    except Exception as bundle_exc:
+                        self.log(f"⚠ Could not bundle source into project folder: {bundle_exc}")
+                        self.current_project.original_docx_path = original_path
+                else:
+                    # Directory source (multi-file / folder project): legacy path.
+                    self.current_project.original_docx_path = original_path
 
             # IMPORTANT: Always save segments in original document order, not sorted order
             # Store current sort state and temporarily restore original order

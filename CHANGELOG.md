@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.293 (June 19, 2026)
+**Current Version:** v1.10.294 (June 19, 2026)
+
+
+## v1.10.294 – June 19, 2026
+
+### Changed (Projects · source files now bundled into the project folder)
+
+- **A project's source document is now bundled inside the project folder and referenced by a relative path** — the first phase of the project-folder model ([#228](https://github.com/Supervertaler/Supervertaler-Workbench/issues/228)). On save, the source DOCX is copied into a `source/` subfolder next to the `.svproj`, and the stored path becomes relative (e.g. `source/US8312383.docx`) instead of an absolute path to wherever the file happened to live. On load, relative paths resolve against the project folder; existing projects with absolute paths keep working unchanged.
+- **Why:** projects are now portable — move, rename, zip or email the folder and the source travels with it, so structure-preserving export keeps working. It also makes the recent export bug impossible to reintroduce: a path relative to the project folder can't point at an unrelated document. (Existing projects migrate automatically the next time they're saved.)
+- Implemented modularly: the copy + path logic lives in `modules/project_assets.py` (`bundle_source`, `resolve_source_path`), covered by `tests/test_project_assets.py` (10 tests). Still to come in later phases: exports defaulting into a `target/` folder, and one-time migration/cleanup of legacy absolute sources.
 
 
 ## v1.10.293 – June 19, 2026
