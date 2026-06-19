@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.287 (June 18, 2026)
+**Current Version:** v1.10.288 (June 19, 2026)
+
+
+## v1.10.288 – June 19, 2026
+
+### Removed (Export · AI-Readable Markdown Table)
+
+- **Retired the one-way "📄 AI-Readable Markdown Table (read-only)" export.** It went unused — the re-importable **Bilingual Text (AI-friendly)** format already covers pasting segments into a chat, and round-trips back into the project. The menu entry and its handler are gone; the help documentation page was removed alongside it.
+
+### Fixed (Formatted Table export · dialog wording)
+
+- **The "Formatted Export" confirmation now points at the right menu item.** It told you to "Use 'Bilingual Table - With Tags'" to keep re-import — a name that no longer exists. It now reads **"Supervertaler Re-importable → Bilingual Table (DOCX)"**, matching the current Export menu.
 
 
 ## v1.10.287 – June 18, 2026
