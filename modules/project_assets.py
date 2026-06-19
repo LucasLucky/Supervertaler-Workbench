@@ -52,6 +52,25 @@ def to_project_relative(abs_path, project_dir):
     return rel.replace(os.sep, "/")
 
 
+def nest_in_own_folder(svproj_path):
+    """Return a path that places ``<name>.svproj`` inside a folder named
+    ``<name>`` (creating the folder), so a project gets its own tidy home and
+    its `source/`/`target/` subfolders don't clutter a shared folder.
+
+    If the file is already in a same-named folder, it's returned unchanged. The
+    project file name itself is never changed — only its parent folder.
+    """
+    svproj_path = os.path.abspath(svproj_path)
+    parent = os.path.dirname(svproj_path)
+    fname = os.path.basename(svproj_path)
+    stem = os.path.splitext(fname)[0]
+    if os.path.basename(parent) == stem:
+        return svproj_path  # already lives in its own folder
+    own = os.path.join(parent, stem)
+    os.makedirs(own, exist_ok=True)
+    return os.path.join(own, fname)
+
+
 def ensure_target_dir(project_dir, subdir=TARGET_SUBDIR):
     """Create ``<project_dir>/<subdir>/`` if needed and return its absolute path.
 

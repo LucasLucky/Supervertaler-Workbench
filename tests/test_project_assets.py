@@ -19,6 +19,7 @@ from modules.project_assets import (
     TARGET_SUBDIR,
     bundle_source,
     ensure_target_dir,
+    nest_in_own_folder,
     resolve_source_path,
     to_project_relative,
 )
@@ -116,6 +117,30 @@ def test_ensure_target_dir_creates_and_returns():
         assert os.path.basename(target) == TARGET_SUBDIR
         # idempotent
         assert ensure_target_dir(proj) == target
+
+
+# ── nest_in_own_folder ──
+
+def test_nest_creates_named_folder():
+    with tempfile.TemporaryDirectory() as tmp:
+        chosen = os.path.join(tmp, "My Project.svproj")
+        nested = nest_in_own_folder(chosen)
+        assert nested == os.path.join(tmp, "My Project", "My Project.svproj")
+        assert os.path.isdir(os.path.join(tmp, "My Project"))
+
+
+def test_nest_is_noop_when_already_in_own_folder():
+    with tempfile.TemporaryDirectory() as tmp:
+        own = os.path.join(tmp, "My Project")
+        os.makedirs(own)
+        chosen = os.path.join(own, "My Project.svproj")
+        assert nest_in_own_folder(chosen) == os.path.abspath(chosen)
+
+
+def test_nest_keeps_the_filename():
+    with tempfile.TemporaryDirectory() as tmp:
+        nested = nest_in_own_folder(os.path.join(tmp, "abc.svproj"))
+        assert os.path.basename(nested) == "abc.svproj"
 
 
 # ── to_project_relative ──

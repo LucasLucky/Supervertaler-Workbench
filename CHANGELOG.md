@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.295 (June 19, 2026)
+**Current Version:** v1.10.296 (June 19, 2026)
+
+
+## v1.10.296 – June 19, 2026
+
+### Added (Projects · optional dedicated project folder)
+
+- **New Project now has a "📁 Create a dedicated folder for this project" checkbox** (on by default). When set, the first save tucks the `.svproj` into a folder named after the project, so its `source/` and `target/` subfolders stay self-contained instead of dropping into whatever folder you saved into. **Save As** honours the same preference. Turn it off and the project saves flat, exactly where you choose. The layout is *not* forced — you keep your own folder naming, and you can nest a project inside any job folder you like.
+- Bundling remains **copy-only** — your original imported documents are never moved or deleted; Supervertaler only ever keeps its own copy in `source/`. (Part of the project-folder model, [#228](https://github.com/Supervertaler/Supervertaler-Workbench/issues/228).)
+- New helper `nest_in_own_folder` in `modules/project_assets.py` (14 tests).
 
 
 ## v1.10.295 – June 19, 2026

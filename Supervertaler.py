@@ -294,7 +294,7 @@ if sys.platform == 'win32':
 import pyperclip  # For clipboard operations in Superlookup
 from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.pseudo_translate_dialog import run_pseudo_translation  # Pseudo-translation export test (dialog + apply)
-from modules.project_assets import bundle_source, resolve_source_path, ensure_target_dir  # Project-folder model (issue #228)
+from modules.project_assets import bundle_source, resolve_source_path, ensure_target_dir, nest_in_own_folder  # Project-folder model (issue #228)
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
@@ -30230,7 +30230,18 @@ class SupervertalerQt(QMainWindow):
         import_layout.addWidget(import_tabs)
         import_group.setLayout(import_layout)
         layout.addWidget(import_group)
-        
+
+        # Give the project its own folder (project-folder model, #228). Keeps
+        # source/ and target/ tidy inside a dedicated folder instead of dropping
+        # them into whatever folder the user saves into. Default on.
+        subfolder_check = CheckmarkCheckBox(
+            self.tr("📁 Create a dedicated folder for this project"))
+        subfolder_check.setChecked(getattr(self, 'create_project_subfolder', True))
+        subfolder_check.setToolTip(self.tr(
+            "When you first save, place the .svproj in its own folder so its "
+            "source/ and target/ subfolders stay self-contained."))
+        layout.addWidget(subfolder_check)
+
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -30251,7 +30262,10 @@ class SupervertalerQt(QMainWindow):
         # Show dialog
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        
+
+        # Remember the folder preference for the first save (and future Save As).
+        self.create_project_subfolder = subfolder_check.isChecked()
+
         # Create project
         project_name = name_input.text().strip() or "Untitled Project"
         source_lang = source_lang_combo.currentData()
@@ -32627,6 +32641,13 @@ class SupervertalerQt(QMainWindow):
             # Ensure .svproj extension
             if not file_path.lower().endswith('.svproj'):
                 file_path += '.svproj'
+            # Optionally tuck the project into its own folder so its source/ and
+            # target/ subfolders stay self-contained (project-folder model, #228).
+            if getattr(self, 'create_project_subfolder', True):
+                try:
+                    file_path = nest_in_own_folder(file_path)
+                except Exception as exc:
+                    self.log(f"⚠ Could not create a dedicated project folder: {exc}")
             # Update project name to match the new filename
             new_name = Path(file_path).stem
             self.current_project.name = new_name
