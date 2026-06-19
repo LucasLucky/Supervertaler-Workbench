@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.289 (June 19, 2026)
+**Current Version:** v1.10.290 (June 19, 2026)
+
+
+## v1.10.290 – June 19, 2026
+
+### Added (Bulk Operations · Pseudo-translation export test)
+
+- **New "🧪 Pseudo-translate (Export Test)" under Bulk Operations** — a pre-flight check that fills targets with deliberately stress-tested placeholder text so you can export the document and confirm it comes out with correct formatting, layout, fonts and tags *before* starting real translation. For each segment it: keeps every inline tag verbatim (HTML/XML, Trados numeric `<410>`, memoQ) and only rewrites the words between them; expands the visible text by a chosen ratio (0% / +30% / up to +200%) to surface overflow and clipping; optionally accents the characters (`werkwijze` → `wéřkwíjžé`) to test encoding and font coverage; and wraps each segment in `⟦ ⟧` boundary markers so a dropped or merged segment is obvious in the export. Scope is All / Filtered / Selected, and the whole run is a single reversible **Edit → Undo** step.
+- This is the missing piece that plain copy-source-to-target couldn't cover: copy-source keeps length identical, never exercises the target language's characters, and hides dropped segments (target == source still looks right). Resolves [#227](https://github.com/Supervertaler/Supervertaler-Workbench/issues/227).
+- Implemented modularly: the pure, Qt-free transform lives in `modules/pseudo_translate.py` (14 unit tests in `tests/test_pseudo_translate.py`); the options dialog and apply/undo orchestration in `modules/pseudo_translate_dialog.py`. `Supervertaler.py` keeps only a thin delegator and the menu entry.
 
 
 ## v1.10.289 – June 19, 2026

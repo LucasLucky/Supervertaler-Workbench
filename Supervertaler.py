@@ -293,6 +293,7 @@ if sys.platform == 'win32':
 # External dependencies
 import pyperclip  # For clipboard operations in Superlookup
 from modules.superlookup import SuperlookupEngine  # Superlookup engine
+from modules.pseudo_translate_dialog import run_pseudo_translation  # Pseudo-translation export test (dialog + apply)
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
@@ -11049,6 +11050,14 @@ class SupervertalerQt(QMainWindow):
         bulk_menu.addAction(send_to_tm_action)
 
         bulk_menu.addSeparator()
+
+        pseudo_translate_action = QAction(self.tr("🧪 &Pseudo-translate (Export Test)..."), self)
+        pseudo_translate_action.setToolTip(self.tr(
+            "Fill targets with stress-tested placeholder text (length-expanded, "
+            "accented, tag-preserving) so you can export and check the document "
+            "for layout/encoding problems before translating. Reversible via Undo."))
+        pseudo_translate_action.triggered.connect(self.pseudo_translate_bulk)
+        bulk_menu.addAction(pseudo_translate_action)
 
         clean_tags_action = QAction(self.tr("🧹 Clean &Tags..."), self)
         clean_tags_action.setToolTip(self.tr("Remove formatting tags from selected segments"))
@@ -47255,6 +47264,18 @@ class SupervertalerQt(QMainWindow):
             self, "Copy Complete",
             f"Copied source to target for {copied_count} non-translatable segment(s)."
         )
+
+    def pseudo_translate_bulk(self):
+        """Fill targets with pseudo-translation for a pre-flight export test.
+
+        Thin delegator — the dialog and the apply/undo logic live in
+        modules/pseudo_translate_dialog.py to keep this file lean. See
+        run_pseudo_translation() there.
+        """
+        if not self.current_project or not getattr(self.current_project, 'segments', None):
+            QMessageBox.information(self, "Not Available", "Please load a project first.")
+            return
+        run_pseudo_translation(self)
 
     def _copy_source_to_target_selected(self, selected_segments):
         """Copy source to target for the given selected segments (keyboard shortcut path).
