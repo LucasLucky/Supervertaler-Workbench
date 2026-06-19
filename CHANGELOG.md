@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.288 (June 19, 2026)
+**Current Version:** v1.10.289 (June 19, 2026)
+
+
+## v1.10.289 – June 19, 2026
+
+### Removed (Export · Supervertaler Formatted Table)
+
+- **Retired the one-way "Supervertaler Formatted Table (DOCX, read-only)" export.** It went unused and added confusion to the Export menu — there were two DOCX bilingual tables differing only in whether they round-trip. The bilingual-table export is now a single, re-importable format. For a clean client copy with real bold/italic (rather than visible tags), use **Export Translated Document**, which renders formatting in the original file layout. The menu entry, its confirmation dialog, and its help-doc coverage are gone.
+
+The two re-importable bilingual exports that remain:
+1. **🔁 Supervertaler Re-importable → Bilingual Table (DOCX)** — Word table, tags shown as literal markup.
+2. **🔁 Supervertaler Re-importable → Bilingual Text (AI-friendly)** — `[SEGMENT NNNN]` text file with a sidecar.
 
 
 ## v1.10.288 – June 19, 2026

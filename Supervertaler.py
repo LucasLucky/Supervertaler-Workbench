@@ -10846,12 +10846,6 @@ class SupervertalerQt(QMainWindow):
             "Edit the target lines (or have an LLM do it), then re-import to update this project."))
         reimport_export_submenu.addAction(export_reimport_text_action)
 
-        # The formatted Word table is a one-way deliverable (real bold/italic
-        # instead of literal tags) and cannot be re-imported.
-        export_review_table_formatted_action = QAction(self.tr("Supervertaler &Formatted Table (DOCX, read-only)..."), self)
-        export_review_table_formatted_action.triggered.connect(self.export_review_table_formatted)
-        export_menu.addAction(export_review_table_formatted_action)
-
         export_menu.addSeparator()
 
         export_grid_action = QAction(self.tr("TMX from &Grid (all segments)..."), self)
@@ -15614,31 +15608,7 @@ class SupervertalerQt(QMainWindow):
         for re-import into Supervertaler.
         """
         self._export_review_table(apply_formatting=False)
-    
-    def export_review_table_formatted(self):
-        """Export Supervertaler Bilingual Table with formatting applied (bold, italic, underline).
-        
-        This format is intended for end clients who want to see the actual formatting
-        rather than the tags.
-        """
-        # Warn user that this format cannot be re-imported with tags
-        reply = QMessageBox.warning(
-            self, "Formatted Export - Tags Will Be Applied",
-            "This export applies formatting (bold, italic, underline) to the text.\n\n"
-            "⚠️ Formatting tags will be converted to actual Word formatting.\n"
-            "This version CANNOT be re-imported to restore tagged formatting.\n\n"
-            "Use 'Supervertaler Re-importable → Bilingual Table (DOCX)' if you "
-            "need to re-import after review.\n\n"
-            "Continue with formatted export?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        
-        self._export_review_table(apply_formatting=True)
-    
+
     def _add_hyperlink_to_paragraph(self, paragraph, url, text):
         """Add a hyperlink to a paragraph in a Word document.
         
