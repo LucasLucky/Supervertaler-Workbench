@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.294 (June 19, 2026)
+**Current Version:** v1.10.295 (June 19, 2026)
+
+
+## v1.10.295 – June 19, 2026
+
+### Changed (Export · translated documents default into the project's target/ folder)
+
+- **"Export Translated Document" (and Simple Text export) now default their save location to a `target/` subfolder inside the project folder** — phase 2 of the project-folder model ([#228](https://github.com/Supervertaler/Supervertaler-Workbench/issues/228)). Sources live in `source/`, generated translations land in `target/`, mirroring Trados/OmegaT. You can still browse elsewhere in the save dialog; this only sets the default. Unsaved projects (no folder yet) behave as before. The `target/` folder is created on demand.
+- Applies to the DOCX exporter, the Okapi original-format exporter, and the Simple Text export. New helper `ensure_target_dir` in `modules/project_assets.py` (test added; 11 tests total).
 
 
 ## v1.10.294 – June 19, 2026

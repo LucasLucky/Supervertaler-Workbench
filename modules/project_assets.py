@@ -52,6 +52,17 @@ def to_project_relative(abs_path, project_dir):
     return rel.replace(os.sep, "/")
 
 
+def ensure_target_dir(project_dir, subdir=TARGET_SUBDIR):
+    """Create ``<project_dir>/<subdir>/`` if needed and return its absolute path.
+
+    This is where generated translations (exports) are written by default, so a
+    project keeps its outputs alongside its sources.
+    """
+    target = os.path.join(os.path.abspath(project_dir), subdir)
+    os.makedirs(target, exist_ok=True)
+    return target
+
+
 def bundle_source(original_path, project_dir, subdir=SOURCE_SUBDIR):
     """Copy ``original_path`` into ``<project_dir>/<subdir>/`` and return its
     path relative to ``project_dir`` (POSIX-style, e.g. ``source/file.docx``).

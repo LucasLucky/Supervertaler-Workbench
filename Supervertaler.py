@@ -294,7 +294,7 @@ if sys.platform == 'win32':
 import pyperclip  # For clipboard operations in Superlookup
 from modules.superlookup import SuperlookupEngine  # Superlookup engine
 from modules.pseudo_translate_dialog import run_pseudo_translation  # Pseudo-translation export test (dialog + apply)
-from modules.project_assets import bundle_source, resolve_source_path  # Project-folder source bundling (issue #228)
+from modules.project_assets import bundle_source, resolve_source_path, ensure_target_dir  # Project-folder model (issue #228)
 from modules.voice_dictation_lite import QuickDictationThread  # Voice dictation
 from modules.voice_commands import VoiceCommandManager, VoiceCommand, ContinuousVoiceListener  # Voice commands (Talon-style)
 from modules.voice_command_dialog import VoiceCommandEditDialog  # Voice command edit dialog
@@ -14563,6 +14563,22 @@ class SupervertalerQt(QMainWindow):
         else:
             self.export_target_only_docx()
 
+    def _project_export_path(self, filename):
+        """Default save path for a generated translation: the project's target/
+        folder (project-folder model, #228).
+
+        Falls back to the bare filename — so Qt opens the last-used directory —
+        when the project hasn't been saved yet (no folder exists to write into).
+        """
+        project_path = getattr(self, 'project_file_path', None)
+        if project_path:
+            try:
+                return os.path.join(
+                    ensure_target_dir(os.path.dirname(project_path)), filename)
+            except Exception as exc:
+                self.log(f"⚠ Could not prepare the project's target/ folder: {exc}")
+        return filename
+
     def export_target_only_docx(self):
         """Export target text only as a monolingual DOCX document, preserving original formatting"""
         try:
@@ -14594,11 +14610,12 @@ class SupervertalerQt(QMainWindow):
                 if reply != QMessageBox.StandardButton.Yes:
                     return
             
-            # Get save path
+            # Get save path — default into the project's target/ folder (#228)
             default_name = ""
             if self.current_project.name:
-                default_name = self.current_project.name.replace(" ", "_") + "_translated.docx"
-            
+                default_name = self._project_export_path(
+                    self.current_project.name.replace(" ", "_") + "_translated.docx")
+
             file_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "Export Target Only DOCX",
@@ -33348,7 +33365,8 @@ class SupervertalerQt(QMainWindow):
 
         ext = Path(original_path).suffix.lower()  # includes the dot
         ext_label = ext.lstrip('.').upper() or "file"
-        default_name = Path(original_path).stem + "_translated" + ext
+        default_name = self._project_export_path(
+            Path(original_path).stem + "_translated" + ext)  # into target/ (#228)
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -34471,6 +34489,8 @@ class SupervertalerQt(QMainWindow):
                 default_name = f"{base}_translated{default_ext}"
             elif self.current_project.name:
                 default_name = self.current_project.name.replace(" ", "_") + f"_translated{default_ext}"
+            if default_name:
+                default_name = self._project_export_path(default_name)  # into target/ (#228)
 
             if is_markdown:
                 file_filter = "Markdown Files (*.md);;Text Files (*.txt);;All Files (*.*)"

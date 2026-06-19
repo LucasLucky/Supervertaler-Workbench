@@ -16,7 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.project_assets import (
     SOURCE_SUBDIR,
+    TARGET_SUBDIR,
     bundle_source,
+    ensure_target_dir,
     resolve_source_path,
     to_project_relative,
 )
@@ -101,6 +103,19 @@ def test_relative_resolution_survives_folder_move():
         _make_file(os.path.join(proj_b, "source", "doc.docx"))
         assert os.path.exists(resolve_source_path(rel, proj_a))
         assert os.path.exists(resolve_source_path(rel, proj_b))
+
+
+# ── ensure_target_dir ──
+
+def test_ensure_target_dir_creates_and_returns():
+    with tempfile.TemporaryDirectory() as tmp:
+        proj = os.path.join(tmp, "MyProject")
+        os.makedirs(proj)
+        target = ensure_target_dir(proj)
+        assert os.path.isdir(target)
+        assert os.path.basename(target) == TARGET_SUBDIR
+        # idempotent
+        assert ensure_target_dir(proj) == target
 
 
 # ── to_project_relative ──
