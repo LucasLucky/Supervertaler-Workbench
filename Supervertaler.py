@@ -30256,6 +30256,14 @@ class SupervertalerQt(QMainWindow):
             segments=[]
         )
 
+        # A New Project (pasted/loaded text or empty) has no bound source
+        # document, so clear any path left over from a previously-open project.
+        # Otherwise "Export Translated Document" would copy that prior project's
+        # file and emit it verbatim. (Same stale-state class fixed in
+        # load_project; DOCX import is a separate path that sets these itself.)
+        self.original_docx = None
+        self.current_document_path = None
+
         # Sync global language settings with new project languages
         self.source_language = source_lang
         self.target_language = target_lang
@@ -30857,15 +30865,25 @@ class SupervertalerQt(QMainWindow):
                     if valid_files:
                         self.log(f"✅ Restored {len(valid_files)} files in Image Extractor")
             
-            # Restore original DOCX path for structure-preserving export
-            if hasattr(self.current_project, 'original_docx_path') and self.current_project.original_docx_path:
+            # Restore the original DOCX path for structure-preserving export.
+            # Reset FIRST: a freshly-loaded project must never inherit the
+            # previously-open project's source document. Without this reset,
+            # opening a project that has no bound source (or one whose file is
+            # missing on this machine) left self.original_docx /
+            # self.current_document_path pointing at the *last* project's file —
+            # so "Export Translated Document" copied that file and, finding none
+            # of the current segments in it, emitted it verbatim. (Reported: a
+            # pseudo-translated project exported an earlier project's document.)
+            self.original_docx = None
+            self.current_document_path = None
+            if getattr(self.current_project, 'original_docx_path', None):
                 docx_path = self.current_project.original_docx_path
                 if os.path.exists(docx_path):
                     self.original_docx = docx_path
                     self.current_document_path = docx_path
                     self.log(f"✓ Restored original DOCX path: {Path(docx_path).name}")
                 else:
-                    self.log(f"⚠️ Original DOCX not found: {docx_path}")
+                    self.log(f"⚠️ Original DOCX not found (export will rebuild from segments): {docx_path}")
             
             # Restore SDLPPX handler for Trados package projects
             if hasattr(self.current_project, 'sdlppx_source_path') and self.current_project.sdlppx_source_path:

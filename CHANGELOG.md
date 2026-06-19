@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.292 (June 19, 2026)
+**Current Version:** v1.10.293 (June 19, 2026)
+
+
+## v1.10.293 – June 19, 2026
+
+### Fixed (Export · "Export Translated Document" emitted a previous project's file)
+
+- **Exporting a project that has no bound source document could write out a *different, previously-open project's* document instead.** `Export Translated Document` builds on the original source file recorded in `self.original_docx` / `self.current_document_path`, but those main-window paths were only ever **set** (on document import / when a saved project carried a valid `original_docx_path`) and **never reset**. So opening a project with no source — or one whose source file is missing on this machine — left them pointing at the *last* project's file. The exporter then copied that file and, finding none of the current segments in it, emitted it **verbatim**. Surfaced while pseudo-translating a text-based example project: the export came out as an unrelated earlier patent, with none of the pseudo content.
+- **Fix:** `load_project` now resets both paths before restoring the project's own (so a project without a valid source clears the stale value and the exporter rebuilds the document from the current segments), and `new_project` clears them too (a pasted/loaded-text or empty project has no source document). DOCX/Okapi import paths are unaffected — they set these correctly themselves.
 
 
 ## v1.10.292 – June 19, 2026
