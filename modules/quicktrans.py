@@ -82,6 +82,32 @@ AVAILABLE_LANGUAGES = [
 ]
 
 
+def _canonical_lang_name(value):
+    """Return the canonical display name from AVAILABLE_LANGUAGES for a language
+    given as either a name or a code (e.g. 'nl' / 'Nederlands' → 'Dutch').
+
+    The combos hold full names, so a value the project stores as a *code*
+    ('en'/'nl') must be mapped — otherwise setCurrentText() silently no-ops and
+    the combo falls back to its first item ('Afrikaans'). Returns the input
+    unchanged when it can't be mapped (so unknown values still pass through to
+    the MT/LLM providers, which accept names or codes)."""
+    if not value:
+        return value
+    if value in AVAILABLE_LANGUAGES:
+        return value
+    try:
+        from modules.lang_detect import lang_code
+    except Exception:
+        return value
+    code = lang_code(value)
+    if not code:
+        return value
+    for name in AVAILABLE_LANGUAGES:
+        if lang_code(name) == code:
+            return name
+    return value
+
+
 @dataclass
 class MTSuggestion:
     """A single MT suggestion from a provider"""
@@ -490,6 +516,11 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         self.source_text = source_text
         self.source_lang = source_lang or getattr(parent_app, 'source_language', 'en')
         self.target_lang = target_lang or getattr(parent_app, 'target_language', 'nl')
+        # The project may store codes ('en'/'nl') while the language combos hold
+        # full names; normalise so the selector shows the real pair instead of
+        # falling back to the first item ('Afrikaans'). Providers take either.
+        self.source_lang = _canonical_lang_name(self.source_lang)
+        self.target_lang = _canonical_lang_name(self.target_lang)
         self._external_mode = external_mode  # True when invoked from global hotkey
 
         self.suggestions: List[MTSuggestion] = []

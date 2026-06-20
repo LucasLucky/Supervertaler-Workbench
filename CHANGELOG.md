@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.296 (June 19, 2026)
+**Current Version:** v1.10.297 (June 20, 2026)
+
+
+## v1.10.297 – June 20, 2026
+
+### Fixed (QuickTrans · language selector showing "Afrikaans → Afrikaans")
+
+- **The QuickTrans (Ctrl+Alt+Q) language-pair dropdowns fell back to "Afrikaans → Afrikaans" for projects whose language pair is stored as codes** (e.g. `en` / `nl`). The dropdowns are filled with full language *names* and pre-selected with `setCurrentText(lang)`; when `lang` was a code it matched no item, so Qt silently left each combo on its first entry — "Afrikaans". (The translation itself was unaffected — the MT engines accept codes — only the on-screen language labels were wrong.) The incoming languages are now normalised to their canonical display name (`nl` → `Dutch`, `en` → `English`, `Nederlands` → `Dutch`, …) before the combos are set, so the selector shows the real pair. Unknown values still pass through unchanged. Reported by Michael.
 
 
 ## v1.10.296 – June 19, 2026
