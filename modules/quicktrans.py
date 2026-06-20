@@ -14,7 +14,7 @@ Features:
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QScrollArea, QWidget, QPushButton, QApplication, QSizePolicy, QComboBox
+    QScrollArea, QWidget, QPushButton, QApplication, QSizePolicy, QComboBox, QTextEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSettings
 from PyQt6.QtGui import QKeySequence, QShortcut, QCursor, QFont
@@ -497,6 +497,44 @@ class QuickTransProviderMixin:
             return f"[Error: {str(e)}]"
 
 
+class _SourceTextEdit(QTextEdit):
+    """Editable source box for the QuickTrans popup.
+
+    Two integration points with the popup: while it's focused the popup's
+    number/Enter insert-shortcuts must yield (so typing '1' enters a digit, not
+    a translation); and Ctrl+Enter re-translates the edited text. Opens without
+    grabbing focus (ClickFocus) so 1-9 still work the instant the popup appears.
+    """
+
+    def __init__(self, text, on_focus_changed, on_retranslate, parent=None):
+        super().__init__(parent)
+        self.setPlainText(text or "")
+        self._on_focus_changed = on_focus_changed
+        self._on_retranslate = on_retranslate
+        self.setAcceptRichText(False)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.setFixedHeight(56)
+        self.setStyleSheet(
+            "font-size: 11px; color: #333; border: 1px solid #ddd; border-radius: 4px;"
+        )
+        self.setToolTip("Edit the source, then press Ctrl+Enter to re-translate")
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self._on_focus_changed(True)
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self._on_focus_changed(False)
+
+    def keyPressEvent(self, event):
+        if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)):
+            self._on_retranslate()
+            return
+        super().keyPressEvent(event)
+
+
 class MTQuickPopup(QuickTransProviderMixin, QDialog):
     """
     GT4T-style popup showing MT suggestions from all enabled providers
@@ -675,11 +713,13 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         source_header_row.addWidget(settings_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         source_layout.addLayout(source_header_row)
 
-        source_text_label = QLabel(self.source_text)
-        source_text_label.setWordWrap(True)
-        source_text_label.setStyleSheet("font-size: 11px; color: #333;")
-        source_text_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        source_layout.addWidget(source_text_label)
+        # Editable source: tweak the text and press Ctrl+Enter to re-translate.
+        self.source_edit = _SourceTextEdit(
+            self.source_text,
+            on_focus_changed=lambda focused: self._set_insert_shortcuts_enabled(not focused),
+            on_retranslate=self._retranslate_from_source,
+        )
+        source_layout.addWidget(self.source_edit)
 
         container_layout.addWidget(source_frame)
 
@@ -767,17 +807,42 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
 
     def setup_shortcuts(self):
         """Setup keyboard shortcuts"""
+        # These must yield to the editable source box while it's focused —
+        # otherwise typing "1" would insert a translation instead of a digit.
+        self._insert_shortcuts = []
+
         # Number keys 1-9 for quick selection
         for i in range(1, 10):
             shortcut = QShortcut(QKeySequence(str(i)), self)
             shortcut.activated.connect(lambda idx=i: self._select_by_number(idx))
+            self._insert_shortcuts.append(shortcut)
 
         # Navigation
-        QShortcut(QKeySequence(Qt.Key.Key_Up), self).activated.connect(self._navigate_up)
-        QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(self._navigate_down)
-        QShortcut(QKeySequence(Qt.Key.Key_Return), self).activated.connect(self._insert_selected)
-        QShortcut(QKeySequence(Qt.Key.Key_Enter), self).activated.connect(self._insert_selected)
+        up = QShortcut(QKeySequence(Qt.Key.Key_Up), self)
+        up.activated.connect(self._navigate_up)
+        down = QShortcut(QKeySequence(Qt.Key.Key_Down), self)
+        down.activated.connect(self._navigate_down)
+        ret = QShortcut(QKeySequence(Qt.Key.Key_Return), self)
+        ret.activated.connect(self._insert_selected)
+        ent = QShortcut(QKeySequence(Qt.Key.Key_Enter), self)
+        ent.activated.connect(self._insert_selected)
+        self._insert_shortcuts += [up, down, ret, ent]
+
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.close)
+
+    def _set_insert_shortcuts_enabled(self, enabled: bool):
+        """Enable/disable the 1-9 / arrow / Enter insert-shortcuts (off while the
+        source box is being edited so its keystrokes reach the text)."""
+        for sc in getattr(self, '_insert_shortcuts', []):
+            sc.setEnabled(enabled)
+
+    def _retranslate_from_source(self):
+        """Re-run every engine on the (possibly edited) source text."""
+        new_text = self.source_edit.toPlainText().strip()
+        if not new_text or new_text == self.source_text:
+            return
+        self.source_text = new_text
+        self._reset_and_refetch()
 
     def _make_section_header(self, text: str) -> QLabel:
         """A lightweight group-header label ('Machine translation' / 'AI / LLM')."""

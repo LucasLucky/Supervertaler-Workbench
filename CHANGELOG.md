@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.297 (June 20, 2026)
+**Current Version:** v1.10.298 (June 20, 2026)
+
+
+## v1.10.298 – June 20, 2026
+
+### Added (QuickTrans · edit the source on the fly)
+
+- **The source text in the QuickTrans (Ctrl+Alt+Q) popup is now editable.** It used to be a read-only label; it's now a small text box you can tweak directly — fix a typo, trim the segment, paste something else — and press **Ctrl+Enter** to re-translate. Every engine (MT and AI) refills from the edited text. The popup's 1-9 / arrow / Enter insert-shortcuts automatically yield while the source box is focused (so typing a digit enters a digit, not a translation) and resume the moment you click away; the box opens without stealing focus, so 1-9 still work instantly. Requested by Michael.
 
 
 ## v1.10.297 – June 20, 2026
