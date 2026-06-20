@@ -681,6 +681,13 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         """)
         superlookup_btn.clicked.connect(self._send_to_superlookup)
 
+        # Re-translate button: re-run every engine on the (edited) source.
+        retranslate_btn = QPushButton("↻ Re-translate")
+        retranslate_btn.setFixedHeight(24)
+        retranslate_btn.setToolTip("Re-translate the edited source (or press Ctrl+Enter)")
+        retranslate_btn.setStyleSheet(superlookup_btn.styleSheet())
+        retranslate_btn.clicked.connect(self._retranslate_from_source)
+
         # Settings button
         settings_btn = QPushButton("⚙️")
         settings_btn.setFixedSize(24, 24)
@@ -709,6 +716,7 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         source_header.setStyleSheet("font-size: 9px; color: #666; font-weight: bold;")
         source_header_row.addWidget(source_header, 0, Qt.AlignmentFlag.AlignVCenter)
         source_header_row.addStretch()
+        source_header_row.addWidget(retranslate_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         source_header_row.addWidget(superlookup_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         source_header_row.addWidget(settings_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         source_layout.addLayout(source_header_row)
@@ -839,7 +847,7 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
     def _retranslate_from_source(self):
         """Re-run every engine on the (possibly edited) source text."""
         new_text = self.source_edit.toPlainText().strip()
-        if not new_text or new_text == self.source_text:
+        if not new_text:
             return
         self.source_text = new_text
         self._reset_and_refetch()
