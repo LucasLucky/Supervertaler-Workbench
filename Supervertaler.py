@@ -43271,25 +43271,32 @@ class SupervertalerQt(QMainWindow):
         return self.right_tabs.currentIndex() == self._preview_tab_index
 
     def _scroll_preview_to_segment(self, segment_id: int):
-        """Scroll the preview to show the specified segment and highlight it.
-        
-        ⚡ PERFORMANCE: Only does work if Preview tab is actually visible.
-        This prevents expensive operations (looping through all segments,
-        updating char formatting) when user is working in the grid.
+        """Highlight + scroll to the current segment in every VISIBLE preview.
+
+        Updates whichever previews are actually on screen — the docked Preview
+        tab when it's the active tab AND/OR the popped-out window — and skips
+        hidden ones, so grid navigation stays cheap. (Previously this was gated
+        on the docked tab being active, so the pop-out window never followed the
+        cursor once you switched the docked panel to another tab.)
         """
-        # ⚡ Skip entirely if Preview tab is not visible - major performance optimization
-        if not self._is_preview_tab_active():
-            return
-        
         if not hasattr(self, 'preview_widgets') or not self.preview_widgets:
             return
-        
+        if not self.current_project or not self.current_project.segments:
+            return
+
         for widget in self.preview_widgets:
             if not hasattr(widget, 'segment_positions') or not hasattr(widget, 'preview_text'):
                 continue
-            
+            # Only touch previews that are actually visible (docked tab current,
+            # or pop-out window open). Hidden tab pages report isVisible() False.
+            try:
+                if not widget.isVisible():
+                    continue
+            except RuntimeError:
+                continue
+
             preview_text = widget.preview_text
-            
+
             # Find the position of the target segment
             target_start = None
             target_end = None
@@ -43298,31 +43305,38 @@ class SupervertalerQt(QMainWindow):
                     target_start = start_pos
                     target_end = end_pos
                     break
-            
+
             if target_start is None:
                 continue
-            
+
             # Update highlighting without a full re-render (Option A).
             widget.current_highlighted_segment_id = segment_id
             cursor = preview_text.textCursor()
 
-            # Re-apply status tints: confirmed reads clean (no tint), anything
-            # unconfirmed gets the single faint amber tint. The current segment is
-            # shown by the outline box (set below), not a fill.
+            # Re-tint every segment. The CURRENT segment gets a distinct light-blue
+            # fill over its EXACT character range, so the highlight follows the
+            # segment precisely (even when it starts/ends mid-paragraph) instead of
+            # the old full-width outline box that spanned whole lines and bled into
+            # the neighbouring segment. Confirmed segments read clean; other
+            # unconfirmed segments keep the faint amber status tint.
             for (start_pos, end_pos), seg_id in widget.segment_positions.items():
                 cursor.setPosition(start_pos)
                 cursor.setPosition(end_pos, QTextCursor.MoveMode.KeepAnchor)
                 fmt = cursor.charFormat()
-                seg = next((s for s in self.current_project.segments if s.id == seg_id), None)
-                if seg and seg.status in ('confirmed', 'approved', 'proofread'):
-                    fmt.setBackground(QColor('white'))  # done → blends with the page
+                if seg_id == segment_id:
+                    fmt.setBackground(QColor('#cfe3ff'))  # current segment (precise)
                 else:
-                    fmt.setBackground(QColor('#fff5e0'))  # unconfirmed → faint amber
+                    seg = next((s for s in self.current_project.segments if s.id == seg_id), None)
+                    if seg and seg.status in ('confirmed', 'approved', 'proofread'):
+                        fmt.setBackground(QColor('white'))   # done → blends with the page
+                    else:
+                        fmt.setBackground(QColor('#fff5e0'))  # unconfirmed → faint amber
                 cursor.mergeCharFormat(fmt)
 
-            # Move the current-segment outline box and repaint it
+            # Disable the old full-width outline box — the precise fill above is
+            # now the current-segment indicator.
             if hasattr(preview_text, 'current_box_range'):
-                preview_text.current_box_range = (target_start, target_end)
+                preview_text.current_box_range = None
                 preview_text.viewport().update()
 
             # Now scroll to the target segment, centered in viewport

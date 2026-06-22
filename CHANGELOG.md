@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.300 (June 22, 2026)
+**Current Version:** v1.10.301 (June 22, 2026)
+
+
+## v1.10.301 – June 22, 2026
+
+### Fixed (Preview · current-segment highlight)
+
+- **The current segment is now highlighted precisely.** It gets a light-blue fill over the segment's exact text range, instead of the old full-width outline box that spanned whole lines and visually bled into the neighbouring segment now that sentences flow together as paragraphs. Reported by Michael.
+- **The popped-out preview window now follows the current segment.** The per-move highlight/scroll update was gated on the docked Preview tab being the active tab, so the detached window stopped tracking the cursor as soon as the docked panel showed another tab (e.g. the Match Panel). It now updates every on-screen preview — the docked tab and/or the pop-out window — while still skipping hidden ones, so grid navigation stays fast.
 
 
 ## v1.10.300 – June 22, 2026
