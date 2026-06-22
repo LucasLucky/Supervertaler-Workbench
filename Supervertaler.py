@@ -28852,7 +28852,6 @@ class SupervertalerQt(QMainWindow):
                 # tick so the tab switch itself paints first — the user is taken to
                 # the Preview immediately and the content updates a moment later.
                 from PyQt6.QtCore import QTimer
-                self.log("⏱ PREVIEW on_right_tab_changed: preview shown; scheduling deferred refresh")
                 QTimer.singleShot(0, self._refresh_preview_on_show)
         right_tabs.currentChanged.connect(_on_right_tab_changed)
 
@@ -43162,15 +43161,11 @@ class SupervertalerQt(QMainWindow):
                     prev = 0  # Match Panel is the first right-panel tab
                 self.right_tabs.setCurrentIndex(prev)
             else:
-                import time as _t
                 self._pre_preview_tab_index = cur
-                self._preview_toggle_t0 = _t.perf_counter()
                 # Just switch — _on_right_tab_changed defers the refresh + highlight
                 # to the next tick, so the tab itself appears instantly (and skips
                 # re-rendering entirely when nothing has changed since last time).
-                _sw = _t.perf_counter()
                 self.right_tabs.setCurrentIndex(self._preview_tab_index)
-                self.log(f"⏱ PREVIEW toggle: setCurrentIndex(preview) returned in {(_t.perf_counter()-_sw)*1000:.0f} ms")
         except Exception:
             pass
 
@@ -43305,41 +43300,40 @@ class SupervertalerQt(QMainWindow):
 
             preview_text = widget.preview_text
 
-            # Find the position of the target segment
-            target_start = None
-            target_end = None
-            for (start_pos, end_pos), seg_id in widget.segment_positions.items():
-                if seg_id == segment_id:
-                    target_start = start_pos
-                    target_end = end_pos
-                    break
-
-            if target_start is None:
+            # Reverse map: segment id → (start, end) for the current render.
+            id2range = {sid: (s, e) for (s, e), sid in widget.segment_positions.items()}
+            target = id2range.get(segment_id)
+            if target is None:
                 continue
+            target_start, target_end = target
 
-            # Update highlighting without a full re-render (Option A).
+            # O(1) highlight. _render_preview already paints every segment with its
+            # status tint, so we only repaint TWO segments here: restore the
+            # previously-highlighted one to its status tint, then tint the new
+            # current one light-blue. (Re-painting all ~500 segments cost ~2s on a
+            # large file — on every toggle AND every arrow-key move with the
+            # preview open. This brings it down to a couple of cursor operations.)
+            def _status_bg(_sid):
+                _seg = next((x for x in self.current_project.segments if x.id == _sid), None)
+                if _seg and _seg.status in ('confirmed', 'approved', 'proofread'):
+                    return QColor('white')
+                return QColor('#fff5e0')
+
+            def _paint(_s, _e, _color):
+                _c = preview_text.textCursor()
+                _c.setPosition(_s)
+                _c.setPosition(_e, QTextCursor.MoveMode.KeepAnchor)
+                _f = _c.charFormat()
+                _f.setBackground(_color)
+                _c.mergeCharFormat(_f)
+
+            prev_id = getattr(widget, 'current_highlighted_segment_id', None)
+            if prev_id is not None and prev_id != segment_id and prev_id in id2range:
+                _ps, _pe = id2range[prev_id]
+                _paint(_ps, _pe, _status_bg(prev_id))
+
+            _paint(target_start, target_end, QColor('#cfe3ff'))  # current segment (precise)
             widget.current_highlighted_segment_id = segment_id
-            cursor = preview_text.textCursor()
-
-            # Re-tint every segment. The CURRENT segment gets a distinct light-blue
-            # fill over its EXACT character range, so the highlight follows the
-            # segment precisely (even when it starts/ends mid-paragraph) instead of
-            # the old full-width outline box that spanned whole lines and bled into
-            # the neighbouring segment. Confirmed segments read clean; other
-            # unconfirmed segments keep the faint amber status tint.
-            for (start_pos, end_pos), seg_id in widget.segment_positions.items():
-                cursor.setPosition(start_pos)
-                cursor.setPosition(end_pos, QTextCursor.MoveMode.KeepAnchor)
-                fmt = cursor.charFormat()
-                if seg_id == segment_id:
-                    fmt.setBackground(QColor('#cfe3ff'))  # current segment (precise)
-                else:
-                    seg = next((s for s in self.current_project.segments if s.id == seg_id), None)
-                    if seg and seg.status in ('confirmed', 'approved', 'proofread'):
-                        fmt.setBackground(QColor('white'))   # done → blends with the page
-                    else:
-                        fmt.setBackground(QColor('#fff5e0'))  # unconfirmed → faint amber
-                cursor.mergeCharFormat(fmt)
 
             # Disable the old full-width outline box — the precise fill above is
             # now the current-segment indicator.
@@ -43428,20 +43422,11 @@ class SupervertalerQt(QMainWindow):
         widgets = [w for w in self.preview_widgets if hasattr(w, 'preview_text')]
         all_populated = all(getattr(w, 'segment_positions', None) for w in widgets)
         if not force and all_populated and sig == getattr(self, '_preview_rendered_sig', None):
-            self.log("⏱ PREVIEW refresh_preview: SKIPPED (content unchanged)")
             return  # already current — caller re-applies the current-segment highlight
 
-        import time as _t
-        _r0 = _t.perf_counter()
-        n = 0
-        seg_count = len(self.current_project.segments)
         for widget in self.preview_widgets:
-            _w0 = _t.perf_counter()
             self._render_preview(widget)
-            n += 1
-            self.log(f"⏱ PREVIEW   _render_preview widget #{n} ({seg_count} segs) in {(_t.perf_counter()-_w0)*1000:.0f} ms")
         self._preview_rendered_sig = sig
-        self.log(f"⏱ PREVIEW refresh_preview: rendered {n} widget(s) in {(_t.perf_counter()-_r0)*1000:.0f} ms")
 
     def _preview_content_signature(self) -> str:
         """A cheap digest of everything the preview render depends on (segment
@@ -43463,18 +43448,10 @@ class SupervertalerQt(QMainWindow):
         is taken to the Preview immediately), then the content refreshes and the
         current segment is re-highlighted."""
         try:
-            import time as _t
-            _t0 = _t.perf_counter()
-            if hasattr(self, '_preview_toggle_t0'):
-                self.log(f"⏱ PREVIEW deferred handler fired {(_t0 - self._preview_toggle_t0)*1000:.0f} ms after key press")
             self.refresh_preview()
-            _t1 = _t.perf_counter()
-            self.log(f"⏱ PREVIEW refresh_preview() took {(_t1 - _t0)*1000:.0f} ms")
             seg = self._get_current_segment_id()
             if seg is not None:
                 self._scroll_preview_to_segment(seg)
-            _t2 = _t.perf_counter()
-            self.log(f"⏱ PREVIEW scroll/highlight took {(_t2 - _t1)*1000:.0f} ms | TOTAL deferred {(_t2 - _t0)*1000:.0f} ms")
         except Exception as e:
             self.log(f"⚠ Preview refresh on show failed: {e}")
 
@@ -43486,6 +43463,10 @@ class SupervertalerQt(QMainWindow):
         preview_text = widget.preview_text
         preview_text.clear()
         widget.segment_positions = {}
+        # A fresh render repaints every segment with its status tint and clears the
+        # highlight, so forget the previous current-segment (the O(1) highlight in
+        # _scroll_preview_to_segment relies on this to avoid restoring a stale one).
+        widget.current_highlighted_segment_id = None
         if hasattr(preview_text, 'current_box_range'):
             preview_text.current_box_range = None
 

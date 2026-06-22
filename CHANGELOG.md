@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.303 (June 22, 2026)
+**Current Version:** v1.10.304 (June 22, 2026)
+
+
+## v1.10.304 – June 22, 2026
+
+### Fixed (Preview · Ctrl+Alt+P now genuinely instant)
+
+- **The current-segment highlight is now O(1) instead of O(n).** Profiling the Ctrl+Alt+P lag on a 516-segment file revealed *two* ~2-second costs: the full re-render, and — the surprise — the highlight, which re-painted the background of *every* segment on each call (and on every arrow-key move while the preview was open). Since `_render_preview` already paints each segment's status tint, the highlight now repaints only two segments — restore the previously highlighted one, then tint the new current one. Result: toggling the Preview off and on without editing is **instant**, and arrow-key navigation with the preview open no longer stutters. (Re-rendering the document after an edit is still ~2s — that's a separate, larger optimisation, the one-pass renderer.) Reported by Michael.
 
 
 ## v1.10.303 – June 22, 2026
