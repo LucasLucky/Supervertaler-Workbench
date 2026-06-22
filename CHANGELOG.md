@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.298 (June 20, 2026)
+**Current Version:** v1.10.299 (June 22, 2026)
+
+
+## v1.10.299 – June 22, 2026
+
+### Fixed (Preview · one block per segment instead of real paragraphs)
+
+- **The Document Preview now follows the source document's paragraph structure instead of rendering one block per segment.** Sentences split from the same source paragraph share a `paragraph_id`, but the preview renderer's fallback inserted a paragraph break between any two `¶`-typed segments — and since import types every segment `¶`, every sentence became its own paragraph. The renderer now joins consecutive segments that share a (non-zero) `paragraph_id` as running text, and only starts a new paragraph on a genuine `paragraph_id` change — mirroring how the export already groups segments by `paragraph_id`. Imports that carry no paragraph_id keep the previous per-segment fallback, and heading/list spacing is unchanged. Reported by Michael.
 
 
 ## v1.10.298 – June 20, 2026

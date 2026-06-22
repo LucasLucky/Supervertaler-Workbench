@@ -43424,13 +43424,22 @@ class SupervertalerQt(QMainWindow):
                 # 2. Before a heading: double break
                 elif is_heading:
                     need_double_break = True
-                # 3. New paragraph (different paragraph_id or new ¶ type): double break
+                # 3. Paragraph flow. Sentences split from the SAME source paragraph
+                #    share a paragraph_id, so they must join as running text — only a
+                #    genuine paragraph_id change starts a new paragraph. (This mirrors
+                #    how the export groups segments by paragraph_id.) When no
+                #    paragraph_id is available (all-zero, e.g. some non-DOCX imports),
+                #    fall back to treating each ¶ segment as its own paragraph.
                 elif is_new_paragraph and prev_is_paragraph:
-                    # If paragraph_id is being used and changed, it's a new paragraph
-                    if paragraph_id != prev_paragraph_id and (paragraph_id != 0 or prev_paragraph_id != 0):
+                    if paragraph_id == prev_paragraph_id and paragraph_id != 0:
+                        # Same source paragraph → running text (this is what makes the
+                        # preview follow the document's paragraph structure)
+                        need_space = True
+                    elif paragraph_id != prev_paragraph_id and (paragraph_id != 0 or prev_paragraph_id != 0):
+                        # Genuinely different paragraphs
                         need_double_break = True
-                    # If both are ¶ type, they are separate paragraphs
                     elif prev_type == '¶' and seg_type == '¶':
+                        # No paragraph_id info → each ¶ is its own paragraph (fallback)
                         need_double_break = True
                     else:
                         # Same paragraph, running text
