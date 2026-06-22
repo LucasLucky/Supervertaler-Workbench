@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.302 (June 22, 2026)
+**Current Version:** v1.10.303 (June 22, 2026)
+
+
+## v1.10.303 – June 22, 2026
+
+### Changed (Preview · snappier Ctrl+Alt+P)
+
+- **Switching to the Document Preview is now instant**, even on large files. The render is **deferred to the next event-loop tick**, so the Preview tab appears immediately (showing the previous render) and the content updates a moment later — instead of the tab switch waiting on a full re-render. The preview also now **skips re-rendering entirely when nothing has changed** since the last render (cheap content signature), so toggling it off and on without editing is instant. Reported by Michael.
 
 
 ## v1.10.302 – June 22, 2026

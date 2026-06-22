@@ -28848,10 +28848,11 @@ class SupervertalerQt(QMainWindow):
             # (issue #224). Refreshing on show keeps it in step with the
             # current target text and segment statuses.
             if hasattr(self, '_preview_tab_index') and index == self._preview_tab_index:
-                try:
-                    self.refresh_preview()
-                except Exception as e:
-                    self.log(f"⚠ Preview refresh on show failed: {e}")
+                # Defer the (potentially expensive) refresh to the next event-loop
+                # tick so the tab switch itself paints first — the user is taken to
+                # the Preview immediately and the content updates a moment later.
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, self._refresh_preview_on_show)
         right_tabs.currentChanged.connect(_on_right_tab_changed)
 
         # Allow right panel to expand larger for better splitter flexibility
@@ -43161,16 +43162,10 @@ class SupervertalerQt(QMainWindow):
                 self.right_tabs.setCurrentIndex(prev)
             else:
                 self._pre_preview_tab_index = cur
-                # Switching to the Preview tab already triggers _on_right_tab_changed,
-                # which refreshes the preview on show — so do NOT refresh again here
-                # (that re-rendered the whole document a second time and was the cause
-                # of the multi-second lag when toggling on a large file).
+                # Just switch — _on_right_tab_changed defers the refresh + highlight
+                # to the next tick, so the tab itself appears instantly (and skips
+                # re-rendering entirely when nothing has changed since last time).
                 self.right_tabs.setCurrentIndex(self._preview_tab_index)
-                # The on-show refresh rebuilt the document and cleared highlights, so
-                # re-apply the current-segment highlight + scroll to it.
-                seg_id = self._get_current_segment_id()
-                if seg_id is not None:
-                    self._scroll_preview_to_segment(seg_id)
         except Exception:
             pass
 
@@ -43403,8 +43398,14 @@ class SupervertalerQt(QMainWindow):
         except Exception:
             pass
 
-    def refresh_preview(self):
-        """Refresh all preview tabs with current document content"""
+    def refresh_preview(self, force: bool = False):
+        """Refresh all preview tabs with current document content.
+
+        Skips the expensive full re-render when nothing affecting the preview has
+        changed since the last render (compared via a cheap content signature) —
+        so toggling the Preview on/off without editing is instant. Pass
+        force=True to always re-render.
+        """
         if not self.current_project or not self.current_project.segments:
             # Clear previews if no project
             if hasattr(self, 'preview_widgets'):
@@ -43412,13 +43413,48 @@ class SupervertalerQt(QMainWindow):
                     if hasattr(widget, 'preview_text'):
                         widget.preview_text.clear()
                         widget.segment_positions = {}
+            self._preview_rendered_sig = None
             return
 
-        if not hasattr(self, 'preview_widgets'):
+        if not hasattr(self, 'preview_widgets') or not self.preview_widgets:
             return
+
+        sig = self._preview_content_signature()
+        widgets = [w for w in self.preview_widgets if hasattr(w, 'preview_text')]
+        all_populated = all(getattr(w, 'segment_positions', None) for w in widgets)
+        if not force and all_populated and sig == getattr(self, '_preview_rendered_sig', None):
+            return  # already current — caller re-applies the current-segment highlight
 
         for widget in self.preview_widgets:
             self._render_preview(widget)
+        self._preview_rendered_sig = sig
+
+    def _preview_content_signature(self) -> str:
+        """A cheap digest of everything the preview render depends on (segment
+        text, status and structure). Lets refresh_preview skip redundant renders."""
+        import hashlib
+        h = hashlib.md5()
+        for s in self.current_project.segments:
+            h.update((
+                f"{s.id}\x1f{s.source or ''}\x1f{s.target or ''}\x1f{s.status or ''}"
+                f"\x1f{getattr(s, 'paragraph_id', '')}\x1f{getattr(s, 'type', '')}"
+                f"\x1f{getattr(s, 'style', '')}\n"
+            ).encode('utf-8', 'replace'))
+        return h.hexdigest()
+
+    def _refresh_preview_on_show(self):
+        """Deferred preview refresh, run when the Preview tab becomes visible.
+
+        Runs on the next event-loop tick so the tab switch paints first (the user
+        is taken to the Preview immediately), then the content refreshes and the
+        current segment is re-highlighted."""
+        try:
+            self.refresh_preview()
+            seg = self._get_current_segment_id()
+            if seg is not None:
+                self._scroll_preview_to_segment(seg)
+        except Exception as e:
+            self.log(f"⚠ Preview refresh on show failed: {e}")
 
     def _render_preview(self, widget):
         """Render the document preview with realistic formatting"""
