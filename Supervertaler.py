@@ -43161,8 +43161,16 @@ class SupervertalerQt(QMainWindow):
                 self.right_tabs.setCurrentIndex(prev)
             else:
                 self._pre_preview_tab_index = cur
+                # Switching to the Preview tab already triggers _on_right_tab_changed,
+                # which refreshes the preview on show — so do NOT refresh again here
+                # (that re-rendered the whole document a second time and was the cause
+                # of the multi-second lag when toggling on a large file).
                 self.right_tabs.setCurrentIndex(self._preview_tab_index)
-                self.refresh_preview()  # ensure it shows current content
+                # The on-show refresh rebuilt the document and cleared highlights, so
+                # re-apply the current-segment highlight + scroll to it.
+                seg_id = self._get_current_segment_id()
+                if seg_id is not None:
+                    self._scroll_preview_to_segment(seg_id)
         except Exception:
             pass
 

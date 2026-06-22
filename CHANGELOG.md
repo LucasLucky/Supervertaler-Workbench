@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.301 (June 22, 2026)
+**Current Version:** v1.10.302 (June 22, 2026)
+
+
+## v1.10.302 – June 22, 2026
+
+### Fixed (Preview · slow Ctrl+Alt+P toggle)
+
+- **Toggling the Document Preview with `Ctrl+Alt+P` is now instant instead of freezing for a few seconds on large files.** Switching to the Preview tab already re-renders the preview on show (via the tab-change handler), but the toggle handler then called `refresh_preview()` a second time, re-rendering every segment twice — and four times if the pop-out window was also open. The toggle now relies on the single on-show refresh and merely re-applies the current-segment highlight. Reported by Michael.
 
 
 ## v1.10.301 – June 22, 2026
