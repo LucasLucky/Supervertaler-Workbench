@@ -111,7 +111,13 @@ class ShortcutManager:
             "default": "Ctrl+Shift+H",
             "action": "toggle_tag_view"
         },
-        
+        "toggle_preview": {
+            "category": "View",
+            "description": "Toggle Document Preview panel",
+            "default": "Ctrl+Alt+P",
+            "action": "toggle_preview_panel"
+        },
+
         # Grid Text Zoom
         "grid_zoom_in": {
             "category": "View",

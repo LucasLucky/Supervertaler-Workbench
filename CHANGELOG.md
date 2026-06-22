@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.299 (June 22, 2026)
+**Current Version:** v1.10.300 (June 22, 2026)
+
+
+## v1.10.300 – June 22, 2026
+
+### Added (Preview · pop-out window + grid toggle shortcut)
+
+- **The Document Preview can now pop out into its own resizable window.** A new "⧉ Pop out" button at the top of the Preview tab opens the preview as a separate top-level window that stays live — it tracks your edits and follows the current segment exactly like the docked panel, and clicking a sentence in it still jumps the grid to that segment. Closing the window leaves the docked preview untouched. Requested by Michael.
+- **New `Ctrl+Alt+P` shortcut toggles the Preview.** From the grid, press `Ctrl+Alt+P` to switch the right panel to the Document Preview; press it again to jump straight back to whatever tab you had open before (usually the Match Panel). Configurable under Settings → Keyboard Shortcuts (View → "Toggle Document Preview panel").
 
 
 ## v1.10.299 – June 22, 2026

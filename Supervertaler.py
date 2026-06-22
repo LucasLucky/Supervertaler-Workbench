@@ -9180,6 +9180,9 @@ class SupervertalerQt(QMainWindow):
         
         # Ctrl+Space - Insert currently selected match
         create_shortcut("match_insert_selected_ctrl", "Ctrl+Space", self.insert_selected_match)
+
+        # Ctrl+Alt+P - Toggle the right panel to the Document Preview and back
+        create_shortcut("toggle_preview", "Ctrl+Alt+P", self._toggle_preview_panel)
         
         # Ctrl+Up/Down - Navigate to previous/next segment
         # Handled by _GridArrowKeyEventFilter (QTableWidget eats vertical arrow keys
@@ -42994,14 +42997,30 @@ class SupervertalerQt(QMainWindow):
     # DOCUMENT PREVIEW TAB
     # =========================================================================
 
-    def _create_preview_tab(self) -> QWidget:
-        """Create the Preview tab widget with live document preview and click-to-navigate"""
-        from PyQt6.QtWidgets import QScrollArea
+    def _create_preview_tab(self, with_popout_button: bool = True) -> QWidget:
+        """Create the Preview widget with live document preview and click-to-navigate.
+
+        Used for both the in-panel Preview tab and (with_popout_button=False) the
+        detached pop-out window. Both register in self.preview_widgets, so they
+        stay in sync via refresh_preview / _scroll_preview_to_segment."""
+        from PyQt6.QtWidgets import QScrollArea, QHBoxLayout, QPushButton
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+
+        # Small top bar with a "Pop out" button (omitted inside the pop-out window).
+        if with_popout_button:
+            bar = QHBoxLayout()
+            bar.setContentsMargins(6, 4, 6, 2)
+            bar.addStretch(1)
+            popout_btn = QPushButton(self.tr("⧉ Pop out"))
+            popout_btn.setToolTip(self.tr("Open the preview in a separate, resizable window"))
+            popout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            popout_btn.clicked.connect(self._open_preview_window)
+            bar.addWidget(popout_btn)
+            layout.addLayout(bar)
 
         # Create scroll area for the preview
         scroll_area = QScrollArea()
@@ -43080,6 +43099,72 @@ class SupervertalerQt(QMainWindow):
         self.preview_widgets.append(widget)
 
         return widget
+
+    def _open_preview_window(self):
+        """Open the Document Preview in its own resizable top-level window.
+
+        The window hosts a second preview widget registered in
+        self.preview_widgets, so it tracks edits live (refresh_preview) and
+        follows the current segment (_scroll_preview_to_segment) just like the
+        docked tab — and clicking a sentence in it still jumps the grid there.
+        Closing the window unregisters its widget."""
+        from PyQt6.QtWidgets import QMainWindow
+
+        existing = getattr(self, '_preview_window', None)
+        if existing is not None:
+            try:
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                self._preview_window = None  # previous window was destroyed
+
+        win = QMainWindow(self)
+        win.setWindowTitle(self.tr("Supervertaler — Document Preview"))
+        win.setWindowFlag(Qt.WindowType.Window, True)
+        pv = self._create_preview_tab(with_popout_button=False)
+        win.setCentralWidget(pv)
+        win.resize(720, 900)
+        self._preview_window = win
+
+        def _closeEvent(ev, _pv=pv):
+            try:
+                if hasattr(self, 'preview_widgets') and _pv in self.preview_widgets:
+                    self.preview_widgets.remove(_pv)
+            except Exception:
+                pass
+            self._preview_window = None
+            ev.accept()
+        win.closeEvent = _closeEvent
+
+        try:
+            self._render_preview(pv)
+        except Exception:
+            pass
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    def _toggle_preview_panel(self):
+        """Toggle the right panel to the Document Preview tab and back (Ctrl+Alt+P).
+
+        First press switches to Preview, remembering the tab you were on; pressing
+        again returns to it (usually the Match Panel)."""
+        if not getattr(self, 'right_tabs', None) or not hasattr(self, '_preview_tab_index'):
+            return
+        try:
+            cur = self.right_tabs.currentIndex()
+            if cur == self._preview_tab_index:
+                prev = getattr(self, '_pre_preview_tab_index', 0)
+                if prev is None or prev == self._preview_tab_index or prev >= self.right_tabs.count():
+                    prev = 0  # Match Panel is the first right-panel tab
+                self.right_tabs.setCurrentIndex(prev)
+            else:
+                self._pre_preview_tab_index = cur
+                self.right_tabs.setCurrentIndex(self._preview_tab_index)
+                self.refresh_preview()  # ensure it shows current content
+        except Exception:
+            pass
 
     def _on_preview_click(self, event, preview_text: QTextEdit):
         """Handle click on preview text to navigate to corresponding segment"""
