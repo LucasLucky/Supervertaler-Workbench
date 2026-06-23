@@ -10,6 +10,7 @@ in per-TM as each completes. Results can be exported to HTML.
 from __future__ import annotations
 
 import html
+import re
 from typing import Dict, List
 
 from PyQt6.QtCore import Qt
@@ -349,6 +350,16 @@ class StatisticsDialog(QDialog):
     # Export
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _safe_filename(name: str) -> str:
+        """Turn a project name into a filesystem-safe filename stem."""
+        if not name:
+            return ""
+        # Strip characters Windows forbids in filenames; collapse whitespace.
+        cleaned = re.sub(r'[\\/:*?"<>|]', "", name)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip().rstrip(". ")
+        return cleaned[:120]
+
     def _export(self):
         """Export the results, letting the user pick HTML, Excel, or CSV."""
         if not self._results:
@@ -356,8 +367,12 @@ class StatisticsDialog(QDialog):
         html_flt = "Web page (*.html)"
         xlsx_flt = "Excel workbook (*.xlsx)"
         csv_flt  = "CSV file (*.csv)"
+        # Default filename based on the project name (filesystem-safe), so the
+        # export lands as e.g. "BRANTS (TRAX-005-BE-EP) - statistics.html".
+        base = self._safe_filename(self._project_name) or "supervertaler"
+        default_name = f"{base} - statistics.html"
         path, selected = QFileDialog.getSaveFileName(
-            self, "Export statistics", "supervertaler-statistics.html",
+            self, "Export statistics", default_name,
             ";;".join([html_flt, xlsx_flt, csv_flt]))
         if not path:
             return
