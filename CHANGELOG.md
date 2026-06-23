@@ -2,10 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.304 (June 22, 2026)
+**Current Version:** v1.10.305 (June 23, 2026)
 
 
-## v1.10.304 – June 22, 2026
+## v1.10.305 – June 23, 2026
+
+### Added (Statistics · analyse against TM)
+
+- **New Tools → 📊 Statistics (Analyse Against TM)…** brings the analysis step from Trados Studio / memoQ into the Workbench. Pick one or more translation memories and the open project's segments are scanned against each, producing a per-TM match breakdown: **Repetitions, 101% (Context Match), 100%, 95-99%, 85-94%, 75-84%, 50-74%, and No match** — each with segment, word, character, and tag counts plus a percentage of total words. It tells you up front how much of the document is already covered by your TMs (and how much is genuinely new) so you can scope the job. The project's currently-activated TMs are pre-ticked; analysis runs in a background thread (cancellable) and results stream in per-TM as each finishes. Results export to a self-contained HTML report. Internal repetitions are detected even with no TM selected. Requested by Michael.
+- **Matching depth control for speed.** Because the fuzzy pass is the slow part on a large TM, the dialog offers three depths: **Standard** (exact + fuzzy down to 75%, the default), **Thorough** (down to 50%), and **Exact matches only** (skips fuzzy entirely — near-instant). The fuzzy engine uses the FTS5 index to fetch only the top candidates that share the segment's most distinctive words, then scores those with a cheap length/quick-ratio gate before the expensive comparison — about **5× faster** than a full in-memory scan (a 660k-entry TM analyses in ~18 s instead of ~95 s) while producing the same match bands. This mirrors Trados Studio's "Optimized Performance" option (no fragment search, capped TM hits).
+- **Export to HTML, Excel, or CSV.** The single **Export…** button lets you pick the format. Every export carries the **project name**, a plain-language **legend** explaining each match type (for clients/newbies), and a footer link back to Supervertaler Workbench, matching the bilingual-table export. The legend also shows in the dialog beneath the results, and a contextual **?** button (and F1) opens the [Statistics help page](https://docs.supervertaler.com/workbench/tools/statistics/).
 
 ### Fixed (Preview · Ctrl+Alt+P now genuinely instant)
 

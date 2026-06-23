@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.9.227"
+    return "1.10.305"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -11266,6 +11266,14 @@ class SupervertalerQt(QMainWindow):
         tmx_editor_action.triggered.connect(self.open_tmx_editor_window)
         tools_menu.addAction(tmx_editor_action)
 
+        statistics_action = QAction(self.tr("📊 &Statistics (Analyse Against TM)..."), self)
+        statistics_action.setToolTip(self.tr(
+            "Analyse the current project against your translation memories and "
+            "see a Trados/memoQ-style match breakdown (repetitions, 100%, fuzzy "
+            "bands, no-match) to estimate how much work the document represents."))
+        statistics_action.triggered.connect(self.show_statistics_dialog)
+        tools_menu.addAction(statistics_action)
+
         tools_menu.addSeparator()
 
         image_extractor_action = QAction(self.tr("🖼️ &Image Extractor (Superimage)..."), self)
@@ -11953,7 +11961,68 @@ class SupervertalerQt(QMainWindow):
         window.destroyed.connect(lambda *a: setattr(self, '_tmx_editor_window', None))
         window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         window.show()
-    
+
+    def show_statistics_dialog(self):
+        """Open the Statistics dialog to analyse the open project against TMs.
+
+        Mirrors the analysis step of Trados Studio / memoQ: scans the current
+        project's segments against one or more translation memories and reports
+        a match breakdown (repetitions, 100%, fuzzy bands, no-match) so the
+        translator can gauge how much work the document represents.
+        """
+        if not getattr(self, 'current_project', None) or not getattr(self.current_project, 'segments', None):
+            QMessageBox.information(
+                self, self.tr("Statistics"),
+                self.tr("Open a project with segments first, then run Statistics."))
+            return
+
+        try:
+            from modules.statistics_dialog_qt import StatisticsDialog
+
+            # Build TM choices (real names + entry counts) from the metadata manager,
+            # falling back to the database manager's distinct-tm_id list.
+            tm_choices = []
+            try:
+                tm_choices = [
+                    {'tm_id': tm['tm_id'], 'name': tm.get('name') or tm['tm_id'],
+                     'entry_count': tm.get('entry_count', 0)}
+                    for tm in self.tm_metadata_mgr.get_all_tms()
+                ]
+            except Exception:
+                try:
+                    tm_choices = [
+                        {'tm_id': tm['tm_id'], 'name': tm.get('name') or tm['tm_id'],
+                         'entry_count': tm.get('entry_count', 0)}
+                        for tm in self.db_manager.get_all_tms()
+                    ]
+                except Exception:
+                    tm_choices = []
+
+            # Pre-select the project's currently activated TMs.
+            preselected = []
+            try:
+                if hasattr(self.current_project, 'tm_settings') and self.current_project.tm_settings:
+                    preselected = list(self.current_project.tm_settings.get('activated_tm_ids', []) or [])
+            except Exception:
+                preselected = []
+
+            dialog = StatisticsDialog(
+                parent=self,
+                db_manager=self.db_manager,
+                segments=self.current_project.segments,
+                source_lang=self.current_project.source_lang,
+                target_lang=self.current_project.target_lang,
+                tm_choices=tm_choices,
+                preselected_tm_ids=preselected,
+                project_name=getattr(self.current_project, 'name', '') or '',
+            )
+            dialog.exec()
+        except Exception as e:
+            self.log(f"Error opening Statistics: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, self.tr("Error"), f"Failed to open Statistics:\n{str(e)}")
+
     def create_reference_images_tab(self) -> QWidget:
         """Create the Image Context tab - Load images as visual context for AI translation"""
         from modules.image_extractor import ImageExtractor

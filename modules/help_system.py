@@ -174,6 +174,7 @@ class Topics:
     # Tools (TOOL_VOICE removed – voice/dictation is the Voice tab in Sidekick)
     TOOL_PDF_RESCUE     = "workbench/tools/pdf-rescue/"
     TOOL_TMX_EDITOR     = "workbench/tools/tmx-editor/"
+    TOOL_STATISTICS     = "workbench/tools/statistics/"
     # v1.10.179: "Image Extractor (Superimage)" page was renamed to
     # "Image Context" and moved into AI Translation alongside the
     # Prompt Manager (it's no longer a standalone Tool — the viewer
