@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.305"
+    return "1.10.307"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -3853,6 +3853,64 @@ class ReadOnlyGridTextEditor(QTextEdit):
         if _add_open_comment_actions(self, menu, 'source', event.pos()):
             menu.addSeparator()
 
+        # Segment split / merge (Trados / memoQ style). Only offered when the
+        # project's segmentation is owned by Supervertaler (monolingual DOCX /
+        # Okapi / TXT-MD); hidden for bilingual CAT round-trip formats whose
+        # segment slots belong to the external tool.
+        try:
+            _mw_sm = self._get_main_window()
+            if _mw_sm is not None and hasattr(_mw_sm, '_split_segment_at_row'):
+                from modules import segment_split_merge as _ssm
+                _proj_sm = getattr(_mw_sm, 'current_project', None)
+                if _proj_sm is not None and _ssm.structure_editable(_proj_sm):
+                    _seg_sm, _idx_sm = _mw_sm._segment_for_grid_row(self.row)
+                    # Split/merge restructure the document, so they're only
+                    # allowed in Document Order (no active grid sort).
+                    _doc_order = getattr(_mw_sm, 'current_sort', None) is None
+                    if _seg_sm is not None:
+                        # Map the clicked caret (display space) back to an index
+                        # into segment.source. This is only well-defined when the
+                        # displayed text differs from the source by invisible-
+                        # character markers alone — not when tags are compacted or
+                        # outer wrapping tags are hidden. In those modes the split
+                        # action is shown but disabled with an explanatory tip.
+                        _clean = (not getattr(self, '_compact_tag_map', None)
+                                  and not getattr(self, '_stripped_outer_tag', None))
+                        _src_off = -1
+                        if _clean:
+                            _caret = self.cursorForPosition(event.pos()).position()
+                            _prefix = self.toPlainText()[:_caret]
+                            if hasattr(_mw_sm, 'reverse_invisible_replacements'):
+                                _prefix = _mw_sm.reverse_invisible_replacements(_prefix)
+                            _src_off = len(_prefix)
+                        split_act = QAction("✂ Split segment here", self)
+                        split_act.setEnabled(_doc_order and _clean and _ssm.can_split(_seg_sm, _src_off))
+                        if not _doc_order:
+                            split_act.setToolTip(
+                                "Switch to Document Order (Sort menu) to split or merge segments.")
+                        elif not _clean:
+                            split_act.setToolTip(
+                                "Switch to full tag view (turn off compact / hidden tags) to split here.")
+                        split_act.triggered.connect(
+                            lambda checked=False, r=self.row, o=_src_off:
+                            _mw_sm._split_segment_at_row(r, o))
+                        menu.addAction(split_act)
+
+                        _merge_ok, _merge_reason = _ssm.can_merge(_proj_sm.segments, _idx_sm)
+                        merge_act = QAction("🔗 Merge with next segment", self)
+                        merge_act.setEnabled(_doc_order and _merge_ok)
+                        if not _doc_order:
+                            merge_act.setToolTip(
+                                "Switch to Document Order (Sort menu) to split or merge segments.")
+                        elif not _merge_ok:
+                            merge_act.setToolTip(_merge_reason)
+                        merge_act.triggered.connect(
+                            lambda checked=False, r=self.row: _mw_sm._merge_segment_at_row(r))
+                        menu.addAction(merge_act)
+                        menu.addSeparator()
+        except Exception:
+            pass
+
         # Add standard actions
         if self.textCursor().hasSelection():
             copy_action = QAction("Copy", self)
@@ -4504,6 +4562,14 @@ class EditableGridTextEditor(QTextEdit):
         # in load_segments_to_grid. This prevents ANY textChanged events during grid loading.
         self.blockSignals(True)
         self.setPlainText(text)
+        # The initial population must NOT be an undoable step. Otherwise the
+        # first Ctrl+Z in a freshly-built cell undoes the cell's own setPlainText
+        # (reverting it toward empty) instead of falling through to the app-level
+        # segment/structural undo — which is why undoing a split needed two
+        # presses when the cursor sat in the target box. Clearing the document
+        # undo stack here means the cell has nothing of its own to undo until the
+        # user actually types, so Ctrl+Z falls through on the first press.
+        self.document().clearUndoRedoStacks()
         # DO NOT unblock signals here - they will be unblocked after handler connection
 
         # CRITICAL: Enable strong focus to receive Tab key events
@@ -5247,6 +5313,15 @@ class EditableGridTextEditor(QTextEdit):
 
     def focusInEvent(self, event):
         """Ensure text remains visible when focused and auto-select row"""
+        # If the user hasn't actually typed in this cell yet, drop any
+        # programmatic undo steps (initial setPlainText, tag/comment-anchor
+        # formatting) so the FIRST Ctrl+Z here falls through to app-level
+        # (segment / structural) undo instead of undoing the cell's own
+        # rendering. Once the user has edited the cell we keep its history so
+        # Ctrl+Z undoes their typing. (Fixes split-undo needing two presses
+        # when the cursor is parked in the target box.)
+        if not getattr(self, '_user_has_edited', False):
+            self.document().clearUndoRedoStacks()
         super().focusInEvent(event)
         # Ensure the widget is properly visible
         self.setVisible(True)
@@ -9095,6 +9170,12 @@ class SupervertalerQt(QMainWindow):
                 _voice_dictate_sc.setAutoRepeat(False)
             except Exception:
                 pass
+
+        # Segment split / merge (Trados / memoQ style). Window-level QShortcuts
+        # fire even with a cell editor focused (QTextEdit doesn't consume
+        # Ctrl+Alt combos). Configurable in Settings → Keyboard Shortcuts.
+        create_shortcut("editor_split_segment", "Ctrl+Alt+S", self.split_current_segment)
+        create_shortcut("editor_merge_segment", "Ctrl+Alt+M", self.merge_current_segment)
         
         # Ctrl+Up/Down - Segment navigation is handled by _GridArrowKeyEventFilter
         # (QTableWidget intercepts vertical arrow keys before QShortcuts can fire)
@@ -11487,6 +11568,12 @@ class SupervertalerQt(QMainWindow):
             return
 
         action = self.undo_stack.pop()
+        # Structural edits (split / merge) carry full before/after snapshots.
+        if action.get("type") == "structural":
+            self._apply_structural_history(action, redo=False)
+            self.redo_stack.append(action)
+            self.update_undo_redo_actions()
+            return
         if self._apply_undo_redo_action(action, action["old_target"], action["old_status"]):
             self.redo_stack.append(action)
         self.update_undo_redo_actions()
@@ -11497,6 +11584,11 @@ class SupervertalerQt(QMainWindow):
             return
 
         action = self.redo_stack.pop()
+        if action.get("type") == "structural":
+            self._apply_structural_history(action, redo=True)
+            self.undo_stack.append(action)
+            self.update_undo_redo_actions()
+            return
         if self._apply_undo_redo_action(action, action["new_target"], action["new_status"]):
             self.undo_stack.append(action)
         self.update_undo_redo_actions()
@@ -11540,7 +11632,369 @@ class SupervertalerQt(QMainWindow):
         if hasattr(self, 'update_progress_stats'):
             self.update_progress_stats()
         return True
-    
+
+    # ── Segment split / merge (Trados / memoQ style) ──────────────────────
+    def _segment_for_grid_row(self, row: int):
+        """Return (segment, index_in_list) for a grid row, via the id in col 0.
+
+        Returns (None, -1) when the row or id can't be resolved. Using the id
+        column (rather than the row index) keeps this correct under pagination.
+        """
+        if not getattr(self, 'current_project', None):
+            return None, -1
+        try:
+            id_item = self.table.item(row, 0)
+            sid = int(id_item.text())
+        except (AttributeError, ValueError, TypeError):
+            return None, -1
+        for i, s in enumerate(self.current_project.segments):
+            if s.id == sid:
+                return s, i
+        return None, -1
+
+    def _split_segment_at_row(self, row: int, offset: int):
+        """Split the segment shown in grid ``row`` at source character ``offset``."""
+        from modules import segment_split_merge as ssm
+        proj = getattr(self, 'current_project', None)
+        if proj is None or not ssm.structure_editable(proj):
+            return
+        # Only in document order — the live list must equal document order so the
+        # _original_segment_order sync (and thus saving) stays correct.
+        if getattr(self, 'current_sort', None) is not None:
+            return
+        seg, idx = self._segment_for_grid_row(row)
+        if seg is None:
+            return
+        try:
+            offset = int(offset)
+        except (TypeError, ValueError):
+            return
+        # can_split requires the offset to fall strictly inside the source.
+        if not ssm.can_split(seg, offset):
+            return
+
+        import copy
+        before = copy.deepcopy(proj.segments)
+        ssm.split_segment(proj.segments, idx, offset)
+        ssm.renumber_ids(proj.segments)
+        focus_id = proj.segments[idx].id  # keep focus on the (left) original part
+        self._push_structural_undo(before, proj.segments, focus_id, "split", row)
+        self._sync_after_structural()
+        # Fast incremental grid update when the grid row maps 1:1 to the list
+        # index (no pagination offset); otherwise fall back to a full reload.
+        if idx == row:
+            try:
+                self._split_segment_grid_fast(row, proj.segments[idx], proj.segments[idx + 1])
+                self._select_grid_row_by_id(focus_id)
+            except Exception as e:
+                self.log(f"Fast split refresh failed ({e}); full reload.")
+                self.load_segments_to_grid()
+                self._select_grid_row_by_id(focus_id)
+        else:
+            self.load_segments_to_grid()
+            self._select_grid_row_by_id(focus_id)
+        self.log(f"Split segment into two at character {offset}.")
+
+    def _merge_segment_at_row(self, row: int):
+        """Merge the segment shown in grid ``row`` with the next segment."""
+        from modules import segment_split_merge as ssm
+        proj = getattr(self, 'current_project', None)
+        if proj is None or not ssm.structure_editable(proj):
+            return
+        if getattr(self, 'current_sort', None) is not None:
+            return
+        seg, idx = self._segment_for_grid_row(row)
+        if seg is None:
+            return
+        ok, reason = ssm.can_merge(proj.segments, idx)
+        if not ok:
+            QMessageBox.information(self, self.tr("Merge segments"), reason)
+            return
+
+        import copy
+        before = copy.deepcopy(proj.segments)
+        ssm.merge_with_next(proj.segments, idx)
+        ssm.renumber_ids(proj.segments)
+        focus_id = proj.segments[idx].id
+        self._push_structural_undo(before, proj.segments, focus_id, "merge", row)
+        self._sync_after_structural()
+        if idx == row:
+            try:
+                self._merge_segment_grid_fast(row, proj.segments[idx])
+                self._select_grid_row_by_id(focus_id)
+            except Exception as e:
+                self.log(f"Fast merge refresh failed ({e}); full reload.")
+                self.load_segments_to_grid()
+                self._select_grid_row_by_id(focus_id)
+        else:
+            self.load_segments_to_grid()
+            self._select_grid_row_by_id(focus_id)
+        self.log("Merged segment with the next one.")
+
+    # ── Keyboard-shortcut entry points (Ctrl+Alt+S / Ctrl+Alt+M) ──────────
+    def split_current_segment(self):
+        """Split the current segment at the caret in its Source cell.
+
+        Bound to Ctrl+Alt+S. Uses the source cell's caret (place the cursor in
+        the source where you want the split). A no-op if the caret isn't inside
+        the source text, or while tags are compacted / outer tags hidden (the
+        caret can't be mapped to the real source then)."""
+        from PyQt6.QtWidgets import QApplication
+        fw = QApplication.focusWidget()
+        src_editor = None
+        row = -1
+        if isinstance(fw, ReadOnlyGridTextEditor) and getattr(fw, 'row', -1) >= 0:
+            src_editor, row = fw, fw.row
+        else:
+            row = self.table.currentRow()
+            if row >= 0:
+                w = self.table.cellWidget(row, 2)
+                if isinstance(w, ReadOnlyGridTextEditor):
+                    src_editor = w
+        if src_editor is None or row < 0:
+            return
+        # The caret→source mapping is only well-defined without compact/hidden tags.
+        if getattr(src_editor, '_compact_tag_map', None) or getattr(src_editor, '_stripped_outer_tag', None):
+            self.log("Split: switch to full tag view (no compact / hidden tags) to split here.")
+            return
+        caret = src_editor.textCursor().position()
+        prefix = src_editor.toPlainText()[:caret]
+        if hasattr(self, 'reverse_invisible_replacements'):
+            prefix = self.reverse_invisible_replacements(prefix)
+        self._split_segment_at_row(row, len(prefix))
+
+    def merge_current_segment(self):
+        """Merge the current segment with the next one (Ctrl+Alt+M)."""
+        from PyQt6.QtWidgets import QApplication
+        fw = QApplication.focusWidget()
+        if isinstance(fw, (ReadOnlyGridTextEditor, EditableGridTextEditor)) and getattr(fw, 'row', -1) >= 0:
+            row = fw.row
+        else:
+            row = self.table.currentRow()
+        if row is not None and row >= 0:
+            self._merge_segment_at_row(row)
+
+    def _push_structural_undo(self, before, after, focus_id, op, row):
+        """Record a reversible structural edit (split / merge) as before/after
+        snapshots of the whole segment list. ``op`` ('split'/'merge') and ``row``
+        let undo/redo apply the same fast incremental grid update."""
+        import copy
+        self.undo_stack.append({
+            "type": "structural",
+            "op": op,
+            "row": row,
+            "before": before,                 # already a snapshot from the caller
+            "after": copy.deepcopy(after),     # snapshot the post-edit list
+            "focus_id": focus_id,
+        })
+        if len(self.undo_stack) > self.max_undo_levels:
+            self.undo_stack.pop(0)
+        self.redo_stack.clear()
+        self.update_undo_redo_actions()
+        self.project_modified = True
+
+    def _sync_after_structural(self):
+        """Lightweight bookkeeping shared by the fast split/merge paths.
+
+        Keeps _original_segment_order in sync (the save path reads from it — a
+        stale copy is what caused the split-segment data loss), marks the project
+        modified, refreshes stats, and updates the preview (cheap when unchanged).
+        Does NOT rebuild the grid — the caller does a targeted update.
+        """
+        if getattr(self, 'current_project', None) is not None:
+            self._original_segment_order = self.current_project.segments.copy()
+        self.project_modified = True
+        self.update_window_title()
+        if hasattr(self, 'update_progress_stats'):
+            self.update_progress_stats()
+        try:
+            self.refresh_preview()
+        except Exception:
+            pass
+
+    def _recompute_list_numbers(self):
+        """Rebuild self._list_numbers (row-index → ordered-list number) after a
+        structural change, mirroring the pre-pass in load_segments_to_grid."""
+        import re
+        list_counter = 0
+        last_was_list = False
+        list_numbers = {}
+        for idx, segment in enumerate(self.current_project.segments):
+            source_text = (segment.source or "").strip()
+            is_list_item = source_text.startswith(('<li-o>', '<li-b>', '<li>'))
+            is_ordered = source_text.startswith('<li-o>') or (
+                source_text.startswith('<li>') and not source_text.startswith('<li-b>'))
+            if is_list_item and is_ordered:
+                m = re.match(r'^<li(?:-o)?>\s*(\d+)[.)\s]', source_text)
+                if m:
+                    list_counter = int(m.group(1))
+                    list_numbers[idx] = list_counter
+                    last_was_list = True
+                elif last_was_list:
+                    list_counter += 1
+                    list_numbers[idx] = list_counter
+                else:
+                    list_counter = 1
+                    list_numbers[idx] = list_counter
+                    last_was_list = True
+            else:
+                last_was_list = False
+                list_counter = 0
+        self._list_numbers = list_numbers
+
+    def _reindex_grid_rows_from(self, start_row: int):
+        """After an insert/remove, fix the # cell text and cell-widget .row for
+        every row from start_row onward (grid row == list index here), and
+        recompute the populated-rows set. Cheap: no widget recreation."""
+        segs = self.current_project.segments
+        n = self.table.rowCount()
+        for r in range(start_row, n):
+            if r >= len(segs):
+                break
+            seg = segs[r]
+            id_item = self.table.item(r, 0)
+            if id_item is None:
+                id_item = QTableWidgetItem()
+                id_item.setFlags(id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(r, 0, id_item)
+            id_item.setText(str(seg.id))
+            for col in (2, 3, 4, 5):
+                w = self.table.cellWidget(r, col)
+                if w is not None and hasattr(w, 'row'):
+                    w.row = r
+        self._populated_rows = {
+            r for r in range(n) if self.table.cellWidget(r, 2) is not None
+        }
+
+    def _select_grid_row_by_id(self, focus_id):
+        """Select and scroll to the grid row holding the segment with focus_id,
+        and move keyboard focus to the table.
+
+        Focusing the table matters after a structural edit: if focus stayed in a
+        cell's QTextEdit, that widget would swallow the next Ctrl+Z (its own text
+        undo) instead of letting the app-level structural undo fire."""
+        if focus_id is None:
+            return
+        r = self._find_row_for_segment(focus_id)
+        if r >= 0:
+            self.table.selectRow(r)
+            self.table.setCurrentCell(r, 2)
+            it = self.table.item(r, 0)
+            if it is not None:
+                self.table.scrollToItem(it)
+        # Defer the focus move: when invoked from the right-click context menu,
+        # the menu restores focus to the source cell as it closes — which would
+        # override an immediate setFocus and let that cell swallow the next
+        # Ctrl+Z. Running on the next event-loop tick lands focus on the table
+        # after the menu has finished closing, so Ctrl+Z reaches structural undo.
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self.table.setFocus)
+
+    def _split_segment_grid_fast(self, row: int, left_seg, right_seg):
+        """Incrementally update the grid for a split: insert one row, repopulate
+        the two affected rows, reindex the rest. Raises on any problem so the
+        caller can fall back to a full reload."""
+        # Suppress target-change handlers while (re)building cell editors, exactly
+        # as load_segments_to_grid does — otherwise the new target editors emit
+        # textChanged and record a spurious undo entry on top of the structural
+        # one (which made Ctrl+Z need two presses to actually rejoin/split).
+        _prev_suppress = getattr(self, '_suppress_target_change_handlers', False)
+        self._suppress_target_change_handlers = True
+        try:
+            self._recompute_list_numbers()
+            self.table.insertRow(row + 1)
+            # Sanity: the grid must hold exactly one row per segment (no pagination
+            # slicing). If not, bail so the caller does a correct full reload.
+            if self.table.rowCount() != len(self.current_project.segments):
+                raise RuntimeError("grid/segment row-count mismatch")
+            self._populate_single_row(row, left_seg)
+            self._populate_single_row(row + 1, right_seg)
+            self._reindex_grid_rows_from(row + 2)
+            self._auto_resize_single_row(row)
+            self._auto_resize_single_row(row + 1)
+            for r, seg in ((row, left_seg), (row + 1, right_seg)):
+                try:
+                    self._apply_comment_anchors_to_cell(r, seg)
+                except Exception:
+                    pass
+        finally:
+            self._suppress_target_change_handlers = _prev_suppress
+
+    def _merge_segment_grid_fast(self, row: int, merged_seg):
+        """Incrementally update the grid for a merge: repopulate the merged row,
+        remove the next row, reindex the rest. Raises on any problem so the
+        caller can fall back to a full reload."""
+        _prev_suppress = getattr(self, '_suppress_target_change_handlers', False)
+        self._suppress_target_change_handlers = True
+        try:
+            self._recompute_list_numbers()
+            self._populate_single_row(row, merged_seg)
+            self.table.removeRow(row + 1)
+            if self.table.rowCount() != len(self.current_project.segments):
+                raise RuntimeError("grid/segment row-count mismatch")
+            self._reindex_grid_rows_from(row + 1)
+            self._auto_resize_single_row(row)
+            try:
+                self._apply_comment_anchors_to_cell(row, merged_seg)
+            except Exception:
+                pass
+        finally:
+            self._suppress_target_change_handlers = _prev_suppress
+
+    def _apply_structural_history(self, action, redo: bool):
+        """Undo or redo a structural (split/merge) edit.
+
+        Restores the appropriate full-list snapshot (data correctness is never
+        in doubt), then applies the *same* fast incremental grid delta the
+        original edit used — so undo/redo are as quick as the edit, not a full
+        rebuild. Falls back to a full reload on any mismatch.
+        """
+        import copy
+        if not getattr(self, 'current_project', None):
+            return
+        snap = action["after"] if redo else action["before"]
+        self.current_project.segments = copy.deepcopy(snap)
+        # Keep the save-order list in sync (the data-loss fix) on every history step.
+        self._original_segment_order = self.current_project.segments.copy()
+        self.project_modified = True
+
+        op = action.get("op")
+        row = action.get("row")
+        focus_id = action.get("focus_id")
+        segs = self.current_project.segments
+
+        did_fast = False
+        if (op in ("split", "merge") and isinstance(row, int)
+                and getattr(self, "current_sort", None) is None):
+            # After restoring the snapshot, is the segment at `row` currently in
+            # its split (two rows) or merged (one row) form?
+            split_state = (op == "split" and redo) or (op == "merge" and not redo)
+            try:
+                if split_state and row + 1 < len(segs):
+                    # Grid currently shows ONE row here; expand to two.
+                    self._split_segment_grid_fast(row, segs[row], segs[row + 1])
+                    did_fast = True
+                elif not split_state:
+                    # Grid currently shows TWO rows here; collapse to one.
+                    self._merge_segment_grid_fast(row, segs[row])
+                    did_fast = True
+            except Exception as e:
+                self.log(f"Fast undo/redo refresh failed ({e}); full reload.")
+                did_fast = False
+
+        if not did_fast:
+            self.load_segments_to_grid()
+
+        self._select_grid_row_by_id(focus_id)
+        if hasattr(self, 'update_progress_stats'):
+            self.update_progress_stats()
+        self.update_window_title()
+        try:
+            self.refresh_preview()
+        except Exception:
+            pass
+
     def update_undo_redo_actions(self):
         """Update enabled/disabled state of undo/redo menu actions"""
         self.undo_action.setEnabled(len(self.undo_stack) > 0)
@@ -21621,6 +22075,12 @@ class SupervertalerQt(QMainWindow):
         general_tab = self._create_general_settings_tab()
         settings_tabs.addTab(scroll_area_wrapper(general_tab), self.tr("⚙️ General"))
 
+        # ===== TAB: Backup (auto-backup + timestamped project backups) =====
+        # Promoted to its own tab (v1.10.307) so users can find the backup
+        # controls instead of hunting for them inside General.
+        backup_tab = self._create_backup_settings_tab()
+        settings_tabs.addTab(scroll_area_wrapper(backup_tab), self.tr("💾 Backup"))
+
         # ===== TAB: AutoCorrect (v1.10.230, issue #213) =====
         # Lives just below General because that's where the feature was
         # initially prototyped; promoted to its own tab so the per-rule
@@ -23522,10 +23982,161 @@ class SupervertalerQt(QMainWindow):
         if file_path:
             line_edit.setText(file_path)
     
+    def _create_backup_settings_tab(self):
+        """Settings → 💾 Backup tab.
+
+        Hosts both the time-based auto-backup (overwrites the working .svproj +
+        TMX on a timer) and the every-N-saves *timestamped* project backups
+        (immutable snapshots in <user_data>/workbench/backups/). Moved here from
+        the General tab so users can find them.
+        """
+        general_settings = self.load_general_settings()
+
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        # Contextual help "?" at the top-right → online Backup docs (and F1).
+        help_row = QHBoxLayout()
+        help_row.addStretch()
+        backup_help_btn = QPushButton("?")
+        backup_help_btn.setFixedSize(22, 22)
+        backup_help_btn.setToolTip(self.tr("Open Backup help (online)"))
+        backup_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        backup_help_btn.clicked.connect(lambda: open_help(HelpTopics.SETTINGS_BACKUP))
+        help_row.addWidget(backup_help_btn)
+        layout.addLayout(help_row)
+
+        # ── Time-based auto-backup ──────────────────────────────────────
+        backup_group = QGroupBox(self.tr("💾 Auto Backup Settings"))
+        backup_layout = QVBoxLayout()
+
+        backup_info = QLabel(
+            "Supervertaler can automatically back up your project at regular intervals\n"
+            "to prevent data loss. Both a project.json and TMX file will be saved."
+        )
+        backup_info.setWordWrap(True)
+        backup_info.setStyleSheet("color: #666; font-size: 9pt; padding: 5px;")
+        backup_layout.addWidget(backup_info)
+
+        enable_backup_cb = CheckmarkCheckBox(self.tr("Enable automatic backups"))
+        enable_backup_cb.setChecked(general_settings.get('enable_auto_backup', True))
+        enable_backup_cb.setToolTip(
+            "When enabled, Supervertaler will automatically save your project and export\n"
+            "a TMX file at the configured interval. This helps prevent data loss."
+        )
+        backup_layout.addWidget(enable_backup_cb)
+
+        interval_layout = QHBoxLayout()
+        interval_layout.addWidget(QLabel(self.tr("Backup interval:")))
+        backup_interval_spin = QSpinBox()
+        backup_interval_spin.setRange(1, 60)
+        backup_interval_spin.setValue(general_settings.get('backup_interval_minutes', 5))
+        backup_interval_spin.setSuffix(" minutes")
+        backup_interval_spin.setToolTip(
+            "Set how often Supervertaler should automatically save your project.\n"
+            "Default: 5 minutes. Range: 1-60 minutes."
+        )
+        interval_layout.addWidget(backup_interval_spin)
+        interval_layout.addStretch()
+        backup_layout.addLayout(interval_layout)
+        backup_group.setLayout(backup_layout)
+        layout.addWidget(backup_group)
+
+        # ── Versioned (every-N-saves) timestamped backups ───────────────
+        versioned_group = QGroupBox(self.tr("🕑 Timestamped project backups"))
+        versioned_layout = QVBoxLayout()
+
+        versioned_info = QLabel(
+            "Keep immutable, timestamped copies of the project file (.svproj) so you\n"
+            "can roll back to an earlier state. These are separate from the auto-backup\n"
+            "above (which overwrites the working file)."
+        )
+        versioned_info.setWordWrap(True)
+        versioned_info.setStyleSheet("color: #666; font-size: 9pt; padding: 5px;")
+        versioned_layout.addWidget(versioned_info)
+
+        versioned_cb = CheckmarkCheckBox(self.tr("Keep timestamped project backups"))
+        versioned_cb.setChecked(general_settings.get('enable_versioned_backup', True))
+        versioned_cb.setToolTip(
+            "Every N saves, keep a timestamped copy of the .svproj file in a\n"
+            "dedicated backups folder, so you can roll back to an earlier state.")
+        versioned_layout.addWidget(versioned_cb)
+
+        vrow = QHBoxLayout()
+        vrow.addWidget(QLabel(self.tr("Back up every")))
+        versioned_n_spin = QSpinBox()
+        versioned_n_spin.setRange(1, 100)
+        versioned_n_spin.setValue(general_settings.get('versioned_backup_every_n_saves', 1))
+        versioned_n_spin.setSuffix(self.tr(" save(s)"))
+        versioned_n_spin.setToolTip("How often to drop a timestamped backup, counted in save operations\n"
+                                    "(manual saves and timed auto-saves both count).")
+        vrow.addWidget(versioned_n_spin)
+        vrow.addSpacing(16)
+        vrow.addWidget(QLabel(self.tr("keep the last")))
+        versioned_keep_spin = QSpinBox()
+        versioned_keep_spin.setRange(1, 1000)
+        versioned_keep_spin.setValue(general_settings.get('versioned_backup_keep', 100))
+        versioned_keep_spin.setSuffix(self.tr(" backups"))
+        versioned_keep_spin.setToolTip("Older backups beyond this count are pruned automatically (per project).")
+        vrow.addWidget(versioned_keep_spin)
+        vrow.addStretch()
+        versioned_layout.addLayout(vrow)
+
+        frow = QHBoxLayout()
+        _backups_dir = str(Path(self.user_data_path) / "workbench" / "backups")
+        backups_path_lbl = QLabel(_backups_dir)
+        backups_path_lbl.setStyleSheet("color:#888; font-size:8pt;")
+        backups_path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        frow.addWidget(backups_path_lbl, 1)
+        open_backups_btn = QPushButton(self.tr("Open folder…"))
+        open_backups_btn.clicked.connect(
+            lambda: (Path(_backups_dir).mkdir(parents=True, exist_ok=True), open_folder(_backups_dir)))
+        frow.addWidget(open_backups_btn)
+        versioned_layout.addLayout(frow)
+
+        versioned_group.setLayout(versioned_layout)
+        layout.addWidget(versioned_group)
+
+        layout.addStretch()
+
+        # Store references (also read by _save_general_settings_from_ui, which
+        # still owns auto-backup persistence when General's Save is clicked).
+        self.enable_backup_cb = enable_backup_cb
+        self.backup_interval_spin = backup_interval_spin
+        self.enable_versioned_backup_cb = versioned_cb
+        self.versioned_backup_n_spin = versioned_n_spin
+        self.versioned_backup_keep_spin = versioned_keep_spin
+
+        # Live-save on any change (no Save button — matches the AutoCorrect tab).
+        enable_backup_cb.toggled.connect(lambda _=False: self._live_save_backup_settings())
+        versioned_cb.toggled.connect(lambda _=False: self._live_save_backup_settings())
+        backup_interval_spin.valueChanged.connect(lambda _=0: self._live_save_backup_settings())
+        versioned_n_spin.valueChanged.connect(lambda _=0: self._live_save_backup_settings())
+        versioned_keep_spin.valueChanged.connect(lambda _=0: self._live_save_backup_settings())
+
+        set_help_topic(tab, HelpTopics.SETTINGS_BACKUP)
+        return tab
+
+    def _live_save_backup_settings(self):
+        """Persist the Backup tab's settings immediately (live-save), so the
+        user doesn't have to hunt for a Save button. Updates only the backup
+        keys in the general settings section and restarts the auto-backup timer."""
+        try:
+            gs = self.load_general_settings()
+            gs['enable_auto_backup'] = self.enable_backup_cb.isChecked()
+            gs['backup_interval_minutes'] = self.backup_interval_spin.value()
+            gs['enable_versioned_backup'] = self.enable_versioned_backup_cb.isChecked()
+            gs['versioned_backup_every_n_saves'] = self.versioned_backup_n_spin.value()
+            gs['versioned_backup_keep'] = self.versioned_backup_keep_spin.value()
+            self.save_general_settings(gs)
+            self.restart_auto_backup_timer()
+        except Exception as e:
+            self.log(f"⚠ Could not save backup settings: {e}")
+
     def _create_general_settings_tab(self):
         """Create General Settings tab content"""
         from PyQt6.QtWidgets import QCheckBox, QGroupBox, QPushButton, QLineEdit, QFileDialog
-        
+
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -23892,50 +24503,9 @@ class SupervertalerQt(QMainWindow):
         sound_group.setLayout(sound_layout)
         layout.addWidget(sound_group)
 
-        # Auto Backup Settings group
-        backup_group = QGroupBox(self.tr("💾 Auto Backup Settings"))
-        backup_layout = QVBoxLayout()
-
-        backup_info = QLabel(
-            "Supervertaler can automatically back up your project at regular intervals\n"
-            "to prevent data loss. Both a project.json and TMX file will be saved."
-        )
-        backup_info.setWordWrap(True)
-        backup_info.setStyleSheet("color: #666; font-size: 9pt; padding: 5px;")
-        backup_layout.addWidget(backup_info)
-
-        # Enable auto backup checkbox
-        enable_backup_cb = CheckmarkCheckBox(self.tr("Enable automatic backups"))
-        enable_backup_cb.setChecked(general_settings.get('enable_auto_backup', True))
-        enable_backup_cb.setToolTip(
-            "When enabled, Supervertaler will automatically save your project and export\n"
-            "a TMX file at the configured interval. This helps prevent data loss."
-        )
-        backup_layout.addWidget(enable_backup_cb)
-
-        # Backup interval spinner
-        interval_layout = QHBoxLayout()
-        interval_label = QLabel(self.tr("Backup interval:"))
-        interval_layout.addWidget(interval_label)
-
-        backup_interval_spin = QSpinBox()
-        backup_interval_spin.setRange(1, 60)
-        backup_interval_spin.setValue(general_settings.get('backup_interval_minutes', 5))
-        backup_interval_spin.setSuffix(" minutes")
-        backup_interval_spin.setToolTip(
-            "Set how often Supervertaler should automatically save your project.\n"
-            "Default: 5 minutes. Range: 1-60 minutes."
-        )
-        interval_layout.addWidget(backup_interval_spin)
-        interval_layout.addStretch()
-        backup_layout.addLayout(interval_layout)
-
-        backup_group.setLayout(backup_layout)
-        layout.addWidget(backup_group)
-
-        # Store references for saving
-        self.enable_backup_cb = enable_backup_cb
-        self.backup_interval_spin = backup_interval_spin
+        # (💾 Backup settings moved to their own "Backup" tab — see
+        # _create_backup_settings_tab. They were here originally but were hard
+        # to find buried among the General options.)
 
         # ──────────────────────────────────────────────────────────────
         # Box 1: 📂 TM settings
@@ -24366,7 +24936,9 @@ class SupervertalerQt(QMainWindow):
             restore_last_project_cb, allow_replace_cb, auto_propagate_cb,
             llm_spin, mt_spin, tm_limit_spin, tb_spin,
             auto_open_log_cb, auto_insert_100_cb, tm_save_mode_combo, tb_highlight_cb,
-            enable_backup_cb, backup_interval_spin,
+            # Backup controls now live on the dedicated Backup tab; read them
+            # from the instance attrs it sets (resolved when Save is clicked).
+            getattr(self, 'enable_backup_cb', None), getattr(self, 'backup_interval_spin', None),
             tb_hide_shorter_cb, smart_selection_cb,
             ahk_path_edit=getattr(self, 'ahk_path_edit', None),
             auto_center_cb=auto_center_cb,
@@ -27389,6 +27961,9 @@ class SupervertalerQt(QMainWindow):
             'auto_center_active_segment': self.auto_center_cb.isChecked() if hasattr(self, 'auto_center_cb') else False,
             'enable_auto_backup': enable_backup_cb.isChecked() if enable_backup_cb is not None else True,
             'backup_interval_minutes': backup_interval_spin.value() if backup_interval_spin is not None else 5,
+            'enable_versioned_backup': self.enable_versioned_backup_cb.isChecked() if hasattr(self, 'enable_versioned_backup_cb') else existing_settings.get('enable_versioned_backup', True),
+            'versioned_backup_every_n_saves': self.versioned_backup_n_spin.value() if hasattr(self, 'versioned_backup_n_spin') else existing_settings.get('versioned_backup_every_n_saves', 1),
+            'versioned_backup_keep': self.versioned_backup_keep_spin.value() if hasattr(self, 'versioned_backup_keep_spin') else existing_settings.get('versioned_backup_keep', 100),
             'ollama_keepwarm': existing_settings.get('ollama_keepwarm', False),  # Preserve AI setting
             'grid_font_size': self.default_font_size,
             'results_match_font_size': 9,
@@ -32894,10 +33469,50 @@ class SupervertalerQt(QMainWindow):
             self.project_modified = False
             self.update_window_title()
             self.log(f"✓ Saved project: {Path(file_path).name}")
-            
+
+            # Every N saves, keep a timestamped copy in the backups folder.
+            self._maybe_make_versioned_backup(file_path)
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save project:\n{str(e)}")
             self.log(f"✗ Error saving project: {e}")
+
+    def _maybe_make_versioned_backup(self, project_path: str):
+        """Every N saves, drop a timestamped copy of the .svproj into the
+        backups folder (<user_data>/workbench/backups/<project>/), pruning to
+        the most recent K. Best-effort: never raises into the save path."""
+        try:
+            gs = self.load_general_settings()
+            if not gs.get('enable_versioned_backup', True):
+                return
+            every_n = max(1, int(gs.get('versioned_backup_every_n_saves', 1)))
+            keep = max(1, int(gs.get('versioned_backup_keep', 100)))
+
+            self._save_count = getattr(self, '_save_count', 0) + 1
+            if self._save_count % every_n != 0:
+                return
+
+            import shutil
+            from datetime import datetime
+            src = Path(project_path)
+            if not src.exists():
+                return
+            backups_dir = Path(self.user_data_path) / "workbench" / "backups" / src.stem
+            backups_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            dest = backups_dir / f"{src.stem}_{ts}{src.suffix}"
+            shutil.copy2(src, dest)
+            self.log(f"💾 Versioned backup saved: {dest.name} (every {every_n} saves)")
+
+            # Prune oldest beyond the retention count (timestamped names sort chronologically).
+            existing = sorted(backups_dir.glob(f"{src.stem}_*{src.suffix}"))
+            for old in existing[:max(0, len(existing) - keep)]:
+                try:
+                    old.unlink()
+                except Exception:
+                    pass
+        except Exception as e:
+            self.log(f"⚠ Versioned backup skipped: {e}")
 
     def restart_auto_backup_timer(self):
         """Restart the auto backup timer based on current settings"""
@@ -41653,6 +42268,11 @@ class SupervertalerQt(QMainWindow):
                 # re-confirm. That reset has been removed below.)
                 if new_text == old_target:
                     return
+
+                # Genuine user edit: from now on this cell keeps its own undo
+                # history (so Ctrl+Z undoes typing); focusInEvent will no longer
+                # clear it. See EditableGridTextEditor.focusInEvent.
+                editor_widget._user_has_edited = True
 
                 # Update the target text
                 if self.debug_mode_enabled:

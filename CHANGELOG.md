@@ -2,7 +2,35 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.305 (June 23, 2026)
+**Current Version:** v1.10.307 (June 24, 2026)
+
+
+## v1.10.307 – June 24, 2026
+
+### Added (Backup · timestamped project backups + dedicated Settings tab)
+
+- **Timestamped project backups.** Supervertaler can now keep immutable, dated snapshots of the project file so you can roll back to an earlier state — separate from the existing time-based auto-backup (which overwrites the working file). Every *N* saves (default **1** = every save) it copies the `.svproj` to `…\workbench\backups\<project>\<project>_YYYYMMDD-HHMMSS.svproj`, keeping the last *K* (default **100**, older ones auto-pruned). The copy is cheaper than the save it follows, so it adds no perceptible delay even on every save. Requested by Michael.
+- **New Settings → 💾 Backup tab.** The auto-backup controls and the new timestamped-backup controls (enable, every-N-saves, keep-last-K, folder path + Open folder…) moved out of General into their own tab so they're easy to find. The tab live-saves on every change and has a contextual **?** linking to the [Backup help page](https://docs.supervertaler.com/workbench/settings/backup/).
+
+### Added (Editor · split & merge keyboard shortcuts)
+
+- **Ctrl+Alt+S** splits the current segment at the cursor in the Source cell; **Ctrl+Alt+M** merges it with the next segment. Both are configurable in Settings → Keyboard Shortcuts (Editor category).
+
+### Fixed (Editor · split & merge robustness, speed, and undo)
+
+- **Fixed a data-loss bug** where a split segment could vanish on save. `save_project_to_file` serialises from an internal "document order" snapshot to preserve order under grid sorting; split/merge weren't refreshing that snapshot, so a save (including the timed auto-backup) could drop the newly-split segment and persist the pre-edit text — and "Discard changes" on close couldn't help because auto-backup had already written it. The order snapshot is now refreshed on every split/merge/undo/redo. Reported by Michael.
+- **Split/merge is now near-instant** even on long documents. Instead of rebuilding the whole grid after each edit, only the affected rows are updated incrementally (with a full-reload fallback if anything looks off). Undo/redo of a structural edit use the same fast path.
+- **Undo now reverts a split/merge on the first Ctrl+Z**, including when the cursor is parked in a target cell — freshly-built cells no longer carry a stray undo step from their own initial rendering, so Ctrl+Z falls through to the segment/structural undo until you actually type.
+- Split/merge are restricted to **Document Order** (greyed with a reason when a sort is active), since the save-order logic assumes it.
+
+
+## v1.10.306 – June 23, 2026
+
+### Added (Editor · split & merge segments)
+
+- **Split and merge segments from the grid**, the way Trados Studio and memoQ do it. Right-click in the **source** cell and choose **✂ Split segment here** (splits at the clicked position) or **🔗 Merge with next segment**. Splitting puts the existing target on the first part and leaves the second empty; merging joins source and target with smart spacing and keeps the least-complete status. Both are **fully undoable** (Ctrl+Z / Ctrl+Y). Requested by Michael.
+- **Same-paragraph merge guard.** Merge is only offered for the next segment when it shares the same paragraph, table cell, file, and text unit — matching Trados/memoQ — so you can't accidentally collapse separate paragraphs. When it's not allowed the menu item is greyed with a reason.
+- **Round-trip-safe.** Split/merge is enabled only for projects whose segmentation Supervertaler owns (monolingual DOCX/IDML/HTML/PPTX/XLSX via Okapi, plus TXT/MD); the Okapi exporter already reassembles split segments by text unit. For bilingual CAT imports (sdlxliff, memoQ/Trados/Phrase/Déjà Vu bilingual, PO) — where the external tool owns the segment slots — the actions are hidden, since adding/removing rows would break the export mapping. Comment anchors are repositioned across the split/merge so they stay attached to the right text.
 
 
 ## v1.10.305 – June 23, 2026

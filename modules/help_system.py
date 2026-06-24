@@ -185,6 +185,7 @@ class Topics:
 
     # Settings
     SETTINGS_GENERAL    = "workbench/settings/general/"
+    SETTINGS_BACKUP     = "workbench/settings/backup/"
     SETTINGS_AUTOCORRECT = "workbench/settings/autocorrect/"  # v1.10.230: AutoCorrect-while-typing
     SETTINGS_LANGUAGE   = "workbench/settings/language/"  # v1.10.208: UI translation / i18n
     SETTINGS_VIEW       = "workbench/settings/view/"

@@ -79,6 +79,18 @@ class ShortcutManager:
             "default": "Ctrl+M",
             "action": "add_comment_from_selection"
         },
+        "editor_split_segment": {
+            "category": "Editor",
+            "description": "Split Segment at Cursor (in Source)",
+            "default": "Ctrl+Alt+S",
+            "action": "split_current_segment"
+        },
+        "editor_merge_segment": {
+            "category": "Editor",
+            "description": "Merge Segment with Next",
+            "default": "Ctrl+Alt+M",
+            "action": "merge_current_segment"
+        },
 
         # Translation Operations
         "translate_current": {
