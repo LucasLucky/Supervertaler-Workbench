@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.308 (June 24, 2026)
+**Current Version:** v1.10.309 (June 24, 2026)
+
+
+## v1.10.309 – June 24, 2026
+
+### Fixed (TermLens · abbreviation chips now show what they stand for)
+
+- **When a term matches via its abbreviation, the hover tooltip now decodes it.** Previously, if the source contained only the abbreviation (e.g. *ASR*) the chip showed `ASR → ASR` and the tooltip carried none of the underlying term's information, so you couldn't tell what it meant. The tooltip now adds a **Full term:** line (e.g. *automotive shredder residue → auto shredder residu*) plus a **Target also:** line listing the target-language synonyms. The match already carried the term's notes/definition/domain; the missing piece — the full term forms — is now passed through to the popup. Reported by Michael.
 
 
 ## v1.10.308 – June 24, 2026

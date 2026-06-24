@@ -876,6 +876,19 @@ class TermBlock(QWidget):
                     heading += f" <span style='color:#999;'>(ID {tid})</span>"
                 popup_chunks.append(heading)
 
+                # v1.10.309: when the chip matched a surface form that differs
+                # from the underlying term — most importantly an *abbreviation*
+                # ("ASR"), but also a source synonym — show the full term so the
+                # translator can decode what the abbreviation stands for.
+                full_s = (entry.get('full_source_term', '') or '').strip()
+                full_t = (entry.get('full_target_term', '') or '').strip()
+                disp_s = (self.source_text or '').strip()
+                if full_s and full_s.lower() != disp_s.lower():
+                    popup_chunks.append(
+                        f"<div style='margin-top:2px;'><b>Full term:</b> "
+                        f"{_html_escape(full_s)} &rarr; {_html_escape(full_t)}</div>"
+                    )
+
                 # Shortcut hint only on the primary entry (the chip's
                 # Alt+digit binding inserts the primary's target,
                 # not the alternatives').
@@ -942,6 +955,23 @@ class TermBlock(QWidget):
                             f"<div style='margin-top:2px;'>"
                             f"<i>Also: {safe}</i></div>"
                         )
+
+                # v1.10.309: target-language synonyms. For a normal chip these
+                # are also split into separate alternative chips, but for an
+                # abbreviation chip they aren't — and the user wants to see the
+                # target variants in the tooltip either way (e.g. the Dutch
+                # synonyms for "auto shredder residu").
+                def _syn_text(s):
+                    if isinstance(s, dict):
+                        return s.get('text') or s.get('target') or s.get('term') or ''
+                    return s or ''
+                tgt_syns = [t for t in (_syn_text(s) for s in (entry.get('target_synonyms') or [])) if t]
+                if tgt_syns:
+                    safe = ", ".join(_html_escape(s) for s in tgt_syns)
+                    popup_chunks.append(
+                        f"<div style='margin-top:2px;'>"
+                        f"<i>Target also: {safe}</i></div>"
+                    )
 
             popup_chunks.append(
                 "<div style='margin-top:6px;color:#888;font-style:italic;'>"

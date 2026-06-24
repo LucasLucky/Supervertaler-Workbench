@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.308"
+    return "1.10.309"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -17544,6 +17544,9 @@ class SupervertalerQt(QMainWindow):
                         'is_nontranslatable': match.get('is_nontranslatable', False),
                         # v1.10.75 (Tier 3c) abbreviation marker
                         'matched_via_abbreviation': match.get('matched_via_abbreviation', False),
+                        # v1.10.309: full term forms (see _search_termbase_in_memory)
+                        'full_source_term': match.get('full_source_term', ''),
+                        'full_target_term': match.get('full_target_term', ''),
                     }
                     for match in termbase_matches.values() if isinstance(match, dict)
                 ] if isinstance(termbase_matches, dict) else []
@@ -18595,6 +18598,9 @@ class SupervertalerQt(QMainWindow):
                                             'is_nontranslatable': match.get('is_nontranslatable', False),
                                             # v1.10.75 (Tier 3c) abbreviation marker
                                             'matched_via_abbreviation': match.get('matched_via_abbreviation', False),
+                                            # v1.10.309: full term forms
+                                            'full_source_term': match.get('full_source_term', ''),
+                                            'full_target_term': match.get('full_target_term', ''),
                                         }
                                         for match in cached_matches.values() if isinstance(match, dict)
                                     ]
@@ -32574,6 +32580,12 @@ class SupervertalerQt(QMainWindow):
                 'url': term.get('url', ''),
                 'source_abbreviation': term.get('source_abbreviation', ''),
                 'target_abbreviation': term.get('target_abbreviation', ''),
+                # v1.10.309: the full term forms, so a chip that matched via an
+                # abbreviation (or synonym) can still show what it stands for in
+                # the tooltip (source_term/target_term below hold the matched
+                # surface form, which for an abbreviation match is just "ASR").
+                'full_source_term': term['source_term'],
+                'full_target_term': term['target_term'],
                 # v1.10.73 (Tier 2): synonyms.
                 'source_synonyms': term.get('source_synonyms', []),
                 'target_synonyms': term.get('target_synonyms', []),
