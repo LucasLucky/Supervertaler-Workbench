@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.307"
+    return "1.10.308"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -11355,6 +11355,14 @@ class SupervertalerQt(QMainWindow):
         statistics_action.triggered.connect(self.show_statistics_dialog)
         tools_menu.addAction(statistics_action)
 
+        quick_count_action = QAction(self.tr("⚡ &Quick Count (pick files, no project)..."), self)
+        quick_count_action.setToolTip(self.tr(
+            "Quickly count one or more files (DOCX, Trados .sdlxliff, memoQ .mqxliff, "
+            "and other formats) against your translation memories — without creating "
+            "a project. For when you just want a fast word count / TM analysis."))
+        quick_count_action.triggered.connect(self.show_quick_statistics_dialog)
+        tools_menu.addAction(quick_count_action)
+
         tools_menu.addSeparator()
 
         image_extractor_action = QAction(self.tr("🖼️ &Image Extractor (Superimage)..."), self)
@@ -12476,6 +12484,161 @@ class SupervertalerQt(QMainWindow):
             import traceback
             traceback.print_exc()
             QMessageBox.critical(self, self.tr("Error"), f"Failed to open Statistics:\n{str(e)}")
+
+    # ── Quick Count (project-free statistics) ─────────────────────────────
+    def _all_tm_choices(self):
+        """[{tm_id, name, entry_count}, …] for every TM in the database."""
+        try:
+            return [
+                {'tm_id': tm['tm_id'], 'name': tm.get('name') or tm['tm_id'],
+                 'entry_count': tm.get('entry_count', 0)}
+                for tm in self.tm_metadata_mgr.get_all_tms()
+            ]
+        except Exception:
+            try:
+                return [
+                    {'tm_id': tm['tm_id'], 'name': tm.get('name') or tm['tm_id'],
+                     'entry_count': tm.get('entry_count', 0)}
+                    for tm in self.db_manager.get_all_tms()
+                ]
+            except Exception:
+                return []
+
+    def _quick_count_lang_pair(self):
+        """Source/target language codes to use for a project-free count: the
+        open project's pair if any, else the last-used import pair."""
+        proj = getattr(self, 'current_project', None)
+        if proj is not None and getattr(proj, 'source_lang', None):
+            return (proj.source_lang or 'en', proj.target_lang or 'nl')
+        try:
+            gs = self.load_general_settings()
+            return (gs.get('last_import_source_lang', 'en') or 'en',
+                    gs.get('last_import_target_lang', 'nl') or 'nl')
+        except Exception:
+            return ('en', 'nl')
+
+    def _quick_extract_sources(self, file_path, src_lang, tgt_lang):
+        """Extract a list of source-text strings from one file for a quick count.
+
+        Supports DOCX and the other Okapi formats (sentence-segmented like a
+        normal import), plus Trados .sdlxliff and memoQ .mqxliff. Raises
+        ValueError for an unsupported extension; the caller handles per-file
+        errors so one bad file doesn't sink the rest.
+        """
+        ext = os.path.splitext(file_path)[1].lower()
+        okapi_exts = {'.docx', '.xlsx', '.pptx', '.html', '.htm',
+                      '.xliff', '.xlf', '.idml', '.po'}
+        if ext in okapi_exts:
+            if not self._ensure_okapi_sidecar():
+                raise RuntimeError("The Okapi sidecar is not available.")
+            result = self.okapi_sidecar.extract(
+                file_path, source_lang=src_lang, target_lang=tgt_lang, segment=True,
+                options=okapi_sidecar_options(self.get_effective_import_options()),
+            )
+            return [s.get('source', '').strip()
+                    for s in result.get('segments', [])
+                    if (s.get('source') or '').strip()]
+        if ext == '.sdlxliff':
+            from modules.sdlppx_handler import StandaloneSDLXLIFFHandler
+            h = StandaloneSDLXLIFFHandler()
+            h.load([file_path])
+            return [s.source_text for s in h.get_all_segments()
+                    if getattr(s, 'source_text', '').strip()]
+        if ext == '.mqxliff':
+            from modules.mqxliff_handler import MQXLIFFHandler
+            h = MQXLIFFHandler()
+            h.load(file_path)
+            return [s.plain_text for s in h.extract_source_segments()
+                    if getattr(s, 'plain_text', '').strip()]
+        raise ValueError(f"Unsupported file type: {ext or '(none)'}")
+
+    def show_quick_statistics_dialog(self):
+        """Quick Count: pick one or more files (no project needed), extract their
+        source segments, then open the Statistics dialog to count them against
+        the selected TMs."""
+        from types import SimpleNamespace
+        from PyQt6.QtWidgets import QProgressDialog
+
+        formats = [
+            ("Word Document", "*.docx"),
+            ("Trados bilingual", "*.sdlxliff"),
+            ("memoQ bilingual", "*.mqxliff"),
+            ("Adobe InDesign Markup", "*.idml"),
+            ("HTML", "*.html *.htm"),
+            ("XLIFF 1.2", "*.xliff *.xlf"),
+            ("PO (gettext)", "*.po"),
+            ("Microsoft Excel", "*.xlsx"),
+            ("Microsoft PowerPoint", "*.pptx"),
+        ]
+        all_patterns = " ".join(p for _, p in formats)
+        filter_parts = [f"All supported formats ({all_patterns})"]
+        filter_parts += [f"{n} ({p})" for n, p in formats]
+        filter_parts.append("All Files (*.*)")
+
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, self.tr("Quick Count – select file(s)"), "", ";;".join(filter_parts))
+        if not paths:
+            return
+
+        src_lang, tgt_lang = self._quick_count_lang_pair()
+
+        progress = QProgressDialog(
+            self.tr("Reading files…"), None, 0, len(paths), self)
+        progress.setWindowTitle(self.tr("Quick Count"))
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.show()
+        QApplication.processEvents()
+
+        segments = []
+        errors = []
+        for i, path in enumerate(paths):
+            progress.setValue(i)
+            progress.setLabelText(self.tr("Reading: ") + os.path.basename(path))
+            QApplication.processEvents()
+            try:
+                sources = self._quick_extract_sources(path, src_lang, tgt_lang)
+                _fname = os.path.basename(path)
+                segments.extend(SimpleNamespace(source=s, file_name=_fname) for s in sources)
+            except Exception as e:
+                errors.append(f"{os.path.basename(path)}: {e}")
+                self.log(f"⚠ Quick Count could not read {os.path.basename(path)}: {e}")
+        progress.setValue(len(paths))
+        progress.close()
+
+        if errors:
+            QMessageBox.warning(
+                self, self.tr("Quick Count"),
+                self.tr("Some files could not be read:\n\n") + "\n".join(errors))
+
+        if not segments:
+            QMessageBox.information(
+                self, self.tr("Quick Count"),
+                self.tr("No countable source segments were found in the selected file(s)."))
+            return
+
+        scope = (os.path.basename(paths[0]) if len(paths) == 1
+                 else f"{len(paths)} files")
+        try:
+            from modules.statistics_dialog_qt import StatisticsDialog
+            dialog = StatisticsDialog(
+                parent=self,
+                db_manager=self.db_manager,
+                segments=segments,
+                source_lang=src_lang,
+                target_lang=tgt_lang,
+                tm_choices=self._all_tm_choices(),
+                preselected_tm_ids=[],
+                project_name=scope,
+            )
+            dialog.exec()
+        except Exception as e:
+            self.log(f"Error opening Quick Count: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, self.tr("Error"), f"Failed to open Quick Count:\n{str(e)}")
 
     def create_reference_images_tab(self) -> QWidget:
         """Create the Image Context tab - Load images as visual context for AI translation"""

@@ -300,36 +300,46 @@ class StatisticsDialog(QDialog):
         title.setStyleSheet("margin-top: 10px; margin-bottom: 2px;")
         self.results_layout.insertWidget(self.results_layout.count() - 1, title)
 
-        rows = ["All"] + list(CATEGORIES)
+        by_file = getattr(result, "by_file", {}) or {}
+        multi = len(by_file) > 1
+
+        # Combined table (labelled "All files" when there's a per-file breakdown).
+        self._insert_bucket_table(result.total, result.buckets,
+                                  all_label="All files" if multi else "All")
+
+        # Per-file breakdown — only when more than one file is involved.
+        if multi:
+            sub = QLabel("Per file:")
+            sub.setStyleSheet("margin-top: 6px; color: #555; font-weight: bold;")
+            self.results_layout.insertWidget(self.results_layout.count() - 1, sub)
+            for fname, fr in by_file.items():
+                flbl = QLabel(html.escape(fname or "(unnamed)"))
+                flbl.setStyleSheet("margin-top: 4px; color: #777; font-style: italic;")
+                self.results_layout.insertWidget(self.results_layout.count() - 1, flbl)
+                self._insert_bucket_table(fr.total, fr.buckets, all_label="All")
+
+    def _insert_bucket_table(self, total, buckets, all_label="All"):
+        """Build and insert one breakdown table from a (total, buckets) pair."""
+        rows = [all_label] + list(CATEGORIES)
         table = QTableWidget(len(rows), len(COLUMNS))
         table.setHorizontalHeaderLabels(COLUMNS)
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
 
-        total_words = result.total.words or 1
-
-        def _bucket_for(label):
-            if label == "All":
-                return result.total
-            return result.buckets[label]
+        total_words = total.words or 1
 
         for r, label in enumerate(rows):
-            b = _bucket_for(label)
-            pct = (b.words / total_words * 100.0) if label != "All" else 100.0
-            cells = [
-                label,
-                f"{b.segments:,}",
-                f"{b.words:,}",
-                f"{b.chars:,}",
-                f"{b.tags:,}",
-                f"{pct:.2f}",
-            ]
+            is_total = (r == 0)
+            b = total if is_total else buckets[label]
+            pct = 100.0 if is_total else (b.words / total_words * 100.0)
+            cells = [label, f"{b.segments:,}", f"{b.words:,}",
+                     f"{b.chars:,}", f"{b.tags:,}", f"{pct:.2f}"]
             for c, val in enumerate(cells):
                 item = QTableWidgetItem(str(val))
                 if c > 0:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                if label == "All":
+                if is_total:
                     f = item.font()
                     f.setBold(True)
                     item.setFont(f)
@@ -340,10 +350,9 @@ class StatisticsDialog(QDialog):
         for c in range(1, len(COLUMNS)):
             hh.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Size table to fit its content (no inner scrollbar)
-        table.setMinimumHeight(table.verticalHeader().length() + table.horizontalHeader().height() + 4)
-        table.setMaximumHeight(table.verticalHeader().length() + table.horizontalHeader().height() + 4)
-
+        fixed_h = table.verticalHeader().length() + table.horizontalHeader().height() + 4
+        table.setMinimumHeight(fixed_h)
+        table.setMaximumHeight(fixed_h)
         self.results_layout.insertWidget(self.results_layout.count() - 1, table)
 
     # ------------------------------------------------------------------
@@ -402,14 +411,13 @@ class StatisticsDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Export", f"Export failed: {e}")
 
-    def _rows_for(self, result: TMResult):
-        """Yield (label, segments, words, chars, tags, percent) for one TM,
-        starting with the All total row."""
-        total_words = result.total.words or 1
-        yield ("All", result.total.segments, result.total.words,
-               result.total.chars, result.total.tags, 100.0)
+    def _rows_for(self, total, buckets, all_label="All"):
+        """Yield (label, segments, words, chars, tags, percent) for a
+        (total, buckets) pair, starting with the total row."""
+        total_words = total.words or 1
+        yield (all_label, total.segments, total.words, total.chars, total.tags, 100.0)
         for label in CATEGORIES:
-            b = result.buckets[label]
+            b = buckets[label]
             pct = b.words / total_words * 100.0
             yield (label, b.segments, b.words, b.chars, b.tags, pct)
 
@@ -440,22 +448,31 @@ class StatisticsDialog(QDialog):
             f"{self._src_lang} &rarr; {self._tgt_lang}</p>"
         )
 
-        for result in self._results:
-            parts.append("<h2>Analysis</h2>")
-            parts.append(f"<div class='scope'>Resources: {html.escape(result.tm_name)}</div>")
-            parts.append("<table>")
-            parts.append(
-                "<tr class='header'><td>Type</td><td>Segments</td><td>Words</td>"
-                "<td>Characters</td><td>Tags</td><td>Percent</td></tr>"
-            )
-            for label, segs, words, chars, tags, pct in self._rows_for(result):
-                cls = " class='total'" if label == "All" else ""
-                parts.append(
+        def _table(total, buckets, all_label):
+            out = ["<table>",
+                   "<tr class='header'><td>Type</td><td>Segments</td><td>Words</td>"
+                   "<td>Characters</td><td>Tags</td><td>Percent</td></tr>"]
+            for label, segs, words, chars, tags, pct in self._rows_for(total, buckets, all_label):
+                cls = " class='total'" if label == all_label else ""
+                out.append(
                     f"<tr{cls}><td>{html.escape(label)}</td>"
                     f"<td>{segs:,}</td><td>{words:,}</td>"
                     f"<td>{chars:,}</td><td>{tags:,}</td><td>{pct:.2f}</td></tr>"
                 )
-            parts.append("</table>")
+            out.append("</table>")
+            return "\n".join(out)
+
+        for result in self._results:
+            by_file = getattr(result, "by_file", {}) or {}
+            multi = len(by_file) > 1
+            parts.append("<h2>Analysis</h2>")
+            parts.append(f"<div class='scope'>Resources: {html.escape(result.tm_name)}</div>")
+            parts.append(_table(result.total, result.buckets, "All files" if multi else "All"))
+            if multi:
+                parts.append("<p style='margin:.2em 0;color:#555'><b>Per file:</b></p>")
+                for fname, fr in by_file.items():
+                    parts.append(f"<div class='scope'>{html.escape(fname or '(unnamed)')}</div>")
+                    parts.append(_table(fr.total, fr.buckets, "All"))
 
         # Legend
         parts.append("<div class='legend'><b>What the match types mean</b><dl>")
@@ -487,11 +504,21 @@ class StatisticsDialog(QDialog):
                         f"{self._src_lang} -> {self._tgt_lang}"])
             w.writerow([])
             for result in self._results:
+                by_file = getattr(result, "by_file", {}) or {}
+                multi = len(by_file) > 1
                 w.writerow([f"Resources: {result.tm_name}"])
                 w.writerow(["Type", "Segments", "Words", "Characters", "Tags", "Percent"])
-                for label, segs, words, chars, tags, pct in self._rows_for(result):
+                for label, segs, words, chars, tags, pct in self._rows_for(
+                        result.total, result.buckets, "All files" if multi else "All"):
                     w.writerow([label, segs, words, chars, tags, f"{pct:.2f}"])
                 w.writerow([])
+                if multi:
+                    for fname, fr in by_file.items():
+                        w.writerow([f"File: {fname or '(unnamed)'}"])
+                        w.writerow(["Type", "Segments", "Words", "Characters", "Tags", "Percent"])
+                        for label, segs, words, chars, tags, pct in self._rows_for(fr.total, fr.buckets):
+                            w.writerow([label, segs, words, chars, tags, f"{pct:.2f}"])
+                        w.writerow([])
             # Legend
             w.writerow(["Legend"])
             for label in CATEGORIES:
@@ -524,8 +551,11 @@ class StatisticsDialog(QDialog):
         r += 2
 
         headers = ["Type", "Segments", "Words", "Characters", "Tags", "Percent"]
-        for result in self._results:
-            cell = ws.cell(row=r, column=1, value=f"Resources: {result.tm_name}")
+
+        def _block(heading, total, buckets, all_label, indent=False):
+            nonlocal r
+            col0 = 2 if indent else 1
+            cell = ws.cell(row=r, column=col0, value=heading)
             cell.font = bold
             r += 1
             for col, h in enumerate(headers, start=1):
@@ -533,20 +563,29 @@ class StatisticsDialog(QDialog):
                 cell.font = bold
                 cell.fill = hdr_fill
             r += 1
-            for label, segs, words, chars, tags, pct in self._rows_for(result):
+            for label, segs, words, chars, tags, pct in self._rows_for(total, buckets, all_label):
                 ws.cell(row=r, column=1, value=label)
                 ws.cell(row=r, column=2, value=segs)
                 ws.cell(row=r, column=3, value=words)
                 ws.cell(row=r, column=4, value=chars)
                 ws.cell(row=r, column=5, value=tags)
                 ws.cell(row=r, column=6, value=round(pct, 2))
-                if label == "All":
+                if label == all_label:
                     for col in range(1, 7):
                         cell = ws.cell(row=r, column=col)
                         cell.font = bold
                         cell.fill = total_fill
                 r += 1
-            r += 1  # blank line between TMs
+            r += 1  # blank line
+
+        for result in self._results:
+            by_file = getattr(result, "by_file", {}) or {}
+            multi = len(by_file) > 1
+            _block(f"Resources: {result.tm_name}", result.total, result.buckets,
+                   "All files" if multi else "All")
+            if multi:
+                for fname, fr in by_file.items():
+                    _block(f"File: {fname or '(unnamed)'}", fr.total, fr.buckets, "All")
 
         # Legend
         cell = ws.cell(row=r, column=1, value="What the match types mean")

@@ -74,14 +74,44 @@ class MatchBucket:
         self.tags     += tags
 
 
+class FileResult:
+    """Per-file slice of a TMResult (same shape: total + category buckets)."""
+
+    def __init__(self, name: str):
+        self.name    = name
+        self.total   = MatchBucket()
+        self.buckets: Dict[str, MatchBucket] = {cat: MatchBucket() for cat in CATEGORIES}
+
+
 class TMResult:
-    """Analysis result for one TM."""
+    """Analysis result for one TM.
+
+    ``total`` / ``buckets`` are the combined figures across all files; ``by_file``
+    holds the same breakdown per source file (for multi-file projects and the
+    Quick Count tool). Single-file analyses leave ``by_file`` with one entry.
+    """
 
     def __init__(self, tm_id: str, tm_name: str):
         self.tm_id   = tm_id
         self.tm_name = tm_name
         self.total   = MatchBucket()
         self.buckets: Dict[str, MatchBucket] = {cat: MatchBucket() for cat in CATEGORIES}
+        self.by_file: "Dict[str, FileResult]" = {}
+
+    def _file(self, name: str) -> FileResult:
+        fr = self.by_file.get(name)
+        if fr is None:
+            fr = FileResult(name)
+            self.by_file[name] = fr
+        return fr
+
+    def add_total(self, file_name: str, words: int, chars: int, tags: int):
+        self.total.add(words, chars, tags)
+        self._file(file_name).total.add(words, chars, tags)
+
+    def add_to(self, category: str, file_name: str, words: int, chars: int, tags: int):
+        self.buckets[category].add(words, chars, tags)
+        self._file(file_name).buckets[category].add(words, chars, tags)
 
 
 def _count_words(text: str) -> int:
@@ -327,6 +357,7 @@ class StatisticsWorker(QThread):
         segments = self.segments
         n        = len(segments)
         sources  = [seg.source for seg in segments]
+        files    = [(getattr(seg, "file_name", "") or "") for seg in segments]
         metrics  = [(_count_words(s), _count_chars(s), _count_tags(s)) for s in sources]
 
         # Identify internal repetitions (2nd+ occurrence of identical source)
@@ -353,11 +384,11 @@ class StatisticsWorker(QThread):
             result = TMResult("", "No TM (word count only)")
             for i in range(n):
                 w, c, t = metrics[i]
-                result.total.add(w, c, t)
+                result.add_total(files[i], w, c, t)
                 if is_repetition[i]:
-                    result.buckets[CAT_REPETITION].add(w, c, t)
+                    result.add_to(CAT_REPETITION, files[i], w, c, t)
                 elif sources[i].strip():
-                    result.buckets[CAT_NO_MATCH].add(w, c, t)
+                    result.add_to(CAT_NO_MATCH, files[i], w, c, t)
             results.append(result)
             self.tm_result.emit(result)
             conn.close()
@@ -375,9 +406,9 @@ class StatisticsWorker(QThread):
             # Total + repetitions buckets
             for i in range(n):
                 w, c, t = metrics[i]
-                result.total.add(w, c, t)
+                result.add_total(files[i], w, c, t)
                 if is_repetition[i]:
-                    result.buckets[CAT_REPETITION].add(w, c, t)
+                    result.add_to(CAT_REPETITION, files[i], w, c, t)
 
             if self._cancelled:
                 break
@@ -405,7 +436,7 @@ class StatisticsWorker(QThread):
                 if match:
                     ctx_tm = _normalise(match.get("context_before") or "")
                     is_ctx = bool(ctx_tm and i > 0 and ctx_tm == _normalise(sources[i - 1]))
-                    result.buckets[CAT_101 if is_ctx else CAT_100].add(w, c, t)
+                    result.add_to(CAT_101 if is_ctx else CAT_100, files[i], w, c, t)
                 else:
                     no_exact_idx.append(i)
 
@@ -418,7 +449,7 @@ class StatisticsWorker(QThread):
             if self.skip_fuzzy:
                 for i in no_exact_idx:
                     w, c, t = metrics[i]
-                    result.buckets[CAT_NO_MATCH].add(w, c, t)
+                    result.add_to(CAT_NO_MATCH, files[i], w, c, t)
             else:
                 # Use the FTS5-indexed matcher (the same one the editor uses for
                 # live lookups). On a large TM it fetches only candidates that
@@ -442,7 +473,7 @@ class StatisticsWorker(QThread):
                         self.source_lang, self.target_lang,
                     )
                     cat = _classify_similarity(sim) if sim >= self.fuzzy_threshold else CAT_NO_MATCH
-                    result.buckets[cat].add(w, c, t)
+                    result.add_to(cat, files[i], w, c, t)
 
             results.append(result)
             self.tm_result.emit(result)

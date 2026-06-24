@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.307 (June 24, 2026)
+**Current Version:** v1.10.308 (June 24, 2026)
+
+
+## v1.10.308 – June 24, 2026
+
+### Added (Statistics · ⚡ Quick Count — no project needed)
+
+- **New Tools → ⚡ Quick Count…** gives you the Statistics match-breakdown without opening a project — for when you just want a fast word count / TM analysis. Browse to **one or more files** (DOCX, plus IDML/HTML/XLIFF/PO/XLSX/PPTX via Okapi, and Trados **.sdlxliff** / memoQ **.mqxliff**), pick your TMs, and click Analyse. DOCX is sentence-segmented through Okapi exactly like a normal import, so the counts match the project-based Statistics tool. Each file is read independently, so an unreadable file is reported on its own without sinking the rest. The language pair defaults to the open project's, or your last-used import pair. Requested by Michael.
+- **Per-file breakdown.** When more than one file is analysed (Quick Count with several files, or a multi-file project), each TM's result now shows a combined "All files" total plus a per-file table beneath it — in the dialog and in the HTML/Excel/CSV exports. Single-file analyses are unchanged.
 
 
 ## v1.10.307 – June 24, 2026
