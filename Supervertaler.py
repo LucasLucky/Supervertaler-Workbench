@@ -15797,22 +15797,28 @@ class SupervertalerQt(QMainWindow):
         # of its formatting (rPr child with bold/italic/font/colour/etc.).
         new_element = deepcopy(run._element)
 
-        # Replace the copied w:t element(s) with a single one containing
-        # right_text. xml:space="preserve" prevents Word from collapsing
-        # leading/trailing whitespace.
-        for t_elem in list(new_element.findall(qn('w:t'))):
-            new_element.remove(t_elem)
-        new_t = run._element.makeelement(qn('w:t'), {qn('xml:space'): 'preserve'})
-        new_t.text = right_text
-        new_element.append(new_t)
+        # Strip EVERY content child from the copy (w:t, w:br, w:tab, w:cr,
+        # w:noBreakHyphen, …), keeping ONLY the run's formatting (w:rPr).
+        # Removing just w:t would leave a stray <w:br/>/<w:tab/> behind, which
+        # python-docx reads back as a leading '\n'/'\t' — prepending a phantom
+        # character to the new run and shifting every subsequent character
+        # offset by one (the "breakin|g" comment-anchor bug, where a paragraph
+        # held a line break before the anchored word). Both halves are then
+        # rebuilt from the sliced strings via the Run.text setter, which
+        # re-creates proper <w:br/>/<w:tab/> elements from any '\n'/'\t' and
+        # preserves each run's w:rPr.
+        rpr_tag = qn('w:rPr')
+        for child in list(new_element):
+            if child.tag != rpr_tag:
+                new_element.remove(child)
 
-        # Truncate the original run.
+        # Insert the new (right) run element immediately after the original,
+        # then rebuild both halves' content.
+        run._element.addnext(new_element)
+        new_run = _DocxRun(new_element, run._parent)
+        new_run.text = right_text
         run.text = left_text
 
-        # Insert the new run element immediately after the original.
-        run._element.addnext(new_element)
-
-        new_run = _DocxRun(new_element, run._parent)
         return (run, new_run)
 
     def _find_or_split_runs_for_range(self, para, start, end):
