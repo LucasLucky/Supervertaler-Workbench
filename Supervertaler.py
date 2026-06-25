@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.312"
+    return "1.10.313"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -58888,11 +58888,15 @@ class SupervertalerQt(QMainWindow):
 
         # Get current visible rows
         for row in range(self.table.rowCount()):
-            # Get segment for this row
-            if row >= len(self.current_project.segments):
+            # Resolve the segment via the id in column 0 — NOT segments[row].
+            # The table row index only equals the list position in unsorted,
+            # unfiltered, single-page view; under a sort/filter/pagination the
+            # positional lookup rendered each cell from the WRONG segment, so
+            # toggling the view mode appeared to "not update" (or showed stale
+            # text). The id-based lookup is correct in every view state.
+            segment, _seg_idx = self._segment_for_grid_row(row)
+            if segment is None:
                 continue
-
-            segment = self.current_project.segments[row]
 
             # Apply tag stripping if enabled
             source_for_display = segment.source

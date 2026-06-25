@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.312 (June 25, 2026)
+**Current Version:** v1.10.313 (June 25, 2026)
+
+
+## v1.10.313 – June 25, 2026
+
+### Fixed (Editor · view-mode toggle now refreshes the right cells)
+
+- **Switching between Tags / Compact / WYSIWYG view now updates every cell correctly, even when the grid is sorted, filtered, or paged.** The refresh matched each table row to a segment by *position* (`segments[row]`), which is only correct in an unsorted, unfiltered, single-page grid. Under a sort, a filter, or a different page, rows re-rendered from the wrong segment — so the toggle looked like it "didn't update" (or showed stale/wrong text). It now resolves each row's segment by its id (column 0), which is correct in every view state. Diagnosed with Michael.
 
 
 ## v1.10.312 – June 25, 2026
