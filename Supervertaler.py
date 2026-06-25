@@ -15323,6 +15323,88 @@ class SupervertalerQt(QMainWindow):
         self.log(f"✓ Original source located for export: {os.path.basename(path)}")
         return path
 
+    # Friendly names for the formatting tags users recognise; anything else
+    # (Okapi structural codes like g1/x1) is reported under its own name.
+    _TAG_FRIENDLY_NAMES = {
+        'b': 'bold', 'strong': 'bold',
+        'i': 'italic', 'em': 'italic',
+        'u': 'underline',
+        'cf': 'character formatting',
+        'sub': 'subscript', 'sup': 'superscript',
+    }
+
+    def _segments_with_lost_formatting_tags(self, segments):
+        """Translated segments whose target dropped inline tags the source has.
+
+        Compares the multiset of inline formatting tags (``<b>``, ``<i>``,
+        ``<cf …>``, ``<g1>``, ``<x1/>`` …) in each segment's source against its
+        target. Untranslated segments are skipped — they export their source
+        verbatim, tags and all, so nothing is lost. Returns a list of
+        ``(segment, [friendly tag names])`` for segments that are missing one
+        or more source tags in the translation."""
+        from collections import Counter
+
+        def _tally(text):
+            c: Counter = Counter()
+            for tag in self._INLINE_TAG_RE.findall(text or ''):
+                inner = tag[1:-1].strip()              # drop the < >
+                closing = inner.startswith('/')
+                selfclose = inner.endswith('/')
+                inner = inner.strip('/').strip()
+                name = inner.split()[0] if inner.split() else inner  # drop attrs
+                if name:
+                    c[('/' if closing else '') + name + ('/' if selfclose else '')] += 1
+            return c
+
+        def _friendly(token):
+            base = token.lstrip('/').rstrip('/')
+            return self._TAG_FRIENDLY_NAMES.get(base.lower(), base)
+
+        out = []
+        for seg in segments:
+            tgt = getattr(seg, 'target', '') or ''
+            if not tgt.strip():
+                continue
+            src_tags = _tally(getattr(seg, 'source', '') or '')
+            if not src_tags:
+                continue
+            missing = src_tags - _tally(tgt)          # Counter keeps positives only
+            if missing:
+                kinds = sorted({_friendly(tok) for tok in missing})
+                out.append((seg, kinds))
+        return out
+
+    def _warn_lost_formatting_tags(self, segments):
+        """Pre-export guard: warn if any translation dropped source formatting.
+
+        Returns True to proceed with the export, False to cancel. Fires only
+        when there's an actual mismatch, so a clean project sees no dialog."""
+        lost = self._segments_with_lost_formatting_tags(segments)
+        if not lost:
+            return True
+
+        shown = lost[:15]
+        lines = [f"  • Segment {getattr(seg, 'id', '?')}: missing {', '.join(kinds)}"
+                 for seg, kinds in shown]
+        if len(lost) > len(shown):
+            lines.append(f"  • … and {len(lost) - len(shown)} more")
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(self.tr("Formatting tags missing from translation"))
+        box.setText(self.tr(
+            f"{len(lost)} translated segment(s) have inline formatting in the "
+            f"source that the translation didn't keep. They will export WITHOUT "
+            f"that formatting (for example, bold text becomes plain):"))
+        box.setInformativeText("\n".join(lines))
+        proceed = box.addButton(self.tr("Export anyway"),
+                                QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(self.tr("Cancel && fix tags"),
+                      QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(proceed)
+        box.exec()
+        return box.clickedButton() is proceed
+
     def export_target_only_docx(self):
         """Export target text only as a monolingual DOCX document, preserving original formatting"""
         try:
@@ -15353,6 +15435,12 @@ class SupervertalerQt(QMainWindow):
                 )
                 if reply != QMessageBox.StandardButton.Yes:
                     return
+
+            # Tag-loss guard: catch translations that dropped source formatting
+            # (e.g. a bold <b>…</b> the MT/AI stripped) BEFORE writing the file,
+            # so the loss isn't discovered only in the delivered document.
+            if not self._warn_lost_formatting_tags(segments):
+                return
 
             # Resolve the original source document UP FRONT. Without it the
             # export silently rebuilds a blank document from the segments alone,

@@ -7,6 +7,10 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ## v1.10.311 – June 25, 2026
 
+### Added (Export · formatting-tag loss warning)
+
+- **Export now warns when a translation has dropped source formatting.** If a segment's source carries inline formatting (bold, italic, underline, character formatting, or Okapi inline codes) that the translation no longer has — typically because an MT/AI step stripped the tags — the DOCX export now stops and lists the affected segments (e.g. *"Segment 495: missing bold"*) before writing the file. You can **Export anyway** or **Cancel & fix tags**. This catches the silent loss where, say, the bold *"characterised in that"* in patent claims came out as plain text. The check only appears when there's an actual mismatch. Requested by Michael.
+
 ### Fixed (Export · font sizes, comment anchoring, and client comments)
 
 - **Translated text no longer jumps to the wrong font size.** On the formatting-preserving DOCX export, whole paragraphs that the Okapi merge rebuilt as a single run without an explicit size were falling back to the document default (often 12pt), so the target showed up at 12pt against 10pt source text. The post-export font repair now also fixes these fully-unsized body paragraphs by giving them the **document's body size** (the most common run size in the file), while leaving headings and titles to inherit their own larger size. The earlier mixed-paragraph repair (some runs sized, some not) still applies. Reported by Michael.
