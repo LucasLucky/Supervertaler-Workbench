@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.309"
+    return "1.10.310"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -15268,6 +15268,61 @@ class SupervertalerQt(QMainWindow):
                 self.log(f"⚠ Could not prepare the project's target/ folder: {exc}")
         return filename
 
+    def _prompt_for_original_source(self, stored_hint=None):
+        """The formatting-preserving export needs the project's original source
+        document. When it can't be found, warn the user and offer to locate it.
+
+        Returns one of:
+          - a valid file path the user picked (also adopted onto the project), or
+          - ``None``        → user chose to export WITHOUT the original (flat), or
+          - ``'__CANCEL__'`` → user cancelled the export entirely.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(self.tr("Original document not found"))
+        hint = f"\n\nStored path:\n{stored_hint}" if stored_hint else ""
+        box.setText(self.tr(
+            "Supervertaler can't find the original source document for this "
+            "project, so the export would be rebuilt from the translated segments "
+            "alone – losing the document's formatting (line numbers, headings, "
+            "page layout).\n\nLocate the original document to keep its formatting.")
+            + hint)
+        locate_btn = box.addButton(self.tr("Locate original…"), QMessageBox.ButtonRole.AcceptRole)
+        plain_btn  = box.addButton(self.tr("Export without formatting"), QMessageBox.ButtonRole.DestructiveRole)
+        cancel_btn = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(locate_btn)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == cancel_btn:
+            return '__CANCEL__'
+        if clicked == plain_btn:
+            return None
+
+        # Locate… – browse for the original (any supported source format).
+        try:
+            all_patterns = " ".join(p for _, p in self.IMPORT_DOCUMENT_FORMATS)
+            file_filter = f"Source documents ({all_patterns});;All Files (*.*)"
+        except Exception:
+            file_filter = "Word Documents (*.docx);;All Files (*.*)"
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("Locate the original source document"), "", file_filter)
+        if not path:
+            return '__CANCEL__'  # opened the browser but cancelled → abort export
+
+        # Adopt the located file for this export and persist it on the project
+        # so future exports (and the next project load) find it.
+        self.original_docx = path
+        self.current_document_path = path
+        try:
+            if self.current_project is not None:
+                self.current_project.original_docx_path = path
+                self.project_modified = True
+        except Exception:
+            pass
+        self.log(f"✓ Original source located for export: {os.path.basename(path)}")
+        return path
+
     def export_target_only_docx(self):
         """Export target text only as a monolingual DOCX document, preserving original formatting"""
         try:
@@ -15298,7 +15353,19 @@ class SupervertalerQt(QMainWindow):
                 )
                 if reply != QMessageBox.StandardButton.Yes:
                     return
-            
+
+            # Resolve the original source document UP FRONT. Without it the
+            # export silently rebuilds a blank document from the segments alone,
+            # losing all page formatting (line numbers, headings, layout). If
+            # it's missing, stop and let the user locate it (or knowingly export
+            # without formatting) instead of quietly handing back a flat file.
+            original_path = getattr(self, 'original_docx', None) or getattr(self, 'current_document_path', None)
+            if not (original_path and os.path.exists(original_path)):
+                original_path = self._prompt_for_original_source(
+                    getattr(self.current_project, 'original_docx_path', None))
+                if original_path == '__CANCEL__':
+                    return
+
             # Get save path — default into the project's target/ folder (#228)
             default_name = ""
             if self.current_project.name:
@@ -15321,9 +15388,10 @@ class SupervertalerQt(QMainWindow):
             
             from docx import Document
             import shutil
-            
-            # Check if we have the original document to use as template
-            original_path = getattr(self, 'original_docx', None) or getattr(self, 'current_document_path', None)
+
+            # original_path was resolved (and possibly user-located) above. It is
+            # either a valid file, or None when the user chose to export without
+            # the original (the fresh-document fallback further down).
 
             # ── Okapi merge path ──────────────────────────────────────
             # If this project was imported via Okapi, try to use the sidecar
@@ -46953,14 +47021,16 @@ class SupervertalerQt(QMainWindow):
         # one indexed source_hash query, idempotent. The cure for "landed on a
         # segment that's definitely in the TM and saw no match, no matter how
         # long I waited".
+        _instant_seg = None
+        _instant_shown = False
         try:
             if self.current_project and 0 <= current_row < self.table.rowCount():
                 _id_item = self.table.item(current_row, 0)
                 if _id_item:
-                    _seg = next((s for s in self.current_project.segments
-                                 if s.id == int(_id_item.text())), None)
-                    if _seg:
-                        self._show_instant_tm_match(_seg)
+                    _instant_seg = next((s for s in self.current_project.segments
+                                         if s.id == int(_id_item.text())), None)
+                    if _instant_seg:
+                        _instant_shown = self._show_instant_tm_match(_instant_seg)
         except Exception:
             pass
 
@@ -46971,6 +47041,18 @@ class SupervertalerQt(QMainWindow):
                 self.log(f"⏭️ Skipping heavy lookup - already on row {current_row}")
             return
         self._last_selected_row = current_row
+
+        # Row actually changed: if the new segment has NO exact (100%) match,
+        # clear the panel *now* so the previous segment's match can't linger
+        # while the debounced fuzzy/MT/LLM lookup catches up. (Before this, a
+        # segment with no exact match kept showing the last segment's match —
+        # e.g. confirming through several no-match segments left a stale 100%
+        # from two segments back. Fuzzy matches still stream in afterwards.)
+        if _instant_seg is not None and not _instant_shown:
+            try:
+                self.set_compare_panel_matches(_instant_seg.id, _instant_seg.source, [], [])
+            except Exception:
+                pass
 
         # ⚡ FAST PATH: Defer heavy lookups for ALL navigation (arrow keys, Ctrl+Enter, AND mouse clicks)
         # This makes segment navigation feel INSTANT - cursor moves first, lookups happen after

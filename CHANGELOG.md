@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.309 (June 24, 2026)
+**Current Version:** v1.10.310 (June 25, 2026)
+
+
+## v1.10.310 – June 25, 2026
+
+### Fixed (Match Panel · stale TM match while navigating)
+
+- **The Match Panel no longer keeps showing a previous segment's match.** When you confirmed/navigated through a run of segments where some aren't in the TM, the panel kept displaying the last 100% match it found (sometimes from a couple of segments back), because a segment with no exact match never cleared the panel. It now clears immediately for the new segment when there's no exact match; fuzzy matches still stream in afterwards. Reported by Michael.
+
+### Fixed (Export · missing original document)
+
+- **The formatting-preserving DOCX export no longer silently produces an unformatted file.** When the export couldn't find the project's original source document, it quietly rebuilt a blank document from the segments alone, losing line numbers, headings and layout. It now **stops and offers to locate the original** (or to export without formatting, or cancel). A located file is adopted onto the project so future exports and the next project load find it. Reported by Michael.
 
 
 ## v1.10.309 – June 24, 2026
