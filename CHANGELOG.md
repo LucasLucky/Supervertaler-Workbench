@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.311 (June 25, 2026)
+**Current Version:** v1.10.312 (June 25, 2026)
+
+
+## v1.10.312 – June 25, 2026
+
+### Fixed (Editor · WYSIWYG editing no longer drops formatting tags)
+
+- **Editing a target segment in WYSIWYG view no longer strips its bold/italic/underline.** In WYSIWYG view a cell shows *rendered* formatting (real bold), not the literal `<b>…</b>` text. But the save path read the cell back as plain text, and plain text of rendered bold carries no tag — so the moment you edited such a cell in WYSIWYG view, its `<b>`/`<i>`/`<u>`/`<sub>`/`<sup>` tags were silently lost from the saved segment (and then from the export, since there was nothing left for the Okapi round-trip to reproduce). The save now **rebuilds those tags from the cell's actual formatting**, so editing in WYSIWYG view is lossless. Tags and Compact view were never affected (they show the literal tags). Other inline codes (`<cf …>`, `<g1>`, `<x1/>`) are shown as literal text in WYSIWYG and ride along untouched. This is the most likely reason bold went missing from translated patent claims. Diagnosed with Michael.
 
 
 ## v1.10.311 – June 25, 2026

@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.311"
+    return "1.10.312"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -42750,7 +42750,20 @@ class SupervertalerQt(QMainWindow):
             
             def on_target_text_changed():
                 nonlocal debounce_timer
-                new_text = editor_widget.toPlainText()
+                # In WYSIWYG view the cell shows rendered bold/italic/etc., so
+                # toPlainText() would silently drop those tags. Rebuild them
+                # from the cell's actual formatting instead; fall back to plain
+                # text on any error so an edit is never lost. Tags/Compact view
+                # already show the literal tags, so they stay on toPlainText().
+                if getattr(self, 'tag_view_mode', 'tags') == 'wysiwyg':
+                    try:
+                        new_text = self._wysiwyg_document_to_tagged_text(editor_widget)
+                    except Exception as _e:
+                        new_text = editor_widget.toPlainText()
+                        if getattr(self, 'debug_mode_enabled', False):
+                            self.log(f"⚠ WYSIWYG tag rebuild failed, kept plain text: {_e}")
+                else:
+                    new_text = editor_widget.toPlainText()
 
                 # Reverse compact tag placeholders before saving
                 compact_map = getattr(editor_widget, '_compact_tag_map', None)
@@ -58778,6 +58791,85 @@ class SupervertalerQt(QMainWindow):
 
         if hasattr(self, 'table') and self.current_project:
             self._refresh_grid_display_mode()
+
+    @staticmethod
+    def _wysiwyg_runs_to_tagged_text(runs):
+        """Serialise ``[(text, active_tag_names)]`` runs back into our inline
+        tag syntax, opening/closing tags in a stable order so the output
+        round-trips (e.g. ``<b><i>x</i></b>``)."""
+        parts = []
+        open_tags = []  # currently-open tag names, in the order opened
+        for text, active in runs:
+            # Longest common prefix of what's open vs. what this run wants.
+            common = 0
+            while (common < len(open_tags) and common < len(active)
+                   and open_tags[common] == active[common]):
+                common += 1
+            # Close everything opened past the common prefix (reverse order).
+            for t in reversed(open_tags[common:]):
+                parts.append(f'</{t}>')
+            del open_tags[common:]
+            # Open the tags this run needs that aren't open yet.
+            for t in active[common:]:
+                parts.append(f'<{t}>')
+                open_tags.append(t)
+            parts.append(text)
+        for t in reversed(open_tags):
+            parts.append(f'</{t}>')
+        return ''.join(parts)
+
+    def _wysiwyg_document_to_tagged_text(self, text_edit):
+        """Rebuild our inline formatting tags from a QTextEdit that is showing
+        rendered (WYSIWYG) formatting.
+
+        Editing a cell in WYSIWYG view used to drop bold/italic/underline,
+        because the save path read ``toPlainText()`` — and plain text of
+        rendered bold carries no ``<b>``. Here the character formatting is read
+        back out and re-emitted as ``<b>/<i>/<u>/<sub>/<sup>`` tags. Any other
+        inline tags (``<cf …>``, ``<g1>``, ``<x1/>``) are already literal text
+        in the document (WYSIWYG only renders the five it knows), so they ride
+        along untouched. Returns the reconstructed string."""
+        from PyQt6.QtGui import QTextCharFormat, QFont
+
+        doc = text_edit.document()
+        # Baseline from the editor's own font, so a (hypothetical) bold base
+        # font doesn't make every fragment look bold.
+        base = text_edit.font()
+        base_bold = base.weight() >= QFont.Weight.Bold
+        base_italic = base.italic()
+        base_underline = base.underline()
+        AlignSub = QTextCharFormat.VerticalAlignment.AlignSubScript
+        AlignSup = QTextCharFormat.VerticalAlignment.AlignSuperScript
+
+        # (tag, predicate) in a fixed order → stable nesting.
+        DIMS = [
+            ('b',   lambda f: (f.fontWeight() >= QFont.Weight.Bold) and not base_bold),
+            ('i',   lambda f: f.fontItalic() and not base_italic),
+            ('u',   lambda f: f.fontUnderline() and not base_underline),
+            ('sub', lambda f: f.verticalAlignment() == AlignSub),
+            ('sup', lambda f: f.verticalAlignment() == AlignSup),
+        ]
+
+        runs = []
+        block = doc.begin()
+        first_block = True
+        while block.isValid():
+            if not first_block:
+                runs.append(('\n', []))   # paragraph break between blocks
+            first_block = False
+            it = block.begin()
+            while not it.atEnd():
+                frag = it.fragment()
+                if frag.isValid():
+                    fmt = frag.charFormat()
+                    active = [name for name, pred in DIMS if pred(fmt)]
+                    runs.append((frag.text(), active))
+                it += 1
+            block = block.next()
+
+        rebuilt = self._wysiwyg_runs_to_tagged_text(runs)
+        # QTextEdit uses U+2028/U+2029 for soft/line breaks; normalise to \n.
+        return rebuilt.replace(chr(0x2028), '\n').replace(chr(0x2029), '\n')
 
     def toggle_tag_view(self, checked: bool, button: QPushButton = None):
         """Legacy toggle – routes to _set_tag_view_mode for backward compatibility"""
