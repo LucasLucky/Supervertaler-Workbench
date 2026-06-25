@@ -15930,14 +15930,54 @@ class SupervertalerQt(QMainWindow):
             initials = 'X'
         return author, initials
 
+    # Matches CAT inline formatting tags: <b>, </b>, <i>, <cf …>, <g1>,
+    # </g1>, <x1/>, <bpt …>, etc. A literal "<" in body text (e.g. "a < b",
+    # "<=") isn't a tag because it isn't immediately followed by an optional
+    # "/" and a letter, so it is left intact.
+    _INLINE_TAG_RE = re.compile(r'</?[A-Za-z][^<>]*?/?>')
+
+    @classmethod
+    def _strip_inline_tags(cls, text):
+        """Return ``text`` with CAT inline formatting tags removed.
+
+        The exported DOCX renders those tags as real run formatting (bold,
+        italic, …), so the *visible* paragraph text carries none of them. To
+        locate a segment's text in that paragraph we must compare against the
+        same tag-free form."""
+        if not text:
+            return ''
+        return cls._INLINE_TAG_RE.sub('', text)
+
+    @classmethod
+    def _raw_to_visible_offset(cls, raw_text, raw_off):
+        """Map a character offset in tag-bearing text to the matching offset
+        in its tag-stripped (visible) form, so comment anchor offsets stored
+        against the raw target still land correctly once tags are removed."""
+        if raw_off <= 0 or not raw_text:
+            return 0
+        visible = 0
+        i = 0
+        limit = min(raw_off, len(raw_text))
+        while i < limit:
+            m = cls._INLINE_TAG_RE.match(raw_text, i)
+            if m and m.end() <= len(raw_text):
+                i = m.end()              # skip the whole tag; no visible advance
+            else:
+                i += 1
+                visible += 1
+        return visible
+
     def _runs_for_segment_span(self, para, seg):
         """Runs covering this segment's target text within a paragraph.
 
         After the Okapi round-trip, a paragraph (text unit) can hold several
         sentence-segments, so a comment must anchor to its own segment's
-        sentence rather than the whole paragraph. Falls back to all runs when
-        the target text can't be located in the paragraph."""
-        seg_target = (getattr(seg, 'target', '') or '').strip()
+        sentence rather than the whole paragraph. The segment target may carry
+        inline formatting tags that the rendered paragraph doesn't, so we match
+        on the tag-stripped form. Falls back to all runs when the target text
+        can't be located in the paragraph."""
+        seg_target = self._strip_inline_tags(
+            (getattr(seg, 'target', '') or '')).strip()
         para_text = para.text or ''
         if seg_target and seg_target in para_text:
             off = para_text.find(seg_target)
@@ -16133,24 +16173,33 @@ class SupervertalerQt(QMainWindow):
         # (the one containing the segment's target text). First
         # encounter populates the cache; subsequent encounters reuse.
         segment_to_para: dict = {}
-        # Track which paragraphs are already "claimed" by a segment so a
-        # collision (two segments with identical target text) doesn't
-        # repeatedly map to the same paragraph.
-        claimed_paragraph_ids: set = set()
+        # Track which target texts have already been anchored in each
+        # paragraph. After the Okapi round-trip one paragraph (text unit) can
+        # hold several sentence-segments, so two DIFFERENT segments may
+        # legitimately share a paragraph — the range-anchoring then highlights
+        # each one's own sentence. Only an IDENTICAL target text (a true
+        # duplicate) should be pushed on to the next occurrence, so we key the
+        # claim by (paragraph, target text) rather than locking the whole
+        # paragraph to the first segment that lands in it.
+        claimed_targets: dict = {}  # id(para) -> set(seg_target)
 
         def _find_paragraph_for_segment(seg):
-            seg_target = (getattr(seg, 'target', '') or '').strip()
+            # Match on the tag-stripped target: the rendered paragraph carries
+            # no inline tags, so a target with <b>…</b> would otherwise never
+            # be found (and its comment would silently drop).
+            seg_target = self._strip_inline_tags(
+                (getattr(seg, 'target', '') or '')).strip()
             if not seg_target:
                 return None
             if seg.id in segment_to_para:
                 return segment_to_para[seg.id]
             for para in doc.paragraphs:
-                if id(para) in claimed_paragraph_ids:
-                    continue
                 para_text = para.text or ''
                 if seg_target in para_text and para.runs:
+                    if seg_target in claimed_targets.get(id(para), ()):
+                        continue  # same text already anchored here; try next
                     segment_to_para[seg.id] = para
-                    claimed_paragraph_ids.add(id(para))
+                    claimed_targets.setdefault(id(para), set()).add(seg_target)
                     return para
             return None
 
@@ -16163,6 +16212,9 @@ class SupervertalerQt(QMainWindow):
             para = _find_paragraph_for_segment(seg)
             if para is None:
                 unmatched_no_para += 1
+                self.log(f"     · comment on segment #{getattr(seg, 'id', '?')} "
+                         f"not attached (its target text wasn't found in the "
+                         f"exported document)")
                 continue
             if not para.runs:
                 skipped_no_runs += 1
@@ -16174,12 +16226,14 @@ class SupervertalerQt(QMainWindow):
             try:
                 if comment.anchor_field == 'target' and comment.is_anchored:
                     # Target-side range anchoring: split runs as needed.
-                    # The anchor offsets are character offsets within
-                    # the SEGMENT'S target text, but we're anchoring
-                    # inside the PARAGRAPH text. Map by finding the
-                    # segment's target as a substring of the paragraph
-                    # and offsetting.
-                    seg_target = getattr(seg, 'target', '') or ''
+                    # The anchor offsets are character offsets within the
+                    # SEGMENT'S target text, but we anchor inside the PARAGRAPH
+                    # text. The target may carry inline formatting tags that the
+                    # rendered paragraph doesn't, so locate the tag-stripped
+                    # target and map the (raw) anchor offsets into that
+                    # tag-free coordinate space.
+                    raw_target = getattr(seg, 'target', '') or ''
+                    seg_target = self._strip_inline_tags(raw_target)
                     para_text = para.text or ''
                     para_offset = para_text.find(seg_target)
                     if para_offset < 0:
@@ -16187,9 +16241,11 @@ class SupervertalerQt(QMainWindow):
                         # paragraph by containment. Scope to the segment.
                         runs_to_anchor = self._runs_for_segment_span(para, seg)
                     else:
-                        text_len = len(seg_target)
-                        anchor_start_para = para_offset + max(0, min(comment.anchor_start, text_len))
-                        anchor_end_para = para_offset + max(0, min(comment.anchor_end, text_len))
+                        vis_len = len(seg_target)
+                        vis_start = self._raw_to_visible_offset(raw_target, comment.anchor_start)
+                        vis_end = self._raw_to_visible_offset(raw_target, comment.anchor_end)
+                        anchor_start_para = para_offset + max(0, min(vis_start, vis_len))
+                        anchor_end_para = para_offset + max(0, min(vis_end, vis_len))
                         # Never let the highlight cut a word in half ("breakin|g").
                         anchor_start_para, anchor_end_para = self._snap_range_to_word_boundaries(
                             para_text, anchor_start_para, anchor_end_para
