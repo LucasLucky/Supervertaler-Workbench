@@ -53,7 +53,7 @@ def _read_version():
     except Exception:
         pass
     # 3. Last-resort hardcoded fallback
-    return "1.10.310"
+    return "1.10.311"
 
 __version__ = _read_version()
 __phase__ = "0.9"
@@ -15878,6 +15878,34 @@ class SupervertalerQt(QMainWindow):
 
         return result
 
+    @staticmethod
+    def _snap_range_to_word_boundaries(text, start, end):
+        """Widen [start, end) so it never cuts a word in half.
+
+        Comment anchors are stored as character offsets in the segment target.
+        After the Okapi merge the same text can be split across runs at odd
+        places, and an off-by-one (or a run boundary mid-word) can leave a Word
+        comment highlighting "breakin" while the trailing "g" sits outside the
+        range. Proofreading comments should cover whole words, so extend each
+        boundary outward to the nearest non-word character. A boundary already
+        sitting at a word edge (space, punctuation, string end) is left as-is."""
+        n = len(text)
+        if not text or start >= end:
+            return start, end
+        start = max(0, min(start, n))
+        end = max(start, min(end, n))
+
+        def _is_word(ch):
+            return ch.isalnum() or ch == '_'
+
+        # Extend the start left while it sits between two word characters.
+        while start > 0 and _is_word(text[start - 1]) and start < n and _is_word(text[start]):
+            start -= 1
+        # Extend the end right while it sits between two word characters.
+        while end < n and _is_word(text[end - 1]) and _is_word(text[end]):
+            end += 1
+        return start, end
+
     def _comment_author_and_initials(self):
         """Resolve the comment author + initials used in DOCX export.
 
@@ -15895,6 +15923,113 @@ class SupervertalerQt(QMainWindow):
         else:
             initials = 'X'
         return author, initials
+
+    def _runs_for_segment_span(self, para, seg):
+        """Runs covering this segment's target text within a paragraph.
+
+        After the Okapi round-trip, a paragraph (text unit) can hold several
+        sentence-segments, so a comment must anchor to its own segment's
+        sentence rather than the whole paragraph. Falls back to all runs when
+        the target text can't be located in the paragraph."""
+        seg_target = (getattr(seg, 'target', '') or '').strip()
+        para_text = para.text or ''
+        if seg_target and seg_target in para_text:
+            off = para_text.find(seg_target)
+            try:
+                ranged = self._find_or_split_runs_for_range(para, off, off + len(seg_target))
+                if ranged:
+                    return ranged
+            except Exception:
+                pass
+        return list(para.runs)
+
+    def _normalize_docx_run_font_sizes(self, docx_path):
+        """Repair run font sizes the Okapi merge dropped.
+
+        The sidecar rebuilds runs (typically around an inline formatting code, or
+        a whole merged paragraph) without their explicit size, so they fall back
+        to the document's *default* size (often 12pt) and show up as an odd
+        font-size change against the surrounding body text (e.g. 10pt source vs
+        12pt target). Two repair passes:
+
+         1. **Mixed paragraph** (some runs sized, some not): give the unsized
+            runs the paragraph's own dominant explicit size.
+         2. **Fully-unsized body paragraph** (no run carries an explicit size –
+            e.g. a single merged run): give every run the *document* body size
+            (the most common explicit run size across the whole file).
+
+        Headings and titles are left untouched in pass 2 – they legitimately
+        inherit a larger size from their style, so we must not force them to the
+        body size. They are detected by style name ("heading"/"title")."""
+        try:
+            from docx import Document
+            from collections import Counter
+            doc = Document(docx_path)
+        except Exception as e:
+            self.log(f"  ⚠ Font-size normalise: could not reopen DOCX ({e})")
+            return
+
+        fixed = 0
+
+        # ---- Document body size: most common explicit run size everywhere ----
+        size_counts: "Counter" = Counter()
+
+        def _tally(paragraphs):
+            for p in paragraphs:
+                for r in p.runs:
+                    if (r.text or '') and r.font.size is not None:
+                        size_counts[r.font.size] += 1
+
+        _tally(doc.paragraphs)
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    _tally(cell.paragraphs)
+        doc_body_size = size_counts.most_common(1)[0][0] if size_counts else None
+
+        def _is_heading(p):
+            name = (getattr(getattr(p, 'style', None), 'name', '') or '').lower()
+            return ('head' in name) or ('title' in name)
+
+        def _fix(paragraphs):
+            nonlocal fixed
+            for p in paragraphs:
+                runs = [r for r in p.runs if (r.text or '')]
+                if not runs:
+                    continue
+                sizes = [r.font.size for r in runs if r.font.size is not None]
+                if sizes:
+                    # Pass 1: mixed paragraph — match the paragraph's own size.
+                    target = Counter(sizes).most_common(1)[0][0]
+                elif doc_body_size is not None and not _is_heading(p):
+                    # Pass 2: fully-unsized body paragraph (e.g. a single merged
+                    # run) — fall back to the document body size so it stops
+                    # inheriting the default. Headings are skipped.
+                    target = doc_body_size
+                else:
+                    continue
+                for r in runs:
+                    if r.font.size is None:
+                        r.font.size = target
+                        fixed += 1
+
+        try:
+            _fix(doc.paragraphs)
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        _fix(cell.paragraphs)
+        except Exception as e:
+            self.log(f"  ⚠ Font-size normalise: error while scanning runs ({e})")
+            return
+
+        if fixed:
+            try:
+                doc.save(docx_path)
+                self.log(f"  ✓ Font-size normalise: restored size on {fixed} run(s) "
+                         f"that lost it in the merge")
+            except Exception as e:
+                self.log(f"  ⚠ Font-size normalise: could not save ({e})")
 
     def _attach_segment_notes_as_docx_comments(self, docx_path, segments):
         """Post-process an exported DOCX to attach segment comments as Word comments.
@@ -15928,6 +16063,12 @@ class SupervertalerQt(QMainWindow):
         existing call-sites in ``_try_okapi_merge_export`` and
         ``export_target_only_docx``.
         """
+        # Segment comments ARE exported as Word comments by default: in this
+        # workflow they are client-facing annotations that flag problems in the
+        # source text, so they must travel with the delivered document. Imported
+        # comments (already present in the original) are skipped below to avoid
+        # duplicating them.
+
         # Collect all (segment, comment) pairs that have something to attach.
         candidates: list = []  # [(seg, comment), ...] in segment+document order
         for seg in segments:
@@ -16036,13 +16177,17 @@ class SupervertalerQt(QMainWindow):
                     para_text = para.text or ''
                     para_offset = para_text.find(seg_target)
                     if para_offset < 0:
-                        # Defensive: shouldn't happen because we found
-                        # the paragraph by containment.
-                        runs_to_anchor = list(para.runs)
+                        # Defensive: shouldn't happen because we found the
+                        # paragraph by containment. Scope to the segment.
+                        runs_to_anchor = self._runs_for_segment_span(para, seg)
                     else:
                         text_len = len(seg_target)
                         anchor_start_para = para_offset + max(0, min(comment.anchor_start, text_len))
                         anchor_end_para = para_offset + max(0, min(comment.anchor_end, text_len))
+                        # Never let the highlight cut a word in half ("breakin|g").
+                        anchor_start_para, anchor_end_para = self._snap_range_to_word_boundaries(
+                            para_text, anchor_start_para, anchor_end_para
+                        )
                         ranged_runs = self._find_or_split_runs_for_range(
                             para, anchor_start_para, anchor_end_para
                         )
@@ -16050,7 +16195,7 @@ class SupervertalerQt(QMainWindow):
                             runs_to_anchor = ranged_runs
                             attached_anchored += 1
                         else:
-                            runs_to_anchor = list(para.runs)
+                            runs_to_anchor = self._runs_for_segment_span(para, seg)
 
                 elif comment.anchor_field == 'source' and comment.is_anchored:
                     # Source-anchored: prefix the comment body with the
@@ -16064,11 +16209,14 @@ class SupervertalerQt(QMainWindow):
                     snippet = seg_source[sstart:send]
                     snippet_short = snippet[:120] + ('…' if len(snippet) > 120 else '')
                     body = f'[Re: "{snippet_short}" (source)] {body}'
-                    runs_to_anchor = list(para.runs)
+                    runs_to_anchor = self._runs_for_segment_span(para, seg)
 
                 else:
-                    # Unanchored / segment-level — anchor to whole paragraph.
-                    runs_to_anchor = list(para.runs)
+                    # Unanchored / segment-level. After the Okapi round-trip a
+                    # paragraph (text unit) can hold many sentence-segments, so
+                    # anchoring to the whole paragraph would span all of them.
+                    # Anchor to just this segment's sentence instead.
+                    runs_to_anchor = self._runs_for_segment_span(para, seg)
 
                 if not runs_to_anchor:
                     skipped_no_runs += 1
@@ -16359,10 +16507,13 @@ class SupervertalerQt(QMainWindow):
 
             self.log(f"Okapi merge complete: {os.path.basename(result_path)}")
 
-            # Post-process: attach any segment notes as Word comments. Only
-            # makes sense for .docx output – Okapi can produce IDML/HTML/
-            # XLIFF/etc. too, and python-docx can't open those.
+            # Post-process (DOCX only — Okapi can also produce IDML/HTML/XLIFF,
+            # which python-docx can't open):
             if result_path.lower().endswith('.docx'):
+                # 1) Repair run font sizes the merge may have dropped.
+                self._normalize_docx_run_font_sizes(result_path)
+                # 2) Attach segment comments as client-facing Word comments
+                #    (they flag problems in the source, so they ship with the file).
                 self._attach_segment_notes_as_docx_comments(result_path, segments)
 
             translated_count = sum(1 for seg in segments if seg.target and seg.target.strip())

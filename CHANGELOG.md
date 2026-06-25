@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.310 (June 25, 2026)
+**Current Version:** v1.10.311 (June 25, 2026)
+
+
+## v1.10.311 – June 25, 2026
+
+### Fixed (Export · font sizes, comment anchoring, and client comments)
+
+- **Translated text no longer jumps to the wrong font size.** On the formatting-preserving DOCX export, whole paragraphs that the Okapi merge rebuilt as a single run without an explicit size were falling back to the document default (often 12pt), so the target showed up at 12pt against 10pt source text. The post-export font repair now also fixes these fully-unsized body paragraphs by giving them the **document's body size** (the most common run size in the file), while leaving headings and titles to inherit their own larger size. The earlier mixed-paragraph repair (some runs sized, some not) still applies. Reported by Michael.
+- **Word comments no longer cut a word in half.** An anchored comment could highlight `breakin` while the trailing `g` sat just outside the range, because of an off-by-one or a run boundary landing mid-word after the merge. Comment ranges are now **snapped outward to whole-word boundaries** before the highlight is applied, so a proofreading note always covers complete words.
+- **Comments no longer over-span neighbouring sentences.** Because an Okapi text unit can hold several sentence-segments in one paragraph, a segment-level comment used to highlight the entire paragraph. It now anchors to just that segment's sentence.
+- **Segment comments are exported as client-facing Word comments by default.** These notes flag problems in the source text and are meant to travel with the delivered document, so they ship with the export (imported comments already present in the original are still skipped to avoid duplicates). Reported by Michael.
 
 
 ## v1.10.310 – June 25, 2026
