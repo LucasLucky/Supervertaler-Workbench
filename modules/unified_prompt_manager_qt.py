@@ -3809,7 +3809,7 @@ class UnifiedPromptManagerQt:
             try:
                 with open(system_prompts_file, 'r', encoding='utf-8') as f:
                     saved_prompts = json.load(f)
-                for mode in ["single", "batch_docx", "batch_bilingual"]:
+                for mode in ["single", "batch_docx", "batch_bilingual", "fuzzy_fixer"]:
                     if mode in saved_prompts and saved_prompts[mode].strip():
                         self.system_templates[mode] = saved_prompts[mode]
             except Exception as e:
@@ -3834,7 +3834,35 @@ class UnifiedPromptManagerQt:
         for mode in ["single", "batch_docx", "batch_bilingual"]:
             if mode not in self.system_templates:
                 self.system_templates[mode] = self._get_default_system_template(mode)
-    
+
+        # Fuzzy Fixer instruction (editable, separate from the per-document
+        # system prompts). Filled with its own default when not user-edited.
+        if "fuzzy_fixer" not in self.system_templates:
+            self.system_templates["fuzzy_fixer"] = self._get_default_fuzzy_fixer_template()
+
+    def _get_default_fuzzy_fixer_template(self) -> str:
+        """Default editable instruction used by the Fuzzy Fixer feature.
+
+        Placeholders: {{TM_SOURCE}}, {{TM_TARGET}}, {{MATCH_PCT}}, {{TM_NAME}},
+        {{SOURCE_TEXT}}.
+        """
+        return (
+            "A {{MATCH_PCT}}% fuzzy match was found in TM '{{TM_NAME}}'. The current "
+            "source differs slightly from the matched source, so the existing target "
+            "is not an exact translation.\n\n"
+            "Adapt the existing target to the current source. Make the MINIMUM edits "
+            "needed for a correct, fluent translation: keep the existing wording, "
+            "terminology, tags and formatting wherever the source is unchanged, and "
+            "only change the parts that the source change requires. Output ONLY the "
+            "adapted translation, with no labels or commentary.\n\n"
+            "Matched source:\n{{TM_SOURCE}}\n\n"
+            "Existing target (to adapt):\n{{TM_TARGET}}"
+        )
+
+    def get_fuzzy_fixer_template(self) -> str:
+        """Get the (possibly user-edited) Fuzzy Fixer instruction template."""
+        return self.system_templates.get("fuzzy_fixer") or self._get_default_fuzzy_fixer_template()
+
     def _get_default_system_template(self, mode: str) -> str:
         """Get default system prompt for a mode"""
         # Comprehensive system prompt with detailed CAT tag instructions
@@ -3922,12 +3950,13 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
     
     def build_final_prompt(self, source_text: str, source_lang: str, target_lang: str,
                            mode: str = None, glossary_terms: list = None,
-                           target_text: str = "") -> str:
+                           target_text: str = "", fuzzy_match: dict = None) -> str:
         """
         Build final prompt for translation using 2-layer architecture:
         1. System Prompt (auto-selected by mode)
         2. Combined prompts from library (primary + attached)
         3. Glossary terms (optional, injected before translation delimiter)
+        4. Fuzzy Fixer reference (optional, injected before translation delimiter)
 
         Args:
             source_text: Text to translate
@@ -3936,6 +3965,9 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             mode: Override mode (if None, uses self.current_mode)
             glossary_terms: Optional list of term dicts with 'source_term' and 'target_term' keys
             target_text: Optional current target text (for {{TARGET_TEXT}} placeholder)
+            fuzzy_match: Optional dict with 'source', 'target', 'match_pct', 'tm_name'.
+                When provided, the editable Fuzzy Fixer instruction is rendered and
+                appended so the AI adapts the existing TM target to the new source.
 
         Returns:
             Complete prompt ready for LLM
@@ -3984,6 +4016,23 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
                         final_prompt += f"- {source_term} → ⚠️ DO NOT USE: {target_term}\n"
                     else:
                         final_prompt += f"- {source_term} → {target_term}\n"
+
+        # Fuzzy Fixer injection (if a fuzzy TM match is provided). Renders the
+        # editable fuzzy_fixer instruction template with the match details so the
+        # AI adapts the existing translation to the new source with minimal edits.
+        if fuzzy_match and fuzzy_match.get('source') and fuzzy_match.get('target'):
+            instruction = self.get_fuzzy_fixer_template()
+            try:
+                match_pct = int(round(float(fuzzy_match.get('match_pct', 0) or 0)))
+            except (TypeError, ValueError):
+                match_pct = 0
+            instruction = instruction.replace("{{TM_SOURCE}}", fuzzy_match.get('source', ''))
+            instruction = instruction.replace("{{TM_TARGET}}", fuzzy_match.get('target', ''))
+            instruction = instruction.replace("{{MATCH_PCT}}", str(match_pct))
+            instruction = instruction.replace("{{TM_NAME}}", fuzzy_match.get('tm_name', '') or 'TM')
+            instruction = instruction.replace("{{SOURCE_TEXT}}", source_text)
+            final_prompt += "\n\n# FUZZY TM MATCH\n\n"
+            final_prompt += instruction
 
         # Add translation delimiter
         final_prompt += "\n\n**YOUR TRANSLATION (provide ONLY the translated text, no numbering or labels):**\n"

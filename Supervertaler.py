@@ -7208,7 +7208,7 @@ class PreTranslationWorker(QThread):
     translation_error = pyqtSignal(str)  # error_message
     retry_needed = pyqtSignal(list)  # empty_segments list of (row_index, segment)
     
-    def __init__(self, parent_app, segments, provider_type, provider_name, model, tm_exact_only=False, prompt_manager=None, retry_enabled=False, retry_pass=0, tm_ids=None, glossary_terms=None, base_url=None, custom_api_key=None, http_proxy=None):
+    def __init__(self, parent_app, segments, provider_type, provider_name, model, tm_exact_only=False, prompt_manager=None, retry_enabled=False, retry_pass=0, tm_ids=None, glossary_terms=None, base_url=None, custom_api_key=None, http_proxy=None, use_fuzzy_fixer=False, fuzzy_match_map=None):
         super().__init__()
         self.parent_app = parent_app
         self.segments = segments
@@ -7220,6 +7220,10 @@ class PreTranslationWorker(QThread):
         self.http_proxy = http_proxy
         self.tm_exact_only = tm_exact_only
         self.prompt_manager = prompt_manager
+        # Fuzzy Fixer: when enabled, the LLM pass runs per-segment so each
+        # segment's own fuzzy TM match (fuzzy_match_map[seg.id]) can be injected.
+        self.use_fuzzy_fixer = use_fuzzy_fixer
+        self.fuzzy_match_map = fuzzy_match_map or {}
         self.retry_enabled = retry_enabled
         self.retry_pass = retry_pass
         self.max_retries = 5
@@ -7309,6 +7313,11 @@ class PreTranslationWorker(QThread):
                         self.progress_update.emit(idx + 1, len(self.segments), message, False, 0)
                         self.error_count += 1
         
+            # Fuzzy Fixer: translate each segment individually so its own fuzzy
+            # TM match can be injected (batching is disabled for this pass).
+            elif self.use_fuzzy_fixer:
+                self._run_fuzzy_fixer_llm()
+
             # For LLM, process in batches
             else:
                 # Get batch size from settings
@@ -7708,6 +7717,91 @@ class PreTranslationWorker(QThread):
             print(f"❌ Full traceback:\n{error_details}")
             # Return list of None for all segments
             return [None] * len(batch_segments)
+
+    def _run_fuzzy_fixer_llm(self):
+        """LLM pass that translates each segment individually so its own fuzzy
+        TM match (from fuzzy_match_map) can be injected (Fuzzy Fixer batch mode)."""
+        import time
+        fmap = self.fuzzy_match_map or {}
+        total = len(self.segments)
+        for idx, (row_index, segment) in enumerate(self.segments):
+            if self._cancelled:
+                break
+            try:
+                start_time = time.time()
+                fuzzy_match = fmap.get(segment.id)
+                translation = self._translate_single_with_llm(segment, fuzzy_match)
+                elapsed = time.time() - start_time
+
+                if translation:
+                    old_target = segment.target
+                    old_status = segment.status
+                    segment.target = translation
+                    segment.status = "draft"
+                    if old_target != translation or old_status != "draft":
+                        self.undo_entries.append((segment.id, old_target, translation, old_status, "draft"))
+                    tag = "🔧" if fuzzy_match else "✓"
+                    preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                    message = f"[{idx+1}/{total}] {tag} {preview} ({elapsed:.1f}s)"
+                    self.progress_update.emit(idx + 1, total, message, True, elapsed)
+                    self.success_count += 1
+                else:
+                    preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                    message = f"[{idx+1}/{total}] ⊘ No translation: {preview}"
+                    self.progress_update.emit(idx + 1, total, message, False, elapsed)
+                    self.error_count += 1
+            except Exception as e:
+                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                message = f"[{idx+1}/{total}] ✗ ERROR: {preview} - {str(e)}"
+                self.progress_update.emit(idx + 1, total, message, False, 0)
+                self.error_count += 1
+
+    def _translate_single_with_llm(self, segment, fuzzy_match=None):
+        """Translate ONE segment with the LLM, optionally injecting a fuzzy TM
+        match (Fuzzy Fixer). Returns the translation string or None."""
+        try:
+            from modules.llm_clients import LLMClient
+
+            source_lang = getattr(self.parent_app.current_project, 'source_lang', 'en')
+            target_lang = getattr(self.parent_app.current_project, 'target_lang', 'nl')
+
+            api_keys = self.parent_app.load_api_keys()
+            api_key = api_keys.get(self.provider_name) or (api_keys.get('google') if self.provider_name == 'gemini' else None)
+            if self.provider_name == 'custom_openai':
+                if self.custom_api_key:
+                    api_key = self.custom_api_key
+                elif not api_key:
+                    api_key = api_keys.get('custom_openai', '') or 'not-needed'
+
+            custom_prompt = None
+            if self.prompt_manager:
+                custom_prompt = self.prompt_manager.build_final_prompt(
+                    source_text=segment.source,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    mode="single",
+                    glossary_terms=self.glossary_terms,
+                    target_text=segment.target or "",
+                    fuzzy_match=fuzzy_match,
+                )
+
+            client = LLMClient(
+                api_key=api_key,
+                provider=self.provider_name,
+                model=self.model,
+                base_url=self.base_url,
+                http_proxy=self.http_proxy,
+            )
+            result = client.translate(
+                text=segment.source,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                custom_prompt=custom_prompt,
+            )
+            return result.strip() if result else None
+        except Exception as e:
+            print(f"❌ Fuzzy Fixer single LLM error: {e}")
+            return None
 
 
 class ProofreadWorker(QThread):
@@ -11025,6 +11119,12 @@ class SupervertalerQt(QMainWindow):
         translate_action.setShortcut("Ctrl+T")
         translate_action.triggered.connect(self.translate_current_segment)
         translate_top_menu.addAction(translate_action)
+
+        fuzzy_fixer_action = QAction(self.tr("🔧 &Fuzzy Fix Current Segment"), self)
+        fuzzy_fixer_action.setShortcut("Ctrl+Alt+F")
+        fuzzy_fixer_action.setToolTip(self.tr("Ask the AI to adapt the selected fuzzy TM match to the current source"))
+        fuzzy_fixer_action.triggered.connect(self.fuzzy_fix_current_segment)
+        translate_top_menu.addAction(fuzzy_fixer_action)
 
         translate_top_menu.addSeparator()
 
@@ -23896,7 +23996,30 @@ class SupervertalerQt(QMainWindow):
         llm_limit_layout.addWidget(llm_spin)
         llm_limit_layout.addStretch()
         behavior_layout.addLayout(llm_limit_layout)
-        
+
+        # Fuzzy Fixer thresholds
+        behavior_layout.addSpacing(10)
+        fuzzy_fixer_label = QLabel(self.tr("<b>🔧 Fuzzy Fixer:</b> AI adapts fuzzy TM matches to the current source"))
+        behavior_layout.addWidget(fuzzy_fixer_label)
+
+        fuzzy_range_layout = QHBoxLayout()
+        fuzzy_range_layout.addWidget(QLabel(self.tr("Act on matches between")))
+        self.fuzzy_fixer_min_spin = QSpinBox()
+        self.fuzzy_fixer_min_spin.setRange(1, 99)
+        self.fuzzy_fixer_min_spin.setSuffix("%")
+        self.fuzzy_fixer_min_spin.setValue(getattr(self, 'fuzzy_fixer_min_pct', 75))
+        self.fuzzy_fixer_min_spin.setToolTip(self.tr("Minimum match % the Fuzzy Fixer will repair (below this, nothing is offered)."))
+        fuzzy_range_layout.addWidget(self.fuzzy_fixer_min_spin)
+        fuzzy_range_layout.addWidget(QLabel(self.tr("and")))
+        self.fuzzy_fixer_max_spin = QSpinBox()
+        self.fuzzy_fixer_max_spin.setRange(1, 99)
+        self.fuzzy_fixer_max_spin.setSuffix("%")
+        self.fuzzy_fixer_max_spin.setValue(getattr(self, 'fuzzy_fixer_max_pct', 99))
+        self.fuzzy_fixer_max_spin.setToolTip(self.tr("Maximum match % the Fuzzy Fixer will repair (100% exact matches are never altered)."))
+        fuzzy_range_layout.addWidget(self.fuzzy_fixer_max_spin)
+        fuzzy_range_layout.addStretch()
+        behavior_layout.addLayout(fuzzy_range_layout)
+
         behavior_group.setLayout(behavior_layout)
         layout.addWidget(behavior_group)
 
@@ -27076,7 +27199,8 @@ class SupervertalerQt(QMainWindow):
         mode_combo.addItems([
             "Single Segment Translation",
             "Batch DOCX Translation",
-            "Batch Bilingual Translation"
+            "Batch Bilingual Translation",
+            "Fuzzy Fixer Instruction"
         ])
         mode_combo.setToolTip(self.tr("Select which system prompt to view/edit"))
         mode_selector_layout.addWidget(mode_combo)
@@ -27091,7 +27215,8 @@ class SupervertalerQt(QMainWindow):
         editor_layout = QVBoxLayout()
 
         editor_info = QLabel(
-            self.tr("Edit the system prompt below. Use {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, and {{SOURCE_TEXT}} as placeholders.")
+            self.tr("Edit the system prompt below. Use {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, and {{SOURCE_TEXT}} as placeholders. "
+                    "The Fuzzy Fixer Instruction additionally supports {{TM_SOURCE}}, {{TM_TARGET}}, {{MATCH_PCT}} and {{TM_NAME}}.")
         )
         editor_info.setStyleSheet("font-size: 8pt; padding: 8px; border-radius: 2px;")
         editor_info.setWordWrap(True)
@@ -27137,7 +27262,8 @@ class SupervertalerQt(QMainWindow):
         mode_map = {
             "Single Segment Translation": "single",
             "Batch DOCX Translation": "batch_docx",
-            "Batch Bilingual Translation": "batch_bilingual"
+            "Batch Bilingual Translation": "batch_bilingual",
+            "Fuzzy Fixer Instruction": "fuzzy_fixer"
         }
 
         selected_mode = mode_combo.currentText()
@@ -27145,7 +27271,10 @@ class SupervertalerQt(QMainWindow):
 
         # Load from prompt_manager_qt if available
         if hasattr(self, 'prompt_manager_qt'):
-            prompt_text = self.prompt_manager_qt.get_system_template(mode_key)
+            if mode_key == "fuzzy_fixer":
+                prompt_text = self.prompt_manager_qt.get_fuzzy_fixer_template()
+            else:
+                prompt_text = self.prompt_manager_qt.get_system_template(mode_key)
         else:
             # Fallback: load from JSON file
             system_prompts_file = self.user_data_path / "prompt_library" / "system_prompts_layer1.json"
@@ -27164,7 +27293,8 @@ class SupervertalerQt(QMainWindow):
         mode_map = {
             "Single Segment Translation": "single",
             "Batch DOCX Translation": "batch_docx",
-            "Batch Bilingual Translation": "batch_bilingual"
+            "Batch Bilingual Translation": "batch_bilingual",
+            "Fuzzy Fixer Instruction": "fuzzy_fixer"
         }
 
         selected_mode = mode_combo.currentText()
@@ -27204,7 +27334,8 @@ class SupervertalerQt(QMainWindow):
         mode_map = {
             "Single Segment Translation": "single",
             "Batch DOCX Translation": "batch_docx",
-            "Batch Bilingual Translation": "batch_bilingual"
+            "Batch Bilingual Translation": "batch_bilingual",
+            "Fuzzy Fixer Instruction": "fuzzy_fixer"
         }
 
         selected_mode = mode_combo.currentText()
@@ -27223,7 +27354,10 @@ class SupervertalerQt(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             # Get default from prompt_manager_qt
             if hasattr(self, 'prompt_manager_qt'):
-                default_prompt = self.prompt_manager_qt._get_default_system_template(mode_key)
+                if mode_key == "fuzzy_fixer":
+                    default_prompt = self.prompt_manager_qt._get_default_fuzzy_fixer_template()
+                else:
+                    default_prompt = self.prompt_manager_qt._get_default_system_template(mode_key)
             else:
                 default_prompt = "# SYSTEM PROMPT\n\nNo default prompt available."
             editor.setPlainText(default_prompt)
@@ -28344,7 +28478,18 @@ class SupervertalerQt(QMainWindow):
         if 'match_limits' not in general_prefs:
             general_prefs['match_limits'] = {}
         general_prefs['match_limits']['LLM'] = llm_spin.value()
-        
+
+        # Save Fuzzy Fixer thresholds (clamp so min <= max)
+        if getattr(self, 'fuzzy_fixer_min_spin', None) is not None and getattr(self, 'fuzzy_fixer_max_spin', None) is not None:
+            ff_min = self.fuzzy_fixer_min_spin.value()
+            ff_max = self.fuzzy_fixer_max_spin.value()
+            if ff_min > ff_max:
+                ff_min, ff_max = ff_max, ff_min
+            self.fuzzy_fixer_min_pct = ff_min
+            self.fuzzy_fixer_max_pct = ff_max
+            general_prefs['fuzzy_fixer_min_pct'] = ff_min
+            general_prefs['fuzzy_fixer_max_pct'] = ff_max
+
         self.save_general_settings(general_prefs)
         
         # Handle Ollama keep-warm timer
@@ -43317,7 +43462,8 @@ class SupervertalerQt(QMainWindow):
         self.match_panel_tm_index = 0     # Separate navigation index
 
         self._tm_source_container, self.match_panel_tm_source, self.match_panel_tm_nav_label, tm_nav_btns = self._create_compare_panel_box(
-            "📚 TM Source", tm_box_bg, text_color, border_color, has_navigation=True)
+            "📚 TM Source", tm_box_bg, text_color, border_color, has_navigation=True,
+            add_fuzzy_fixer_button=True)
         if tm_nav_btns:
             tm_nav_btns[0].clicked.connect(lambda: self._match_panel_nav_tm(-1))
             tm_nav_btns[1].clicked.connect(lambda: self._match_panel_nav_tm(1))
@@ -43417,6 +43563,7 @@ class SupervertalerQt(QMainWindow):
                 self.match_panel_tm_nav_label.setText("(0/0)")
             if hasattr(self, 'match_panel_tm_target_label') and self.match_panel_tm_target_label:
                 self.match_panel_tm_target_label.setText("")
+            self._update_fuzzy_fixer_btn_state(None)
             return
         
         match = self.match_panel_tm_matches[self.match_panel_tm_index]
@@ -43442,6 +43589,9 @@ class SupervertalerQt(QMainWindow):
         if hasattr(self, 'match_panel_tm_nav_label') and self.match_panel_tm_nav_label:
             nav_html = f"(<span style='font-size:8px'>{idx}/{total}</span>)"
             self.match_panel_tm_nav_label.setText(nav_html)
+
+        # Enable the Fuzzy Fixer button only when this match is in the configured range
+        self._update_fuzzy_fixer_btn_state(match_pct)
 
         # Update TM Source text with diff highlighting
         # Strip any stale invisible markers from TM data before processing
@@ -43722,7 +43872,8 @@ class SupervertalerQt(QMainWindow):
 
     def _create_compare_panel_box(self, label: str, bg_color: str, text_color: str, border_color: str,
                                    has_navigation: bool = False, show_metadata_label: bool = False,
-                                   shortcut_badge_text: str = None, shortcut_badge_tooltip: str = None) -> tuple:
+                                   shortcut_badge_text: str = None, shortcut_badge_tooltip: str = None,
+                                   add_fuzzy_fixer_button: bool = False) -> tuple:
         """Create a single comparison box for the Compare Panel
         
         Returns: (container, text_edit, nav_label, nav_buttons) where nav_buttons is [prev_btn, next_btn] or None
@@ -43770,6 +43921,34 @@ class SupervertalerQt(QMainWindow):
                     f"Press {format_shortcut_for_display(shortcut_badge_tooltip)} to insert"
                 )
             header_layout.addWidget(badge_label)
+
+        # Optional Fuzzy Fixer button (only the Match Panel TM Source box uses this)
+        if add_fuzzy_fixer_button:
+            from PyQt6.QtWidgets import QPushButton as _QPushButton
+            ff_btn = _QPushButton("🔧 Fuzzy Fixer")
+            ff_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            ff_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            ff_btn.setToolTip(self.tr(
+                "Fuzzy Fixer: ask the AI to adapt this fuzzy TM match to the "
+                f"current source ({format_shortcut_for_display('Ctrl+Alt+F')})"))
+            ff_btn.setStyleSheet("""
+                QPushButton {
+                    font-size: 8pt;
+                    font-weight: bold;
+                    padding: 1px 8px;
+                    background-color: #FF7043;
+                    color: white;
+                    border: none;
+                    border-radius: 3px;
+                }
+                QPushButton:hover { background-color: #F4511E; }
+                QPushButton:disabled { background-color: #BDBDBD; color: #EEEEEE; }
+                QPushButton:focus { outline: none; }
+            """)
+            ff_btn.clicked.connect(self.fuzzy_fix_current_segment)
+            ff_btn.setEnabled(False)  # Enabled once an in-range match is shown
+            self.match_panel_fuzzy_fixer_btn = ff_btn
+            header_layout.addWidget(ff_btn)
 
         # Add stretch to push navigation controls to the right (aligned with scrollbar)
         header_layout.addStretch()
@@ -46363,6 +46542,10 @@ class SupervertalerQt(QMainWindow):
         self.debug_auto_export = settings.get('debug_auto_export', False)
         # Load LLM matching setting (default: FALSE - too slow!)
         self.enable_llm_matching = settings.get('enable_llm_matching', False)
+        # Load Fuzzy Fixer thresholds (match % range the AI repair acts on)
+        self.fuzzy_fixer_min_pct = int(settings.get('fuzzy_fixer_min_pct', 75))
+        self.fuzzy_fixer_max_pct = int(settings.get('fuzzy_fixer_max_pct', 99))
+        self.fuzzy_fixer_enabled = settings.get('fuzzy_fixer_enabled', False)
         # Load precision scroll divisor setting
         self.precision_scroll_divisor = settings.get('precision_scroll_divisor', 3)
         # Load auto-center active segment setting (default True, like memoQ/Trados)
@@ -60687,8 +60870,19 @@ class SupervertalerQt(QMainWindow):
     # LLM TRANSLATION INTEGRATION
     # =========================================================================
     
-    def translate_current_segment(self):
-        """Translate currently selected segment using LLM (Ctrl+T)"""
+    def translate_current_segment(self, fuzzy_match=None):
+        """Translate currently selected segment using LLM (Ctrl+T).
+
+        When ``fuzzy_match`` is a dict (source/target/match_pct/tm_name), the
+        Fuzzy Fixer flow is used: the match is injected into the prompt so the
+        AI adapts the existing TM target to the current source, and a
+        target-side diff is shown afterwards. See fuzzy_fix_current_segment().
+        """
+        # QAction.triggered passes a bool ('checked') – normalise it away so the
+        # plain Ctrl+T action never looks like a fuzzy match.
+        if isinstance(fuzzy_match, bool):
+            fuzzy_match = None
+
         current_row = self.table.currentRow()
         if current_row < 0 or not self.current_project:
             QMessageBox.warning(self, "No Selection", "Please select a segment to translate.")
@@ -60843,9 +61037,11 @@ class SupervertalerQt(QMainWindow):
                 except Exception as e:
                     self.log(f"⚠ TM check error: {e}")
             
-            # If we have a 100% match and auto-insert is enabled, use it
+            # If we have a 100% match and auto-insert is enabled, use it.
+            # Skip when running Fuzzy Fixer – the user explicitly wants the AI to
+            # adapt a fuzzy match, not silently drop in an exact TM hit.
             auto_insert_100 = general_prefs.get('auto_insert_100', False)
-            if tm_match and auto_insert_100:
+            if tm_match and auto_insert_100 and not fuzzy_match:
                 # Auto-insert the TM match
                 _undo_old_target = segment.target
                 _undo_old_status = segment.status
@@ -60929,11 +61125,31 @@ class SupervertalerQt(QMainWindow):
                         "written, with the same numbers. A paired tag MUST wrap the translated "
                         "word(s) it wrapped in the source – never output an empty pair like <1></1> "
                         "with the text left outside it.")
+                # Fuzzy Fixer reference for local LLMs (rendered from the same
+                # editable template used for cloud providers).
+                if fuzzy_match and fuzzy_match.get('source') and fuzzy_match.get('target') \
+                        and hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
+                    try:
+                        instruction = self.prompt_manager_qt.get_fuzzy_fixer_template()
+                        try:
+                            _ff_pct = int(round(float(fuzzy_match.get('match_pct', 0) or 0)))
+                        except (TypeError, ValueError):
+                            _ff_pct = 0
+                        instruction = instruction.replace("{{TM_SOURCE}}", fuzzy_match.get('source', ''))
+                        instruction = instruction.replace("{{TM_TARGET}}", fuzzy_match.get('target', ''))
+                        instruction = instruction.replace("{{MATCH_PCT}}", str(_ff_pct))
+                        instruction = instruction.replace("{{TM_NAME}}", fuzzy_match.get('tm_name', '') or 'TM')
+                        instruction = instruction.replace("{{SOURCE_TEXT}}", segment.source)
+                        prompt_parts.append("")
+                        prompt_parts.append(instruction)
+                    except Exception as e:
+                        self.log(f"⚠ Could not add Fuzzy Fixer reference to Ollama prompt: {e}")
+
                 prompt_parts.append("Translate this segment accurately. Output ONLY the translation:")
                 prompt_parts.append(segment.source)
                 prompt_parts.append("")
                 prompt_parts.append("Translation:")
-                
+
                 custom_prompt = "\n".join(prompt_parts)
                 
                 self.log(f"  Using optimized Ollama prompt ({len(custom_prompt)} chars, {len(context_lines)//2} context segs)")
@@ -60978,7 +61194,8 @@ class SupervertalerQt(QMainWindow):
                         target_lang=self.current_project.target_lang,
                         mode="single",
                         glossary_terms=glossary_terms,
-                        target_text=segment.target or ""
+                        target_text=segment.target or "",
+                        fuzzy_match=fuzzy_match
                     )
 
                     # Add surrounding context before the translation delimiter
@@ -61069,9 +61286,18 @@ class SupervertalerQt(QMainWindow):
                 # Mark project as modified
                 self.project_modified = True
                 self.update_window_title()
-                
-                self.log(f"✓ Segment #{segment.id} translated with {provider}/{model}")
-                self.status_bar.showMessage(f"✓ Segment #{segment.id} translated", 3000)
+
+                # Fuzzy Fixer: show what the AI changed vs the original TM target
+                if fuzzy_match and fuzzy_match.get('target'):
+                    try:
+                        self._show_fuzzy_fix_diff(fuzzy_match.get('target', ''), translation)
+                    except Exception as e:
+                        self.log(f"⚠ Could not show Fuzzy Fixer diff: {e}")
+                    self.log(f"🔧 Fuzzy Fixer adapted #{segment.id} from {fuzzy_match.get('match_pct', '?')}% match")
+                    self.status_bar.showMessage(f"🔧 Fuzzy Fixer adapted segment #{segment.id}", 3000)
+                else:
+                    self.log(f"✓ Segment #{segment.id} translated with {provider}/{model}")
+                    self.status_bar.showMessage(f"✓ Segment #{segment.id} translated", 3000)
                 
                 # Stop elapsed timer and close progress dialog
                 if elapsed_timer:
@@ -61096,6 +61322,115 @@ class SupervertalerQt(QMainWindow):
             self.log(f"✗ Translation error: {str(e)}")
             QMessageBox.critical(self, "Translation Error", f"Failed to translate segment:\n\n{str(e)}")
             self.status_bar.showMessage("Translation failed", 3000)
+
+    # =========================================================================
+    # FUZZY FIXER
+    # =========================================================================
+
+    def fuzzy_fix_current_segment(self, *args):
+        """Fuzzy Fixer: adapt the currently selected fuzzy TM match to the
+        current source using the AI (Match Panel button / Ctrl+Alt+F).
+
+        Reads the match shown in the Match Panel TM Source/Target boxes, checks
+        it falls within the configured % range, then delegates to
+        translate_current_segment() with the match injected into the prompt.
+        """
+        if not self.current_project:
+            QMessageBox.warning(self, "No Project", "Open a project first.")
+            return
+
+        matches = getattr(self, 'match_panel_tm_matches', None)
+        if not matches:
+            QMessageBox.information(
+                self, "Fuzzy Fixer",
+                "No TM match is shown for this segment, so there is nothing to fix.\n\n"
+                "Select a segment that has a fuzzy TM match in the Match Panel.")
+            return
+
+        idx = getattr(self, 'match_panel_tm_index', 0)
+        if idx < 0 or idx >= len(matches):
+            idx = 0
+        match = matches[idx]
+
+        # Support both dict and TranslationMatch objects (mirrors _update_match_panel_tm_display)
+        if isinstance(match, dict):
+            tm_source = match.get('source', '')
+            tm_target = match.get('target', '')
+            tm_name = match.get('tm_name', '') or 'TM'
+            match_pct = match.get('match_pct', 0)
+        else:
+            tm_source = getattr(match, 'compare_source', '') or getattr(match, 'source', '')
+            tm_target = getattr(match, 'target', '')
+            md = match.metadata if hasattr(match, 'metadata') and match.metadata else {}
+            tm_name = md.get('tm_name', '') or 'TM'
+            match_pct = getattr(match, 'relevance', 0)
+
+        try:
+            match_pct_int = int(round(float(match_pct or 0)))
+        except (TypeError, ValueError):
+            match_pct_int = 0
+
+        if not (tm_target or '').strip():
+            QMessageBox.information(self, "Fuzzy Fixer",
+                                    "The selected TM match has no target text to adapt.")
+            return
+
+        min_pct = int(getattr(self, 'fuzzy_fixer_min_pct', 75))
+        max_pct = int(getattr(self, 'fuzzy_fixer_max_pct', 99))
+        if match_pct_int > max_pct:
+            QMessageBox.information(
+                self, "Fuzzy Fixer",
+                f"This is a {match_pct_int}% match. Fuzzy Fixer only adapts matches "
+                f"between {min_pct}% and {max_pct}% – exact matches need no fixing.")
+            return
+        if match_pct_int < min_pct:
+            QMessageBox.information(
+                self, "Fuzzy Fixer",
+                f"This is only a {match_pct_int}% match, below the Fuzzy Fixer minimum "
+                f"of {min_pct}%. Adjust the range in Settings → AI Settings if needed.")
+            return
+
+        fuzzy_match = {
+            'source': tm_source,
+            'target': tm_target,
+            'match_pct': match_pct_int,
+            'tm_name': tm_name,
+        }
+        self.translate_current_segment(fuzzy_match=fuzzy_match)
+
+    def _show_fuzzy_fix_diff(self, tm_target: str, new_target: str):
+        """Render a track-changes view (AI output vs original TM target) in the
+        Match Panel TM Target box, so the user sees what the Fuzzy Fixer changed.
+
+        Transient: it is replaced the next time the TM display refreshes.
+        """
+        if not tm_target or not new_target:
+            return
+        if not (hasattr(self, 'match_panel_tm_target') and self.match_panel_tm_target):
+            return
+        try:
+            # Reuse the existing track-changes renderer: 'current' is the new
+            # target, 'tm_source' is the original target being annotated.
+            self._set_compare_panel_text_with_diff(self.match_panel_tm_target, new_target, tm_target)
+        except Exception:
+            self.match_panel_tm_target.setPlainText(new_target)
+
+    def _update_fuzzy_fixer_btn_state(self, match_pct):
+        """Enable the Match Panel Fuzzy Fixer button only when the current match
+        percentage is within the configured range (None = no match)."""
+        btn = getattr(self, 'match_panel_fuzzy_fixer_btn', None)
+        if btn is None:
+            return
+        enabled = False
+        if match_pct is not None:
+            try:
+                pct = int(round(float(match_pct or 0)))
+                min_pct = int(getattr(self, 'fuzzy_fixer_min_pct', 75))
+                max_pct = int(getattr(self, 'fuzzy_fixer_max_pct', 99))
+                enabled = min_pct <= pct <= max_pct
+            except (TypeError, ValueError):
+                enabled = False
+        btn.setEnabled(enabled)
 
     # =========================================================================
     # GRID QUICKLAUNCHER
@@ -61854,6 +62189,18 @@ class SupervertalerQt(QMainWindow):
 
             tm_checkbox.toggled.connect(on_tm_autoconfirm_toggle)
 
+            # Fuzzy Fixer option (applies to AI/LLM translation)
+            fuzzy_fixer_checkbox = CheckmarkCheckBox(self.tr("🔧 Use Fuzzy Fixer (adapt fuzzy TM matches with AI)"))
+            fuzzy_fixer_checkbox.setToolTip(
+                "AI translation only. For each segment that has a fuzzy TM match\n"
+                f"within your configured range ({getattr(self, 'fuzzy_fixer_min_pct', 75)}–{getattr(self, 'fuzzy_fixer_max_pct', 99)}%),\n"
+                "the existing TM target is fed to the AI as a reference so it adapts\n"
+                "it to the new source instead of translating from scratch.\n\n"
+                "Note: segments are processed individually (no batching) in this mode."
+            )
+            fuzzy_fixer_checkbox.setChecked(getattr(self, 'fuzzy_fixer_enabled', False))
+            options_layout.addWidget(fuzzy_fixer_checkbox)
+
             options_group.setLayout(options_layout)
             dialog_layout.addWidget(options_group)
 
@@ -61884,11 +62231,22 @@ class SupervertalerQt(QMainWindow):
             retry_until_complete = retry_checkbox.isChecked()
             tm_exact_only = tm_exact_only_checkbox.isChecked()
             auto_confirm_tm = auto_confirm_checkbox.isChecked()
-        
+            use_fuzzy_fixer = fuzzy_fixer_checkbox.isChecked()
+
             # Store retry setting for recursive calls
             self._batch_retry_enabled = retry_until_complete
             self._batch_tm_exact_only = tm_exact_only  # Store for retry passes
             self._batch_auto_confirm_tm = auto_confirm_tm  # Store for auto-confirm
+            self._batch_use_fuzzy_fixer = use_fuzzy_fixer  # Store for retry passes
+
+            # Persist Fuzzy Fixer toggle as the default for next time
+            try:
+                _gp = self.load_general_settings()
+                _gp['fuzzy_fixer_enabled'] = use_fuzzy_fixer
+                self.save_general_settings(_gp)
+                self.fuzzy_fixer_enabled = use_fuzzy_fixer
+            except Exception:
+                pass
             
             # Initialize model variable (will be set to actual model if LLM is selected)
             model = None
@@ -62198,6 +62556,46 @@ class SupervertalerQt(QMainWindow):
         # Pre-fetch glossary terms on main thread (SQLite is not thread-safe)
         glossary_terms = self.get_ai_inject_glossary_terms()
 
+        # Fuzzy Fixer: pre-fetch the best fuzzy match per segment on the main
+        # thread (SQLite is not thread-safe) so the worker can inject each
+        # segment's match into its prompt. LLM provider only.
+        fuzzy_match_map = {}
+        use_fuzzy_fixer = getattr(self, '_batch_use_fuzzy_fixer', False)
+        if translation_provider_type == 'LLM' and use_fuzzy_fixer and self.tm_database:
+            try:
+                ff_tm_ids = None
+                if hasattr(self, 'tm_metadata_mgr') and self.tm_metadata_mgr and self.current_project:
+                    _pid = getattr(self.current_project, 'id', None)
+                    if _pid:
+                        ff_tm_ids = self.tm_metadata_mgr.get_active_tm_ids(_pid)
+                ff_min = int(getattr(self, 'fuzzy_fixer_min_pct', 75))
+                ff_max = int(getattr(self, 'fuzzy_fixer_max_pct', 99))
+                ff_source_to_segs = {}
+                for _row_index, _segment in segments_needing_translation:
+                    _ssrc = _segment.source
+                    if self.hide_outer_wrapping_tags:
+                        _ssrc, _ = strip_outer_wrapping_tags(_ssrc)
+                    ff_source_to_segs.setdefault(_ssrc, []).append(_segment)
+                ff_results = self.tm_database.search_all_batch(
+                    sources=list(ff_source_to_segs.keys()),
+                    tm_ids=ff_tm_ids,
+                    enabled_only=False,
+                )
+                for _ssrc, _match in ff_results.items():
+                    _pct = _match.get('match_pct', 0)
+                    if ff_min <= _pct <= ff_max and _match.get('target'):
+                        _fm = {
+                            'source': _match.get('source', _ssrc),
+                            'target': _match.get('target', ''),
+                            'match_pct': _pct,
+                            'tm_name': _match.get('tm_name', ''),
+                        }
+                        for _seg in ff_source_to_segs.get(_ssrc, []):
+                            fuzzy_match_map[_seg.id] = _fm
+                self.log(f"🔧 Fuzzy Fixer: {len(fuzzy_match_map)} segment(s) have a {ff_min}-{ff_max}% match to adapt")
+            except Exception as e:
+                self.log(f"⚠ Fuzzy Fixer: could not build fuzzy map: {e}")
+
         # Get base_url and api_key for custom_openai provider (from active profile)
         custom_base_url = None
         custom_api_key = None
@@ -62244,7 +62642,9 @@ class SupervertalerQt(QMainWindow):
             glossary_terms=glossary_terms,
             base_url=custom_base_url,
             custom_api_key=custom_api_key,
-            http_proxy=self._get_proxy_url() if translation_provider_name != 'gemini' else None
+            http_proxy=self._get_proxy_url() if translation_provider_name != 'gemini' else None,
+            use_fuzzy_fixer=use_fuzzy_fixer,
+            fuzzy_match_map=fuzzy_match_map,
         )
         dialog = LiveProgressDialog(self, len(segments_needing_translation), provider_info)
         
