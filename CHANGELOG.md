@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.314 (June 27, 2026)
+**Current Version:** v1.10.315 (June 27, 2026)
+
+
+## v1.10.315 – June 27, 2026
+
+### Fixed (TermLens · Alt+number term-insert shortcuts work again)
+
+- **The TermLens Alt+1…Alt+9 (and double-tap 11–19) shortcuts insert terms again when the Match Panel TermLens is the visible one.** The handler always called the *under-grid* TermLens instance, but since v1.10.283 each TermLens defers its render – and its number→term map (`shortcut_terms`) – while hidden, to halve per-click cost. So when the under-grid panel was collapsed and only the Match Panel TermLens was on screen (a common layout), Alt+N targeted an empty map and inserted nothing. The shortcut now routes to whichever TermLens is actually visible (falling back to whichever has a populated map). Reported by Michael.
 
 
 ## v1.10.314 – June 27, 2026

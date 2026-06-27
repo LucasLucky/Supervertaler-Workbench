@@ -57583,11 +57583,41 @@ class SupervertalerQt(QMainWindow):
         return None
     
     def insert_termlens_term_by_number(self, term_number: int):
-        """Insert term from TermLens by number (0-19)"""
-        if hasattr(self, 'termlens_widget') and self.termlens_widget:
+        """Insert term from the visible TermLens by number (0-19).
+
+        There are two TermLens instances (under-grid and Match Panel). Since
+        v1.10.283 each one defers its render – and its shortcut_terms map – while
+        hidden, so we must target whichever is actually on screen. Previously this
+        always called the under-grid instance, so Alt+N did nothing when only the
+        Match Panel TermLens was visible.
+        """
+        candidates = []
+        for attr in ('termlens_widget', 'termlens_widget_match'):
+            w = getattr(self, attr, None)
+            if w is not None and hasattr(w, 'insert_term_by_number'):
+                candidates.append(w)
+
+        target = None
+        # Prefer a visible instance (its shortcut_terms reflect the current segment)
+        for w in candidates:
             try:
-                if hasattr(self.termlens_widget, 'insert_term_by_number'):
-                    self.termlens_widget.insert_term_by_number(term_number)
+                if w.isVisible():
+                    target = w
+                    break
+            except Exception:
+                pass
+        # Fall back to any instance that has populated shortcut mappings
+        if target is None:
+            for w in candidates:
+                if getattr(w, 'shortcut_terms', None):
+                    target = w
+                    break
+        if target is None and candidates:
+            target = candidates[0]
+
+        if target is not None:
+            try:
+                target.insert_term_by_number(term_number)
             except Exception as e:
                 self.log(f"Error inserting TermLens term #{term_number}: {e}")
     
