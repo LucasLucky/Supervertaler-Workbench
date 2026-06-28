@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.316 (June 28, 2026)
+**Current Version:** v1.10.317 (June 28, 2026)
+
+
+## v1.10.317 – June 28, 2026
+
+### Fixed (Okapi sidecar · auto-updates instead of warning forever)
+
+- **The Okapi sidecar (the small Java service used for DOCX import/export) now updates itself when it's out of date, instead of repeatedly warning.** Source/pip users get the sidecar via a one-time auto-download; previously that download only ran when the JAR was *missing*, so anyone who had downloaded an older sidecar kept using it after an app update — the app just logged "Sidecar JAR reports vX but client expects vY – rebuild required" on every launch. Now a lazy-downloaded JAR records its version, and on the next DOCX action a version-mismatched copy is automatically re-downloaded to the version this build expects (best-effort: if the download fails, e.g. offline, it falls back to the existing JAR). Developer source builds and the bundled desktop release are left untouched. Reported via a user log on macOS.
 
 
 ## v1.10.316 – June 28, 2026

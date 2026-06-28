@@ -35176,6 +35176,45 @@ class SupervertalerQt(QMainWindow):
 
         # Path 2: installed but not running. Try to start it.
         if self.okapi_sidecar.is_installed():
+            # Self-heal: a lazy-downloaded JAR left over from an older app
+            # version won't match what this build expects. Refresh it to the
+            # pinned version automatically so the user never has to rebuild or
+            # delete it by hand. Best-effort: if the download fails (e.g.
+            # offline) we fall back to starting the existing JAR.
+            if self.okapi_sidecar.needs_update():
+                old = self.okapi_sidecar.installed_version_hint() or "older"
+                self.log(f"Okapi sidecar is outdated ({old} → "
+                         f"v{self.okapi_sidecar.EXPECTED_VERSION}); downloading update…")
+                prog = QProgressDialog("Updating Okapi sidecar…", None, 0, 100, self)
+                prog.setWindowTitle(self.tr("Updating Okapi sidecar"))
+                prog.setWindowModality(Qt.WindowModality.WindowModal)
+                prog.setMinimumDuration(0)
+                prog.setAutoClose(False)
+                prog.setAutoReset(False)
+                prog.show()
+                QApplication.processEvents()
+
+                def _upd_progress(done, total):
+                    if total > 0:
+                        prog.setValue(int(done * 100 / total))
+                        prog.setLabelText(
+                            f"Updating Okapi sidecar… "
+                            f"({done // (1024*1024)} / {total // (1024*1024)} MB)")
+                    QApplication.processEvents()
+
+                try:
+                    if self.okapi_sidecar.download_install(progress_callback=_upd_progress):
+                        self.log(f"✅ Okapi sidecar updated to v{self.okapi_sidecar.EXPECTED_VERSION}")
+                    else:
+                        self.log("⚠ Sidecar update download failed – continuing with the existing version")
+                except Exception as e:
+                    self.log(f"⚠ Sidecar update error: {e} – continuing with the existing version")
+                finally:
+                    try:
+                        prog.close()
+                    except Exception:
+                        pass
+
             self.log("Starting Okapi sidecar…")
             if self.okapi_sidecar.start() and self.okapi_sidecar.is_running():
                 return True

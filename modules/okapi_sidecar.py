@@ -109,6 +109,10 @@ class OkapiSidecar:
         self.base_url = f"http://127.0.0.1:{port}"
         self._process: Optional[subprocess.Popen] = None
         self._started_by_us = False
+        # Set by start(): True when the JAR that came up reports a version other
+        # than EXPECTED_VERSION. Used by the app to decide whether to refresh a
+        # lazy-downloaded JAR (see needs_update()).
+        self.version_mismatch = False
 
         # Locate the sidecar directory
         if sidecar_dir:
@@ -224,7 +228,8 @@ class OkapiSidecar:
         # version this Python client expects. If not, the JAR on disk is
         # out of date and the developer needs to rebuild it.
         actual_version = self.get_version()
-        if actual_version and actual_version != self.EXPECTED_VERSION:
+        self.version_mismatch = bool(actual_version and actual_version != self.EXPECTED_VERSION)
+        if self.version_mismatch:
             logger.warning(
                 "Sidecar JAR reports v%s but client expects v%s – rebuild"
                 " required (cd okapi-sidecar && bash build.sh)",
@@ -692,6 +697,54 @@ class OkapiSidecar:
         """
         return (self.sidecar_dir / "okapi-sidecar.jar").exists()
 
+    # ── Lazy-download version tracking ─────────────────────────────
+    # A small ".version" stamp written next to a lazy-downloaded JAR lets us
+    # detect — without launching Java — that a cached JAR from an older app
+    # version is now out of date, so we can refresh it automatically instead
+    # of warning forever.
+
+    def _version_stamp_path(self) -> Path:
+        return self.sidecar_dir / "okapi-sidecar.version"
+
+    def _write_version_stamp(self, target_dir: Path) -> None:
+        try:
+            (target_dir / "okapi-sidecar.version").write_text(
+                self.EXPECTED_VERSION, encoding="utf-8")
+        except Exception as e:
+            logger.warning("Could not write sidecar version stamp: %s", e)
+
+    def installed_version_hint(self) -> Optional[str]:
+        """Best-effort version of the installed JAR from its stamp (no JVM
+        launch). None if there's no stamp (e.g. a pre-stamp download)."""
+        try:
+            p = self._version_stamp_path()
+            if p.exists():
+                return p.read_text(encoding="utf-8").strip() or None
+        except Exception:
+            pass
+        return None
+
+    def is_user_downloaded(self) -> bool:
+        """True when the active JAR is the per-user lazy-downloaded copy (as
+        opposed to a dev source build or a bundled-exe install, which are
+        managed manually and must not be auto-overwritten)."""
+        ud = self._user_data_sidecar_dir()
+        try:
+            return (ud is not None and self.is_installed()
+                    and self.sidecar_dir.resolve() == ud.resolve())
+        except Exception:
+            return False
+
+    def needs_update(self) -> bool:
+        """True when the active JAR is a lazy-downloaded copy whose version is
+        not the one this client expects, so it should be re-downloaded. Always
+        False for dev/source builds and bundled installs. A downloaded JAR with
+        no version stamp (downloaded before stamping existed) is treated as
+        stale so it gets refreshed once."""
+        if not self.is_user_downloaded():
+            return False
+        return self.installed_version_hint() != self.EXPECTED_VERSION
+
     def _user_data_sidecar_dir(self) -> Optional[Path]:
         """Where lazy-downloaded sidecar files go. Per-user, persists
         across reinstalls. None on unsupported platforms."""
@@ -777,6 +830,7 @@ class OkapiSidecar:
                 return False
 
             self.sidecar_dir = target_dir
+            self._write_version_stamp(target_dir)
             logger.info("Sidecar installed to %s", target_dir)
             return True
 
@@ -804,6 +858,7 @@ class OkapiSidecar:
             tmp_path.replace(jar_path)
 
             self.sidecar_dir = target_dir
+            self._write_version_stamp(target_dir)
             logger.info("Sidecar JAR installed to %s", jar_path)
             return True
 
