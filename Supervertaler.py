@@ -7425,7 +7425,7 @@ class PreTranslationWorker(QThread):
     translation_error = pyqtSignal(str)  # error_message
     retry_needed = pyqtSignal(list)  # empty_segments list of (row_index, segment)
     
-    def __init__(self, parent_app, segments, provider_type, provider_name, model, tm_exact_only=False, prompt_manager=None, retry_enabled=False, retry_pass=0, tm_ids=None, glossary_terms=None, base_url=None, custom_api_key=None, http_proxy=None, use_fuzzy_fixer=False, fuzzy_match_map=None, use_autotagger=False, autotag_only=False):
+    def __init__(self, parent_app, segments, provider_type, provider_name, model, tm_exact_only=False, prompt_manager=None, retry_enabled=False, retry_pass=0, tm_ids=None, glossary_terms=None, base_url=None, custom_api_key=None, http_proxy=None, use_fuzzy_fixer=False, fuzzy_match_map=None, autotag_only=False):
         super().__init__()
         self.parent_app = parent_app
         self.segments = segments
@@ -7441,10 +7441,8 @@ class PreTranslationWorker(QThread):
         # segment's own fuzzy TM match (fuzzy_match_map[seg.id]) can be injected.
         self.use_fuzzy_fixer = use_fuzzy_fixer
         self.fuzzy_match_map = fuzzy_match_map or {}
-        # AutoTagger: when use_autotagger, each translated segment gets its tags
-        # placed by the AI after translation. autotag_only is the standalone
-        # bulk mode: no translation at all, just (re)tag the given segments.
-        self.use_autotagger = use_autotagger
+        # AutoTagger: autotag_only is the standalone Bulk Operations mode — no
+        # translation at all, just (re)place inline tags on the given segments.
         self.autotag_only = autotag_only
         self.retry_enabled = retry_enabled
         self.retry_pass = retry_pass
@@ -7546,10 +7544,6 @@ class PreTranslationWorker(QThread):
             # TM match can be injected (batching is disabled for this pass).
             elif self.use_fuzzy_fixer:
                 self._run_fuzzy_fixer_llm()
-
-            # AutoTagger toggle: translate then place tags, per segment.
-            elif self.use_autotagger:
-                self._run_translate_then_autotag_llm()
 
             # For LLM, process in batches
             else:
@@ -8070,45 +8064,6 @@ class PreTranslationWorker(QThread):
         except Exception as e:
             print(f"❌ AutoTagger error on #{segment.id}: {e}")
             return None
-
-    def _run_translate_then_autotag_llm(self):
-        """LLM pass that translates each segment then places its tags (AutoTagger
-        batch toggle). Per-segment so each gets its own tag placement."""
-        import time
-        total = len(self.segments)
-        for idx, (row_index, segment) in enumerate(self.segments):
-            if self._cancelled:
-                break
-            try:
-                start_time = time.time()
-                old_target = segment.target          # capture BEFORE any tentative write
-                old_status = segment.status
-                translation = self._translate_single_with_llm(segment, None)
-                if not translation:
-                    preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
-                    self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ⊘ No translation: {preview}", False, time.time() - start_time)
-                    self.error_count += 1
-                    continue
-                final = translation
-                tagged = False
-                if autotag_extract_tags(segment.source):
-                    segment.target = translation  # tentative, so _autotag strips/re-places it
-                    retagged = self._autotag_segment_llm(segment)
-                    if retagged:
-                        final = retagged
-                        tagged = True
-                elapsed = time.time() - start_time
-                segment.target = final
-                segment.status = "draft"
-                self.undo_entries.append((segment.id, old_target, final, old_status, "draft"))
-                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
-                tag = "🏷️" if tagged else "✓"
-                self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] {tag} {preview} ({elapsed:.1f}s)", True, elapsed)
-                self.success_count += 1
-            except Exception as e:
-                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
-                self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ✗ ERROR: {preview} - {e}", False, 0)
-                self.error_count += 1
 
     def _run_autotag_only(self):
         """Standalone AutoTagger pass (Bulk Operations): (re)place tags on already
@@ -46955,8 +46910,6 @@ class SupervertalerQt(QMainWindow):
         self.fuzzy_fixer_min_pct = int(settings.get('fuzzy_fixer_min_pct', 75))
         self.fuzzy_fixer_max_pct = int(settings.get('fuzzy_fixer_max_pct', 99))
         self.fuzzy_fixer_enabled = settings.get('fuzzy_fixer_enabled', False)
-        # AutoTagger batch toggle default (remembered between sessions)
-        self.autotagger_enabled = settings.get('autotagger_enabled', False)
         # Load precision scroll divisor setting
         self.precision_scroll_divisor = settings.get('precision_scroll_divisor', 3)
         # Load auto-center active segment setting (default True, like memoQ/Trados)
@@ -62858,17 +62811,10 @@ class SupervertalerQt(QMainWindow):
             fuzzy_fixer_checkbox.setChecked(getattr(self, 'fuzzy_fixer_enabled', False))
             options_layout.addWidget(fuzzy_fixer_checkbox)
 
-            # AutoTagger option (applies to AI/LLM translation)
-            autotagger_checkbox = CheckmarkCheckBox(self.tr("🏷️ Fix tags with AutoTagger after translating"))
-            autotagger_checkbox.setToolTip(
-                "AI translation only. After each segment is translated, the AI\n"
-                "re-places the source segment's inline tags into the translation\n"
-                "(segments without source tags are left as-is).\n\n"
-                "Note: segments are processed individually (no batching) in this mode,\n"
-                "and each tagged segment uses an extra AI call."
-            )
-            autotagger_checkbox.setChecked(getattr(self, 'autotagger_enabled', False))
-            options_layout.addWidget(autotagger_checkbox)
+            # Note: the old "Fix tags with AutoTagger after translating" toggle was
+            # removed (Workbench #229) — Translate already places inline tags, so it
+            # was a redundant second pass. Use Bulk Operations → "Auto-tag Segments"
+            # to fix tags on already-translated segments.
 
             options_group.setLayout(options_layout)
             dialog_layout.addWidget(options_group)
@@ -62901,23 +62847,19 @@ class SupervertalerQt(QMainWindow):
             tm_exact_only = tm_exact_only_checkbox.isChecked()
             auto_confirm_tm = auto_confirm_checkbox.isChecked()
             use_fuzzy_fixer = fuzzy_fixer_checkbox.isChecked()
-            use_autotagger = autotagger_checkbox.isChecked()
 
             # Store retry setting for recursive calls
             self._batch_retry_enabled = retry_until_complete
             self._batch_tm_exact_only = tm_exact_only  # Store for retry passes
             self._batch_auto_confirm_tm = auto_confirm_tm  # Store for auto-confirm
             self._batch_use_fuzzy_fixer = use_fuzzy_fixer  # Store for retry passes
-            self._batch_use_autotagger = use_autotagger  # Store for retry passes
 
-            # Persist FuzzyFixer / AutoTagger toggles as defaults for next time
+            # Persist FuzzyFixer toggle as default for next time
             try:
                 _gp = self.load_general_settings()
                 _gp['fuzzy_fixer_enabled'] = use_fuzzy_fixer
-                _gp['autotagger_enabled'] = use_autotagger
                 self.save_general_settings(_gp)
                 self.fuzzy_fixer_enabled = use_fuzzy_fixer
-                self.autotagger_enabled = use_autotagger
             except Exception:
                 pass
             
@@ -63318,7 +63260,6 @@ class SupervertalerQt(QMainWindow):
             http_proxy=self._get_proxy_url() if translation_provider_name != 'gemini' else None,
             use_fuzzy_fixer=use_fuzzy_fixer,
             fuzzy_match_map=fuzzy_match_map,
-            use_autotagger=getattr(self, '_batch_use_autotagger', False),
         )
         dialog = LiveProgressDialog(self, len(segments_needing_translation), provider_info)
         

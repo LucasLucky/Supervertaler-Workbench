@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.318 (June 28, 2026)
+**Current Version:** v1.10.319 (June 29, 2026)
+
+
+## v1.10.319 – June 29, 2026
+
+### Changed (AutoTagger · removed the redundant batch-translate toggle)
+
+- **Removed the "Fix tags with AutoTagger after translating" option from the Batch Translate dialog.** Translate mode already places inline tags (the translation prompt instructs the model to do so), so running AutoTagger as a second per-segment pass afterwards was redundant — it added an extra AI call per segment and disabled batching. To fix tags on segments that are **already translated**, use **Bulk Operations → "🏷️ Auto-tag Segments"** (unchanged), and single-segment AutoTagger (toolbar button / Ctrl+Alt+G) is also unchanged. (#229)
 
 
 ## v1.10.318 – June 28, 2026
