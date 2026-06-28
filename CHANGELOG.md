@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.317 (June 28, 2026)
+**Current Version:** v1.10.318 (June 28, 2026)
+
+
+## v1.10.318 – June 28, 2026
+
+### Fixed (Usage & Costs · FuzzyFixer and AutoTagger are tracked as their own tasks)
+
+- **FuzzyFixer and AutoTagger AI calls now show up under their own task names in Token Usage & Costs.** Their usage was already being recorded (the cost was counted), but it was lumped in with ordinary translation – single-segment runs showed as "Translate" and batch runs as "BatchTranslate", because nothing set a task label for them. They are now attributed to **"FuzzyFixer"** and **"AutoTagger"** tasks respectively (a batch AutoTagger pass logs the translation step as BatchTranslate and the tag-placement step as AutoTagger). Group the usage table by Task to see them broken out.
 
 
 ## v1.10.317 – June 28, 2026

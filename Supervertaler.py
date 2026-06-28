@@ -1343,15 +1343,19 @@ def place_tags_via_llm(client, prompt_manager, source_text: str, clean_target: s
               .replace("{{SOURCE_TEXT}}", source_text)
               .replace("{{TARGET_TEXT}}", clean_target)
               .replace("{{TAG_LIST}}", " ".join(tags)))
+    from modules import usage_log as _usage_log
     last_reason = "no result"
     for _ in range(max(1, max_attempts)):
         try:
-            result = client.translate(
-                text=clean_target,
-                source_lang=source_lang,
-                target_lang=target_lang,
-                custom_prompt=prompt,
-            )
+            # Attribute these calls to the "AutoTagger" task in the usage ledger
+            # (covers both the single-segment command and the batch worker).
+            with _usage_log.UsageContext(task="AutoTagger"):
+                result = client.translate(
+                    text=clean_target,
+                    source_lang=source_lang,
+                    target_lang=target_lang,
+                    custom_prompt=prompt,
+                )
         except Exception as e:
             last_reason = f"LLM error: {e}"
             continue
@@ -7959,7 +7963,9 @@ class PreTranslationWorker(QThread):
             try:
                 start_time = time.time()
                 fuzzy_match = fmap.get(segment.id)
-                translation = self._translate_single_with_llm(segment, fuzzy_match)
+                from modules import usage_log as _usage_log
+                with _usage_log.UsageContext(task="FuzzyFixer"):
+                    translation = self._translate_single_with_llm(segment, fuzzy_match)
                 elapsed = time.time() - start_time
 
                 if translation:
@@ -61679,14 +61685,16 @@ class SupervertalerQt(QMainWindow):
                     self.log(f"  ⚠️ Could not load figures: {e}")
             
             # Translate using the module
-            translation = client.translate(
-                text=segment.source,
-                source_lang=self.current_project.source_lang,
-                target_lang=self.current_project.target_lang,
-                custom_prompt=custom_prompt,
-                images=images
-            )
-            
+            from modules import usage_log as _usage_log
+            with _usage_log.UsageContext(task=("FuzzyFixer" if fuzzy_match else "Translate")):
+                translation = client.translate(
+                    text=segment.source,
+                    source_lang=self.current_project.source_lang,
+                    target_lang=self.current_project.target_lang,
+                    custom_prompt=custom_prompt,
+                    images=images
+                )
+
             if translation:
                 # Update segment
                 _undo_old_target = segment.target
