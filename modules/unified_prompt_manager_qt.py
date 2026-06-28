@@ -3809,7 +3809,7 @@ class UnifiedPromptManagerQt:
             try:
                 with open(system_prompts_file, 'r', encoding='utf-8') as f:
                     saved_prompts = json.load(f)
-                for mode in ["single", "batch_docx", "batch_bilingual", "fuzzy_fixer"]:
+                for mode in ["single", "batch_docx", "batch_bilingual", "fuzzy_fixer", "autotagger"]:
                     if mode in saved_prompts and saved_prompts[mode].strip():
                         self.system_templates[mode] = saved_prompts[mode]
             except Exception as e:
@@ -3835,13 +3835,46 @@ class UnifiedPromptManagerQt:
             if mode not in self.system_templates:
                 self.system_templates[mode] = self._get_default_system_template(mode)
 
-        # Fuzzy Fixer instruction (editable, separate from the per-document
+        # FuzzyFixer instruction (editable, separate from the per-document
         # system prompts). Filled with its own default when not user-edited.
         if "fuzzy_fixer" not in self.system_templates:
             self.system_templates["fuzzy_fixer"] = self._get_default_fuzzy_fixer_template()
 
+        # AutoTagger instruction (editable). Used to place inline tags into an
+        # already-translated target; filled with its default when not user-edited.
+        if "autotagger" not in self.system_templates:
+            self.system_templates["autotagger"] = self._get_default_autotagger_template()
+
+    def _get_default_autotagger_template(self) -> str:
+        """Default editable instruction used by the AutoTagger feature.
+
+        Placeholders: {{SOURCE_TEXT}} (source WITH tags), {{TARGET_TEXT}} (target
+        with no tags), {{TAG_LIST}} (the ordered list of source tags).
+        """
+        return (
+            "The source segment below contains inline tags. Insert these exact "
+            "tags into the target translation at the positions that match the "
+            "source meaning (a paired tag must wrap the translated word(s) it "
+            "wrapped in the source).\n\n"
+            "STRICT RULES:\n"
+            "- Use every tag exactly once; keep each tag's text, id and count "
+            "identical to the source.\n"
+            "- Keep opening/closing tags correctly paired; never output an empty "
+            "pair (e.g. <1></1>).\n"
+            "- DO NOT change, add, remove, translate, reorder, or re-spell any "
+            "WORDS of the target. Only insert tags between the existing words.\n"
+            "- Output ONLY the tagged target text, with no labels or commentary.\n\n"
+            "Tags to place: {{TAG_LIST}}\n\n"
+            "Source (with tags):\n{{SOURCE_TEXT}}\n\n"
+            "Target (no tags):\n{{TARGET_TEXT}}"
+        )
+
+    def get_autotagger_template(self) -> str:
+        """Get the (possibly user-edited) AutoTagger instruction template."""
+        return self.system_templates.get("autotagger") or self._get_default_autotagger_template()
+
     def _get_default_fuzzy_fixer_template(self) -> str:
-        """Default editable instruction used by the Fuzzy Fixer feature.
+        """Default editable instruction used by the FuzzyFixer feature.
 
         Placeholders: {{TM_SOURCE}}, {{TM_TARGET}}, {{MATCH_PCT}}, {{TM_NAME}},
         {{SOURCE_TEXT}}.
@@ -3860,7 +3893,7 @@ class UnifiedPromptManagerQt:
         )
 
     def get_fuzzy_fixer_template(self) -> str:
-        """Get the (possibly user-edited) Fuzzy Fixer instruction template."""
+        """Get the (possibly user-edited) FuzzyFixer instruction template."""
         return self.system_templates.get("fuzzy_fixer") or self._get_default_fuzzy_fixer_template()
 
     def _get_default_system_template(self, mode: str) -> str:
@@ -3956,7 +3989,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
         1. System Prompt (auto-selected by mode)
         2. Combined prompts from library (primary + attached)
         3. Glossary terms (optional, injected before translation delimiter)
-        4. Fuzzy Fixer reference (optional, injected before translation delimiter)
+        4. FuzzyFixer reference (optional, injected before translation delimiter)
 
         Args:
             source_text: Text to translate
@@ -3966,7 +3999,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             glossary_terms: Optional list of term dicts with 'source_term' and 'target_term' keys
             target_text: Optional current target text (for {{TARGET_TEXT}} placeholder)
             fuzzy_match: Optional dict with 'source', 'target', 'match_pct', 'tm_name'.
-                When provided, the editable Fuzzy Fixer instruction is rendered and
+                When provided, the editable FuzzyFixer instruction is rendered and
                 appended so the AI adapts the existing TM target to the new source.
 
         Returns:
@@ -4017,7 +4050,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
                     else:
                         final_prompt += f"- {source_term} → {target_term}\n"
 
-        # Fuzzy Fixer injection (if a fuzzy TM match is provided). Renders the
+        # FuzzyFixer injection (if a fuzzy TM match is provided). Renders the
         # editable fuzzy_fixer instruction template with the match details so the
         # AI adapts the existing translation to the new source with minimal edits.
         if fuzzy_match and fuzzy_match.get('source') and fuzzy_match.get('target'):

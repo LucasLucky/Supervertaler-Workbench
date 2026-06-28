@@ -2,7 +2,21 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.315 (June 27, 2026)
+**Current Version:** v1.10.316 (June 28, 2026)
+
+
+## v1.10.316 – June 28, 2026
+
+### Added (AutoTagger · AI places inline tags into the target)
+
+- **New "AutoTagger" feature: the AI looks at where the inline tags sit in the source segment and inserts that same set of tags into your existing translation at the right places – without changing any of the translated words.** Useful when a target has the correct translation but is missing its tags or has them in the wrong spots (e.g. after MT, pasting, or typing the target by hand). It strips whatever tags are currently in the target and re-places the full set from the source, then validates the result (same tag set as the source, words unchanged, tags well-formed) before writing it. If the AI's output doesn't validate it retries once and, failing that, leaves the target untouched – so it never writes broken tags.
+  - **Where:** a 🏷️ **AutoTagger** button on the editor toolbar, **Translate → 🏷️ Auto-tag Current Segment**, and the **Ctrl+Alt+G** shortcut. Undo reverts it.
+  - **Batch:** a **🏷️ Fix tags with AutoTagger after translating** toggle in the Batch Translate dialog (re-tags each segment right after it's translated; remembered between sessions), plus a standalone **Bulk Operations → 🏷️ Auto-tag Segments** action to re-tag already-translated segments (selected, or all if none selected) with a single Undo for the whole run.
+  - **Configurable:** the instruction is an editable template under **Settings → System Prompts → "AutoTagger Instruction"** (placeholders `{{SOURCE_TEXT}}`, `{{TARGET_TEXT}}`, `{{TAG_LIST}}`).
+
+### Changed
+
+- **Renamed "Fuzzy Fixer" to "FuzzyFixer"** (one word) across the UI, to match the AutoTagger naming style. Behaviour is unchanged; the shortcut (Ctrl+Alt+F), settings, and saved prompt templates are unaffected.
 
 
 ## v1.10.315 – June 27, 2026
@@ -14,12 +28,12 @@ All notable changes to Supervertaler Workbench are documented in this file.
 
 ## v1.10.314 – June 27, 2026
 
-### Added (Fuzzy Fixer · AI adapts fuzzy TM matches to the current source)
+### Added (FuzzyFixer · AI adapts fuzzy TM matches to the current source)
 
-- **New "Fuzzy Fixer" feature: instead of translating a fuzzy-matched segment from scratch, the AI now adapts the existing TM target to the current source, making the minimum edits the source change requires – and shows you what it changed.** Previously the AI never saw a segment's fuzzy TM match; it translated cold even when an 80–95% match was sitting right next to it. Fuzzy Fixer feeds that match (source + target + match %) into the prompt with an instruction to keep the existing wording/terminology/tags wherever the source is unchanged. After it runs on a single segment, the **TM Target box shows a track-changes view** (the original target with the AI's insertions underlined and removed words struck through), so the change is visible at a glance. Inspired by a suggestion from David Turnbull.
-  - **Where:** a 🔧 **Fuzzy Fixer** button on the Match Panel's TM Source box (enabled only when the shown match is in range), the **Translate → 🔧 Fuzzy Fix Current Segment** menu item, and the **Ctrl+Alt+F** shortcut.
-  - **Batch:** a **🔧 Use Fuzzy Fixer** option in the batch-translate dialog. When on, the AI pass runs per-segment (no batching) and injects each segment's own in-range fuzzy match; segments without one translate normally. The toggle is remembered between sessions.
-  - **Configurable:** the match-percentage range it acts on (default **75–99%**; 100% exact matches are never altered) is set under **Settings → AI Settings**, and the instruction text is an editable template under **Settings → System Prompts → Fuzzy Fixer Instruction** (placeholders `{{TM_SOURCE}}`, `{{TM_TARGET}}`, `{{MATCH_PCT}}`, `{{TM_NAME}}`, `{{SOURCE_TEXT}}`).
+- **New "FuzzyFixer" feature: instead of translating a fuzzy-matched segment from scratch, the AI now adapts the existing TM target to the current source, making the minimum edits the source change requires – and shows you what it changed.** Previously the AI never saw a segment's fuzzy TM match; it translated cold even when an 80–95% match was sitting right next to it. FuzzyFixer feeds that match (source + target + match %) into the prompt with an instruction to keep the existing wording/terminology/tags wherever the source is unchanged. After it runs on a single segment, the **TM Target box shows a track-changes view** (the original target with the AI's insertions underlined and removed words struck through), so the change is visible at a glance. Inspired by a suggestion from David Turnbull.
+  - **Where:** a 🔧 **FuzzyFixer** button on the Match Panel's TM Source box (enabled only when the shown match is in range), the **Translate → 🔧 Fuzzy Fix Current Segment** menu item, and the **Ctrl+Alt+F** shortcut.
+  - **Batch:** a **🔧 Use FuzzyFixer** option in the batch-translate dialog. When on, the AI pass runs per-segment (no batching) and injects each segment's own in-range fuzzy match; segments without one translate normally. The toggle is remembered between sessions.
+  - **Configurable:** the match-percentage range it acts on (default **75–99%**; 100% exact matches are never altered) is set under **Settings → AI Settings**, and the instruction text is an editable template under **Settings → System Prompts → FuzzyFixer Instruction** (placeholders `{{TM_SOURCE}}`, `{{TM_TARGET}}`, `{{MATCH_PCT}}`, `{{TM_NAME}}`, `{{SOURCE_TEXT}}`).
 
 
 ## v1.10.313 – June 25, 2026

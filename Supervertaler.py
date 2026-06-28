@@ -1140,6 +1140,13 @@ def expand_compact_tags(text: str, tag_map: dict) -> str:
     return text
 
 
+# Combined pattern for memoQ tags, HTML tags, and Trados/SDLXLIFF numeric tags
+# memoQ: [N}, {N], [N]
+# HTML: <tag>, </tag>, <tag/>, <tag attr="value"> - includes hyphenated tags like li-o, li-b
+# Trados/SDLXLIFF: <N>, </N> (numeric tags from SDLXLIFF paired elements)
+_ALL_TAGS_PATTERN = r'(\[\d+\}|\{\d+\]|\[\d+\]|</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^>]*)?>|</?\d+>)'
+
+
 def extract_all_tags(text: str) -> list:
     """
     Extract all tags (memoQ, HTML, and Trados numeric) from text in order of appearance.
@@ -1151,12 +1158,218 @@ def extract_all_tags(text: str) -> list:
         List of all tag strings in order of appearance
     """
     import re
-    # Combined pattern for memoQ tags, HTML tags, and Trados/SDLXLIFF numeric tags
-    # memoQ: [N}, {N], [N]
-    # HTML: <tag>, </tag>, <tag/>, <tag attr="value"> - includes hyphenated tags like li-o, li-b
-    # Trados/SDLXLIFF: <N>, </N> (numeric tags from SDLXLIFF paired elements)
-    pattern = r'(\[\d+\}|\{\d+\]|\[\d+\]|</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^>]*)?>|</?\d+>)'
-    return re.findall(pattern, text)
+    return re.findall(_ALL_TAGS_PATTERN, text or '')
+
+
+# AutoTagger uses its own, more complete pattern than extract_all_tags: it also
+# matches self-closing forms (numbered <2/> and HTML <x1/>) which the SDLXLIFF/
+# Trados standalone tags use. Kept separate so extract_all_tags' behaviour (used
+# by other features) is unchanged.
+_AUTOTAG_TAG_PATTERN = r'(\[\d+\}|\{\d+\]|\[\d+\]|</?\d+/?>|</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^>]*)?/?>)'
+
+
+def autotag_extract_tags(text: str) -> list:
+    """Extract all inline tags (incl. self-closing) for AutoTagger, in order."""
+    import re
+    return re.findall(_AUTOTAG_TAG_PATTERN, text or '')
+
+
+def strip_all_tags(text: str) -> str:
+    """Remove every inline tag (incl. self-closing) from text, leaving the words.
+
+    Used by AutoTagger to get the tag-free target and to verify the AI only
+    moved tags (never changed wording)."""
+    import re
+    return re.sub(_AUTOTAG_TAG_PATTERN, '', text or '')
+
+
+def _normalize_ws_for_compare(text: str) -> str:
+    """Collapse runs of whitespace so a tags-only diff ignores spacing changes."""
+    import re
+    return re.sub(r'\s+', ' ', (text or '')).strip()
+
+
+# Cosmetic character variants LLMs routinely swap (curly↔straight quotes,
+# NBSP↔space, en/em dash, ellipsis). AutoTagger's "words unchanged" guard folds
+# these so a tags-only placement isn't rejected just because the model
+# normalised a quote — the real target text is still preserved on write via
+# _reinsert_tags_into_target().
+_WORD_COMPARE_FOLD = {
+    '“': '"', '”': '"', '„': '"', '‟': '"', '«': '"', '»': '"', '″': '"',
+    '‘': "'", '’': "'", '‚': "'", '‛': "'", '′': "'", '`': "'",
+    ' ': ' ', ' ': ' ', ' ': ' ', '​': '',
+    '–': '-', '—': '-', '‑': '-', '…': '...',
+}
+
+
+def _normalize_for_word_compare(text: str) -> str:
+    """Whitespace- and punctuation-folded form for the 'words unchanged' check."""
+    import re
+    import unicodedata
+    t = unicodedata.normalize('NFKC', text or '')
+    for a, b in _WORD_COMPARE_FOLD.items():
+        t = t.replace(a, b)
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _reinsert_tags_into_target(candidate: str, clean_target: str):
+    """Re-insert the tags found in ``candidate`` into the EXACT ``clean_target``.
+
+    The AI may return the right tag positions but in a cosmetically different
+    copy of the target (e.g. straight quotes). This maps each tag's position
+    onto the user's original text so the written result keeps the user's exact
+    wording/punctuation. Returns the reconstructed string, or None if the
+    tag-free candidate can't be aligned to clean_target."""
+    import re
+    import difflib
+    tag_re = re.compile(_AUTOTAG_TAG_PATTERN)
+    pieces = []          # (offset_in_stripped_candidate, tag)
+    cand_stripped_parts = []
+    idx = 0
+    pos = 0
+    for m in tag_re.finditer(candidate):
+        chunk = candidate[idx:m.start()]
+        cand_stripped_parts.append(chunk)
+        pos += len(chunk)
+        pieces.append((pos, m.group(0)))
+        idx = m.end()
+    cand_stripped_parts.append(candidate[idx:])
+    cand_stripped = ''.join(cand_stripped_parts)
+
+    sm = difflib.SequenceMatcher(None, cand_stripped, clean_target, autojunk=False)
+    opcodes = sm.get_opcodes()
+
+    def map_offset(o):
+        # opcodes tile [0, len(cand_stripped)] contiguously, so every offset is
+        # covered. Equal regions map 1:1; for changed regions (e.g. a swapped
+        # quote) map a boundary offset to the matching clean boundary.
+        for op, a1, a2, b1, b2 in opcodes:
+            if a1 <= o <= a2:
+                if op == 'equal':
+                    return b1 + (o - a1)
+                if o >= a2:
+                    return b2
+                return b1
+        return len(clean_target)
+
+    from collections import defaultdict
+    by_off = defaultdict(list)
+    for off, tag in pieces:
+        by_off[map_offset(off)].append(tag)
+
+    out = []
+    for i in range(len(clean_target) + 1):
+        if i in by_off:
+            out.extend(by_off[i])
+        if i < len(clean_target):
+            out.append(clean_target[i])
+    return ''.join(out)
+
+
+def _classify_tag(tag: str):
+    """Classify a tag as ('open'|'close'|'self', key) for nesting checks."""
+    import re
+    for pat, kind, pre in (
+        (r'\[(\d+)\}', 'open', 'mq'), (r'\{(\d+)\]', 'close', 'mq'), (r'\[(\d+)\]', 'self', 'mq'),
+        (r'<(\d+)/>', 'self', 'n'), (r'<(\d+)>', 'open', 'n'), (r'</(\d+)>', 'close', 'n'),
+    ):
+        m = re.fullmatch(pat, tag)
+        if m:
+            return (kind, pre + m.group(1))
+    m = re.fullmatch(r'<([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^>]*)?/>', tag)
+    if m:
+        return ('self', 'h' + m.group(1).lower())
+    m = re.fullmatch(r'</([a-zA-Z][a-zA-Z0-9-]*)\s*>', tag)
+    if m:
+        return ('close', 'h' + m.group(1).lower())
+    m = re.fullmatch(r'<([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[^>]*)?>', tag)
+    if m:
+        return ('open', 'h' + m.group(1).lower())
+    return ('self', tag)
+
+
+def _tags_well_formed(text: str) -> tuple:
+    """True if paired tags open before they close and nest properly."""
+    stack = []
+    for tag in autotag_extract_tags(text):
+        kind, key = _classify_tag(tag)
+        if kind == 'open':
+            stack.append(key)
+        elif kind == 'close':
+            if not stack or stack[-1] != key:
+                return False, f"tag {tag} is unpaired or out of order"
+            stack.pop()
+    if stack:
+        return False, "unclosed tag(s): " + ", ".join(stack)
+    return True, ""
+
+
+def validate_tag_transfer(source_text: str, candidate_target: str, clean_target: str) -> tuple:
+    """Validate an AutoTagger result. Returns (ok: bool, reason: str).
+
+    Checks: (1) the candidate's tag multiset equals the source's, (2) the words
+    are unchanged versus the tag-free target, (3) tags are well-formed."""
+    from collections import Counter
+    src_tags = Counter(autotag_extract_tags(source_text))
+    cand_tags = Counter(autotag_extract_tags(candidate_target))
+    if src_tags != cand_tags:
+        missing = src_tags - cand_tags
+        extra = cand_tags - src_tags
+        parts = []
+        if missing:
+            parts.append("missing " + ", ".join(f"{t}×{n}" for t, n in missing.items()))
+        if extra:
+            parts.append("unexpected " + ", ".join(f"{t}×{n}" for t, n in extra.items()))
+        return False, "tag set does not match source (" + "; ".join(parts) + ")"
+    if _normalize_for_word_compare(strip_all_tags(candidate_target)) != _normalize_for_word_compare(clean_target):
+        return False, "the target wording changed (AutoTagger must only move tags)"
+    ok, why = _tags_well_formed(candidate_target)
+    if not ok:
+        return False, why
+    return True, ""
+
+
+def place_tags_via_llm(client, prompt_manager, source_text: str, clean_target: str,
+                       source_lang: str, target_lang: str, max_attempts: int = 2) -> tuple:
+    """Ask the LLM to insert the source's inline tags into a tag-free target.
+
+    Returns (new_target | None, reason). Retries up to max_attempts; only returns
+    a result that passes validate_tag_transfer, so it never yields broken tags."""
+    tags = autotag_extract_tags(source_text)
+    if not tags:
+        return clean_target, ""  # nothing to place
+    template = prompt_manager.get_autotagger_template()
+    prompt = (template
+              .replace("{{SOURCE_TEXT}}", source_text)
+              .replace("{{TARGET_TEXT}}", clean_target)
+              .replace("{{TAG_LIST}}", " ".join(tags)))
+    last_reason = "no result"
+    for _ in range(max(1, max_attempts)):
+        try:
+            result = client.translate(
+                text=clean_target,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                custom_prompt=prompt,
+            )
+        except Exception as e:
+            last_reason = f"LLM error: {e}"
+            continue
+        candidate = (result or "").strip()
+        ok, reason = validate_tag_transfer(source_text, candidate, clean_target)
+        if ok:
+            # Prefer re-inserting the tags into the user's EXACT target so any
+            # cosmetic differences the model introduced (e.g. straight quotes)
+            # don't reach the saved segment. Fall back to the candidate if the
+            # reconstruction can't be aligned or doesn't validate.
+            recon = _reinsert_tags_into_target(candidate, clean_target)
+            if recon is not None:
+                rok, _ = validate_tag_transfer(source_text, recon, clean_target)
+                if rok:
+                    return recon, ""
+            return candidate, ""
+        last_reason = reason
+    return None, last_reason
 
 
 def count_pipe_symbols(text: str) -> int:
@@ -7208,7 +7421,7 @@ class PreTranslationWorker(QThread):
     translation_error = pyqtSignal(str)  # error_message
     retry_needed = pyqtSignal(list)  # empty_segments list of (row_index, segment)
     
-    def __init__(self, parent_app, segments, provider_type, provider_name, model, tm_exact_only=False, prompt_manager=None, retry_enabled=False, retry_pass=0, tm_ids=None, glossary_terms=None, base_url=None, custom_api_key=None, http_proxy=None, use_fuzzy_fixer=False, fuzzy_match_map=None):
+    def __init__(self, parent_app, segments, provider_type, provider_name, model, tm_exact_only=False, prompt_manager=None, retry_enabled=False, retry_pass=0, tm_ids=None, glossary_terms=None, base_url=None, custom_api_key=None, http_proxy=None, use_fuzzy_fixer=False, fuzzy_match_map=None, use_autotagger=False, autotag_only=False):
         super().__init__()
         self.parent_app = parent_app
         self.segments = segments
@@ -7220,10 +7433,15 @@ class PreTranslationWorker(QThread):
         self.http_proxy = http_proxy
         self.tm_exact_only = tm_exact_only
         self.prompt_manager = prompt_manager
-        # Fuzzy Fixer: when enabled, the LLM pass runs per-segment so each
+        # FuzzyFixer: when enabled, the LLM pass runs per-segment so each
         # segment's own fuzzy TM match (fuzzy_match_map[seg.id]) can be injected.
         self.use_fuzzy_fixer = use_fuzzy_fixer
         self.fuzzy_match_map = fuzzy_match_map or {}
+        # AutoTagger: when use_autotagger, each translated segment gets its tags
+        # placed by the AI after translation. autotag_only is the standalone
+        # bulk mode: no translation at all, just (re)tag the given segments.
+        self.use_autotagger = use_autotagger
+        self.autotag_only = autotag_only
         self.retry_enabled = retry_enabled
         self.retry_pass = retry_pass
         self.max_retries = 5
@@ -7272,6 +7490,13 @@ class PreTranslationWorker(QThread):
                 self._thread_local_db = None
         
         try:
+            # Standalone AutoTagger (Bulk Operations): just (re)tag the given
+            # segments, no translation, then finish.
+            if self.autotag_only:
+                self._run_autotag_only()
+                self.translation_complete.emit(self.success_count, self.error_count)
+                return
+
             # For TM and MT, process segments individually
             if self.provider_type in ['TM', 'MT']:
                 for idx, (row_index, segment) in enumerate(self.segments):
@@ -7313,10 +7538,14 @@ class PreTranslationWorker(QThread):
                         self.progress_update.emit(idx + 1, len(self.segments), message, False, 0)
                         self.error_count += 1
         
-            # Fuzzy Fixer: translate each segment individually so its own fuzzy
+            # FuzzyFixer: translate each segment individually so its own fuzzy
             # TM match can be injected (batching is disabled for this pass).
             elif self.use_fuzzy_fixer:
                 self._run_fuzzy_fixer_llm()
+
+            # AutoTagger toggle: translate then place tags, per segment.
+            elif self.use_autotagger:
+                self._run_translate_then_autotag_llm()
 
             # For LLM, process in batches
             else:
@@ -7720,7 +7949,7 @@ class PreTranslationWorker(QThread):
 
     def _run_fuzzy_fixer_llm(self):
         """LLM pass that translates each segment individually so its own fuzzy
-        TM match (from fuzzy_match_map) can be injected (Fuzzy Fixer batch mode)."""
+        TM match (from fuzzy_match_map) can be injected (FuzzyFixer batch mode)."""
         import time
         fmap = self.fuzzy_match_map or {}
         total = len(self.segments)
@@ -7758,7 +7987,7 @@ class PreTranslationWorker(QThread):
 
     def _translate_single_with_llm(self, segment, fuzzy_match=None):
         """Translate ONE segment with the LLM, optionally injecting a fuzzy TM
-        match (Fuzzy Fixer). Returns the translation string or None."""
+        match (FuzzyFixer). Returns the translation string or None."""
         try:
             from modules.llm_clients import LLMClient
 
@@ -7800,8 +8029,115 @@ class PreTranslationWorker(QThread):
             )
             return result.strip() if result else None
         except Exception as e:
-            print(f"❌ Fuzzy Fixer single LLM error: {e}")
+            print(f"❌ FuzzyFixer single LLM error: {e}")
             return None
+
+    def _autotag_segment_llm(self, segment):
+        """Place the source's inline tags into segment.target via the AI.
+        Returns the new tagged target (str) on success, or None to leave it
+        unchanged. Strips any existing target tags and re-places from source."""
+        try:
+            from modules.llm_clients import LLMClient
+            if not autotag_extract_tags(segment.source):
+                return None
+            clean_target = strip_all_tags(segment.target or "")
+            if not clean_target.strip():
+                return None
+            source_lang = getattr(self.parent_app.current_project, 'source_lang', 'en')
+            target_lang = getattr(self.parent_app.current_project, 'target_lang', 'nl')
+            api_keys = self.parent_app.load_api_keys()
+            api_key = api_keys.get(self.provider_name) or (api_keys.get('google') if self.provider_name == 'gemini' else None)
+            if self.provider_name == 'custom_openai':
+                if self.custom_api_key:
+                    api_key = self.custom_api_key
+                elif not api_key:
+                    api_key = api_keys.get('custom_openai', '') or 'not-needed'
+            client = LLMClient(
+                api_key=api_key, provider=self.provider_name, model=self.model,
+                base_url=self.base_url, http_proxy=self.http_proxy,
+            )
+            new_target, reason = place_tags_via_llm(
+                client, self.prompt_manager, segment.source, clean_target, source_lang, target_lang)
+            if not new_target:
+                print(f"🏷️ AutoTagger skipped #{segment.id}: {reason}")
+            return new_target
+        except Exception as e:
+            print(f"❌ AutoTagger error on #{segment.id}: {e}")
+            return None
+
+    def _run_translate_then_autotag_llm(self):
+        """LLM pass that translates each segment then places its tags (AutoTagger
+        batch toggle). Per-segment so each gets its own tag placement."""
+        import time
+        total = len(self.segments)
+        for idx, (row_index, segment) in enumerate(self.segments):
+            if self._cancelled:
+                break
+            try:
+                start_time = time.time()
+                old_target = segment.target          # capture BEFORE any tentative write
+                old_status = segment.status
+                translation = self._translate_single_with_llm(segment, None)
+                if not translation:
+                    preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                    self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ⊘ No translation: {preview}", False, time.time() - start_time)
+                    self.error_count += 1
+                    continue
+                final = translation
+                tagged = False
+                if autotag_extract_tags(segment.source):
+                    segment.target = translation  # tentative, so _autotag strips/re-places it
+                    retagged = self._autotag_segment_llm(segment)
+                    if retagged:
+                        final = retagged
+                        tagged = True
+                elapsed = time.time() - start_time
+                segment.target = final
+                segment.status = "draft"
+                self.undo_entries.append((segment.id, old_target, final, old_status, "draft"))
+                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                tag = "🏷️" if tagged else "✓"
+                self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] {tag} {preview} ({elapsed:.1f}s)", True, elapsed)
+                self.success_count += 1
+            except Exception as e:
+                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ✗ ERROR: {preview} - {e}", False, 0)
+                self.error_count += 1
+
+    def _run_autotag_only(self):
+        """Standalone AutoTagger pass (Bulk Operations): (re)place tags on already
+        translated segments; no translation is performed."""
+        import time
+        total = len(self.segments)
+        for idx, (row_index, segment) in enumerate(self.segments):
+            if self._cancelled:
+                break
+            try:
+                start_time = time.time()
+                if not autotag_extract_tags(segment.source) or not (segment.target or "").strip():
+                    preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                    self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ⊘ no tags / no target: {preview}", False, time.time() - start_time)
+                    continue
+                new_target = self._autotag_segment_llm(segment)
+                elapsed = time.time() - start_time
+                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                if new_target and new_target != segment.target:
+                    old_target = segment.target
+                    old_status = segment.status
+                    segment.target = new_target
+                    self.undo_entries.append((segment.id, old_target, new_target, old_status, old_status))
+                    self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] 🏷️ {preview} ({elapsed:.1f}s)", True, elapsed)
+                    self.success_count += 1
+                elif new_target == segment.target:
+                    self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] = tags already correct: {preview}", True, elapsed)
+                    self.success_count += 1
+                else:
+                    self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ⚠ could not tag: {preview}", False, elapsed)
+                    self.error_count += 1
+            except Exception as e:
+                preview = segment.source[:50] + ("..." if len(segment.source) > 50 else "")
+                self.progress_update.emit(idx + 1, total, f"[{idx+1}/{total}] ✗ ERROR: {preview} - {e}", False, 0)
+                self.error_count += 1
 
 
 class ProofreadWorker(QThread):
@@ -11126,6 +11462,12 @@ class SupervertalerQt(QMainWindow):
         fuzzy_fixer_action.triggered.connect(self.fuzzy_fix_current_segment)
         translate_top_menu.addAction(fuzzy_fixer_action)
 
+        autotagger_action = QAction(self.tr("🏷️ Auto-&tag Current Segment"), self)
+        autotagger_action.setShortcut("Ctrl+Alt+G")
+        autotagger_action.setToolTip(self.tr("Ask the AI to place the source segment's inline tags into the current translation"))
+        autotagger_action.triggered.connect(self.autotag_current_segment)
+        translate_top_menu.addAction(autotagger_action)
+
         translate_top_menu.addSeparator()
 
         translate_menu = translate_top_menu.addMenu(self.tr("Batch &Translate"))
@@ -11236,6 +11578,11 @@ class SupervertalerQt(QMainWindow):
         copy_source_to_target_action.setToolTip(self.tr("Copy source text to target for selected/filtered segments"))
         copy_source_to_target_action.triggered.connect(self.copy_source_to_target_bulk)
         bulk_menu.addAction(copy_source_to_target_action)
+
+        autotag_bulk_action = QAction(self.tr("🏷️ &Auto-tag Segments (fix inline tags with AI)…"), self)
+        autotag_bulk_action.setToolTip(self.tr("Use the AI to place each segment's source inline tags into its existing translation (selected segments, or all if none selected)"))
+        autotag_bulk_action.triggered.connect(self.autotag_segments_bulk)
+        bulk_menu.addAction(autotag_bulk_action)
 
         copy_nontrans_action = QAction(self.tr("🔢 Copy Source to Target (&No Letters)"), self)
         copy_nontrans_action.setToolTip(self.tr("Copy source to target for segments containing no letters (numbers, codes, punctuation only) and mark as Translated"))
@@ -23997,9 +24344,9 @@ class SupervertalerQt(QMainWindow):
         llm_limit_layout.addStretch()
         behavior_layout.addLayout(llm_limit_layout)
 
-        # Fuzzy Fixer thresholds
+        # FuzzyFixer thresholds
         behavior_layout.addSpacing(10)
-        fuzzy_fixer_label = QLabel(self.tr("<b>🔧 Fuzzy Fixer:</b> AI adapts fuzzy TM matches to the current source"))
+        fuzzy_fixer_label = QLabel(self.tr("<b>🔧 FuzzyFixer:</b> AI adapts fuzzy TM matches to the current source"))
         behavior_layout.addWidget(fuzzy_fixer_label)
 
         fuzzy_range_layout = QHBoxLayout()
@@ -24008,14 +24355,14 @@ class SupervertalerQt(QMainWindow):
         self.fuzzy_fixer_min_spin.setRange(1, 99)
         self.fuzzy_fixer_min_spin.setSuffix("%")
         self.fuzzy_fixer_min_spin.setValue(getattr(self, 'fuzzy_fixer_min_pct', 75))
-        self.fuzzy_fixer_min_spin.setToolTip(self.tr("Minimum match % the Fuzzy Fixer will repair (below this, nothing is offered)."))
+        self.fuzzy_fixer_min_spin.setToolTip(self.tr("Minimum match % the FuzzyFixer will repair (below this, nothing is offered)."))
         fuzzy_range_layout.addWidget(self.fuzzy_fixer_min_spin)
         fuzzy_range_layout.addWidget(QLabel(self.tr("and")))
         self.fuzzy_fixer_max_spin = QSpinBox()
         self.fuzzy_fixer_max_spin.setRange(1, 99)
         self.fuzzy_fixer_max_spin.setSuffix("%")
         self.fuzzy_fixer_max_spin.setValue(getattr(self, 'fuzzy_fixer_max_pct', 99))
-        self.fuzzy_fixer_max_spin.setToolTip(self.tr("Maximum match % the Fuzzy Fixer will repair (100% exact matches are never altered)."))
+        self.fuzzy_fixer_max_spin.setToolTip(self.tr("Maximum match % the FuzzyFixer will repair (100% exact matches are never altered)."))
         fuzzy_range_layout.addWidget(self.fuzzy_fixer_max_spin)
         fuzzy_range_layout.addStretch()
         behavior_layout.addLayout(fuzzy_range_layout)
@@ -27200,7 +27547,8 @@ class SupervertalerQt(QMainWindow):
             "Single Segment Translation",
             "Batch DOCX Translation",
             "Batch Bilingual Translation",
-            "Fuzzy Fixer Instruction"
+            "FuzzyFixer Instruction",
+            "AutoTagger Instruction"
         ])
         mode_combo.setToolTip(self.tr("Select which system prompt to view/edit"))
         mode_selector_layout.addWidget(mode_combo)
@@ -27216,7 +27564,8 @@ class SupervertalerQt(QMainWindow):
 
         editor_info = QLabel(
             self.tr("Edit the system prompt below. Use {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}}, and {{SOURCE_TEXT}} as placeholders. "
-                    "The Fuzzy Fixer Instruction additionally supports {{TM_SOURCE}}, {{TM_TARGET}}, {{MATCH_PCT}} and {{TM_NAME}}.")
+                    "The FuzzyFixer Instruction additionally supports {{TM_SOURCE}}, {{TM_TARGET}}, {{MATCH_PCT}} and {{TM_NAME}}. "
+                    "The AutoTagger Instruction supports {{SOURCE_TEXT}}, {{TARGET_TEXT}} and {{TAG_LIST}}.")
         )
         editor_info.setStyleSheet("font-size: 8pt; padding: 8px; border-radius: 2px;")
         editor_info.setWordWrap(True)
@@ -27263,7 +27612,8 @@ class SupervertalerQt(QMainWindow):
             "Single Segment Translation": "single",
             "Batch DOCX Translation": "batch_docx",
             "Batch Bilingual Translation": "batch_bilingual",
-            "Fuzzy Fixer Instruction": "fuzzy_fixer"
+            "FuzzyFixer Instruction": "fuzzy_fixer",
+            "AutoTagger Instruction": "autotagger"
         }
 
         selected_mode = mode_combo.currentText()
@@ -27273,6 +27623,8 @@ class SupervertalerQt(QMainWindow):
         if hasattr(self, 'prompt_manager_qt'):
             if mode_key == "fuzzy_fixer":
                 prompt_text = self.prompt_manager_qt.get_fuzzy_fixer_template()
+            elif mode_key == "autotagger":
+                prompt_text = self.prompt_manager_qt.get_autotagger_template()
             else:
                 prompt_text = self.prompt_manager_qt.get_system_template(mode_key)
         else:
@@ -27294,7 +27646,8 @@ class SupervertalerQt(QMainWindow):
             "Single Segment Translation": "single",
             "Batch DOCX Translation": "batch_docx",
             "Batch Bilingual Translation": "batch_bilingual",
-            "Fuzzy Fixer Instruction": "fuzzy_fixer"
+            "FuzzyFixer Instruction": "fuzzy_fixer",
+            "AutoTagger Instruction": "autotagger"
         }
 
         selected_mode = mode_combo.currentText()
@@ -27335,7 +27688,8 @@ class SupervertalerQt(QMainWindow):
             "Single Segment Translation": "single",
             "Batch DOCX Translation": "batch_docx",
             "Batch Bilingual Translation": "batch_bilingual",
-            "Fuzzy Fixer Instruction": "fuzzy_fixer"
+            "FuzzyFixer Instruction": "fuzzy_fixer",
+            "AutoTagger Instruction": "autotagger"
         }
 
         selected_mode = mode_combo.currentText()
@@ -27356,6 +27710,8 @@ class SupervertalerQt(QMainWindow):
             if hasattr(self, 'prompt_manager_qt'):
                 if mode_key == "fuzzy_fixer":
                     default_prompt = self.prompt_manager_qt._get_default_fuzzy_fixer_template()
+                elif mode_key == "autotagger":
+                    default_prompt = self.prompt_manager_qt._get_default_autotagger_template()
                 else:
                     default_prompt = self.prompt_manager_qt._get_default_system_template(mode_key)
             else:
@@ -28479,7 +28835,7 @@ class SupervertalerQt(QMainWindow):
             general_prefs['match_limits'] = {}
         general_prefs['match_limits']['LLM'] = llm_spin.value()
 
-        # Save Fuzzy Fixer thresholds (clamp so min <= max)
+        # Save FuzzyFixer thresholds (clamp so min <= max)
         if getattr(self, 'fuzzy_fixer_min_spin', None) is not None and getattr(self, 'fuzzy_fixer_max_spin', None) is not None:
             ff_min = self.fuzzy_fixer_min_spin.value()
             ff_max = self.fuzzy_fixer_max_spin.value()
@@ -29806,7 +30162,15 @@ class SupervertalerQt(QMainWindow):
         preview_prompt_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold; padding: 3px 5px; border: none; outline: none;")
         preview_prompt_btn.clicked.connect(self._preview_combined_prompt_from_grid)
         toolbar_layout.addWidget(preview_prompt_btn)
-        
+
+        autotag_btn = QPushButton(self.tr("🏷️ AutoTagger"))
+        autotag_btn.setToolTip(self.tr(
+            "AutoTagger: ask the AI to place the source segment's inline tags into "
+            f"the current translation ({format_shortcut_for_display('Ctrl+Alt+G')})"))
+        autotag_btn.setStyleSheet("background-color: #00897B; color: white; font-weight: bold; padding: 3px 5px; border: none; outline: none;")
+        autotag_btn.clicked.connect(self.autotag_current_segment)
+        toolbar_layout.addWidget(autotag_btn)
+
         dictate_btn = QPushButton(f"🎤 Dictate{self._dictation_shortcut_label()}")
         dictate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 3px 5px; border: none; outline: none;")
         dictate_btn.clicked.connect(self.start_voice_dictation)
@@ -43590,7 +43954,7 @@ class SupervertalerQt(QMainWindow):
             nav_html = f"(<span style='font-size:8px'>{idx}/{total}</span>)"
             self.match_panel_tm_nav_label.setText(nav_html)
 
-        # Enable the Fuzzy Fixer button only when this match is in the configured range
+        # Enable the FuzzyFixer button only when this match is in the configured range
         self._update_fuzzy_fixer_btn_state(match_pct)
 
         # Update TM Source text with diff highlighting
@@ -43922,14 +44286,14 @@ class SupervertalerQt(QMainWindow):
                 )
             header_layout.addWidget(badge_label)
 
-        # Optional Fuzzy Fixer button (only the Match Panel TM Source box uses this)
+        # Optional FuzzyFixer button (only the Match Panel TM Source box uses this)
         if add_fuzzy_fixer_button:
             from PyQt6.QtWidgets import QPushButton as _QPushButton
-            ff_btn = _QPushButton("🔧 Fuzzy Fixer")
+            ff_btn = _QPushButton("🔧 FuzzyFixer")
             ff_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             ff_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             ff_btn.setToolTip(self.tr(
-                "Fuzzy Fixer: ask the AI to adapt this fuzzy TM match to the "
+                "FuzzyFixer: ask the AI to adapt this fuzzy TM match to the "
                 f"current source ({format_shortcut_for_display('Ctrl+Alt+F')})"))
             ff_btn.setStyleSheet("""
                 QPushButton {
@@ -46542,10 +46906,12 @@ class SupervertalerQt(QMainWindow):
         self.debug_auto_export = settings.get('debug_auto_export', False)
         # Load LLM matching setting (default: FALSE - too slow!)
         self.enable_llm_matching = settings.get('enable_llm_matching', False)
-        # Load Fuzzy Fixer thresholds (match % range the AI repair acts on)
+        # Load FuzzyFixer thresholds (match % range the AI repair acts on)
         self.fuzzy_fixer_min_pct = int(settings.get('fuzzy_fixer_min_pct', 75))
         self.fuzzy_fixer_max_pct = int(settings.get('fuzzy_fixer_max_pct', 99))
         self.fuzzy_fixer_enabled = settings.get('fuzzy_fixer_enabled', False)
+        # AutoTagger batch toggle default (remembered between sessions)
+        self.autotagger_enabled = settings.get('autotagger_enabled', False)
         # Load precision scroll divisor setting
         self.precision_scroll_divisor = settings.get('precision_scroll_divisor', 3)
         # Load auto-center active segment setting (default True, like memoQ/Trados)
@@ -60904,7 +61270,7 @@ class SupervertalerQt(QMainWindow):
         """Translate currently selected segment using LLM (Ctrl+T).
 
         When ``fuzzy_match`` is a dict (source/target/match_pct/tm_name), the
-        Fuzzy Fixer flow is used: the match is injected into the prompt so the
+        FuzzyFixer flow is used: the match is injected into the prompt so the
         AI adapts the existing TM target to the current source, and a
         target-side diff is shown afterwards. See fuzzy_fix_current_segment().
         """
@@ -61068,7 +61434,7 @@ class SupervertalerQt(QMainWindow):
                     self.log(f"⚠ TM check error: {e}")
             
             # If we have a 100% match and auto-insert is enabled, use it.
-            # Skip when running Fuzzy Fixer – the user explicitly wants the AI to
+            # Skip when running FuzzyFixer – the user explicitly wants the AI to
             # adapt a fuzzy match, not silently drop in an exact TM hit.
             auto_insert_100 = general_prefs.get('auto_insert_100', False)
             if tm_match and auto_insert_100 and not fuzzy_match:
@@ -61155,7 +61521,7 @@ class SupervertalerQt(QMainWindow):
                         "written, with the same numbers. A paired tag MUST wrap the translated "
                         "word(s) it wrapped in the source – never output an empty pair like <1></1> "
                         "with the text left outside it.")
-                # Fuzzy Fixer reference for local LLMs (rendered from the same
+                # FuzzyFixer reference for local LLMs (rendered from the same
                 # editable template used for cloud providers).
                 if fuzzy_match and fuzzy_match.get('source') and fuzzy_match.get('target') \
                         and hasattr(self, 'prompt_manager_qt') and self.prompt_manager_qt:
@@ -61173,7 +61539,7 @@ class SupervertalerQt(QMainWindow):
                         prompt_parts.append("")
                         prompt_parts.append(instruction)
                     except Exception as e:
-                        self.log(f"⚠ Could not add Fuzzy Fixer reference to Ollama prompt: {e}")
+                        self.log(f"⚠ Could not add FuzzyFixer reference to Ollama prompt: {e}")
 
                 prompt_parts.append("Translate this segment accurately. Output ONLY the translation:")
                 prompt_parts.append(segment.source)
@@ -61317,14 +61683,14 @@ class SupervertalerQt(QMainWindow):
                 self.project_modified = True
                 self.update_window_title()
 
-                # Fuzzy Fixer: show what the AI changed vs the original TM target
+                # FuzzyFixer: show what the AI changed vs the original TM target
                 if fuzzy_match and fuzzy_match.get('target'):
                     try:
                         self._show_fuzzy_fix_diff(fuzzy_match.get('target', ''), translation)
                     except Exception as e:
-                        self.log(f"⚠ Could not show Fuzzy Fixer diff: {e}")
-                    self.log(f"🔧 Fuzzy Fixer adapted #{segment.id} from {fuzzy_match.get('match_pct', '?')}% match")
-                    self.status_bar.showMessage(f"🔧 Fuzzy Fixer adapted segment #{segment.id}", 3000)
+                        self.log(f"⚠ Could not show FuzzyFixer diff: {e}")
+                    self.log(f"🔧 FuzzyFixer adapted #{segment.id} from {fuzzy_match.get('match_pct', '?')}% match")
+                    self.status_bar.showMessage(f"🔧 FuzzyFixer adapted segment #{segment.id}", 3000)
                 else:
                     self.log(f"✓ Segment #{segment.id} translated with {provider}/{model}")
                     self.status_bar.showMessage(f"✓ Segment #{segment.id} translated", 3000)
@@ -61358,7 +61724,7 @@ class SupervertalerQt(QMainWindow):
     # =========================================================================
 
     def fuzzy_fix_current_segment(self, *args):
-        """Fuzzy Fixer: adapt the currently selected fuzzy TM match to the
+        """FuzzyFixer: adapt the currently selected fuzzy TM match to the
         current source using the AI (Match Panel button / Ctrl+Alt+F).
 
         Reads the match shown in the Match Panel TM Source/Target boxes, checks
@@ -61372,7 +61738,7 @@ class SupervertalerQt(QMainWindow):
         matches = getattr(self, 'match_panel_tm_matches', None)
         if not matches:
             QMessageBox.information(
-                self, "Fuzzy Fixer",
+                self, "FuzzyFixer",
                 "No TM match is shown for this segment, so there is nothing to fix.\n\n"
                 "Select a segment that has a fuzzy TM match in the Match Panel.")
             return
@@ -61401,7 +61767,7 @@ class SupervertalerQt(QMainWindow):
             match_pct_int = 0
 
         if not (tm_target or '').strip():
-            QMessageBox.information(self, "Fuzzy Fixer",
+            QMessageBox.information(self, "FuzzyFixer",
                                     "The selected TM match has no target text to adapt.")
             return
 
@@ -61409,14 +61775,14 @@ class SupervertalerQt(QMainWindow):
         max_pct = int(getattr(self, 'fuzzy_fixer_max_pct', 99))
         if match_pct_int > max_pct:
             QMessageBox.information(
-                self, "Fuzzy Fixer",
-                f"This is a {match_pct_int}% match. Fuzzy Fixer only adapts matches "
+                self, "FuzzyFixer",
+                f"This is a {match_pct_int}% match. FuzzyFixer only adapts matches "
                 f"between {min_pct}% and {max_pct}% – exact matches need no fixing.")
             return
         if match_pct_int < min_pct:
             QMessageBox.information(
-                self, "Fuzzy Fixer",
-                f"This is only a {match_pct_int}% match, below the Fuzzy Fixer minimum "
+                self, "FuzzyFixer",
+                f"This is only a {match_pct_int}% match, below the FuzzyFixer minimum "
                 f"of {min_pct}%. Adjust the range in Settings → AI Settings if needed.")
             return
 
@@ -61430,7 +61796,7 @@ class SupervertalerQt(QMainWindow):
 
     def _show_fuzzy_fix_diff(self, tm_target: str, new_target: str):
         """Render a track-changes view (AI output vs original TM target) in the
-        Match Panel TM Target box, so the user sees what the Fuzzy Fixer changed.
+        Match Panel TM Target box, so the user sees what the FuzzyFixer changed.
 
         Transient: it is replaced the next time the TM display refreshes.
         """
@@ -61446,7 +61812,7 @@ class SupervertalerQt(QMainWindow):
             self.match_panel_tm_target.setPlainText(new_target)
 
     def _update_fuzzy_fixer_btn_state(self, match_pct):
-        """Enable the Match Panel Fuzzy Fixer button only when the current match
+        """Enable the Match Panel FuzzyFixer button only when the current match
         percentage is within the configured range (None = no match)."""
         btn = getattr(self, 'match_panel_fuzzy_fixer_btn', None)
         if btn is None:
@@ -61461,6 +61827,106 @@ class SupervertalerQt(QMainWindow):
             except (TypeError, ValueError):
                 enabled = False
         btn.setEnabled(enabled)
+
+    # =========================================================================
+    # AUTOTAGGER
+    # =========================================================================
+
+    def autotag_current_segment(self, *args):
+        """AutoTagger: place the source segment's inline tags into the current
+        target translation using the AI (toolbar button / menu / Ctrl+Alt+G).
+
+        The translation wording is never changed — only tags are inserted. The
+        result is validated (same tags as source, words unchanged, well-formed)
+        before it is written; on failure the target is left untouched.
+        """
+        current_row = self.table.currentRow()
+        if current_row < 0 or not self.current_project:
+            QMessageBox.warning(self, "No Selection", "Please select a segment first.")
+            return
+        segment = self.current_project.segments[current_row]
+
+        if not autotag_extract_tags(segment.source):
+            QMessageBox.information(self, "AutoTagger",
+                                    "The source segment has no inline tags, so there's nothing to place.")
+            return
+        if not (segment.target or "").strip():
+            QMessageBox.information(self, "AutoTagger",
+                                    "Translate this segment first — AutoTagger places tags into an existing translation.")
+            return
+
+        clean_target = strip_all_tags(segment.target)
+
+        # Resolve provider/model/keys (same approach as translate_current_segment)
+        settings = self.load_llm_settings()
+        provider = settings.get('provider', 'openai')
+        model = self._resolve_provider_model(settings, provider, 'gpt-5.5')
+        if provider == 'ollama':
+            api_keys = {'ollama': 'not-needed'}
+        else:
+            api_keys = self.load_api_keys() or {}
+            has_key = (provider in api_keys
+                       or (provider == 'gemini' and 'google' in api_keys)
+                       or provider == 'custom_openai')
+            if not has_key:
+                reply = QMessageBox.question(
+                    self, f"{provider.title()} API Key Missing",
+                    f"{provider.title()} API key not found. Configure it now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._go_to_settings_tab("AI Settings")
+                return
+
+        try:
+            client = self.create_llm_client(provider, model, api_keys, settings)
+        except Exception as e:
+            QMessageBox.critical(self, "AutoTagger", f"Could not initialise the AI client:\n\n{e}")
+            return
+
+        src_lang = self.current_project.source_lang
+        tgt_lang = self.current_project.target_lang
+        self.status_bar.showMessage(f"🏷️ AutoTagger placing tags in segment #{segment.id}...")
+        QApplication.processEvents()
+        try:
+            new_target, reason = place_tags_via_llm(
+                client, self.prompt_manager_qt, segment.source, clean_target, src_lang, tgt_lang)
+        except Exception as e:
+            self.log(f"✗ AutoTagger error: {e}")
+            QMessageBox.critical(self, "AutoTagger", f"AutoTagger failed:\n\n{e}")
+            self.status_bar.showMessage("AutoTagger failed", 3000)
+            return
+
+        if not new_target:
+            self.log(f"⚠ AutoTagger could not tag #{segment.id}: {reason}")
+            QMessageBox.warning(self, "AutoTagger",
+                                "Couldn't place the tags reliably, so the target was left unchanged.\n\n"
+                                f"Reason: {reason}")
+            self.status_bar.showMessage("AutoTagger: target left unchanged", 3000)
+            return
+
+        if new_target == segment.target:
+            self.status_bar.showMessage("🏷️ AutoTagger: tags already correct", 3000)
+            return
+
+        _undo_old_target = segment.target
+        segment.target = new_target
+        try:
+            self.record_undo_state(segment.id, _undo_old_target, new_target, segment.status, segment.status)
+        except Exception:
+            pass
+
+        target_widget = self.table.cellWidget(current_row, 3)
+        if target_widget and isinstance(target_widget, EditableGridTextEditor):
+            target_widget.setPlainText(new_target)
+        else:
+            self.table.setItem(current_row, 3, QTableWidgetItem(new_target))
+        self.update_status_icon(current_row, segment.status)
+        self._auto_resize_single_row(current_row)
+        self.project_modified = True
+        self.update_window_title()
+        n = len(autotag_extract_tags(segment.source))
+        self.log(f"🏷️ AutoTagger placed {n} tag(s) in #{segment.id}")
+        self.status_bar.showMessage(f"🏷️ AutoTagger placed {n} tag(s) in segment #{segment.id}", 3000)
 
     # =========================================================================
     # GRID QUICKLAUNCHER
@@ -61951,6 +62417,120 @@ class SupervertalerQt(QMainWindow):
 
         return visible_segments
 
+    def autotag_segments_bulk(self):
+        """Bulk Operations: (re)place inline tags on already-translated segments
+        with the AI. Operates on the selected segments, or all segments if none
+        are selected. Only touches segments that have source tags AND a target;
+        wording is never changed. One AI call per segment; one Undo reverts all."""
+        if not self.current_project:
+            QMessageBox.warning(self, "No Project", "Open a project first.")
+            return
+
+        segs = self._get_selected_segments_with_rows()
+        scope_desc = "selected"
+        if not segs:
+            segs = [(i, s) for i, s in enumerate(self.current_project.segments)]
+            scope_desc = "all"
+
+        targets = [(i, s) for (i, s) in segs
+                   if autotag_extract_tags(s.source) and (s.target or "").strip()]
+        if not targets:
+            QMessageBox.information(
+                self, "AutoTagger",
+                f"None of the {scope_desc} segments have both inline tags in the "
+                "source and a translation to tag.")
+            return
+
+        reply = QMessageBox.question(
+            self, "AutoTagger",
+            f"Run AutoTagger on {len(targets)} segment(s) ({scope_desc} scope)?\n\n"
+            "Each segment's source tags are re-placed into its translation by the "
+            "AI (one AI call per segment). Wording is never changed; only tags move.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Resolve LLM provider/model/keys
+        settings = self.load_llm_settings()
+        provider = settings.get('provider', 'openai')
+        model = self._resolve_provider_model(settings, provider, 'gpt-5.5')
+        if provider == 'ollama':
+            api_keys = {'ollama': 'not-needed'}
+        else:
+            api_keys = self.load_api_keys() or {}
+            has_key = (provider in api_keys
+                       or (provider == 'gemini' and 'google' in api_keys)
+                       or provider == 'custom_openai')
+            if not has_key:
+                r = QMessageBox.question(
+                    self, f"{provider.title()} API Key Missing",
+                    f"{provider.title()} API key not found. Configure it now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if r == QMessageBox.StandardButton.Yes:
+                    self._go_to_settings_tab("AI Settings")
+                return
+
+        custom_base_url = None
+        custom_api_key = None
+        if provider == 'custom_openai':
+            profile = self._get_active_custom_profile(settings)
+            if profile:
+                custom_base_url = profile.get('endpoint') or None
+                pk = (profile.get('api_key') or '').strip()
+                if pk:
+                    custom_api_key = pk
+
+        worker = PreTranslationWorker(
+            self, targets, 'LLM', provider, model,
+            prompt_manager=self.prompt_manager_qt if hasattr(self, 'prompt_manager_qt') else None,
+            base_url=custom_base_url, custom_api_key=custom_api_key,
+            http_proxy=self._get_proxy_url() if provider != 'gemini' else None,
+            autotag_only=True,
+        )
+        dialog = LiveProgressDialog(self, len(targets), f"AutoTagger ({provider} | {model})")
+        sc = {'s': 0, 'e': 0}
+
+        def on_progress(current, total, message, success, elapsed_time):
+            if success:
+                sc['s'] += 1
+            else:
+                sc['e'] += 1
+            dialog.add_console_line(message, success)
+            dialog.update_progress(current, total, elapsed_time, sc['s'], sc['e'])
+            if success and current <= len(targets):
+                row_index, segment = targets[current - 1]
+                if row_index < self.table.rowCount():
+                    display_text = segment.target
+                    if self.hide_outer_wrapping_tags:
+                        display_text, _ = strip_outer_wrapping_tags(display_text)
+                    tw = self.table.cellWidget(row_index, 3)
+                    if tw and isinstance(tw, EditableGridTextEditor):
+                        tw.setPlainText(display_text)
+                    else:
+                        self.table.setItem(row_index, 3, QTableWidgetItem(display_text))
+                    self.update_status_icon(row_index, segment.status)
+
+        def on_complete(final_success, final_error):
+            dialog.show_completion_message(final_success, final_error)
+            self.project_modified = True
+            self.update_window_title()
+            self.auto_resize_rows()
+            self.update_progress_stats()
+            try:
+                entries = getattr(worker, 'undo_entries', None) or []
+                if entries:
+                    self.record_undo_states_batch(entries)
+            except Exception as e:
+                self.log(f"⚠ Undo recording failed for AutoTagger batch: {e}")
+            self.log(f"🏷️ AutoTagger batch complete: {final_success} tagged, {final_error} skipped/failed")
+
+        worker.progress_update.connect(on_progress)
+        worker.translation_complete.connect(on_complete)
+        dialog.rejected.connect(worker.cancel)
+        worker.start()
+        dialog.exec()
+        worker.wait()
+
     def translate_batch(self, segments_with_rows: Optional[List[Tuple[int, Segment]]] = None, scope_description: Optional[str] = None):
         """
         Translate ALL segments in the project using LLM provider.
@@ -62219,8 +62799,8 @@ class SupervertalerQt(QMainWindow):
 
             tm_checkbox.toggled.connect(on_tm_autoconfirm_toggle)
 
-            # Fuzzy Fixer option (applies to AI/LLM translation)
-            fuzzy_fixer_checkbox = CheckmarkCheckBox(self.tr("🔧 Use Fuzzy Fixer (adapt fuzzy TM matches with AI)"))
+            # FuzzyFixer option (applies to AI/LLM translation)
+            fuzzy_fixer_checkbox = CheckmarkCheckBox(self.tr("🔧 Use FuzzyFixer (adapt fuzzy TM matches with AI)"))
             fuzzy_fixer_checkbox.setToolTip(
                 "AI translation only. For each segment that has a fuzzy TM match\n"
                 f"within your configured range ({getattr(self, 'fuzzy_fixer_min_pct', 75)}–{getattr(self, 'fuzzy_fixer_max_pct', 99)}%),\n"
@@ -62230,6 +62810,18 @@ class SupervertalerQt(QMainWindow):
             )
             fuzzy_fixer_checkbox.setChecked(getattr(self, 'fuzzy_fixer_enabled', False))
             options_layout.addWidget(fuzzy_fixer_checkbox)
+
+            # AutoTagger option (applies to AI/LLM translation)
+            autotagger_checkbox = CheckmarkCheckBox(self.tr("🏷️ Fix tags with AutoTagger after translating"))
+            autotagger_checkbox.setToolTip(
+                "AI translation only. After each segment is translated, the AI\n"
+                "re-places the source segment's inline tags into the translation\n"
+                "(segments without source tags are left as-is).\n\n"
+                "Note: segments are processed individually (no batching) in this mode,\n"
+                "and each tagged segment uses an extra AI call."
+            )
+            autotagger_checkbox.setChecked(getattr(self, 'autotagger_enabled', False))
+            options_layout.addWidget(autotagger_checkbox)
 
             options_group.setLayout(options_layout)
             dialog_layout.addWidget(options_group)
@@ -62262,19 +62854,23 @@ class SupervertalerQt(QMainWindow):
             tm_exact_only = tm_exact_only_checkbox.isChecked()
             auto_confirm_tm = auto_confirm_checkbox.isChecked()
             use_fuzzy_fixer = fuzzy_fixer_checkbox.isChecked()
+            use_autotagger = autotagger_checkbox.isChecked()
 
             # Store retry setting for recursive calls
             self._batch_retry_enabled = retry_until_complete
             self._batch_tm_exact_only = tm_exact_only  # Store for retry passes
             self._batch_auto_confirm_tm = auto_confirm_tm  # Store for auto-confirm
             self._batch_use_fuzzy_fixer = use_fuzzy_fixer  # Store for retry passes
+            self._batch_use_autotagger = use_autotagger  # Store for retry passes
 
-            # Persist Fuzzy Fixer toggle as the default for next time
+            # Persist FuzzyFixer / AutoTagger toggles as defaults for next time
             try:
                 _gp = self.load_general_settings()
                 _gp['fuzzy_fixer_enabled'] = use_fuzzy_fixer
+                _gp['autotagger_enabled'] = use_autotagger
                 self.save_general_settings(_gp)
                 self.fuzzy_fixer_enabled = use_fuzzy_fixer
+                self.autotagger_enabled = use_autotagger
             except Exception:
                 pass
             
@@ -62586,7 +63182,7 @@ class SupervertalerQt(QMainWindow):
         # Pre-fetch glossary terms on main thread (SQLite is not thread-safe)
         glossary_terms = self.get_ai_inject_glossary_terms()
 
-        # Fuzzy Fixer: pre-fetch the best fuzzy match per segment on the main
+        # FuzzyFixer: pre-fetch the best fuzzy match per segment on the main
         # thread (SQLite is not thread-safe) so the worker can inject each
         # segment's match into its prompt. LLM provider only.
         fuzzy_match_map = {}
@@ -62622,9 +63218,9 @@ class SupervertalerQt(QMainWindow):
                         }
                         for _seg in ff_source_to_segs.get(_ssrc, []):
                             fuzzy_match_map[_seg.id] = _fm
-                self.log(f"🔧 Fuzzy Fixer: {len(fuzzy_match_map)} segment(s) have a {ff_min}-{ff_max}% match to adapt")
+                self.log(f"🔧 FuzzyFixer: {len(fuzzy_match_map)} segment(s) have a {ff_min}-{ff_max}% match to adapt")
             except Exception as e:
-                self.log(f"⚠ Fuzzy Fixer: could not build fuzzy map: {e}")
+                self.log(f"⚠ FuzzyFixer: could not build fuzzy map: {e}")
 
         # Get base_url and api_key for custom_openai provider (from active profile)
         custom_base_url = None
@@ -62675,6 +63271,7 @@ class SupervertalerQt(QMainWindow):
             http_proxy=self._get_proxy_url() if translation_provider_name != 'gemini' else None,
             use_fuzzy_fixer=use_fuzzy_fixer,
             fuzzy_match_map=fuzzy_match_map,
+            use_autotagger=getattr(self, '_batch_use_autotagger', False),
         )
         dialog = LiveProgressDialog(self, len(segments_needing_translation), provider_info)
         
