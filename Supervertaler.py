@@ -24308,7 +24308,16 @@ class SupervertalerQt(QMainWindow):
         # FuzzyFixer thresholds
         behavior_layout.addSpacing(10)
         fuzzy_fixer_label = QLabel(self.tr("<b>🔧 FuzzyFixer:</b> AI adapts fuzzy TM matches to the current source"))
-        behavior_layout.addWidget(fuzzy_fixer_label)
+        fuzzy_fixer_header = QHBoxLayout()
+        fuzzy_fixer_header.addWidget(fuzzy_fixer_label)
+        fuzzy_fixer_header.addStretch()
+        ff_help_btn = QPushButton("?")
+        ff_help_btn.setFixedSize(22, 22)
+        ff_help_btn.setToolTip(self.tr("Open FuzzyFixer help (online)"))
+        ff_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ff_help_btn.clicked.connect(lambda: open_help(HelpTopics.AI_FUZZY_FIXER))
+        fuzzy_fixer_header.addWidget(ff_help_btn)
+        behavior_layout.addLayout(fuzzy_fixer_header)
 
         fuzzy_range_layout = QHBoxLayout()
         fuzzy_range_layout.addWidget(QLabel(self.tr("Act on matches between")))
@@ -27514,6 +27523,20 @@ class SupervertalerQt(QMainWindow):
         mode_combo.setToolTip(self.tr("Select which system prompt to view/edit"))
         mode_selector_layout.addWidget(mode_combo)
         mode_selector_layout.addStretch()
+        sysprompt_help_btn = QPushButton("?")
+        sysprompt_help_btn.setFixedSize(22, 22)
+        sysprompt_help_btn.setToolTip(self.tr("Open help for the selected system prompt (online)"))
+        sysprompt_help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        def _open_sysprompt_help():
+            mode = mode_combo.currentText()
+            if mode == "FuzzyFixer Instruction":
+                open_help(HelpTopics.AI_FUZZY_FIXER)
+            elif mode == "AutoTagger Instruction":
+                open_help(HelpTopics.AI_AUTOTAGGER)
+            else:
+                open_help(HelpTopics.AI_PROMPTS)
+        sysprompt_help_btn.clicked.connect(lambda: _open_sysprompt_help())
+        mode_selector_layout.addWidget(sysprompt_help_btn)
         mode_layout.addLayout(mode_selector_layout)
 
         mode_group.setLayout(mode_layout)

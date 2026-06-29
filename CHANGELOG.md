@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.319 (June 29, 2026)
+**Current Version:** v1.10.320 (June 29, 2026)
+
+
+## v1.10.320 – June 29, 2026
+
+### Added (Help · contextual "?" links for FuzzyFixer and AutoTagger)
+
+- **FuzzyFixer and AutoTagger are now documented at [docs.supervertaler.com](https://docs.supervertaler.com), with contextual "?" links in the app.** A **"?"** button next to the **🔧 FuzzyFixer** settings in *Settings → AI Settings* opens the FuzzyFixer help page, and a context-sensitive **"?"** beside the mode selector in *Settings → System Prompts* opens the FuzzyFixer or AutoTagger help page depending on which instruction you are editing (and the general Prompts page otherwise). New docs pages: [FuzzyFixer](https://docs.supervertaler.com/workbench/ai-translation/fuzzyfixer/) and [AutoTagger](https://docs.supervertaler.com/workbench/ai-translation/autotagger/).
 
 
 ## v1.10.319 – June 29, 2026
