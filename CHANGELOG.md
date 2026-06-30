@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.322 (June 30, 2026)
+**Current Version:** v1.10.323 (June 30, 2026)
+
+
+## v1.10.323 – June 30, 2026
+
+### Improved (Trados offload engine · scope-by-status, token usage, retry)
+
+- **The headless `--translate-sdlxliff` mode now mirrors a full Trados Batch Translate more closely.** Three additions, all driven from the plugin's job config:
+  - **Scope by status:** `scope` now supports `EmptyOnly` (empty target), `NotFinalized` (Not Translated + Draft – i.e. everything not yet confirmed/signed-off), and `All`. Locked segments are always skipped.
+  - **Token usage reported back:** `result.json` now includes `inputTokens` / `outputTokens` (captured via `translate_with_usage`), so the plugin can record the cost in Trados's own Token Usage & Costs.
+  - **Retry until complete:** with `retryUntilComplete: true` (+ optional `maxRetries`), segments the model leaves empty are retried in extra passes.
 
 
 ## v1.10.322 – June 30, 2026

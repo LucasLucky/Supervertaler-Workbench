@@ -130,12 +130,13 @@ def parse_batch_response(result, batch):
 
 
 def _translate_items(items, source_lang, target_lang, system_prompt, batch_size,
-                     client, self_test, log):
-    """Translate [{id, source}] in batches. Returns ({id: target}, errors)."""
+                     client, self_test, log, batch_label="batch"):
+    """Translate [{id, source}] in batches. Returns ({id: target}, errors, usage)."""
     if batch_size <= 0:
         batch_size = 20
     id_to_target = {}
     errors = []
+    usage = {"inputTokens": 0, "outputTokens": 0}
     total = len(items)
     total_batches = (total + batch_size - 1) // batch_size
     for bi in range(total_batches):
@@ -145,10 +146,13 @@ def _translate_items(items, source_lang, target_lang, system_prompt, batch_size,
             if self_test:
                 response = "\n".join(f"{seg['id']}. {seg['source']}" for seg in batch)
             else:
-                response = client.translate(
+                response, u = client.translate_with_usage(
                     text=prompt, source_lang=source_lang, target_lang=target_lang,
                     custom_prompt=prompt, system_prompt=system_prompt,
                     enable_prompt_caching=True)
+                if isinstance(u, dict):
+                    usage["inputTokens"] += int(u.get("input_tokens", 0) or 0)
+                    usage["outputTokens"] += int(u.get("output_tokens", 0) or 0)
             parsed = parse_batch_response(response, batch)
             got = 0
             for seg in batch:
@@ -156,11 +160,28 @@ def _translate_items(items, source_lang, target_lang, system_prompt, batch_size,
                 if t is not None and t.strip():
                     id_to_target[seg["id"]] = t
                     got += 1
-            log(f"[batch {bi + 1}/{total_batches}] {got}/{len(batch)} translated")
+            log(f"[{batch_label} {bi + 1}/{total_batches}] {got}/{len(batch)} translated")
         except Exception as e:
-            errors.append(f"batch {bi + 1}: {e}")
-            log(f"[batch {bi + 1}/{total_batches}] ERROR: {e}")
-    return id_to_target, errors
+            errors.append(f"{batch_label} {bi + 1}: {e}")
+            log(f"[{batch_label} {bi + 1}/{total_batches}] ERROR: {e}")
+    return id_to_target, errors, usage
+
+
+# Trados confirmation statuses that count as "finished" (skipped by NotFinalized).
+_FINALIZED_STATUSES = ("translated", "approved")
+
+
+def _segment_in_scope(seg, scope):
+    """Whether a SDLSegment should be translated for the given scope."""
+    if getattr(seg, "locked", False):
+        return False
+    if scope == "All":
+        return True
+    if scope == "NotFinalized":
+        # Not Translated + Draft (+ anything not yet confirmed/signed-off).
+        return getattr(seg, "status", "not_translated") not in _FINALIZED_STATUSES
+    # EmptyOnly (default): only segments with no target text yet.
+    return not bool((seg.target_text or "").strip())
 
 
 # ── File mode (Design B): translate a .sdlxliff round-trip ──
@@ -182,18 +203,14 @@ def run_sdlxliff_job(in_path, out_path, cfg, self_test=False, log=print):
     items = []            # [{id, source}]
     id_to_segid = {}      # offload id -> SDLXLIFF segment_id
     next_id = 1
-    total_candidates = 0
     for xf in handler.xliff_files:
         for seg in xf.segments:
-            if getattr(seg, "locked", False):
+            if not _segment_in_scope(seg, scope):
                 continue
-            has_target = bool((seg.target_text or "").strip())
-            if scope != "All" and has_target:
-                continue   # EmptyOnly: skip already-translated
-            total_candidates += 1
             items.append({"id": next_id, "source": seg.source_text or ""})
             id_to_segid[next_id] = seg.segment_id
             next_id += 1
+    total_candidates = len(items)
 
     errors = []
     client = None
@@ -203,11 +220,30 @@ def run_sdlxliff_job(in_path, out_path, cfg, self_test=False, log=print):
         except Exception as e:
             return {"ok": False, "translated": 0, "failed": total_candidates, "errors": [str(e)]}
 
-    id_to_target, errs = _translate_items(
-        items, cfg.get("sourceLang") or "en", cfg.get("targetLang") or "nl",
-        cfg.get("systemPrompt") or None, int(cfg.get("batchSize") or 20),
-        client, self_test, log)
+    src_lang = cfg.get("sourceLang") or "en"
+    tgt_lang = cfg.get("targetLang") or "nl"
+    sys_prompt = cfg.get("systemPrompt") or None
+    bsize = int(cfg.get("batchSize") or 20)
+
+    id_to_target, errs, usage = _translate_items(
+        items, src_lang, tgt_lang, sys_prompt, bsize, client, self_test, log)
     errors.extend(errs)
+
+    # Optional retry passes for segments the model left empty.
+    if cfg.get("retryUntilComplete") and not self_test:
+        max_retries = int(cfg.get("maxRetries") or 3)
+        for rp in range(1, max_retries + 1):
+            missing = [it for it in items if it["id"] not in id_to_target]
+            if not missing:
+                break
+            log(f"[retry {rp}/{max_retries}] {len(missing)} segment(s) still empty")
+            m2, e2, u2 = _translate_items(
+                missing, src_lang, tgt_lang, sys_prompt, bsize, client, self_test, log,
+                batch_label="retry-batch")
+            id_to_target.update(m2)
+            usage["inputTokens"] += u2["inputTokens"]
+            usage["outputTokens"] += u2["outputTokens"]
+            errors.extend(e2)
 
     translations = {}
     statuses = {}
@@ -236,6 +272,8 @@ def run_sdlxliff_job(in_path, out_path, cfg, self_test=False, log=print):
         "translated": translated,
         "failed": total_candidates - translated,
         "out": os.path.abspath(out_path),
+        "inputTokens": usage["inputTokens"],
+        "outputTokens": usage["outputTokens"],
         "errors": errors,
     }
 
@@ -255,7 +293,7 @@ def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
             return {"ok": False, "translated": 0, "failed": len(segments), "errors": [str(e)]}
 
     items = [{"id": s["id"], "source": s.get("source") or ""} for s in segments]
-    id_to_target, errs = _translate_items(
+    id_to_target, errs, usage = _translate_items(
         items, source_lang, target_lang, job.get("systemPrompt") or None,
         int(job.get("batchSize") or 20), client, self_test, log)
     errors.extend(errs)
@@ -277,7 +315,8 @@ def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
 
     translated = len(tgt_list)
     res = {"ok": translated > 0 and not errors, "translated": translated,
-           "failed": len(segments) - translated, "out": os.path.abspath(out_tmx), "errors": errors}
+           "failed": len(segments) - translated, "out": os.path.abspath(out_tmx),
+           "inputTokens": usage["inputTokens"], "outputTokens": usage["outputTokens"], "errors": errors}
     if result_path:
         try:
             with open(result_path, "w", encoding="utf-8") as f:
