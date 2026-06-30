@@ -71905,6 +71905,13 @@ def _install_log_hooks():
 
 def main():
     """Application entry point"""
+    # Headless batch-offload mode for the Supervertaler-for-Trados large-file
+    # offload (#42 / Workbench#230). Pure Python – no Qt/GUI, no window – so it
+    # must run before the diagnostic-log redirect or any QApplication setup.
+    if "--batch" in sys.argv:
+        from modules.batch_offload import cli_main
+        raise SystemExit(cli_main(sys.argv[1:]))
+
     # Redirect stdout/stderr to a rolling log file FIRST – so even crashes
     # during QApplication import or QWebEngine init get captured.
     _setup_diagnostic_log()

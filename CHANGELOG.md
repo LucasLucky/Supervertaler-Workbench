@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.320 (June 29, 2026)
+**Current Version:** v1.10.321 (June 30, 2026)
+
+
+## v1.10.321 – June 30, 2026
+
+### Added (Headless batch-translate engine for the Trados large-file offload)
+
+- **New headless `--batch` mode lets the 64-bit Workbench run a Batch Translate job with no GUI.** This is the engine (Workbench#230) for the Supervertaler for Trados "Translate via Workbench" offload, which lets jobs too large for 32-bit Trados Studio 2024 finish by running the AI batch in this 64-bit process. Invoked as `supervertaler --batch <job.json> --out <result.tmx> [--result <result.json>]`; `--batch` is detected in `main()` **before any QApplication is created**, so this path is pure Python (no window, no Qt event loop). It reuses the existing `LLMClient` for the provider calls, splits the job into batches, parses the numbered response, and writes a TMX the plugin re-imports. A `--self-test` flag runs the whole pipeline offline (echoing sources) for plumbing checks. No effect on normal GUI use. See `modules/batch_offload.py`.
 
 
 ## v1.10.320 – June 29, 2026
