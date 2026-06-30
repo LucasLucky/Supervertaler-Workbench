@@ -71908,7 +71908,7 @@ def main():
     # Headless batch-offload mode for the Supervertaler-for-Trados large-file
     # offload (#42 / Workbench#230). Pure Python – no Qt/GUI, no window – so it
     # must run before the diagnostic-log redirect or any QApplication setup.
-    if "--batch" in sys.argv:
+    if "--batch" in sys.argv or "--translate-sdlxliff" in sys.argv:
         from modules.batch_offload import cli_main
         raise SystemExit(cli_main(sys.argv[1:]))
 

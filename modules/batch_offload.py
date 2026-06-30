@@ -1,42 +1,32 @@
 """
 Headless batch-translate engine for the Supervertaler for Trados large-file
-offload feature (see Supervertaler-for-Trados#42 / Workbench#230).
+offload (Supervertaler-for-Trados#42 / Workbench#230).
 
-Trados Studio 2024 is a 32-bit process and crashes on very large jobs. The
-plugin hands the batch to this 64-bit Workbench, which translates it WITHOUT a
-GUI (pure Python - no Qt, no window) and returns a TMX the plugin re-imports.
+Trados Studio 2024 is a 32-bit process and crashes / runs out of memory on very
+large jobs. The plugin hands the work to this 64-bit Workbench, which runs WITHOUT
+a GUI (pure Python - no Qt, no window) and hands the result back.
 
-Contract (invoked by the plugin):
+Two headless modes, both detected in Supervertaler.main() BEFORE any QApplication
+is created, so neither touches the GUI:
 
-    supervertaler --batch <job.json> --out <result.tmx> [--result <result.json>]
+  # File mode (Design B - preferred): translate a Trados .sdlxliff end to end and
+  # write a translated .sdlxliff the plugin swaps back in. Trados does NO heavy
+  # work - it just reopens the finished file. Reuses the proven
+  # StandaloneSDLXLIFFHandler round-trip (tags preserved via <N> markers).
+  supervertaler --translate-sdlxliff <in.sdlxliff> --out <out.sdlxliff> --config <job.json>
 
-`--batch` is detected in Supervertaler.main() BEFORE any QApplication is created,
-so this path never touches the GUI.
+  # Segment-list mode (returns a TMX). Kept for flexibility / non-file callers.
+  supervertaler --batch <job.json> --out <result.tmx>
 
-job.json (schemaVersion 1):
-    {
-      "schemaVersion": 1,
-      "sourceLang": "en-US",
-      "targetLang": "nl-NL",
-      "provider": "openai",            # llm_clients provider id
-      "model": "gpt-5.4-mini",
-      "baseUrl": null,                  # optional (Ollama / custom OpenAI)
-      "apiKey": "sk-...",               # optional; else settingsPath is read
-      "settingsPath": "C:/.../settings.json",  # optional fallback for the key
-      "httpProxy": null,                # optional
-      "systemPrompt": "...",            # resolved by the plugin (prompt + glossary)
-      "batchSize": 20,
-      "maxTokens": 16384,               # optional
-      "segments": [ { "id": 1, "source": "..." }, ... ]
-    }
+`job.json` (config) fields: sourceLang, targetLang, provider, model, baseUrl,
+apiKey | settingsPath, httpProxy, systemPrompt, batchSize, maxTokens, scope
+("EmptyOnly" | "All"). In segment-list mode it also carries `segments`.
 
-result.json:
-    { "ok": true, "translated": N, "failed": M, "errors": [...] }
+result.json: { "ok": bool, "translated": N, "failed": M, "out": "...", "errors": [...] }
 
-This module deliberately reuses modules.llm_clients.LLMClient (the real provider
-calls). The thin batch-prompt assembly + numbered-response parsing mirror
-PreTranslationWorker._translate_batch_with_llm; a later refactor should unify the
-two behind one helper (tracked in the offload design doc).
+The translation core (build_batch_prompt / parse_batch_response, driven by the
+existing LLMClient) is shared by both modes and mirrors
+PreTranslationWorker._translate_batch_with_llm.
 """
 
 import argparse
@@ -47,13 +37,15 @@ import sys
 import traceback
 
 
-def _resolve_api_key(job):
-    """Key from the job, else from a referenced settings.json's api_keys section."""
-    key = (job.get("apiKey") or "").strip()
+# ── Config / key resolution ──
+
+def _resolve_api_key(cfg):
+    """Key from the config, else from a referenced settings.json's api_keys section."""
+    key = (cfg.get("apiKey") or "").strip()
     if key:
         return key
-    provider = (job.get("provider") or "").strip()
-    settings_path = job.get("settingsPath")
+    provider = (cfg.get("provider") or "").strip()
+    settings_path = cfg.get("settingsPath")
     if settings_path and os.path.isfile(settings_path):
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
@@ -69,8 +61,29 @@ def _resolve_api_key(job):
     return ""
 
 
+def _build_client(cfg):
+    """Construct the existing LLMClient from the job config. None on import failure."""
+    try:
+        from modules.llm_clients import LLMClient
+    except Exception as e:
+        raise RuntimeError("could not import LLMClient: " + str(e))
+    api_key = _resolve_api_key(cfg)
+    if not api_key and (cfg.get("provider") not in ("ollama",)):
+        raise RuntimeError("no API key for provider '" + str(cfg.get("provider")) +
+                           "' (pass apiKey or settingsPath in the job)")
+    return LLMClient(
+        api_key=api_key,
+        provider=cfg.get("provider") or "openai",
+        model=cfg.get("model"),
+        max_tokens=int(cfg.get("maxTokens") or 16384),
+        base_url=cfg.get("baseUrl"),
+        http_proxy=cfg.get("httpProxy"),
+    )
+
+
+# ── Prompt / parse (mirrors PreTranslationWorker._translate_batch_with_llm) ──
+
 def build_batch_prompt(batch, source_lang, target_lang, system_prompt):
-    """Numbered batch user-prompt. Mirrors PreTranslationWorker._translate_batch_with_llm."""
     parts = []
     if not system_prompt:
         parts.append(f"Translate the following text segments from {source_lang} to {target_lang}.")
@@ -102,7 +115,6 @@ def build_batch_prompt(batch, source_lang, target_lang, system_prompt):
 
 
 def parse_batch_response(result, batch):
-    """Map a numbered response back to segment ids. Mirrors the worker's parser."""
     out = {}
     if not result:
         return out
@@ -117,57 +129,26 @@ def parse_batch_response(result, batch):
     return out
 
 
-def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
-    """Translate every segment in `job` and write a TMX. Returns a result dict."""
-    segments = job.get("segments") or []
-    source_lang = job.get("sourceLang") or "en"
-    target_lang = job.get("targetLang") or "nl"
-    system_prompt = job.get("systemPrompt") or None
-    batch_size = int(job.get("batchSize") or 20)
+def _translate_items(items, source_lang, target_lang, system_prompt, batch_size,
+                     client, self_test, log):
+    """Translate [{id, source}] in batches. Returns ({id: target}, errors)."""
     if batch_size <= 0:
         batch_size = 20
-
-    errors = []
-    client = None
-    if not self_test:
-        try:
-            from modules.llm_clients import LLMClient
-        except Exception as e:
-            return {"ok": False, "translated": 0, "failed": len(segments),
-                    "errors": ["could not import LLMClient: " + str(e)]}
-        api_key = _resolve_api_key(job)
-        if not api_key and (job.get("provider") not in ("ollama",)):
-            return {"ok": False, "translated": 0, "failed": len(segments),
-                    "errors": ["no API key for provider '" + str(job.get("provider")) + "' "
-                               "(pass apiKey or settingsPath in the job)"]}
-        client = LLMClient(
-            api_key=api_key,
-            provider=job.get("provider") or "openai",
-            model=job.get("model"),
-            max_tokens=int(job.get("maxTokens") or 16384),
-            base_url=job.get("baseUrl"),
-            http_proxy=job.get("httpProxy"),
-        )
-
     id_to_target = {}
-    total = len(segments)
+    errors = []
+    total = len(items)
     total_batches = (total + batch_size - 1) // batch_size
     for bi in range(total_batches):
-        batch = segments[bi * batch_size: (bi + 1) * batch_size]
+        batch = items[bi * batch_size: (bi + 1) * batch_size]
         prompt = build_batch_prompt(batch, source_lang, target_lang, system_prompt)
         try:
             if self_test:
-                # Offline plumbing check: echo each source as its own translation.
                 response = "\n".join(f"{seg['id']}. {seg['source']}" for seg in batch)
             else:
                 response = client.translate(
-                    text=prompt,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    custom_prompt=prompt,
-                    system_prompt=system_prompt,
-                    enable_prompt_caching=True,
-                )
+                    text=prompt, source_lang=source_lang, target_lang=target_lang,
+                    custom_prompt=prompt, system_prompt=system_prompt,
+                    enable_prompt_caching=True)
             parsed = parse_batch_response(response, batch)
             got = 0
             for seg in batch:
@@ -179,15 +160,112 @@ def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
         except Exception as e:
             errors.append(f"batch {bi + 1}: {e}")
             log(f"[batch {bi + 1}/{total_batches}] ERROR: {e}")
+    return id_to_target, errors
 
-    # Build TMX from the source/target pairs we got.
+
+# ── File mode (Design B): translate a .sdlxliff round-trip ──
+
+def run_sdlxliff_job(in_path, out_path, cfg, self_test=False, log=print):
+    """Translate a Trados .sdlxliff end to end and write a translated .sdlxliff."""
+    try:
+        from modules.sdlppx_handler import StandaloneSDLXLIFFHandler
+    except Exception as e:
+        return {"ok": False, "translated": 0, "failed": 0,
+                "errors": ["could not import StandaloneSDLXLIFFHandler: " + str(e)]}
+
+    handler = StandaloneSDLXLIFFHandler(log_callback=lambda *_a, **_k: None)
+    if not handler.load([in_path]):
+        return {"ok": False, "translated": 0, "failed": 0,
+                "errors": ["failed to load sdlxliff: " + in_path]}
+
+    scope = (cfg.get("scope") or "EmptyOnly")
+    items = []            # [{id, source}]
+    id_to_segid = {}      # offload id -> SDLXLIFF segment_id
+    next_id = 1
+    total_candidates = 0
+    for xf in handler.xliff_files:
+        for seg in xf.segments:
+            if getattr(seg, "locked", False):
+                continue
+            has_target = bool((seg.target_text or "").strip())
+            if scope != "All" and has_target:
+                continue   # EmptyOnly: skip already-translated
+            total_candidates += 1
+            items.append({"id": next_id, "source": seg.source_text or ""})
+            id_to_segid[next_id] = seg.segment_id
+            next_id += 1
+
+    errors = []
+    client = None
+    if not self_test and items:
+        try:
+            client = _build_client(cfg)
+        except Exception as e:
+            return {"ok": False, "translated": 0, "failed": total_candidates, "errors": [str(e)]}
+
+    id_to_target, errs = _translate_items(
+        items, cfg.get("sourceLang") or "en", cfg.get("targetLang") or "nl",
+        cfg.get("systemPrompt") or None, int(cfg.get("batchSize") or 20),
+        client, self_test, log)
+    errors.extend(errs)
+
+    translations = {}
+    statuses = {}
+    for oid, target in id_to_target.items():
+        seg_id = id_to_segid.get(oid)
+        if seg_id is not None:
+            translations[seg_id] = target
+            statuses[seg_id] = "draft"
+
+    try:
+        handler.update_translations(translations, statuses)
+        if len(handler.xliff_files) == 1:
+            ok_save = handler.save_file(handler.xliff_files[0], out_path)
+            saved = [out_path] if ok_save else []
+        else:
+            os.makedirs(out_path, exist_ok=True)
+            saved = handler.save_all(out_path)
+        if not saved:
+            errors.append("failed to write translated sdlxliff")
+    except Exception as e:
+        errors.append("sdlxliff write failed: " + str(e))
+
+    translated = len(translations)
+    return {
+        "ok": translated > 0 and not errors,
+        "translated": translated,
+        "failed": total_candidates - translated,
+        "out": os.path.abspath(out_path),
+        "errors": errors,
+    }
+
+
+# ── Segment-list mode: translate [{id, source}] -> TMX ──
+
+def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
+    segments = job.get("segments") or []
+    source_lang = job.get("sourceLang") or "en"
+    target_lang = job.get("targetLang") or "nl"
+    errors = []
+    client = None
+    if not self_test:
+        try:
+            client = _build_client(job)
+        except Exception as e:
+            return {"ok": False, "translated": 0, "failed": len(segments), "errors": [str(e)]}
+
+    items = [{"id": s["id"], "source": s.get("source") or ""} for s in segments]
+    id_to_target, errs = _translate_items(
+        items, source_lang, target_lang, job.get("systemPrompt") or None,
+        int(job.get("batchSize") or 20), client, self_test, log)
+    errors.extend(errs)
+
     src_list, tgt_list = [], []
     for seg in segments:
         t = id_to_target.get(seg["id"])
         if t is not None and t.strip():
             src_list.append(seg["source"])
             tgt_list.append(t)
-
     try:
         from modules.tmx_generator import TMXGenerator
         gen = TMXGenerator(log_callback=lambda *_: None)
@@ -198,13 +276,8 @@ def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
         errors.append("TMX write failed: " + str(e))
 
     translated = len(tgt_list)
-    res = {
-        "ok": translated > 0 and not errors,
-        "translated": translated,
-        "failed": total - translated,
-        "tmx": os.path.abspath(out_tmx),
-        "errors": errors,
-    }
+    res = {"ok": translated > 0 and not errors, "translated": translated,
+           "failed": len(segments) - translated, "out": os.path.abspath(out_tmx), "errors": errors}
     if result_path:
         try:
             with open(result_path, "w", encoding="utf-8") as f:
@@ -214,31 +287,43 @@ def run_job(job, out_tmx, result_path=None, self_test=False, log=print):
     return res
 
 
+# ── CLI ──
+
 def cli_main(argv):
-    """Entry point reached from Supervertaler.main() when --batch is present."""
-    parser = argparse.ArgumentParser(prog="supervertaler --batch", add_help=True)
-    parser.add_argument("--batch", required=True, metavar="job.json",
-                        help="path to the job description JSON")
-    parser.add_argument("--out", required=True, metavar="result.tmx",
-                        help="path to write the result TMX")
-    parser.add_argument("--result", metavar="result.json",
-                        help="path to write the result summary JSON (counts/errors)")
-    parser.add_argument("--self-test", action="store_true",
-                        help="offline plumbing check: echo sources, no LLM call")
+    """Entry point reached from Supervertaler.main() for a headless run."""
+    parser = argparse.ArgumentParser(prog="supervertaler (headless)", add_help=True)
+    parser.add_argument("--batch", metavar="job.json", help="segment-list job (-> TMX)")
+    parser.add_argument("--translate-sdlxliff", dest="sdlxliff", metavar="in.sdlxliff",
+                        help="translate a Trados .sdlxliff round-trip (-> translated .sdlxliff)")
+    parser.add_argument("--config", metavar="job.json", help="job config for --translate-sdlxliff")
+    parser.add_argument("--out", required=True, metavar="out", help="output file (TMX or sdlxliff)")
+    parser.add_argument("--result", metavar="result.json", help="write a result summary JSON")
+    parser.add_argument("--self-test", action="store_true", help="offline plumbing check (echo sources)")
     args, _ = parser.parse_known_args(argv)
 
     try:
-        with open(args.batch, "r", encoding="utf-8") as f:
-            job = json.load(f)
-    except Exception as e:
-        print("ERROR: could not read job file: " + str(e))
-        return 2
-
-    try:
-        res = run_job(job, args.out, result_path=args.result, self_test=args.self_test)
+        if args.sdlxliff:
+            cfg = {}
+            if args.config:
+                with open(args.config, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+            res = run_sdlxliff_job(args.sdlxliff, args.out, cfg, self_test=args.self_test)
+        elif args.batch:
+            with open(args.batch, "r", encoding="utf-8") as f:
+                job = json.load(f)
+            res = run_job(job, args.out, self_test=args.self_test)
+        else:
+            print("ERROR: pass --batch or --translate-sdlxliff")
+            return 2
     except Exception:
-        print("ERROR: batch run crashed:\n" + traceback.format_exc())
+        print("ERROR: headless run crashed:\n" + traceback.format_exc())
         return 1
 
+    if args.result:
+        try:
+            with open(args.result, "w", encoding="utf-8") as f:
+                json.dump(res, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
     print("RESULT " + json.dumps(res, ensure_ascii=False))
     return 0 if res.get("ok") else 1

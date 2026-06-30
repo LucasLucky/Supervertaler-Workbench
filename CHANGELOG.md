@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.321 (June 30, 2026)
+**Current Version:** v1.10.322 (June 30, 2026)
+
+
+## v1.10.322 – June 30, 2026
+
+### Added (Headless SDLXLIFF round-trip for the Trados large-file offload – Design B)
+
+- **New headless `--translate-sdlxliff` mode translates a Trados `.sdlxliff` end to end and writes a translated `.sdlxliff`, with no GUI.** This is the 64-bit engine for the Supervertaler for Trados "Translate via Workbench" offload (Workbench#230 / [Supervertaler-for-Trados#42](https://github.com/Supervertaler/Supervertaler-for-Trados/issues/42)): on a file too large for 32-bit Trados Studio 2024, the plugin closes the document, hands the `.sdlxliff` to this engine, and reopens the finished file – Trados does none of the heavy work. Invoked as `supervertaler --translate-sdlxliff <in> --out <out> --config <job.json>` (detected in `main()` before any QApplication). It reuses the existing, proven `StandaloneSDLXLIFFHandler` round-trip (so inline tags are preserved via the `<N>`-marker form) and the shared batch-translate core; `scope` selects empty-only or all segments. Verified end to end offline (`--self-test`) on a 32-segment file: load → translate → write → re-parse, all targets present, tags intact. The earlier `--batch` segment-list/TMX mode (v1.10.321) remains for non-file callers.
 
 
 ## v1.10.321 – June 30, 2026
