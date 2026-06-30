@@ -2,7 +2,16 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.323 (June 30, 2026)
+**Current Version:** v1.10.324 (July 1, 2026)
+
+
+## v1.10.324 – July 1, 2026
+
+### Added (Claude Sonnet 5)
+
+- **Claude Sonnet 5 (`claude-sonnet-5`) is now the default Claude model.** Anthropic's newest Sonnet (released June 30, 2026) delivers near-Opus quality – with substantial gains in reasoning, tool use, and knowledge work over Sonnet 4.6 – at the same Sonnet price tier. It's wired into every model picker (main settings, the per-provider list, and PDF Rescue's OCR model dropdown), the cost ledger (`pricing.json` + the in-app pricing table), and the prompt assistant.
+- **Sonnet 4.6 is kept as a selectable fallback** so in-flight projects and saved per-project model choices keep working; pick it from the Claude model dropdown if you want the previous generation.
+- **Pricing note:** the cost ledger uses Sonnet 5's standard rate of **$3 / M input, $15 / M output** (same as 4.6). Anthropic's introductory pricing ($2 / $10) runs through Aug 31, 2026, so during that window the in-app cost estimate is slightly *higher* than you'll actually be billed; from Sep 1 it matches exactly. To track the intro rate precisely, edit `~/Supervertaler/pricing.json`.
 
 
 ## v1.10.323 – June 30, 2026
