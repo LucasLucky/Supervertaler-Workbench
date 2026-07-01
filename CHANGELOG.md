@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.326 (July 1, 2026)
+**Current Version:** v1.10.327 (July 1, 2026)
+
+
+## v1.10.327 – July 1, 2026
+
+### Added (QA menu) + Improved (comment function) — [#234](https://github.com/Supervertaler/Supervertaler-Workbench/issues/234)
+
+- **New top-level “QA” menu.** AI proofreading moved out of the Translate menu (and the old “Proofreading Results” out of View) into a dedicated **QA ▸ Proofreading** submenu: *Proofread Translation…*, *View Proofreading Results…*, and a new **Delete All Proofreading Comments**. QA is meant as the home for future quality checks (tags, numbers, terminology, consistency) and spelling/grammar too.
+- **Segment Comments (SC) and Proofreading Comments (PC) are now colour-coded in the grid** so you can tell them apart at a glance: the Status-column indicator is **amber** for a segment comment, **purple** for a proofreading comment, and a **split amber|purple** when a segment has both (was a single orange for either).
+- **Proofreading comments now have their own list**, mirroring the Segment Comments list: one entry per (segment, model) with a clickable “Segment #N” header that jumps to the segment, the proofreading text, and a **per-entry delete button**. Previously only the active segment’s proofreading note was visible, and PCs could not be deleted at all. Kept as its own sub-tab under Comments, so the two tabs now behave the same way. **Each LLM engine is colour-coded** (GPT / Claude / Gemini / … each get their own colour), so mixed-engine proofreading is easy to tell apart.
+- **Selecting a segment scrolls both comment lists to that segment’s comment(s) and highlights them**, so you no longer have to hunt for the active segment’s comment in the list.
+- **Removed the separate “Proofreading Results” pop-up window.** It duplicated the new Proofreading tab and its double-click-to-navigate was broken. The tab now covers viewing, navigating and deleting proofreading comments.
 
 
 ## v1.10.326 – July 1, 2026

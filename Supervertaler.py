@@ -11522,14 +11522,8 @@ class SupervertalerQt(QMainWindow):
         )
         translate_menu.addAction(translate_filtered_action)
 
-        translate_top_menu.addSeparator()
-
-        # Proofread is an AI action like translation, so it belongs in the
-        # Translate menu rather than under Bulk Operations (v1.10.292).
-        proofread_action = QAction(self.tr("✅ &Proofread Translation..."), self)
-        proofread_action.setToolTip(self.tr("Use AI to proofread and verify translation quality"))
-        proofread_action.triggered.connect(self.show_proofread_dialog)
-        translate_top_menu.addAction(proofread_action)
+        # (Proofreading moved to its own top-level QA menu in v1.10.327 —
+        # issue #234. See the QA menu built just before the View menu.)
 
         # Bulk Operations — promoted to a top-level menubar menu in v1.10.145
         # (was a submenu under Edit). It's a sizeable, distinct category of
@@ -11622,6 +11616,31 @@ class SupervertalerQt(QMainWindow):
         superlookup_action.triggered.connect(lambda: self._go_to_superlookup() if hasattr(self, 'main_tabs') else None)  # Navigate to Superlookup
         edit_menu.addAction(superlookup_action)
         
+        # QA Menu — quality assurance. Today it holds AI Proofreading; it's
+        # designed as the umbrella for future traditional CAT-tool QA checks
+        # (tags, numbers, terminology, consistency) and spelling/grammar
+        # (LanguageTool). (issue #234)
+        self.qa_menu = menubar.addMenu(self.tr("&QA"))
+        proofreading_submenu = self.qa_menu.addMenu(self.tr("✅ &Proofreading"))
+
+        proofread_action = QAction(self.tr("✅ &Proofread Translation..."), self)
+        proofread_action.setToolTip(self.tr("Use AI to proofread and verify translation quality"))
+        proofread_action.triggered.connect(self.show_proofread_dialog)
+        proofreading_submenu.addAction(proofread_action)
+
+        # (The separate "Proofreading Results" pop-up window was removed in
+        # v1.10.327 — issue #234 follow-up. It's superseded by the Proofreading
+        # comments tab, which lists every result with working navigation and
+        # per-entry delete. The old dialog's row double-click navigation was
+        # also broken. A proper "export proofreading report" can live here later.)
+
+        proofreading_submenu.addSeparator()
+
+        delete_all_pc_action = QAction(self.tr("🗑️ &Delete All Proofreading Comments"), self)
+        delete_all_pc_action.setToolTip(self.tr("Remove every AI proofreading comment from the project"))
+        delete_all_pc_action.triggered.connect(self.delete_all_proofreading_comments)
+        proofreading_submenu.addAction(delete_all_pc_action)
+
         # View Menu
         view_menu = menubar.addMenu(self.tr("&View"))
 
@@ -11760,13 +11779,7 @@ class SupervertalerQt(QMainWindow):
 
         view_menu.addSeparator()
 
-        # Proofreading results
-        proofread_results_action = QAction(self.tr("✅ &Proofreading Results..."), self)
-        proofread_results_action.triggered.connect(self.show_proofreading_results_dialog)
-        proofread_results_action.setToolTip(self.tr("View and manage proofreading issues"))
-        view_menu.addAction(proofread_results_action)
-
-        view_menu.addSeparator()
+        # (Proofreading Results moved to the QA menu in v1.10.327 — issue #234.)
 
         theme_action = QAction(self.tr("🎨 &Theme Editor..."), self)
         theme_action.triggered.connect(self.show_theme_editor)
@@ -30370,19 +30383,36 @@ class SupervertalerQt(QMainWindow):
         # between the TermLens and QuickTrans tabs (and remember the choice).
         bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)
         
-        # Proofreading note tab (read-only, AI-generated, keyed by LLM model)
+        # Proofreading-comments sub-tab (issue #234 pts 4/5). Restructured from
+        # a read-only per-segment browser into an all-project list that mirrors
+        # the Segment-Comments list, so both sub-tabs behave the same way. Each
+        # entry shows a clickable "Segment #N" header (jumps to the segment),
+        # the LLM model name, the proofreading text, and a delete button. The
+        # PC text itself stays read-only (only deletion is offered).
         proofreading_notes_widget = QWidget()
         proofreading_notes_layout = QVBoxLayout(proofreading_notes_widget)
         proofreading_notes_layout.setContentsMargins(5, 5, 5, 5)
+        proofreading_notes_layout.setSpacing(4)
 
-        from PyQt6.QtWidgets import QTextBrowser
-        self.bottom_proofreading_notes_display = QTextBrowser()
-        self.bottom_proofreading_notes_display.setOpenExternalLinks(False)
-        self.bottom_proofreading_notes_display.setStyleSheet("font-size: 10pt;")
-        self.bottom_proofreading_notes_display.setHtml(
-            '<span style="color: #999; font-style: italic;">No proofreading comments for this segment.</span>'
-        )
-        proofreading_notes_layout.addWidget(self.bottom_proofreading_notes_display)
+        self._proofreading_comments_list_container = QWidget()
+        self._proofreading_comments_list_layout = QVBoxLayout(self._proofreading_comments_list_container)
+        self._proofreading_comments_list_layout.setContentsMargins(0, 0, 0, 0)
+        self._proofreading_comments_list_layout.setSpacing(0)
+        _pc_initial_empty = QLabel(
+            "(No proofreading comments yet — run <b>QA ▸ Proofreading ▸ "
+            "Proofread Translation…</b> to generate AI review comments.)")
+        _pc_initial_empty.setTextFormat(Qt.TextFormat.RichText)
+        _pc_initial_empty.setStyleSheet("color: #999; font-style: italic; padding: 8px;")
+        _pc_initial_empty.setWordWrap(True)
+        self._proofreading_comments_list_layout.addWidget(_pc_initial_empty)
+        self._proofreading_comments_list_layout.addStretch()
+
+        proofreading_list_scroll = _QScrollArea()
+        proofreading_list_scroll.setWidgetResizable(True)
+        proofreading_list_scroll.setFrameShape(_QFrame.Shape.NoFrame)
+        proofreading_list_scroll.setWidget(self._proofreading_comments_list_container)
+        self._proofreading_comments_list_scroll = proofreading_list_scroll
+        proofreading_notes_layout.addWidget(proofreading_list_scroll)
 
         # Store notes_widget, proofreading_notes_widget, and session_log_widget for adding to right panel later
         self._notes_widget_for_right_panel = notes_widget
@@ -32068,6 +32098,7 @@ class SupervertalerQt(QMainWindow):
         self._update_scratchpad_for_project()
         # Rebuild the all-comments list (empty for a brand-new project)
         self._refresh_segment_comments_list()
+        self._refresh_proofreading_comments_list()
         
         self.log(f"Created new project: {project_name} ({source_lang} → {target_lang})")
         
@@ -32963,6 +32994,7 @@ class SupervertalerQt(QMainWindow):
             self._update_scratchpad_for_project()
             # Rebuild the all-comments list from the loaded project
             self._refresh_segment_comments_list()
+            self._refresh_proofreading_comments_list()
             
             self.log(f"✓ Loaded project: {self.current_project.name} ({len(self.current_project.segments)} segments)")
 
@@ -33110,6 +33142,7 @@ class SupervertalerQt(QMainWindow):
         # needing a project reload.
         try:
             self._refresh_segment_comments_list()
+            self._refresh_proofreading_comments_list()
         except Exception as _e:
             self.log(f"⚠ Failed to refresh comments list after import: {_e}")
 
@@ -45673,6 +45706,28 @@ class SupervertalerQt(QMainWindow):
         # Re-render preview to update highlighting
         # (In a full implementation, we'd just update the highlight without full re-render)
 
+    # Comment-type colours shared by the Status-column indicator, the comment
+    # panels and their legends (issue #234). SC = amber, PC = purple.
+    COMMENT_SC_BG = "rgba(255, 152, 0, 0.35)"   # amber  – Segment Comments
+    COMMENT_PC_BG = "rgba(156, 39, 176, 0.32)"  # purple – Proofreading Comments
+
+    def _comment_indicator_bg(self, has_sc: bool, has_pc: bool):
+        """Return a Qt-stylesheet ``background:`` value for the Status-column
+        comment indicator, or None when the segment has no comments. Amber for
+        Segment Comments, purple for Proofreading Comments, and a hard 50/50
+        amber|purple split when a segment has both (issue #234 pt.1)."""
+        if has_sc and has_pc:
+            return (
+                "qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                f"stop:0 {self.COMMENT_SC_BG}, stop:0.499 {self.COMMENT_SC_BG}, "
+                f"stop:0.5 {self.COMMENT_PC_BG}, stop:1 {self.COMMENT_PC_BG})"
+            )
+        if has_sc:
+            return self.COMMENT_SC_BG
+        if has_pc:
+            return self.COMMENT_PC_BG
+        return None
+
     def _create_status_cell_widget(self, segment: Segment) -> QWidget:
         widget = QWidget()
         layout = QHBoxLayout(widget)
@@ -45687,6 +45742,12 @@ class SupervertalerQt(QMainWindow):
         has_notes = bool(segment.notes and segment.notes.strip())
         has_proofreading = bool(getattr(segment, 'proofreading_notes', None))
         has_any_notes = has_notes or has_proofreading
+
+        # Distinct Status-column backgrounds so Segment Comments (SC) and
+        # Proofreading Comments (PC) are tellable apart at a glance (issue #234
+        # pt.1): SC → amber, PC → purple, both → a hard amber|purple split.
+        # `indicator_bg` is a Qt-stylesheet value usable with `background:`.
+        indicator_bg = self._comment_indicator_bg(has_notes, has_proofreading)
 
         # Widget background always transparent
         widget.setStyleSheet("background: transparent;")
@@ -45752,8 +45813,8 @@ class SupervertalerQt(QMainWindow):
                 lock_lbl.setProperty("status_tooltip", "Locked")
                 lock_lbl.installEventFilter(self)
                 layout.addWidget(lock_lbl)
-            if has_any_notes:
-                widget.setStyleSheet("background-color: rgba(255, 152, 0, 0.35);")
+            if indicator_bg:
+                widget.setStyleSheet(f"background: {indicator_bg};")
             layout.addStretch(1)
             return widget
 
@@ -45772,9 +45833,10 @@ class SupervertalerQt(QMainWindow):
         status_label.setProperty("status_tooltip", status_def.label)
         status_label.installEventFilter(self)
 
-        # Add orange background if segment has any notes (using stylesheet for background only)
-        if has_any_notes:
-            status_label.setStyleSheet("padding: 2px 4px; background-color: rgba(255, 152, 0, 0.35); border-radius: 3px;")
+        # Colour-code the comment background: amber (SC) / purple (PC) / split
+        # (both). See _comment_indicator_bg. (issue #234 pt.1)
+        if indicator_bg:
+            status_label.setStyleSheet(f"padding: 2px 4px; background: {indicator_bg}; border-radius: 3px;")
         # Note: No stylesheet for non-notes case to avoid interfering with HTML color
         layout.addWidget(status_label)
 
@@ -48306,6 +48368,8 @@ class SupervertalerQt(QMainWindow):
                 
                 # Update bottom Notes tab with segment notes
                 self._update_bottom_notes_for_segment(segment)
+                # Scroll + highlight the Segment-Comments list to this segment (pt.3)
+                self._sync_segment_comments_to_active(segment.id)
                 # Update Proofreading note tab
                 self._update_proofreading_notes_for_segment(segment)
 
@@ -49867,6 +49931,8 @@ class SupervertalerQt(QMainWindow):
 
             self.load_segments_to_grid()
             self.update_window_title()
+            # Refresh the Proofreading-comments list with the new AI results (#234)
+            self._refresh_proofreading_comments_list()
 
             self.log(f"═══════════════════════════════════════════════════════════")
             self.log(f"{'⊘ Proofreading Cancelled' if worker._cancelled else '✓ Proofreading Complete'}")
@@ -49886,7 +49952,14 @@ class SupervertalerQt(QMainWindow):
         progress_dialog.exec()
     
     def show_proofreading_results_dialog(self):
-        """Show dialog with all proofreading results (from proofreading_notes dict)."""
+        """Show dialog with all proofreading results (from proofreading_notes dict).
+
+        NOTE (v1.10.327, issue #234): no longer wired to any menu — the
+        Proofreading comments tab supersedes it (real navigation + per-entry
+        delete). Retained (not deleted) as a starting point for a future
+        "export proofreading report" feature. The row double-click navigation
+        below is stale (uses jump_to_segment with a raw index).
+        """
         if not self.current_project:
             QMessageBox.information(self, "No Project", "Please open or create a project first.")
             return
@@ -56067,6 +56140,9 @@ class SupervertalerQt(QMainWindow):
         # can scroll a specific comment into view and flash it. Rebuilt here
         # since the widgets are recreated on every refresh.
         self._comment_list_header_btns = {}
+        # seg_id → [header buttons] for that segment, so selecting a segment can
+        # scroll the list to (and highlight) its comment(s) — issue #234 pt.3.
+        self._comment_list_seg_btns = {}
 
         # Clear existing children. Walk takeAt(0) until the layout is
         # empty so both widgets AND the trailing stretch get cleaned up.
@@ -56113,7 +56189,7 @@ class SupervertalerQt(QMainWindow):
             header_btn = QPushButton(header_label)
             header_btn.setFlat(True)
             header_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            header_btn.setStyleSheet(
+            _header_qss = (
                 "QPushButton { "
                 "  color: #2563eb; "
                 "  font-weight: bold; "
@@ -56128,10 +56204,13 @@ class SupervertalerQt(QMainWindow):
                 "  text-decoration: underline; "
                 "}"
             )
+            header_btn.setStyleSheet(_header_qss)
+            header_btn._base_qss = _header_qss  # for active-segment highlight (pt.3)
             header_btn.clicked.connect(
                 lambda _checked, sid=seg_id: self._navigate_to_segment_by_id(sid)
             )
             self._comment_list_header_btns[comment.id] = header_btn
+            self._comment_list_seg_btns.setdefault(seg_id, []).append(header_btn)
             # Right-click context menu for edit/delete.
             header_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             header_btn.customContextMenuRequested.connect(
@@ -56197,6 +56276,55 @@ class SupervertalerQt(QMainWindow):
         # single-string editor would silently clobber them. Lock it
         # whenever the currently-selected segment is in that state.
         self._update_bottom_notes_editor_lock_state()
+
+        # Re-apply the active-segment highlight after a rebuild (the buttons
+        # were just recreated, so the old highlight is gone). No scroll. (pt.3)
+        _active = getattr(self, '_active_comment_seg_id', None)
+        if _active is not None:
+            self._sync_segment_comments_to_active(_active, do_scroll=False)
+
+    def _sync_segment_comments_to_active(self, seg_id, do_scroll: bool = True):
+        """Scroll the Segment-Comments list to the active segment's comment(s)
+        and give them a persistent highlight (issue #234 pt.3). No-op if the
+        sub-tab isn't built or the segment has no comments in the list."""
+        self._active_comment_seg_id = seg_id
+
+        # Clear the previous highlight (skip widgets destroyed by a rebuild).
+        for btn in getattr(self, '_active_comment_highlight_btns', []):
+            if self._widget_is_alive(btn):
+                base = getattr(btn, '_base_qss', None)
+                if base is not None:
+                    btn.setStyleSheet(base)
+        self._active_comment_highlight_btns = []
+
+        btns = getattr(self, '_comment_list_seg_btns', {}).get(seg_id, [])
+        if not btns:
+            return
+
+        for btn in btns:
+            if self._widget_is_alive(btn):
+                base = getattr(btn, '_base_qss', btn.styleSheet())
+                btn.setStyleSheet(
+                    base +
+                    "\nQPushButton { background-color: rgba(37, 99, 235, 0.14); "
+                    "border-radius: 3px; }"
+                )
+                self._active_comment_highlight_btns.append(btn)
+
+        if do_scroll:
+            scroll = getattr(self, '_segment_comments_list_scroll', None)
+            first = btns[0]
+
+            def _reveal():
+                try:
+                    if (scroll is not None and self._widget_is_alive(scroll)
+                            and self._widget_is_alive(first)):
+                        scroll.ensureWidgetVisible(first)
+                except Exception:
+                    pass
+
+            # Defer so any pending layout / tab switch settles before scrolling.
+            QTimer.singleShot(0, _reveal)
 
     def _comment_context_menu(self, segment: 'Segment', comment_id: str, anchor_widget):
         """Right-click context menu on a comments-list entry. Edit / Delete."""
@@ -56647,43 +56775,222 @@ class SupervertalerQt(QMainWindow):
         self._update_bottom_notes_editor_lock_state()
 
     def _update_proofreading_notes_for_segment(self, segment):
-        """Update the Proofreading note tab with the current segment's proofreading notes (read-only, keyed by LLM)."""
-        if not hasattr(self, 'bottom_proofreading_notes_display') or not self.bottom_proofreading_notes_display:
+        """Selecting a segment scrolls + highlights the Proofreading-comments
+        list to that segment's entries (issue #234 pts 3/5), mirroring the
+        Segment-Comments behaviour. The list content itself is (re)built by
+        _refresh_proofreading_comments_list() when the underlying data changes."""
+        seg_id = getattr(segment, 'id', None) if segment else None
+        if seg_id is not None:
+            self._sync_proofreading_comments_to_active(seg_id)
+
+    def _refresh_proofreading_comments_list(self):
+        """Rebuild the all-project Proofreading-comments list (issue #234 pt.4):
+        one entry per (segment, LLM-model) note, each with a clickable
+        Segment #N header, the model name, the text, and a delete button.
+        Idempotent; cheap to call whenever the proofreading data changes."""
+        if not hasattr(self, '_proofreading_comments_list_layout'):
+            return  # Sub-tab not built yet (early init)
+
+        from PyQt6.QtWidgets import QFrame as _QFrame
+
+        layout = self._proofreading_comments_list_layout
+        self._pc_list_seg_btns = {}  # seg_id → [header buttons] (for highlight)
+
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+        # Collect (seg_id, segment, model, text) in document order.
+        entries = []
+        if self.current_project and self.current_project.segments:
+            for seg in self.current_project.segments:
+                pn = getattr(seg, 'proofreading_notes', None) or {}
+                for model_name, issue_text in pn.items():
+                    if issue_text and str(issue_text).strip():
+                        entries.append((seg.id, seg, model_name, issue_text))
+
+        if not entries:
+            empty = QLabel(
+                "(No proofreading comments yet — run <b>QA ▸ Proofreading ▸ "
+                "Proofread Translation…</b> to generate AI review comments.)")
+            empty.setTextFormat(Qt.TextFormat.RichText)
+            empty.setStyleSheet("color: #999; padding: 8px;")
+            empty.setWordWrap(True)
+            layout.addWidget(empty)
+            layout.addStretch()
             return
 
-        import html as html_module
-
-        proofread = getattr(segment, 'proofreading_notes', None) if segment else None
-        if not proofread:
-            self.bottom_proofreading_notes_display.setHtml(
-                '<span style="color: #999; font-style: italic;">No proofreading comments for this segment.</span>'
-            )
-            return
-
-        # Cycle through a few distinct colours for different LLM entries
-        colors = [
+        # Per-engine colours so different LLMs (GPT vs Claude vs …) are visually
+        # distinct in the list. Each distinct model gets a stable colour triple
+        # (accent, light tint, dark text) in first-seen order; ≥8 models cycle.
+        _pc_palette = [
             ("#ff9800", "#fff3e0", "#e65100"),  # orange
             ("#2196f3", "#e3f2fd", "#0d47a1"),  # blue
             ("#4caf50", "#e8f5e9", "#1b5e20"),  # green
             ("#9c27b0", "#f3e5f5", "#4a148c"),  # purple
             ("#f44336", "#ffebee", "#b71c1c"),  # red
+            ("#00897b", "#e0f2f1", "#004d40"),  # teal
+            ("#5c6bc0", "#e8eaf6", "#283593"),  # indigo
+            ("#6d4c41", "#efebe9", "#3e2723"),  # brown
         ]
+        _model_colors = {}
+        for _sid, _seg, _m, _t in entries:
+            if _m not in _model_colors:
+                _model_colors[_m] = _pc_palette[len(_model_colors) % len(_pc_palette)]
 
-        html_parts = []
-        for idx, (model_name, issue_text) in enumerate(proofread.items()):
-            border_color, bg_color, text_color = colors[idx % len(colors)]
-            escaped_model = html_module.escape(model_name)
-            escaped_text = html_module.escape(issue_text).replace('\n', '<br/>')
-            html_parts.append(
-                f'<div style="margin-bottom: 10px; padding: 8px; background: {bg_color}; '
-                f'border-left: 3px solid {border_color}; border-radius: 3px;">'
-                f'<b style="color: {text_color};">{escaped_model}</b><br/>'
-                f'<span style="color: #333;">{escaped_text}</span>'
-                f'</div>'
+        for idx, (seg_id, segment, model_name, issue_text) in enumerate(entries):
+            accent, tint, _textcol = _model_colors.get(model_name, _pc_palette[0])
+            if idx > 0:
+                divider = _QFrame()
+                divider.setFrameShape(_QFrame.Shape.HLine)
+                divider.setStyleSheet("color: #e0e0e0; max-height: 1px;")
+                layout.addWidget(divider)
+
+            # ── Header row: "Segment #N · model"  +  delete button ──
+            row = QWidget()
+            row_l = QHBoxLayout(row)
+            row_l.setContentsMargins(0, 0, 0, 0)
+            row_l.setSpacing(0)
+
+            header_btn = QPushButton(f"Segment #{seg_id}  ·  {model_name}")
+            header_btn.setFlat(True)
+            header_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            _qss = (
+                "QPushButton { color: %s; font-weight: bold; font-size: 10pt; "
+                "text-align: left; padding: 6px 8px 2px 8px; border: none; "
+                "background: transparent; } "
+                "QPushButton:hover { background-color: %s; "
+                "text-decoration: underline; }" % (accent, tint)
             )
+            header_btn.setStyleSheet(_qss)
+            header_btn._base_qss = _qss
+            header_btn.clicked.connect(
+                lambda _c, sid=seg_id: self._navigate_to_segment_by_id(sid))
+            row_l.addWidget(header_btn, 1)
+            self._pc_list_seg_btns.setdefault(seg_id, []).append(header_btn)
 
-        self.bottom_proofreading_notes_display.setHtml(''.join(html_parts))
-    
+            del_btn = QPushButton("🗑")
+            del_btn.setFlat(True)
+            del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            del_btn.setToolTip(f"Delete this proofreading comment ({model_name})")
+            del_btn.setFixedWidth(28)
+            del_btn.setStyleSheet(
+                "QPushButton { border: none; background: transparent; padding: 4px; } "
+                "QPushButton:hover { background-color: rgba(244, 67, 54, 0.12); "
+                "border-radius: 3px; }")
+            del_btn.clicked.connect(
+                lambda _c, sid=seg_id, m=model_name: self._delete_proofreading_comment(sid, m))
+            row_l.addWidget(del_btn, 0)
+            layout.addWidget(row)
+
+            # ── Body: the proofreading text (read-only) ──
+            body = QLabel(str(issue_text))
+            body.setWordWrap(True)
+            body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            body.setStyleSheet(
+                f"padding: 4px 12px 8px 12px; font-size: 10pt; color: #333; "
+                f"background: {tint}; border-left: 3px solid {accent}; "
+                f"margin-left: 6px;")
+            layout.addWidget(body)
+
+        layout.addStretch()
+
+        # Re-apply the active-segment highlight after the rebuild. (pt.3/5)
+        _active = getattr(self, '_active_pc_seg_id', None)
+        if _active is not None:
+            self._sync_proofreading_comments_to_active(_active, do_scroll=False)
+
+    def _sync_proofreading_comments_to_active(self, seg_id, do_scroll: bool = True):
+        """Scroll + highlight the Proofreading-comments list to the active
+        segment's entries (issue #234 pts 3/5). Mirrors the SC list behaviour."""
+        self._active_pc_seg_id = seg_id
+        for btn in getattr(self, '_active_pc_highlight_btns', []):
+            if self._widget_is_alive(btn):
+                base = getattr(btn, '_base_qss', None)
+                if base is not None:
+                    btn.setStyleSheet(base)
+        self._active_pc_highlight_btns = []
+
+        btns = getattr(self, '_pc_list_seg_btns', {}).get(seg_id, [])
+        if not btns:
+            return
+        for btn in btns:
+            if self._widget_is_alive(btn):
+                base = getattr(btn, '_base_qss', btn.styleSheet())
+                btn.setStyleSheet(
+                    base + "\nQPushButton { background-color: rgba(37, 99, 235, 0.14); "
+                    "border-radius: 3px; }")
+                self._active_pc_highlight_btns.append(btn)
+        if do_scroll:
+            scroll = getattr(self, '_proofreading_comments_list_scroll', None)
+            first = btns[0]
+
+            def _reveal():
+                try:
+                    if (scroll is not None and self._widget_is_alive(scroll)
+                            and self._widget_is_alive(first)):
+                        scroll.ensureWidgetVisible(first)
+                except Exception:
+                    pass
+
+            QTimer.singleShot(0, _reveal)
+
+    def _delete_proofreading_comment(self, seg_id, model_name):
+        """Delete one proofreading comment (a single LLM entry) from a segment
+        (issue #234 pt.2). Re-running Proofread Translation regenerates it."""
+        if not self.current_project:
+            return
+        seg = next((s for s in self.current_project.segments if s.id == seg_id), None)
+        if seg is None:
+            return
+        pn = getattr(seg, 'proofreading_notes', None)
+        if not pn or model_name not in pn:
+            return
+        del pn[model_name]
+        self.project_modified = True
+        try:
+            self._refresh_segment_status(seg)
+        except Exception:
+            pass
+        self._refresh_proofreading_comments_list()
+
+    def delete_all_proofreading_comments(self):
+        """Delete every proofreading comment in the project (QA ▸ Proofreading).
+        Confirms first; re-running Proofread Translation regenerates them."""
+        from PyQt6.QtWidgets import QMessageBox as _QMessageBox
+        if not self.current_project or not self.current_project.segments:
+            _QMessageBox.information(self, "Delete proofreading comments",
+                                     "There is no open project.")
+            return
+        affected = [s for s in self.current_project.segments
+                    if getattr(s, 'proofreading_notes', None)]
+        if not affected:
+            _QMessageBox.information(self, "Delete proofreading comments",
+                                     "There are no proofreading comments to delete.")
+            return
+        total = sum(len(s.proofreading_notes) for s in affected)
+        resp = _QMessageBox.question(
+            self, "Delete all proofreading comments",
+            f"Delete all {total} proofreading comment(s) across {len(affected)} "
+            f"segment(s)?\n\nThis cannot be undone, but running Proofread "
+            f"Translation again will regenerate them.",
+            _QMessageBox.StandardButton.Yes | _QMessageBox.StandardButton.No,
+            _QMessageBox.StandardButton.No)
+        if resp != _QMessageBox.StandardButton.Yes:
+            return
+        for s in affected:
+            s.proofreading_notes = {}
+            try:
+                self._refresh_segment_status(s)
+            except Exception:
+                pass
+        self.project_modified = True
+        self._refresh_proofreading_comments_list()
+        self.log(f"Deleted all proofreading comments ({total} across {len(affected)} segments).")
+
+
     def copy_source_to_tab_target(self):
         """Copy source to target in tab editor - works with all panels"""
         if hasattr(self, 'tabbed_panels'):
