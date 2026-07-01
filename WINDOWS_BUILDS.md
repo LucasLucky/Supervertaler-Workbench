@@ -1,23 +1,15 @@
 # Windows EXE Builds
 
-## Two Build Flavors
+## One Unified Build
 
-Supervertaler Windows releases are published as **two separate ZIP assets**:
+Supervertaler Windows releases are published as a **single ZIP asset**:
 
-### 1. CORE (Recommended)
-- **File:** `Supervertaler-v1.9.107-Windows-CORE.zip`
-- **Size:** ~300 MB
-- **Contents:** Full application without heavy ML stack
-- **Excludes:** Supermemory, offline Local Whisper (PyTorch)
-- **Recommended for:** Most users
-- **Features:** All core CAT tool features, LLM translation, TM/glossaries, voice dictation via OpenAI API
+- **File:** `Supervertaler-v<version>-Windows.zip` (e.g. `Supervertaler-v1.10.325-Windows.zip`)
+- **Size:** ~480 MB (compressed)
+- **Contents:** Full application (all core CAT-tool features, LLM translation, TM/glossaries, voice dictation via the OpenAI Whisper API)
+- **Excludes:** offline Local Whisper (PyTorch) — that ML stack conflicts with PyInstaller, so voice dictation ships via the OpenAI API only.
 
-### 2. FULL (Complete)
-- **File:** `Supervertaler-v1.9.107-Windows-FULL.zip`
-- **Size:** ~900 MB
-- **Contents:** Full application with all optional components
-- **Includes:** Everything in CORE + offline Local Whisper support
-- **Note:** Supermemory has been removed as of v1.9.105
+> The older two-flavor CORE / FULL split (and the offline Local Whisper "FULL" build) was retired; there is now just one build.
 
 ## Critical Installation Note
 
@@ -31,60 +23,56 @@ If users see an error like missing `python312.dll`, they are:
 
 ## Building
 
-### Build Both (Recommended)
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_release.ps1
 ```
 
-### Build CORE Only
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_release.ps1 -CoreOnly
-```
+### Clean Build (remove the build venv + intermediate `build/` first)
 
-### Build FULL Only
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_release.ps1 -FullOnly
-```
-
-### Clean Build (Remove Build Venvs)
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_release.ps1 -Clean
 ```
 
-## Output Files
+The script:
+1. Creates/reuses an isolated build venv (`.venv-build`).
+2. Installs build tooling (pip/setuptools/wheel/PyInstaller) and the app itself (`pip install -e .`).
+3. Runs PyInstaller against `Supervertaler.spec`.
+4. Copies `user_data/` (dictionaries, Prompt_Library, Translation_Resources, voice_scripts), the `translations/` folder, and the Start Menu shortcut helpers next to the EXE.
+5. Zips the result via `create_release_zip.py`.
 
-After successful build:
-- `dist\Supervertaler-v1.9.107-Windows-CORE.zip`
-- `dist\Supervertaler-v1.9.107-Windows-FULL.zip`
+## Output File
 
-Each ZIP contains:
+After a successful build:
+
+- `dist\Supervertaler-v<version>-Windows.zip`
+
+The ZIP contains:
 - `Supervertaler.exe`
-- `_internal\` directory with all dependencies
+- `_internal\` directory with all dependencies (incl. `python312.dll`)
+- `user_data\`, `translations\`
 - `README_FIRST.txt` with installation instructions
+- `Add Supervertaler to Start Menu.cmd` + `create_start_menu_shortcut.ps1`
+
+## Build Environment
+
+The build script uses an isolated Python environment:
+- `.venv-build` — automatically created and managed by the build script.
 
 ## Posting to GitHub
 
-1. Create a new release on GitHub with tag `v1.9.107`
-2. Attach **both** ZIP files to the same release
-3. Users can choose which build suits their needs
+1. Create a new release with tag `v<version>` (matching `pyproject.toml`).
+2. Attach the Windows ZIP. Releases also carry a macOS `.dmg` — build that on a Mac (see `BUILD_MACOS.md`) and attach it to the same release.
 
-## Build Environments
-
-The build script uses isolated Python environments:
-- `.venv-build-core` - For CORE build
-- `.venv-build-full` - For FULL build
-
-These are automatically created and managed by the build script.
+```powershell
+gh release create v<version> `
+  --title "v<version> — <headline>" `
+  --notes-file <notes.md> `
+  "dist\Supervertaler-v<version>-Windows.zip"
+```
 
 ## Version Update Checklist
 
-Before building, ensure version is updated in:
-- [x] `Supervertaler.py` (`__version__`)
-- [x] `pyproject.toml` (`version`)
-- [x] `README.md` (heading and current version)
-- [x] `docs/index.html` (3 locations)
-- [x] `CHANGELOG.md` (new entry)
+Version lives in one source of truth: **`pyproject.toml`** (`__version__` in `Supervertaler.py` reads it at runtime). Before building, ensure:
 
-## Current Version
-
-**v1.9.107** - January 15, 2026
+- [x] `pyproject.toml` (`version`) bumped
+- [x] `CHANGELOG.md` — new entry (this is where README and the docs site point for "current version"; they are not hardcoded)
