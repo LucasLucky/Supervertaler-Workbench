@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.325 (July 1, 2026)
+**Current Version:** v1.10.326 (July 1, 2026)
+
+
+## v1.10.326 – July 1, 2026
+
+### Fixed (Tags no longer split across lines in the grid)
+
+- **Inline tags like `</i>` are no longer broken across two lines** in the source and target grid cells ([#232](https://github.com/Supervertaler/Supervertaler-Workbench/issues/232)). The cell word-wrap follows the Unicode line-breaking algorithm, in which a `/` (SOLIDUS) is a valid break opportunity – so `<i>tiny</i>` could wrap as `<i>tiny</` + `i>`. A zero-width WORD JOINER (U+2060) is now inserted after the `/` inside recognised tags (HTML/XML `</i>`, `<t2/>`, Trados `</1>`, and compact `{/1}`/`{1/}` placeholders) so the tag stays intact. It's display-only: the joiner is stripped again before any text is written back, so segment text, tag counts, TM, and exports are unaffected, and the tag syntax-highlighter still colours the tags.
 
 
 ## v1.10.325 – July 1, 2026

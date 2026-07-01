@@ -1121,6 +1121,37 @@ def compact_tags(text: str, tag_map: dict = None) -> str:
     return tag_pattern.sub(_replace, text)
 
 
+# Word Joiner (U+2060): a zero-width character that forbids a line break on
+# either side of itself. Used to stop the grid word-wrap from splitting a tag
+# mid-way (see protect_tags_from_linebreak). Stripped again on read-back by
+# reverse_invisible_replacements, so it never reaches saved segment text.
+WORD_JOINER = chr(0x2060)  # U+2060 WORD JOINER (zero-width, no-break)
+
+# Recognised tag forms that can contain a "/" and would otherwise wrap after it.
+# The Unicode line-breaking algorithm (UAX #14) treats SOLIDUS as class SY —
+# "break opportunity after" — so "</i>" is allowed to wrap as "</" + "i>" even
+# in word-boundary wrap mode. We only need to guard tags that actually contain
+# a slash: HTML/XML closing & self-closing tags, Trados numeric closing tags,
+# and the compact {/n}/{n/} placeholders.
+_TAG_LINEBREAK_PROTECT_RE = re.compile(
+    r'</?[a-zA-Z][a-zA-Z0-9-]*/?(?:\s[^>]*)?>'  # <i>, </i>, <t2/>, <tag attr="x">
+    r'|</?\d+>'                                  # Trados numeric: <1>, </1>
+    r'|\{/?\d+/?\}'                              # compact placeholders: {/1}, {1/}
+)
+
+
+def protect_tags_from_linebreak(text: str) -> str:
+    """Insert a WORD JOINER after every "/" inside a recognised tag so the grid
+    word-wrap can't split the tag across two lines (e.g. "</i>" wrapping as
+    "</" + "i>"). Display-only: reverse_invisible_replacements strips the joiner
+    before any text is written back, so the model text is unaffected. A no-op
+    when the text contains no slash."""
+    if not text or '/' not in text:
+        return text
+    return _TAG_LINEBREAK_PROTECT_RE.sub(
+        lambda m: m.group(0).replace('/', '/' + WORD_JOINER), text)
+
+
 def expand_compact_tags(text: str, tag_map: dict) -> str:
     """
     Reverse compact_tags() – replace numbered placeholders back to full tags.
@@ -4550,10 +4581,14 @@ class TagHighlighter(QSyntaxHighlighter):
         #    - {uicontrol}, {image}, etc. (closing tags)
         #    NOTE: Opening [tag] MUST have attributes (space+content) to avoid matching
         #          placeholders like [Company] or [Bedrijf]. Closing {tag} doesn't need attrs.
+        # `wj?` after each "/" tolerates the display-only WORD JOINER that
+        # protect_tags_from_linebreak inserts (to stop tags wrapping mid-way).
+        # It's optional, so tags without the joiner still match.
+        wj = WORD_JOINER
         tag_patterns = [
-            r'</?[a-zA-Z][a-zA-Z0-9-]*/?(?:\s[^>]*)?>',  # HTML/XML tags
-            r'</?\d+>',                                   # Trados numeric: <1>, </1>
-            r'\{/?\d+/?\}',                               # Compact tag placeholders: {1}, {/1}, {1/}
+            r'</?' + wj + r'?[a-zA-Z][a-zA-Z0-9-]*/?' + wj + r'?(?:\s[^>]*)?>',  # HTML/XML tags
+            r'</?' + wj + r'?\d+>',                       # Trados numeric: <1>, </1>
+            r'\{/?' + wj + r'?\d+/?' + wj + r'?\}',       # Compact tag placeholders: {1}, {/1}, {1/}
             r'\[\d+[}\]]',                                # memoQ numeric: [1}, [1]
             r'\{\d+[}\]]',                                # memoQ numeric: {1}, {1]
             r'\[[^}\]]+\}',                               # memoQ mixed: [anything} (exclude } and ])
@@ -54722,6 +54757,13 @@ class SupervertalerQt(QMainWindow):
 
     def apply_invisible_replacements(self, text):
         """Apply invisible character replacements to text based on settings"""
+        # Always guard recognised tags against being split mid-way by the grid
+        # word-wrap (see protect_tags_from_linebreak) – runs even when no
+        # invisible-marker settings are active. The WORD JOINER it inserts is
+        # stripped again by reverse_invisible_replacements, so saved text is
+        # unaffected. Applies to both source and target display cells.
+        text = protect_tags_from_linebreak(text)
+
         if not hasattr(self, 'invisible_display_settings'):
             return text
 
@@ -54761,6 +54803,11 @@ class SupervertalerQt(QMainWindow):
           still clean it correctly.
         """
         result = text
+
+        # Strip the tag-protection WORD JOINER (U+2060) unconditionally. It is
+        # display-only (inserted by protect_tags_from_linebreak) and must never
+        # reach saved segment text, tag counts, TM, or exports.
+        result = result.replace(WORD_JOINER, '')
 
         # Reverse spaces (middle dot + zero-width space → space) – always
         result = result.replace('·\u200B', ' ')
