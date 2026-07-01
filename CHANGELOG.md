@@ -2,7 +2,15 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.324 (July 1, 2026)
+**Current Version:** v1.10.325 (July 1, 2026)
+
+
+## v1.10.325 – July 1, 2026
+
+### Fixed (OpenRouter · Mistral · DeepSeek missing from QuickTrans)
+
+- **OpenRouter is now available as a QuickTrans AI/LLM provider** ([#231](https://github.com/Supervertaler/Supervertaler-Workbench/issues/231)). Previously OpenRouter could be configured and enabled in **AI Settings** but never appeared under **QuickTrans → AI/LLM Providers**, so it could not be used for quick-lookup translations. It now has its own checkbox and model dropdown in the QuickTrans settings and is queried like any other AI provider (colour-coded indigo pill).
+- **Mistral AI and DeepSeek had the same latent gap and are fixed too.** Both already showed a checkbox in the QuickTrans settings, but the popup/panel never actually called them because they were missing from the fetch logic in `modules/quicktrans.py`. They now resolve and return suggestions (Mistral orange pill, DeepSeek blue pill). All three respect their **AI Settings** API keys and per-provider model selection.
 
 
 ## v1.10.324 – July 1, 2026

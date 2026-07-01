@@ -24756,6 +24756,16 @@ class SupervertalerQt(QMainWindow):
                 ("deepseek-v4-pro", "DeepSeek V4 Pro (Recommended)"),
                 ("deepseek-v4-flash", "DeepSeek V4 Flash (Fast)"),
             ]),
+            ("openrouter", "OpenRouter (200+ models)", "openrouter", [
+                ("anthropic/claude-sonnet-4.6", "Claude Sonnet 4.6 (Recommended)"),
+                ("anthropic/claude-opus-4.8", "Claude Opus 4.8 (Latest Premium)"),
+                ("openai/gpt-5.4", "GPT-5.4 (Advanced Reasoning)"),
+                ("openai/gpt-5.4-mini", "GPT-5.4 Mini (Fast & Economical)"),
+                ("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro (Latest Gemini)"),
+                ("google/gemini-3-flash-preview", "Gemini 3 Flash (Fast Gemini)"),
+                ("mistralai/mistral-small-2603", "Mistral Small (European Languages)"),
+                ("qwen/qwen3.6-plus:free", "Qwen 3.6 Plus (Free)"),
+            ]),
         ]
 
         for code, name, api_key_name, models in llm_providers:

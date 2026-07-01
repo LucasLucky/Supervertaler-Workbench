@@ -37,6 +37,9 @@ PROVIDER_COLORS = {
     "CL":  "#D97706",   # Claude amber
     "GPT": "#10A37F",   # OpenAI green
     "GEM": "#4285F4",   # Gemini blue
+    "MIS": "#FA520F",   # Mistral orange
+    "DS":  "#4D6BFE",   # DeepSeek blue
+    "OR":  "#6566F1",   # OpenRouter indigo
     "OLL": "#555555",   # Ollama dark gray
     "CUS": "#9C27B0",   # Custom purple
 }
@@ -58,7 +61,7 @@ _PANEL_ICON_BTN_STYLE = """
 # Provider codes that are AI/LLM rather than machine-translation engines, used
 # to group QuickTrans results. Everything not listed here (GT, DL, MS, AT, MMT,
 # MM, and CMT custom-MT) is treated as a machine-translation engine.
-_AI_PROVIDER_CODES = {"CL", "GPT", "GEM", "OLL", "CUS"}
+_AI_PROVIDER_CODES = {"CL", "GPT", "GEM", "MIS", "DS", "OR", "OLL", "CUS"}
 
 
 def _is_ai_code(code: str) -> bool:
@@ -385,12 +388,17 @@ class QuickTransProviderMixin:
         return providers
 
     def _add_llm_providers(self, providers: List, api_keys: Dict, mt_quick_settings: Dict):
-        """Add LLM providers (Claude, OpenAI, Gemini) to the providers list"""
+        """Add LLM providers (Claude, OpenAI, Gemini, Mistral, DeepSeek,
+        OpenRouter, Ollama, Custom) to the providers list. The order here
+        mirrors the AI/LLM Providers section of the QuickTrans settings dialog."""
         # LLM provider definitions: (name, code, api_key_name, settings_key)
         llm_defs = [
             ("Claude", "CL", "claude", "mtql_claude"),
             ("OpenAI", "GPT", "openai", "mtql_openai"),
             ("Gemini", "GEM", "gemini", "mtql_gemini"),
+            ("Mistral", "MIS", "mistral", "mtql_mistral"),
+            ("DeepSeek", "DS", "deepseek", "mtql_deepseek"),
+            ("OpenRouter", "OR", "openrouter", "mtql_openrouter"),
             ("Ollama", "OLL", "ollama", "mtql_ollama"),
             ("Custom", "CUS", "custom_openai", "mtql_custom_openai"),
         ]
