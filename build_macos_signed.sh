@@ -143,12 +143,22 @@ fi
 echo "  ✓ create-dmg found"
 
 # ── Get version from pyproject.toml ──────────────────────────────────────────
-VERSION=$(python3 -c "
-import tomllib
-with open('pyproject.toml', 'rb') as f:
-    data = tomllib.load(f)
-print(data['project']['version'])
-")
+# Parse the [project] table's version with awk so this step does not depend on
+# the system python3 having tomllib (only Python 3.11+ ships it; macOS system
+# python3 is older). Reads the first `version = "..."` line inside [project].
+VERSION=$(awk '
+    /^\[/  { in_project = ($0 == "[project]") }
+    in_project && /^[[:space:]]*version[[:space:]]*=/ {
+        gsub(/.*=[[:space:]]*"|".*/, "")
+        print
+        exit
+    }
+' pyproject.toml)
+
+if [ -z "$VERSION" ]; then
+    echo "ERROR: Could not parse version from [project] in pyproject.toml"
+    exit 1
+fi
 echo ""
 echo "Version: v${VERSION}"
 echo ""
