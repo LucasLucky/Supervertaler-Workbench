@@ -67620,12 +67620,12 @@ class SuperlookupTab(QWidget):
                 'bidirectional': False,
             },
             {
-                'id': 'beijerterm',
-                'name': 'Beijerterm',
+                'id': 'beijerterm',  # internal id kept (renamed to SuperTerm) so existing user settings still resolve
+                'name': 'SuperTerm',
                 'icon': '📚',
                 'description': 'Curated multilingual terminology database (Dutch ↔ English)',
-                'url_template': 'https://beijerterm.com/?q={query}&from={sl}&to={tl}',
-                'lang_format': 'iso2',  # nl, en — Beijerterm deep-link expects ISO 639-1
+                'url_template': 'https://superterm.io/?q={query}&from={sl}&to={tl}',
+                'lang_format': 'iso2',  # nl, en — SuperTerm deep-link expects ISO 639-1
                 'bidirectional': True,
             },
             {
@@ -68829,7 +68829,7 @@ class SuperlookupTab(QWidget):
             ('📖 Wikipedia (Source)', 'Wikipedia in source language'),
             ('📖 Wikipedia (Target)', 'Wikipedia in target language'),
             ('⚖️ Juremy', 'Legal terminology database'),
-            ('📚 Beijerterm', 'Dutch-English terminology database (500k+ terms)'),
+            ('📚 SuperTerm', 'Dutch-English terminology database (1.9M+ entries)'),
             ('🔤 AcronymFinder', 'Acronym and abbreviation dictionary'),
             ('🌐 BabelNet', 'Multilingual encyclopedic dictionary'),
             ('📓 Wiktionary (Source)', 'Wiktionary in source language'),
