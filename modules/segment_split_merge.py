@@ -65,6 +65,42 @@ def structure_editable(project) -> bool:
     return True
 
 
+def deletable(project) -> bool:
+    """True when whole segments may be DELETED outright (not just split/merged).
+
+    Narrower than ``structure_editable``: only paste / plain-text (TXT-MD) /
+    Start-Empty projects, which have no structured or bilingual round-trip.
+    Split and merge keep all the content, so they're fine on a DOCX / Okapi
+    project; deleting *removes* content, which would leave a gap in the
+    merged-back export — so DOCX (``original_docx_path``) and every Okapi
+    round-trip (``import_engine == "okapi"``) are excluded here too, on top of
+    the bilingual-CAT origins already ruled out by ``structure_editable``.
+    Plain TXT/MD is fine: its export just re-writes the lines from the segments.
+    """
+    if not structure_editable(project):
+        return False
+    if getattr(project, "import_engine", "") == "okapi":
+        return False
+    if getattr(project, "original_docx_path", None):
+        return False
+    return True
+
+
+def delete_segments(segments: List, indices) -> int:
+    """Delete the segments at ``indices`` from the list in place, skipping any
+    locked segment. Deletes high-index-first so earlier indices stay valid.
+    Returns the number removed. Caller should renumber ids afterwards.
+    """
+    to_del = sorted(
+        {i for i in indices
+         if 0 <= i < len(segments) and not getattr(segments[i], "locked", False)},
+        reverse=True,
+    )
+    for i in to_del:
+        del segments[i]
+    return len(to_del)
+
+
 def _join_text(a: str, b: str) -> str:
     """Concatenate two fragments, inserting a single space only when neither
     side already provides whitespace at the boundary (mirrors how the Okapi

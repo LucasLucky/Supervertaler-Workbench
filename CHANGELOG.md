@@ -2,10 +2,19 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.327 (July 1, 2026)
+**Current Version:** v1.10.328 (July 2, 2026)
 
 
-## v1.10.327 – July 1, 2026
+## v1.10.328 – July 2, 2026
+
+### Added (Delete segments)
+
+- **You can now delete source segments** — right-click a segment → **🗑 Delete segment** (or select several rows first for **Delete N selected segments**), or use **Edit → 🗑 Delete Segment(s)**. It's **undoable** (Ctrl+Z), like split/merge. ([Discussion #236](https://github.com/orgs/Supervertaler/discussions/236))
+- **Deliberately scoped to projects where it's safe:** paste-text, plain **TXT/MD**, and **Start Empty** projects, where the segments *are* the document. On **DOCX / Okapi / bilingual-CAT** (memoQ, Trados, CafeTran, Phrase, Déjà Vu) projects the action is shown but **disabled with a tooltip**, because a segment there stands in for a slot in the source file and deleting it would leave a gap in the formatting-preserving / round-trip export. (Split and Merge remain available on those projects, since they keep all the content.) Document-Order only, and locked segments are skipped.
+
+### Improved (New Project · Load File clarity)
+
+- **The New Translation Project dialog's "Load File" tab is now clearer.** It only ever loaded a *plain-text* file (into the paste box, segmented into sentences), but its name and "All Files" filter implied broader support — pick a `.docx` and you'd get binary garbage. It's now labelled **"Load Text File (.txt / .md)"**, its file filter is limited to `*.txt`/`*.md`, and a hint points you to **Project → Import** for Word, IDML, and bilingual CAT files.
 
 ### Added (QA menu) + Improved (comment function) — [#234](https://github.com/Supervertaler/Supervertaler-Workbench/issues/234)
 

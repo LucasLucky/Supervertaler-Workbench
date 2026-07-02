@@ -4155,6 +4155,34 @@ class ReadOnlyGridTextEditor(QTextEdit):
                         merge_act.triggered.connect(
                             lambda checked=False, r=self.row: _mw_sm._merge_segment_at_row(r))
                         menu.addAction(merge_act)
+
+                        # 🗑 Delete segment(s) — narrower than split/merge: only
+                        # for paste / plain-text / Start-Empty projects, where a
+                        # segment isn't backed by a source-file slot. Shown but
+                        # disabled (with a why) on DOCX / Okapi projects.
+                        try:
+                            _sel_rows = sorted({it.row() for it in _mw_sm.table.selectedItems()})
+                        except Exception:
+                            _sel_rows = []
+                        _del_rows = (_sel_rows if (self.row in _sel_rows and len(_sel_rows) > 1)
+                                     else [self.row])
+                        _del_label = (f"🗑 Delete {len(_del_rows)} selected segments"
+                                      if len(_del_rows) > 1 else "🗑 Delete segment")
+                        del_act = QAction(_del_label, self)
+                        _can_delete = _ssm.deletable(_proj_sm)
+                        del_act.setEnabled(_doc_order and _can_delete)
+                        if not _can_delete:
+                            del_act.setToolTip(
+                                "Deleting whole segments isn't available for DOCX / Okapi / "
+                                "bilingual-CAT projects — it would leave a gap in the exported "
+                                "file. Available for pasted / plain-text / Start-Empty projects.")
+                        elif not _doc_order:
+                            del_act.setToolTip(
+                                "Switch to Document Order (Sort menu) to delete segments.")
+                        del_act.triggered.connect(
+                            lambda checked=False, rr=list(_del_rows):
+                            _mw_sm._delete_segments_at_rows(rr))
+                        menu.addAction(del_act)
                         menu.addSeparator()
         except Exception:
             pass
@@ -11437,7 +11465,20 @@ class SupervertalerQt(QMainWindow):
         goto_action = QAction(f"{self.tr('&Go to Segment...')}\t{format_shortcut_for_display('Ctrl+G')}", self)
         goto_action.triggered.connect(self.show_goto_dialog)
         edit_menu.addAction(goto_action)
-        
+
+        edit_menu.addSeparator()
+
+        # 🗑 Delete Segment(s) — removes the selected source segment(s). Only
+        # meaningful for paste / plain-text / Start-Empty projects; on DOCX /
+        # Okapi / bilingual projects delete_current_segments() explains why it's
+        # unavailable rather than corrupting the round-trip export.
+        delete_seg_action = QAction(self.tr("🗑 &Delete Segment(s)"), self)
+        delete_seg_action.setToolTip(self.tr(
+            "Delete the selected segment(s). Available for pasted / plain-text / "
+            "Start-Empty projects (not DOCX / Okapi / bilingual round-trip)."))
+        delete_seg_action.triggered.connect(self.delete_current_segments)
+        edit_menu.addAction(delete_seg_action)
+
         # Translate — first-class top-level menu (v1.10.292). Groups the single
         # "Translate Current Segment" command with all the Batch Translate
         # variants (and Proofread) in one obvious place; this stuff was
@@ -12194,6 +12235,82 @@ class SupervertalerQt(QMainWindow):
             self.load_segments_to_grid()
             self._select_grid_row_by_id(focus_id)
         self.log("Merged segment with the next one.")
+
+    def _delete_segments_at_rows(self, rows):
+        """Delete the segments shown in the given grid ``rows``.
+
+        Only available for paste / plain-text / Start-Empty projects (see
+        segment_split_merge.deletable) — deleting from a DOCX / Okapi / bilingual
+        project would leave a gap in the merged-back export. Undoable via the
+        same structural-undo stack as split/merge.
+        """
+        from modules import segment_split_merge as ssm
+        proj = getattr(self, 'current_project', None)
+        if proj is None or not ssm.deletable(proj):
+            return
+        if getattr(self, 'current_sort', None) is not None:
+            QMessageBox.information(self, self.tr("Delete segments"),
+                self.tr("Switch to Document Order (Sort menu) to delete segments."))
+            return
+        # Map grid rows → segment indices (dedup, drop locked segments).
+        idxs = set()
+        for r in rows or []:
+            seg, idx = self._segment_for_grid_row(r)
+            if seg is not None and not getattr(seg, 'locked', False):
+                idxs.add(idx)
+        if not idxs:
+            return
+        n = len(idxs)
+        resp = QMessageBox.question(
+            self, self.tr("Delete segments"),
+            f"Delete {n} segment{'s' if n != 1 else ''}? You can undo this (Ctrl+Z).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        import copy
+        before = copy.deepcopy(proj.segments)
+        first = min(idxs)
+        removed = ssm.delete_segments(proj.segments, idxs)
+        if not removed:
+            return
+        ssm.renumber_ids(proj.segments)
+        # Focus the segment now sitting where the first deleted one was.
+        focus_id = None
+        if proj.segments:
+            focus_id = proj.segments[min(first, len(proj.segments) - 1)].id
+        self._push_structural_undo(before, proj.segments, focus_id, "delete",
+                                   min(rows) if rows else 0)
+        self._sync_after_structural()
+        self.load_segments_to_grid()
+        if focus_id is not None:
+            self._select_grid_row_by_id(focus_id)
+        self.log(f"Deleted {removed} segment{'s' if removed != 1 else ''}.")
+
+    def delete_current_segments(self):
+        """Delete the currently selected grid rows (Edit menu entry). Acts on the
+        selection, or the current row when nothing is multi-selected."""
+        proj = getattr(self, 'current_project', None)
+        from modules import segment_split_merge as ssm
+        if proj is None or not proj.segments:
+            return
+        if not ssm.deletable(proj):
+            QMessageBox.information(
+                self, self.tr("Delete segments"),
+                self.tr("Deleting segments is only available for pasted / "
+                        "plain-text / Start-Empty projects. Deleting from a DOCX, "
+                        "Okapi or bilingual-CAT project would leave a gap in the "
+                        "exported file."))
+            return
+        rows = []
+        if hasattr(self, 'table'):
+            rows = sorted({it.row() for it in self.table.selectedItems()})
+        if not rows:
+            cur = self.table.currentRow() if hasattr(self, 'table') else -1
+            if cur >= 0:
+                rows = [cur]
+        if rows:
+            self._delete_segments_at_rows(rows)
 
     # ── Keyboard-shortcut entry points (Ctrl+Alt+S / Ctrl+Alt+M) ──────────
     def split_current_segment(self):
@@ -31942,7 +32059,7 @@ class SupervertalerQt(QMainWindow):
         # Tab 2: Load from File
         file_tab = QWidget()
         file_layout = QVBoxLayout(file_tab)
-        file_layout.addWidget(QLabel(self.tr("Load text from a file:")))
+        file_layout.addWidget(QLabel(self.tr("Load a plain-text or Markdown (.txt / .md) file:")))
         
         file_path_display = QLineEdit()
         file_path_display.setPlaceholderText(self.tr("No file selected..."))
@@ -31953,9 +32070,9 @@ class SupervertalerQt(QMainWindow):
         def browse_file():
             file_path, _ = QFileDialog.getOpenFileName(
                 dialog,
-                "Select Text File",
+                "Select a text or Markdown file",
                 "",
-                "Text Files (*.txt);;All Files (*.*)"
+                "Text & Markdown files (*.txt *.md)"
             )
             if file_path:
                 file_path_display.setText(file_path)
@@ -31972,9 +32089,17 @@ class SupervertalerQt(QMainWindow):
         file_btn_layout.addWidget(file_path_display)
         file_btn_layout.addWidget(browse_btn)
         file_layout.addLayout(file_btn_layout)
+
+        _load_hint = QLabel(self.tr(
+            "Loads a plain-text or Markdown file as source text, segmented into "
+            "sentences. For Word, IDML, or bilingual CAT files (memoQ, Trados, "
+            "CafeTran, Phrase, Déjà Vu), use Project → Import instead."))
+        _load_hint.setWordWrap(True)
+        _load_hint.setStyleSheet("color: #666; font-size: 9pt; padding-top: 6px;")
+        file_layout.addWidget(_load_hint)
         file_layout.addStretch()
-        
-        import_tabs.addTab(file_tab, "📄 Load File")
+
+        import_tabs.addTab(file_tab, "📄 Load Text File (.txt / .md)")
         
         # Tab 3: Start Empty
         empty_tab = QWidget()
