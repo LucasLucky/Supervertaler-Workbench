@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.330 (July 3, 2026)
+**Current Version:** v1.10.331 (July 3, 2026)
+
+
+## v1.10.331 – July 3, 2026
+
+### Changed (Superterm styling)
+
+- **The Superterm terminology database is now styled "Superterm" (lowercase "t"), not "SuperTerm".** Updated the SuperLookup web resource name, the Web Resources picker label, and the related help text to match the brand's current styling. The internal resource id is unchanged, so any Web Resources settings you've already made still resolve.
 
 
 ## v1.10.330 – July 3, 2026
