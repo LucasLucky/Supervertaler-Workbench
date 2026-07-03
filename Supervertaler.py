@@ -32671,6 +32671,12 @@ class SupervertalerQt(QMainWindow):
             self.project_file_path = file_path
             self.project_modified = False
 
+            # Clear the previous project's per-segment comment/notes editors up
+            # front, so opening this project directly (without closing the last
+            # one first) can't leave stale comments in the Comments tab. The
+            # all-comments lists are rebuilt further down. (issue #235)
+            self._reset_comment_ui_state()
+
             # Store original segment order for "Document Order" sort reset
             self._original_segment_order = self.current_project.segments.copy()
 
@@ -34885,10 +34891,17 @@ class SupervertalerQt(QMainWindow):
                     panel.tm_results_table.setRowCount(0)
                 if hasattr(panel, 'termbase_results_table'):
                     panel.termbase_results_table.setRowCount(0)
-        
+
+        # Clear the comment/notes UI so the closed project's comments don't
+        # linger in the Comments tab until a restart (issue #235). Clears the
+        # per-segment editors and rebuilds the (now empty) all-comments lists.
+        self._reset_comment_ui_state()
+        self._refresh_segment_comments_list()
+        self._refresh_proofreading_comments_list()
+
         # Update window title
         self.update_window_title()
-        
+
         self.log("✓ Project closed")
     
     def update_recent_menu(self):
@@ -56241,6 +56254,38 @@ class SupervertalerQt(QMainWindow):
                 except (ValueError, AttributeError):
                     continue
         return -1
+
+    def _reset_comment_ui_state(self):
+        """Clear the per-segment comment/notes editors and active-comment
+        tracking so comments from a previously-open project don't linger in
+        the Comments tab (issue #235).
+
+        Only the per-segment editors need explicit clearing here — the
+        all-comments lists are rebuilt from ``current_project`` by
+        ``_refresh_segment_comments_list`` / ``_refresh_proofreading_comments_list``.
+        Signals are blocked while clearing so the textChanged handlers don't
+        try to write the empty string back onto a stale/absent segment.
+        """
+        self.tab_current_segment_id = None
+        self._active_comment_seg_id = None
+
+        # Bottom single-string notes/comment editor.
+        if getattr(self, 'bottom_notes_edit', None):
+            self.bottom_notes_edit.blockSignals(True)
+            self.bottom_notes_edit.setPlainText('')
+            self.bottom_notes_edit.blockSignals(False)
+
+        # Per-panel "Add comments for this segment…" tab editors.
+        if hasattr(self, 'tabbed_panels'):
+            for panel in self.tabbed_panels:
+                try:
+                    nw = getattr(panel, 'notes_widget', None)
+                    if nw is not None and hasattr(nw, 'notes_editor'):
+                        nw.notes_editor.blockSignals(True)
+                        nw.notes_editor.setPlainText('')
+                        nw.notes_editor.blockSignals(False)
+                except Exception:
+                    pass
 
     def _refresh_segment_comments_list(self):
         """Rebuild the all-comments list at the top of the Comments → Segment sub-tab.

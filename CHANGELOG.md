@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.329 (July 2, 2026)
+**Current Version:** v1.10.330 (July 3, 2026)
+
+
+## v1.10.330 – July 3, 2026
+
+### Fixed (Comments)
+
+- **Segment comments from a previous project no longer linger when you open another project** ([#235](https://github.com/Supervertaler/Supervertaler-Workbench/issues/235)). Closing a project now clears the Comments tab – both the all-comments list and the per-segment comment/notes editors – and opening a project resets the per-segment editors up front. Previously a project's comments stayed visible in the Comments tab after switching projects, and the only way to clear them was to restart the Workbench.
 
 
 ## v1.10.329 – July 2, 2026
