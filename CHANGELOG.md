@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.331 (July 3, 2026)
+**Current Version:** v1.10.332 (July 4, 2026)
+
+
+## v1.10.332 – July 4, 2026
+
+### Changed (SuperLookup · Superterm → Beijerterm)
+
+- **The SuperLookup web resource "Superterm" is now "Beijerterm" again, pointing at [beijerterm.com](https://beijerterm.com/).** The curated multilingual terminology database reverted from Superterm back to its original name Beijerterm (domain **beijerterm.com**); the deep-link now opens `https://beijerterm.com/?q=…&from=…&to=…` with the same Dutch ↔ English direction handling. Its internal resource id is unchanged, so if you'd already enabled or reordered it in **Web Resources**, your setting carries over.
 
 
 ## v1.10.331 – July 3, 2026
