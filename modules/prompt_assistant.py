@@ -117,7 +117,10 @@ I'll be able to provide AI-powered suggestions for your style guides."""
                     system=system_prompt,
                     messages=[{"role": "user", "content": user_message}]
                 )
-                response_text = response.content[0].text
+                response_text = "".join(
+                    b.text for b in response.content
+                    if getattr(b, 'type', None) == 'text'
+                )
             else:
                 response_text = "LLM client not properly configured"
             

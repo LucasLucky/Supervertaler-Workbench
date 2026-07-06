@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.332 (July 4, 2026)
+**Current Version:** v1.10.333 (July 6, 2026)
+
+
+## v1.10.333 – July 6, 2026
+
+### Fixed (Claude thinking-model responses)
+
+- **Claude responses from thinking-capable models (e.g. Claude Sonnet 5) no longer crash text extraction.** The Anthropic response parser assumed the first content block was text (`response.content[0].text`), but with extended thinking the first block is a `ThinkingBlock`, which has no `.text` attribute, producing `'ThinkingBlock' object has no attribute 'text'`. This affected essentially every Claude-powered feature routed through the shared LLM client (AI translation, chat, AutoPrompt, proofreading), plus three feature modules that call the Anthropic SDK directly (PDF Rescue OCR, tracked-changes batch, prompt assistant). All of them now select the text block(s) and skip thinking/redacted blocks. Gemini's chat/AutoPrompt path was hardened the same way: defensive `.text` access with clear diagnostics, and the REST path now skips `thought` parts so reasoning never leaks into the output. (#239)
 
 
 ## v1.10.332 – July 4, 2026

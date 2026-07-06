@@ -873,7 +873,10 @@ Please:
             ],
         )
         
-        return response.content[0].text
+        return "".join(
+            b.text for b in response.content
+            if getattr(b, 'type', None) == 'text'
+        )
     
     def _extract_with_gemini(self, image_path, model, instructions):
         """Extract text using Gemini Vision API"""

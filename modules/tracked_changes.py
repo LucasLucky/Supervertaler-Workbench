@@ -817,7 +817,10 @@ Now provide the change summary for each segment, formatted as:
                     }]
                 )
                 
-                response_text = message.content[0].text.strip()
+                response_text = "".join(
+                    b.text for b in message.content
+                    if getattr(b, 'type', None) == 'text'
+                ).strip()
                 
             elif provider == "openai" and self.OPENAI_AVAILABLE:
                 import openai

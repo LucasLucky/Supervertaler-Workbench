@@ -1033,7 +1033,15 @@ class LLMClient:
 
         if not response.content:
             raise ValueError("Claude returned an empty response (no content blocks)")
-        text = response.content[0].text.strip()
+        # With extended thinking enabled, response.content[0] can be a
+        # ThinkingBlock (which has no .text). Pull the text block(s)
+        # specifically and skip thinking/redacted/tool blocks.
+        text = "".join(
+            b.text for b in response.content
+            if getattr(b, 'type', None) == 'text'
+        ).strip()
+        if not text:
+            raise ValueError("Claude returned no text content (only non-text blocks)")
 
         usage = {}
         if hasattr(response, 'usage') and response.usage:
@@ -1080,7 +1088,39 @@ class LLMClient:
             content = prompt
 
         response = model.generate_content(content)
-        text = response.text.strip()
+
+        # Defensive .text access: response.text raises ValueError when the
+        # candidate was blocked, finish_reason isn't STOP, or a thinking
+        # model spent its whole budget on thoughts and left no text part.
+        # Surface the actual cause instead of a generic ValueError (mirrors
+        # _call_gemini).
+        try:
+            text = response.text.strip()
+        except (ValueError, AttributeError) as e:
+            details = []
+            try:
+                if response.prompt_feedback and response.prompt_feedback.block_reason:
+                    details.append(
+                        f"prompt blocked: {response.prompt_feedback.block_reason}"
+                    )
+            except Exception:
+                pass
+            try:
+                for i, cand in enumerate(response.candidates or []):
+                    fr = getattr(cand, 'finish_reason', None)
+                    if fr is not None:
+                        details.append(f"candidate {i} finish_reason={fr}")
+                    sr = getattr(cand, 'safety_ratings', None) or []
+                    blocked = [
+                        f"{getattr(r, 'category', '?')}={getattr(r, 'probability', '?')}"
+                        for r in sr if getattr(r, 'blocked', False)
+                    ]
+                    if blocked:
+                        details.append(f"candidate {i} safety: {', '.join(blocked)}")
+            except Exception:
+                pass
+            reason = "; ".join(details) if details else f"{type(e).__name__}: {e}"
+            raise RuntimeError(f"Gemini returned no usable text ({reason})") from e
 
         usage = {}
         if hasattr(response, 'usage_metadata') and response.usage_metadata:
@@ -1323,7 +1363,13 @@ class LLMClient:
 
         if not response.content:
             raise ValueError("Claude returned an empty response (no content blocks)")
-        translation = response.content[0].text.strip()
+        # With extended thinking enabled, response.content[0] can be a
+        # ThinkingBlock (which has no .text). Pull the text block(s)
+        # specifically and skip thinking/redacted/tool blocks.
+        translation = "".join(
+            b.text for b in response.content
+            if getattr(b, 'type', None) == 'text'
+        ).strip()
 
         return translation
 
@@ -1471,8 +1517,12 @@ class LLMClient:
         data = resp.json()
         try:
             cand = data["candidates"][0]
+            # Skip "thought" parts so a thinking model's reasoning summary
+            # never leaks into the returned text (the SDK's .text accessor
+            # excludes them too).
             text = "".join(
                 p.get("text", "") for p in cand["content"]["parts"]
+                if not p.get("thought")
             ).strip()
         except (KeyError, IndexError, TypeError) as e:
             details = []
