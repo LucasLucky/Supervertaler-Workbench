@@ -216,6 +216,98 @@ class _AutoPromptSaveDialog(QDialog):
         return self.folder_combo.currentText().strip()
 
 
+class _AutoPromptContextDialog(QDialog):
+    """Dialog shown BEFORE AutoPrompt generation, so the translator can
+    steer the result.
+
+    Document-domain detection is automatic and keyword-based, so it
+    occasionally guesses wrong (e.g. a creative text with a stray "Fig. 1"
+    and "comprising" getting read as a patent). This dialog surfaces the
+    auto-detected domain and lets the translator:
+
+      * confirm it, or pick a different domain from the dropdown, and
+      * add a short free-text briefing (e.g. "Marketing copy for a watch
+        brand, playful tone") that is passed to the AI as authoritative
+        context for the generated prompt.
+
+    Returns via get_domain() / get_context_hint(); the caller treats a
+    rejected dialog as "cancel generation".
+    """
+
+    # Keep in sync with DOMAIN_TEMPLATES keys. Ordered general-first since
+    # that's the safe fallback the user is most likely to reach for when
+    # correcting an over-specific auto-guess.
+    _DOMAINS = ['general', 'patent', 'legal', 'medical',
+                'technical', 'financial', 'marketing']
+
+    def __init__(self, detected_domain: str, description: str = "",
+                 parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("AutoPrompt – confirm context")
+        self.setMinimumWidth(520)
+
+        layout = QVBoxLayout(self)
+
+        intro = QLabel(
+            "Supervertaler had the AI read the document and detect the "
+            "context below. Confirm it, or correct it and add a short "
+            "briefing so the generated prompt matches your document."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        detected = detected_domain if detected_domain else "general"
+        summary = QLabel(
+            f"<b>Detected context:</b> {detected.title()}"
+            + (f" &nbsp;– {description}" if description else "")
+        )
+        summary.setTextFormat(Qt.TextFormat.RichText)
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        form = QFormLayout()
+
+        # Domain override. Pre-select the detected domain; if it's somehow
+        # not in the known list, fall back to 'general' so the combo is
+        # never empty.
+        self.domain_combo = QComboBox()
+        for d in self._DOMAINS:
+            self.domain_combo.addItem(d.title(), d)
+        idx = self.domain_combo.findData(detected.lower())
+        self.domain_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        form.addRow("Domain:", self.domain_combo)
+
+        layout.addLayout(form)
+
+        layout.addWidget(QLabel("Context briefing (optional):"))
+        self.hint_edit = QPlainTextEdit()
+        self.hint_edit.setPlaceholderText(
+            "e.g. Creative marketing copy for a watch brand – playful, "
+            "not technical. Keep product names untranslated."
+        )
+        self.hint_edit.setMaximumHeight(90)
+        layout.addWidget(self.hint_edit)
+
+        # Generate / Cancel. Default to Generate so pressing Enter after a
+        # quick confirmation just proceeds.
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok_btn.setText("Generate")
+        ok_btn.setDefault(True)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_domain(self) -> str:
+        return self.domain_combo.currentData()
+
+    def get_context_hint(self) -> str:
+        return self.hint_edit.toPlainText().strip()
+
+
 # Language code → full name mapping (matches Supervertaler.py available_langs)
 _LANG_CODE_TO_NAME = {
     "af": "Afrikaans", "sq": "Albanian", "ar": "Arabic", "hy": "Armenian",
@@ -4134,31 +4226,75 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             "Phase 4: Sending to AI for prompt generation"
         )
 
-        # Phase 1: Document Analysis
+        # Phase 1: Document Analysis. DocumentAnalyzer gives us the factual
+        # signals (word counts, structure, currencies/dates, terminology);
+        # the document's DOMAIN and text-type description now come from the
+        # AI (Phase 1a), which reads the actual text instead of counting
+        # keywords — far more reliable and language-agnostic.
         analysis = self._run_document_analysis()
-        detected_domain = 'general'
-        analysis_summary = ""
 
+        # Phase 1a: AI context detection. Ask the model to read a sample of
+        # the source and classify the domain + describe the text type. This
+        # replaces the old keyword heuristics for BOTH domain and tone (the
+        # keyword tone read used to contradict the domain, e.g. calling a
+        # marketing campaign "technical, formal" because it's figure-heavy).
+        detected_domain, context_description = self._classify_document_context()
+        self.log_message(
+            f"[AI Assistant] AI-detected domain: {detected_domain}"
+            + (f" ({context_description})" if context_description else "")
+        )
+
+        # Build the analysis summary for the meta-prompt: the AI's context
+        # description (authoritative text-type read) plus the factual stats
+        # DocumentAnalyzer still provides. No keyword tone line — the AI's
+        # description now carries the tone/register signal.
+        analysis_summary = ""
         if analysis.get('success'):
-            detected_domain = analysis.get('domain', {}).get('primary', 'general')
-            tone_info = analysis.get('tone', {})
             stats = analysis.get('statistics', {})
             structure = analysis.get('structure', {})
             special = analysis.get('special_elements', {})
-
-            analysis_summary = (
-                f"Domain: {detected_domain} (confidence: {analysis.get('domain', {}).get('primary_confidence', 0):.1f})\n"
-                f"Tone: {tone_info.get('tone', 'neutral')}, Formality: {tone_info.get('formality', 'neutral')}\n"
-                f"Words: {stats.get('total_words', 0):,}, Unique words: {stats.get('unique_words', 0):,}\n"
-                f"Avg segment length: {stats.get('average_words_per_segment', 0):.1f} words\n"
-                f"Structure: {structure.get('list_items', 0)} list items, {structure.get('potential_headings', 0)} headings, "
-                f"{structure.get('figure_references', 0)} figure refs\n"
-                f"Special: {special.get('measurements', 0)} measurements, {special.get('currencies', 0)} currencies, "
-                f"{special.get('dates', 0)} dates"
+            summary_lines = []
+            if context_description:
+                summary_lines.append(f"Context: {context_description}")
+            summary_lines.append(
+                f"Words: {stats.get('total_words', 0):,}, Unique words: {stats.get('unique_words', 0):,}"
             )
-            self.log_message(f"[AI Assistant] Detected domain: {detected_domain}")
+            summary_lines.append(
+                f"Avg segment length: {stats.get('average_words_per_segment', 0):.1f} words"
+            )
+            summary_lines.append(
+                f"Structure: {structure.get('list_items', 0)} list items, "
+                f"{structure.get('potential_headings', 0)} headings, "
+                f"{structure.get('figure_references', 0)} figure refs"
+            )
+            summary_lines.append(
+                f"Special: {special.get('measurements', 0)} measurements, "
+                f"{special.get('currencies', 0)} currencies, {special.get('dates', 0)} dates"
+            )
+            analysis_summary = "\n".join(summary_lines)
 
-        # Phase 1b: Multi-file analysis (per-file domain/tone detection)
+        # Phase 1b: Optional steering. The detection is automatic; this
+        # lightweight dialog just lets a translator who wants to correct the
+        # domain or add a short briefing do so. Most users press Generate
+        # and move on. Cancel aborts.
+        ctx_dialog = _AutoPromptContextDialog(
+            detected_domain, context_description, parent=self.main_widget
+        )
+        if ctx_dialog.exec() != QDialog.DialogCode.Accepted:
+            self._add_chat_message("system", "AutoPrompt cancelled.")
+            return
+        chosen_domain = ctx_dialog.get_domain()
+        user_context_hint = ctx_dialog.get_context_hint()
+        if chosen_domain and chosen_domain != detected_domain:
+            self.log_message(
+                f"[AI Assistant] Domain overridden by user: "
+                f"{detected_domain} -> {chosen_domain}"
+            )
+            detected_domain = chosen_domain
+        if user_context_hint:
+            self.log_message("[AI Assistant] Translator context briefing supplied")
+
+        # Phase 1c: Multi-file analysis (per-file tone detection)
         file_manifest = ""
         project = getattr(self.parent_app, 'current_project', None)
         if project:
@@ -4204,9 +4340,6 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
         source_defects = self._detect_source_defects(source_text)
         source_cascades = self._extract_source_cascades(source_text)
         include_legal_entity_scaffolding = self._detect_legal_entity_markers(source_text)
-        patent_markers_detected = 0
-        if analysis.get('success'):
-            patent_markers_detected = analysis.get('domain', {}).get('patent_markers_detected', 0)
 
         if terminology_collisions:
             self.log_message(f"[AI Assistant] Terminology collisions detected — injecting into meta-prompt")
@@ -4214,8 +4347,8 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             self.log_message(f"[AI Assistant] Source defects detected — injecting verbatim examples")
         if source_cascades:
             self.log_message(f"[AI Assistant] Preference cascades extracted from source")
-        if patent_markers_detected >= 3:
-            self.log_message(f"[AI Assistant] Strong patent signal ({patent_markers_detected} markers) — domain locked to 'patent'")
+        if detected_domain == 'patent':
+            self.log_message(f"[AI Assistant] Patent domain — applying patent framing")
         if not include_legal_entity_scaffolding:
             self.log_message(f"[AI Assistant] No legal-entity markers in source — omitting BV/NV/Meester scaffolding")
 
@@ -4237,7 +4370,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             source_defects=source_defects,
             source_cascades=source_cascades,
             include_legal_entity_scaffolding=include_legal_entity_scaffolding,
-            patent_markers_detected=patent_markers_detected,
+            user_context_hint=user_context_hint,
         )
 
         # v1.10.178: optional vision-aware AutoPrompt. If the user has
@@ -4525,8 +4658,125 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
 
     # --- Enhanced prompt generation helpers ---
 
+    # Domains the generation templates understand. The AI classifier is
+    # constrained to these so its answer maps straight onto a template;
+    # anything else falls back to 'general'.
+    _CLASSIFY_DOMAINS = ['patent', 'legal', 'medical', 'technical',
+                         'financial', 'marketing', 'general']
+
+    def _classify_document_context(self) -> tuple:
+        """Ask the AI to read a sample of the source and classify the domain.
+
+        Returns ``(domain, description)`` where ``domain`` is one of
+        ``_CLASSIFY_DOMAINS`` and ``description`` is a short free-text
+        characterisation of the text type (may be empty). Falls back to
+        ``('general', '')`` on any error, so AutoPrompt still runs.
+
+        This replaces the old keyword heuristic: a model reading the actual
+        text classifies far more reliably and across languages, instead of
+        counting domain keywords (which misread e.g. a creative text with a
+        stray "Fig. 1" and "comprising" as a patent).
+        """
+        try:
+            sample = (self._get_source_text_for_analysis() or "").strip()
+        except Exception:
+            sample = ""
+        if not sample:
+            return ('general', '')
+        # A few thousand characters is plenty to establish text type without
+        # bloating the classification call.
+        sample = sample[:4000]
+
+        domains_csv = ", ".join(self._CLASSIFY_DOMAINS)
+        system_prompt = (
+            "You are a classifier for a professional translation tool. "
+            "You read a document sample and identify its domain and text "
+            "type. Reply with ONLY a JSON object, no prose, no code fences."
+        )
+        prompt = (
+            "Classify the following document that is about to be translated.\n\n"
+            f"Choose the single best-fitting domain from this list: {domains_csv}.\n"
+            "Use 'general' only if none of the specific domains clearly fit.\n"
+            "Also give a short (max ~12 words) description of the text type "
+            "and register (e.g. 'creative marketing copy, playful tone' or "
+            "'mechanical patent, formal').\n\n"
+            'Return exactly: {"domain": "<one of the list>", "description": "<short phrase>"}\n\n'
+            "=== DOCUMENT SAMPLE ===\n"
+            f"{sample}"
+        )
+
+        # Run the classification off the main thread so the UI doesn't freeze
+        # (the call is quick, but a synchronous HTTP request still blocks the
+        # event loop and makes the window flash "not responding"). A small
+        # busy dialog covers the gap until the confirm-context dialog opens.
+        from PyQt6.QtCore import QEventLoop
+
+        progress = QProgressDialog(
+            "Reading the document to detect its context…", None, 0, 0,
+            self.main_widget,
+        )
+        progress.setWindowTitle("AutoPrompt")
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+
+        result = {'text': None, 'error': None}
+        worker = _AutoPromptWorker(self.chat_backend, prompt, system_prompt)
+        loop = QEventLoop()
+        worker.finished_ok.connect(
+            lambda text, _meta: (result.__setitem__('text', text), loop.quit())
+        )
+        worker.failed.connect(
+            lambda msg: (result.__setitem__('error', msg), loop.quit())
+        )
+        worker.start()
+        progress.show()
+        loop.exec()
+        worker.wait(2000)
+        progress.close()
+
+        if result['error'] is not None:
+            self.log_message(
+                f"[AI Assistant] Context classification failed: "
+                f"{result['error']} — defaulting to 'general'"
+            )
+            return ('general', '')
+        return self._parse_classification(result['text'])
+
+    def _parse_classification(self, response_text: str) -> tuple:
+        """Parse the classifier's JSON reply into ``(domain, description)``.
+
+        Tolerant of surrounding prose / code fences: extracts the first
+        JSON object. Invalid or unknown domains fall back to 'general'.
+        """
+        if not response_text:
+            return ('general', '')
+        domain = 'general'
+        description = ''
+        parsed_ok = False
+        try:
+            match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if match:
+                data = json.loads(match.group(0))
+                raw_domain = str(data.get('domain', '')).strip().lower()
+                if raw_domain in self._CLASSIFY_DOMAINS:
+                    domain = raw_domain
+                    parsed_ok = True
+                description = str(data.get('description', '')).strip()[:120]
+        except Exception:
+            pass
+        if not parsed_ok:
+            # No clean JSON domain: look for a bare domain word in the reply.
+            low = response_text.lower()
+            for d in self._CLASSIFY_DOMAINS:
+                if d != 'general' and d in low:
+                    domain = d
+                    break
+        return (domain, description)
+
     def _run_document_analysis(self) -> dict:
-        """Run DocumentAnalyzer on current project segments to detect domain, tone, terminology."""
+        """Run DocumentAnalyzer on current project segments (tone, structure, terminology)."""
         try:
             if not hasattr(self.parent_app, 'current_project') or not self.parent_app.current_project:
                 return {'success': False, 'error': 'No project loaded'}
@@ -4577,20 +4827,18 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
             file_segments = [s for s in project.segments if s.file_id == file_id]
             analysis = self._run_document_analysis_for_segments(file_segments)
 
-            domain = "general"
             tone = "neutral"
             formality = "neutral"
             word_count = 0
 
             if analysis.get('success'):
-                domain = analysis.get('domain', {}).get('primary', 'general')
                 tone = analysis.get('tone', {}).get('tone', 'neutral')
                 formality = analysis.get('tone', {}).get('formality', 'neutral')
                 word_count = analysis.get('statistics', {}).get('total_words', 0)
 
             lines.append(
                 f"File {file_id}: {file_name} ({seg_count} segments)\n"
-                f"  Domain: {domain.title()} | Tone: {tone.title()} | "
+                f"  Tone: {tone.title()} | "
                 f"Formality: {formality.title()} | {word_count:,} words"
             )
 
@@ -5057,7 +5305,7 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
                                         segment_count, file_manifest="",
                                         terminology_collisions="", source_defects="",
                                         source_cascades="", include_legal_entity_scaffolding=True,
-                                        patent_markers_detected=0) -> str:
+                                        user_context_hint="") -> str:
         """Build the enhanced meta-prompt that instructs the LLM to generate a rich translation prompt.
 
         Newer source-aware kwargs (all optional, all default to empty/safe):
@@ -5074,10 +5322,9 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
                 instructs the LLM to OMIT the BV/NV/Meester/notarial-title
                 section that's noise for documents (e.g. pure mechanical
                 patent bodies) where no entity names appear in running text.
-            patent_markers_detected: integer count of high-signal patent
-                markers found by DocumentAnalyzer; surfaced to the LLM so
-                it knows the domain classification was data-backed rather
-                than a default-fallback guess.
+            user_context_hint: optional free-text briefing the translator
+                supplied in the AutoPrompt context dialog; injected as an
+                authoritative context block so it overrides inferred domain.
         """
 
         # Filter the section list: drop the legal-entity / statutory-
@@ -5140,6 +5387,23 @@ If the text refers to figures (e.g., 'Figure 1A'), relevant images may be provid
                 "include the TERMINOLOGY CONSISTENCY HIERARCHY with the remaining priority levels."
             )
 
+        # Translator-supplied briefing (from the AutoPrompt context dialog).
+        # Surfaced as authoritative because the human knows the document's
+        # real purpose better than the keyword heuristic — this is what lets
+        # a user rescue a misclassified text (e.g. "this is creative copy,
+        # not a patent") instead of getting a wrongly-scoped prompt.
+        if user_context_hint:
+            context_hint_block = (
+                "=== TRANSLATOR-PROVIDED CONTEXT (AUTHORITATIVE) ===\n"
+                "The translator supplied the following briefing about this "
+                "document. Treat it as authoritative: where it conflicts with "
+                "the auto-detected domain or any inference below, follow the "
+                "briefing.\n\n"
+                f"{user_context_hint}\n"
+            )
+        else:
+            context_hint_block = ""
+
         prompt = f"""You are a prompt engineering specialist for professional translation. Your task is to generate
 a comprehensive, expert-level translation prompt and save it using the ACTION system.
 
@@ -5153,6 +5417,7 @@ SEGMENT COUNT: {segment_count}
 
 {analysis_summary}
 
+{context_hint_block}
 {f'''=== MULTI-FILE PROJECT INFORMATION ===
 {file_manifest}
 
@@ -5335,16 +5600,12 @@ cascade scan (per the SOURCE-AWARE ANALYSIS section above) using the source
 language's actual preference vocabulary — this helper only covers Dutch and English.
 
 {source_cascades}
-''' if source_cascades else ""}{f'''=== PATENT MARKERS DETECTED ({patent_markers_detected}) ===
-DocumentAnalyzer identified {patent_markers_detected} high-signal patent markers in
-the source (claim numbering, FIG. references, "uitvoeringsvorm", "omvattende",
-"stand der techniek", patent-number citations, etc.). The detected domain
-"{detected_domain}" is data-backed, not a default fallback — the generated prompt's
-ROLE should frame itself as a PATENT translator (not a generic legal or technical
-one) and apply EPO drafting conventions throughout. This signal is patent-specific;
-other domains have no equivalent override yet, so for non-patent documents the
-generated prompt should rely on the detected_domain and template guidance above.
-''' if patent_markers_detected >= 3 else ""}=== TRANSLATOR-COMMENT METHODOLOGY (REQUIRED IN EVERY GENERATED PROMPT) ===
+''' if source_cascades else ""}{f'''=== PATENT DOMAIN ===
+The document was classified as a PATENT text. The generated prompt's ROLE should
+frame itself as a PATENT translator (not a generic legal or technical one) and apply
+EPO drafting conventions throughout (claim structure, "comprising"/"omvattende"
+conventions, reference-numeral handling, embodiment language, etc.).
+''' if detected_domain == 'patent' else ""}=== TRANSLATOR-COMMENT METHODOLOGY (REQUIRED IN EVERY GENERATED PROMPT) ===
 
 Every prompt you generate MUST embed the following silent-correction-with-flagged-
 comment methodology. This is a project-wide Supervertaler standard for all

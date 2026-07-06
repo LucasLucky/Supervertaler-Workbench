@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.333 (July 6, 2026)
+**Current Version:** v1.10.334 (July 6, 2026)
+
+
+## v1.10.334 – July 6, 2026
+
+### Changed (AutoPrompt: AI-based context detection)
+
+- **AutoPrompt now detects the document's context with the AI instead of a keyword heuristic.** Clicking AutoPrompt sends a sample of the source to the model, which classifies the domain and describes the text type; that drives both the template selection and the tone/register guidance in the generated prompt. The old keyword-based domain detection (and its tone read, which could label a marketing campaign "technical, formal") is gone, and the orphaned **Domain Detection** keyword panel under Settings has been removed. A lightweight "confirm context" dialog lets you override the domain or add a short briefing before generation, but the default is one click straight through. Detection runs on a background worker with a small busy dialog, so the window no longer freezes while it works. (#237)
+
+### Added (Chat: easier copying of messages)
+
+- **Chat messages are easier to copy.** Right-click a message for "Copy whole message" or "Select / copy text…" (which opens a selectable view), or double-click a message to open that view directly. Because the chat bubbles are painted rather than real text widgets, trying to drag-select now shows a brief hint pointing you to the right-click menu. (#238)
 
 
 ## v1.10.333 – July 6, 2026

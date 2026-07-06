@@ -15,7 +15,7 @@ from PyQt6.QtGui import QFont, QCursor, QAction, QImage
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPlainTextEdit, QPushButton, QLabel, QFrame, QMenu, QApplication,
-    QAbstractItemView, QSizePolicy,
+    QAbstractItemView, QSizePolicy, QToolTip,
 )
 
 from modules.chat_backend import ChatBackend
@@ -56,6 +56,7 @@ class ChatViewWidget(QWidget):
         self._thinking_timer: QTimer = None
         self._thinking_dots: int = 0
         self._pending_images: list = []  # List of (label, base64_str) tuples
+        self._drag_start = None  # tracks a drag attempt for the copy hint
 
         self._init_ui()
         self._connect_backend()
@@ -101,6 +102,18 @@ class ChatViewWidget(QWidget):
         self._chat_display.customContextMenuRequested.connect(
             self._show_context_menu
         )
+        # Double-clicking a message opens it in a selectable/copyable viewer.
+        # The list items are painted (not real widgets), so in-place text
+        # selection isn't possible; this viewer is how users select and copy
+        # part of a message rather than only the whole thing.
+        self._chat_display.itemDoubleClicked.connect(
+            self._open_message_viewer
+        )
+        # The bubbles are painted, not text widgets, so click-dragging to
+        # select does nothing. Watch the viewport for a drag attempt and
+        # nudge the user toward the right-click copy menu (improves
+        # discoverability without the full inline-selection rewrite).
+        self._chat_display.viewport().installEventFilter(self)
         layout.addWidget(self._chat_display, 1)
 
         # Context chips row (above input)
@@ -872,12 +885,79 @@ class ChatViewWidget(QWidget):
             return
 
         menu = QMenu(self)
-        copy_action = menu.addAction("\U0001F4CB Copy Message")
+        copy_action = menu.addAction("\U0001F4CB Copy whole message")
+        select_action = menu.addAction("\U0001F5B1 Select / copy text…")
         action = menu.exec(self._chat_display.mapToGlobal(pos))
 
         if action == copy_action:
             clipboard = QApplication.clipboard()
             clipboard.setText(msg_data.get('content', ''))
+        elif action == select_action:
+            self._show_selectable_text(msg_data)
+
+    def _open_message_viewer(self, item):
+        """Open the selectable-text viewer for a double-clicked list item."""
+        if not item:
+            return
+        msg_data = item.data(Qt.ItemDataRole.UserRole)
+        if msg_data:
+            self._show_selectable_text(msg_data)
+
+    def _show_selectable_text(self, msg_data: dict):
+        """Show a message's text in a read-only, selectable, copyable viewer.
+
+        The chat bubbles are custom-painted, so their text can't be selected
+        in place. This lightweight viewer lets the user select any portion
+        and copy it (Ctrl+C), or copy the whole message with one button.
+        """
+        from PyQt6.QtWidgets import (
+            QDialog, QTextEdit, QDialogButtonBox, QPushButton,
+        )
+
+        content = msg_data.get('content', '') or ''
+        role = msg_data.get('role', 'system')
+        title = {
+            'user': 'Your message',
+            'assistant': 'Supervertaler Sidekick',
+        }.get(role, 'System message')
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"{title} – select & copy")
+        dlg.setMinimumSize(480, 320)
+
+        dlg_layout = QVBoxLayout(dlg)
+
+        viewer = QTextEdit()
+        viewer.setReadOnly(True)
+        viewer.setPlainText(content)
+        viewer.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        viewer.setStyleSheet(
+            "QTextEdit { background-color: #FFFFFF; color: #1a1a1a; "
+            "border: 1px solid #E0E0E0; border-radius: 4px; "
+            "font-size: 10pt; padding: 6px; }"
+        )
+        # Pre-select everything so a plain Ctrl+C copies the full message;
+        # the user can still drag to narrow the selection to a portion.
+        viewer.selectAll()
+        viewer.setFocus()
+        dlg_layout.addWidget(viewer, 1)
+
+        buttons = QDialogButtonBox()
+        copy_all_btn = QPushButton("\U0001F4CB Copy all")
+        copy_all_btn.clicked.connect(
+            lambda: QApplication.clipboard().setText(content)
+        )
+        buttons.addButton(copy_all_btn, QDialogButtonBox.ButtonRole.ActionRole)
+        close_btn = buttons.addButton(QDialogButtonBox.StandardButton.Close)
+        close_btn.setDefault(True)
+        buttons.rejected.connect(dlg.reject)
+        close_btn.clicked.connect(dlg.reject)
+        dlg_layout.addWidget(buttons)
+
+        dlg.exec()
 
     # ------------------------------------------------------------------
     # Public API
@@ -909,7 +989,39 @@ class ChatViewWidget(QWidget):
     # Event filter (keyboard handling)
     # ------------------------------------------------------------------
 
+    def _maybe_show_copy_hint(self, event):
+        """Show a one-shot tooltip when the user tries to drag-select chat text.
+
+        The chat bubbles are painted rather than real text widgets, so a
+        drag selects nothing. Rather than leave that as a silent dead end,
+        we point the user at the right-click copy menu.
+        """
+        et = event.type()
+        if et == event.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_start = event.position().toPoint()
+        elif et == event.Type.MouseMove:
+            if (self._drag_start is not None
+                    and event.buttons() & Qt.MouseButton.LeftButton):
+                moved = (event.position().toPoint() - self._drag_start).manhattanLength()
+                if moved > 12:
+                    QToolTip.showText(
+                        event.globalPosition().toPoint(),
+                        "Text selection isn't available here yet — right-click "
+                        "a message to copy it, or double-click to open a "
+                        "selectable view.",
+                        self._chat_display,
+                    )
+                    self._drag_start = None  # show once per drag gesture
+        elif et == event.Type.MouseButtonRelease:
+            self._drag_start = None
+
     def eventFilter(self, obj, event):
+        # Copy-hint on the chat viewport (see _maybe_show_copy_hint). Never
+        # consumes the event, so right-click menu / double-click still work.
+        if obj is self._chat_display.viewport():
+            self._maybe_show_copy_hint(event)
+            return False
         if obj is self._chat_input and event.type() == event.Type.KeyPress:
             key = event.key()
             modifiers = event.modifiers()
