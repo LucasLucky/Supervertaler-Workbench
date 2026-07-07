@@ -2959,7 +2959,7 @@ def _canon_path(p: str) -> str:
         return os.path.normcase(os.path.normpath(p or ''))
 
 
-def select_word_under_cursor(widget, event) -> bool:
+def select_word_under_cursor(widget, event, doc_pos=None) -> bool:
     """Select the word under the double-click position, excluding adjacent
     punctuation (e.g. a trailing period) and invisible-character markers.
 
@@ -2972,6 +2972,12 @@ def select_word_under_cursor(widget, event) -> bool:
     are preserved (don't, well-known); decimal separators inside a number are
     kept because only the *edges* of the selection are trimmed.
 
+    ``doc_pos`` (issue #240): a character offset captured at *press* time, before
+    activating the cell can reflow/scroll its text. When given we use it instead
+    of mapping the double-click's pixel position — so the correct word is picked
+    even if the text scooted between the two clicks. Falls back to the live
+    pixel position when None.
+
     Returns True if a selection was made, False if the caller should fall back
     to the default handler (e.g. empty cell).
     """
@@ -2983,8 +2989,11 @@ def select_word_under_cursor(widget, event) -> bool:
     if n == 0:
         return False
 
-    cursor = widget.cursorForPosition(event.pos())
-    pos = min(cursor.position(), n)
+    if doc_pos is not None:
+        pos = min(max(0, doc_pos), n)
+    else:
+        pos = min(widget.cursorForPosition(event.pos()).position(), n)
+    cursor = widget.textCursor()
 
     # Unicode word boundaries (UAX #29) around the click position. For CJK and
     # other space-less scripts this picks a sensible character/word boundary
@@ -3904,10 +3913,19 @@ class ReadOnlyGridTextEditor(QTextEdit):
     
     def mouseDoubleClickEvent(self, event):
         """Insert termbase translation on double-click"""
-        # Get cursor position
-        cursor = self.cursorForPosition(event.pos())
-        cursor_pos = cursor.position()
-        
+        # A double-click must never make the grid jump: cancel the recenter
+        # that the preceding single press scheduled (issue #240).
+        main_window = self._get_main_window()
+        if main_window is not None and hasattr(main_window, '_cancel_pending_click_center'):
+            main_window._cancel_pending_click_center()
+        # Cursor position: prefer the offset captured at press time (immune to
+        # any reflow/scroll the first click triggered — issue #240).
+        _pdp = getattr(self, '_press_doc_pos', None)
+        if _pdp is not None:
+            cursor_pos = min(max(0, _pdp), len(self.toPlainText()))
+        else:
+            cursor_pos = self.cursorForPosition(event.pos()).position()
+
         # Check if double-clicked on a termbase match
         for term_id, match_info in self.termbase_matches.items():
             # Extract source term from match_info
@@ -3946,12 +3964,19 @@ class ReadOnlyGridTextEditor(QTextEdit):
         
         # Not on a termbase match: select the word under the cursor, excluding
         # adjacent punctuation (same word-selection behaviour as the target cell).
-        if select_word_under_cursor(self, event):
+        if select_word_under_cursor(self, event, _pdp):
             return
         super().mouseDoubleClickEvent(event)
-    
+
     def mousePressEvent(self, event):
         """Allow text selection on click and trigger row selection"""
+        # Capture the clicked character offset BEFORE super()/activation can
+        # reflow or scroll the cell, so a following double-click selects the
+        # word we actually clicked even if the text scoots (issue #240).
+        try:
+            self._press_doc_pos = self.cursorForPosition(event.pos()).position()
+        except Exception:
+            self._press_doc_pos = None
         super().mousePressEvent(event)
 
         # Use stored table reference and row number
@@ -3962,6 +3987,11 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 is_shift = modifiers & Qt.KeyboardModifier.ShiftModifier
                 is_ctrl = modifiers & Qt.KeyboardModifier.ControlModifier
 
+                # NOTE: activation + auto-centering for a click is handled in
+                # focusInEvent (which fires first, from inside the super() call
+                # above), including the deferred, double-click-cancellable
+                # recenter for issue #240. This handler only covers clicks within
+                # the already-focused cell (no focus change, so no focusInEvent).
                 if is_shift or is_ctrl:
                     # For Shift+click (range) or Ctrl+click (toggle), just set current cell
                     # but don't call selectRow() which would clear the selection
@@ -4067,22 +4097,54 @@ class ReadOnlyGridTextEditor(QTextEdit):
                 is_shift = modifiers & Qt.KeyboardModifier.ShiftModifier
                 is_ctrl = modifiers & Qt.KeyboardModifier.ControlModifier
 
-                if is_shift or is_ctrl:
-                    # For Shift+click (range) or Ctrl+click (toggle), just set current cell
-                    # but don't call selectRow() which would clear the selection
-                    self.table_ref.setCurrentCell(self.row, 2)
-                else:
-                    # Normal focus - select just this row
-                    self.table_ref.selectRow(self.row)
-                    self.table_ref.setCurrentCell(self.row, 2)
+                main_window = self._get_main_window()
 
-                    # CRITICAL: Manually trigger on_cell_selected since signals aren't firing
-                    # Find the main window and call the method directly
-                    main_window = self.table_ref.parent()
-                    while main_window and not hasattr(main_window, 'on_cell_selected'):
-                        main_window = main_window.parent()
-                    if main_window and hasattr(main_window, 'on_cell_selected'):
-                        main_window.on_cell_selected(self.row, 2, -1, -1)
+                # Is this focus change caused by a mouse click (vs Tab /
+                # arrow-nav / programmatic focus)? Only clicks need the anti-jump
+                # treatment.
+                is_mouse_focus = (main_window is not None
+                                  and event.reason() == Qt.FocusReason.MouseFocusReason
+                                  and not (is_shift or is_ctrl))
+
+                # Defer centering only for mouse-driven focus, so a following
+                # double-click can cancel it before the grid jumps (issue #240).
+                # Keyboard / programmatic focus still centers immediately. This
+                # focusInEvent is the real activation path for a click — it fires
+                # from inside super().mousePressEvent, before the widget's own
+                # mousePressEvent runs.
+                defer_center = (is_mouse_focus
+                                and getattr(main_window, 'auto_center_active_segment', False)
+                                and not getattr(main_window, 'filtering_active', False))
+                if defer_center:
+                    main_window._click_activation = True
+
+                # Suppress Qt's own "ensure visible" auto-scroll during click
+                # activation so a double-click on a tall, partially-visible cell
+                # doesn't shift the text out from under the cursor between the two
+                # clicks (issue #240).
+                _prev_autoscroll = None
+                if is_mouse_focus:
+                    _prev_autoscroll = self.table_ref.hasAutoScroll()
+                    self.table_ref.setAutoScroll(False)
+                try:
+                    if is_shift or is_ctrl:
+                        # For Shift+click (range) or Ctrl+click (toggle), just set current cell
+                        # but don't call selectRow() which would clear the selection
+                        self.table_ref.setCurrentCell(self.row, 2)
+                    else:
+                        # Normal focus - select just this row
+                        self.table_ref.selectRow(self.row)
+                        self.table_ref.setCurrentCell(self.row, 2)
+
+                        # CRITICAL: Manually trigger on_cell_selected since signals aren't firing
+                        if main_window and hasattr(main_window, 'on_cell_selected'):
+                            main_window.on_cell_selected(self.row, 2, -1, -1)
+                finally:
+                    if _prev_autoscroll is not None:
+                        self.table_ref.setAutoScroll(_prev_autoscroll)
+
+                if defer_center and hasattr(main_window, '_schedule_click_center'):
+                    main_window._schedule_click_center(self.row)
             except Exception as e:
                 print(f"Error triggering manual cell selection: {e}")
 
@@ -4401,9 +4463,12 @@ class ReadOnlyGridTextEditor(QTextEdit):
         font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
         _tc = getattr(self, '_grid_text_color', None)
         color_rule = f"color: {_tc};" if _tc else ""
+        # Same-thickness transparent border when unfocused so gaining focus
+        # changes only the colour, not the content width — a `none` → `1px`
+        # jump would re-wrap long text and make it scoot (issue #240).
         self.setStyleSheet(f"""
             QTextEdit {{
-                border: none;
+                border: 1px solid transparent;
                 padding: 0px 4px 0px 0px;
                 {bg_rule}
                 {font_rule}
@@ -4935,7 +5000,14 @@ class EditableGridTextEditor(QTextEdit):
         (·, →, °, ↵, \n, \t) as word delimiters.  \u200B is intentionally
         excluded – it is a transparent word-wrap hint, not a delimiter.
         """
-        if select_word_under_cursor(self, event):
+        # A double-click must never make the grid jump: cancel the recenter
+        # that the preceding single press scheduled (issue #240).
+        main_window = self._get_main_window()
+        if main_window is not None and hasattr(main_window, '_cancel_pending_click_center'):
+            main_window._cancel_pending_click_center()
+        # Use the offset captured at press time (immune to any reflow/scroll
+        # the first click triggered) so we select the word actually clicked.
+        if select_word_under_cursor(self, event, getattr(self, '_press_doc_pos', None)):
             return
         super().mouseDoubleClickEvent(event)
     
@@ -5500,6 +5572,13 @@ class EditableGridTextEditor(QTextEdit):
     
     def mousePressEvent(self, event):
         """Allow text selection on click and auto-select row"""
+        # Capture the clicked character offset BEFORE super()/activation can
+        # reflow or scroll the cell, so a following double-click selects the
+        # word we actually clicked even if the text scoots (issue #240).
+        try:
+            self._press_doc_pos = self.cursorForPosition(event.pos()).position()
+        except Exception:
+            self._press_doc_pos = None
         super().mousePressEvent(event)
         # Auto-select the row when clicking in the target cell
         if self.table and self.row >= 0:
@@ -5508,6 +5587,11 @@ class EditableGridTextEditor(QTextEdit):
             is_shift = modifiers & Qt.KeyboardModifier.ShiftModifier
             is_ctrl = modifiers & Qt.KeyboardModifier.ControlModifier
 
+            # NOTE: activation + auto-centering for a click is handled in
+            # focusInEvent (which fires first, from inside the super() call
+            # above), including the deferred, double-click-cancellable recenter
+            # for issue #240. This handler only covers clicks within the
+            # already-focused cell (no focus change, so no focusInEvent).
             if is_shift or is_ctrl:
                 # For Shift+click (range) or Ctrl+click (toggle), just set current cell
                 # but don't call selectRow() which would clear the selection
@@ -5614,26 +5698,59 @@ class EditableGridTextEditor(QTextEdit):
             is_shift = modifiers & Qt.KeyboardModifier.ShiftModifier
             is_ctrl = modifiers & Qt.KeyboardModifier.ControlModifier
 
-            if is_shift or is_ctrl:
-                # For Shift+click (range) or Ctrl+click (toggle), just set current cell
-                # but don't call selectRow() which would clear the selection
-                self.table.setCurrentCell(self.row, 3)  # Column 3 is Target
-            else:
-                # Normal focus - select just this row
-                self.table.selectRow(self.row)
-                self.table.setCurrentCell(self.row, 3)  # Column 3 is Target
+            main_window = self._get_main_window()
 
-                # CRITICAL: Manually trigger on_cell_selected since signals aren't firing
-                # Find the main window and call the method directly
-                try:
-                    main_window = self.table.parent()
-                    while main_window and not hasattr(main_window, 'on_cell_selected'):
-                        main_window = main_window.parent()
-                    if main_window and hasattr(main_window, 'on_cell_selected'):
-                        main_window.on_cell_selected(self.row, 3, -1, -1)
-                except Exception as e:
-                    print(f"Error triggering manual cell selection: {e}")
-    
+            # Is this focus change caused by a mouse click (vs Tab / arrow-nav /
+            # programmatic focus)? Only clicks need the anti-jump treatment.
+            is_mouse_focus = (main_window is not None
+                              and event.reason() == Qt.FocusReason.MouseFocusReason
+                              and not (is_shift or is_ctrl))
+
+            # Defer centering only for mouse-driven focus, so a following
+            # double-click can cancel it before the grid jumps (issue #240).
+            # Keyboard / programmatic focus still centers immediately. This
+            # focusInEvent is the real activation path for a click — it fires
+            # from inside super().mousePressEvent, before the widget's own
+            # mousePressEvent runs, which is why suppressing the center in
+            # mousePressEvent alone did nothing.
+            defer_center = (is_mouse_focus
+                            and getattr(main_window, 'auto_center_active_segment', False)
+                            and not getattr(main_window, 'filtering_active', False))
+            if defer_center:
+                main_window._click_activation = True
+
+            # Suppress Qt's own "ensure visible" auto-scroll during click
+            # activation. On a tall, partially-visible cell selectRow/
+            # setCurrentCell would otherwise scroll the row into view, shifting
+            # the text out from under the cursor between the two clicks of a
+            # double-click so the second click hits the wrong word (issue #240).
+            _prev_autoscroll = None
+            if is_mouse_focus:
+                _prev_autoscroll = self.table.hasAutoScroll()
+                self.table.setAutoScroll(False)
+            try:
+                if is_shift or is_ctrl:
+                    # For Shift+click (range) or Ctrl+click (toggle), just set current cell
+                    # but don't call selectRow() which would clear the selection
+                    self.table.setCurrentCell(self.row, 3)  # Column 3 is Target
+                else:
+                    # Normal focus - select just this row
+                    self.table.selectRow(self.row)
+                    self.table.setCurrentCell(self.row, 3)  # Column 3 is Target
+
+                    # CRITICAL: Manually trigger on_cell_selected since signals aren't firing
+                    try:
+                        if main_window and hasattr(main_window, 'on_cell_selected'):
+                            main_window.on_cell_selected(self.row, 3, -1, -1)
+                    except Exception as e:
+                        print(f"Error triggering manual cell selection: {e}")
+            finally:
+                if _prev_autoscroll is not None:
+                    self.table.setAutoScroll(_prev_autoscroll)
+
+            if defer_center and hasattr(main_window, '_schedule_click_center'):
+                main_window._schedule_click_center(self.row)
+
     def keyPressEvent(self, event):
         """Handle Tab and Ctrl+E keys to cycle between source and target cells"""
         from PyQt6.QtWidgets import QApplication
@@ -6315,9 +6432,14 @@ class EditableGridTextEditor(QTextEdit):
         font_rule = f"font-size: {self._grid_font_pt:.1f}pt;" if self._grid_font_pt else ""
         _tc = getattr(self, '_grid_text_color', None)
         color_rule = f"color: {_tc};" if _tc else ""
+        # Keep the border the SAME thickness in both states (transparent when
+        # unfocused) so gaining focus changes only its colour, never the content
+        # width. A `border: none` → `border: 2px` jump on focus re-wraps a long
+        # paragraph into a narrower box, making the text scoot vertically — which
+        # broke double-click word selection on big segments (issue #240).
         self.setStyleSheet(f"""
             QTextEdit {{
-                border: none;
+                border: {border_thickness}px solid transparent;
                 padding: 0px 4px 0px 0px;
                 {bg_rule}
                 {font_rule}
@@ -47911,6 +48033,14 @@ class SupervertalerQt(QMainWindow):
         if self.debug_mode_enabled:
             self.log(f"🎯 on_cell_selected called: row {current_row}, col {current_col}")
 
+        # If this activation came from the keyboard (arrow keys / Ctrl+Enter),
+        # cancel any pending click-triggered recenter and re-enable immediate
+        # centering — the deferred-center machinery is only for mouse clicks
+        # (issue #240). These flags are set by the key handlers just before
+        # navigation triggers this signal, and are reset to False further down.
+        if getattr(self, '_arrow_key_navigation', False) or getattr(self, '_ctrl_enter_navigation', False):
+            self._cancel_pending_click_center()
+
         # ⚡ INSTANT exact-TM lookup — runs BEFORE the same-row guard so a 100%
         # match is (re)asserted whenever you're on a segment, even when returning
         # to the same row after an edit. The guard below only skips the HEAVY
@@ -47984,18 +48114,117 @@ class SupervertalerQt(QMainWindow):
     
     def _center_row_in_viewport(self, row: int):
         """Center the given row vertically in the visible table viewport.
-        
+
         Uses Qt's built-in scrollTo() with PositionAtCenter hint.
         """
         if row < 0 or row >= self.table.rowCount():
             return
-        
+
         # Get the model index for any cell in this row (use column 0)
         index = self.table.model().index(row, 0)
         if index.isValid():
             # Use Qt's built-in centering - PositionAtCenter puts the item in the center of the viewport
             self.table.scrollTo(index, QAbstractItemView.ScrollHint.PositionAtCenter)
-    
+
+    # ------------------------------------------------------------------
+    # Deferred, double-click-cancellable auto-centering (issue #240)
+    #
+    # When "Keep active segment centered" is on, activating a segment by
+    # *clicking* into it used to recenter the grid immediately, inside the
+    # first press of the click. For a double-click that scroll happened
+    # *between* the two clicks, moving the text out from under the cursor so
+    # the second click landed on the wrong word (or none). Trados/memoQ only
+    # recenter on a plain single click and never on a double-click.
+    #
+    # So a mouse click no longer centers immediately: it sets
+    # ``_click_activation`` (which suppresses the immediate centers in the
+    # minimal/full selection paths) and schedules the recenter for one
+    # double-click interval later. A double-click that arrives in that window
+    # cancels the pending recenter, leaving the view still. Keyboard
+    # navigation is unaffected and still centers immediately.
+    # ------------------------------------------------------------------
+    def _schedule_click_center(self, row: int):
+        """Schedule a recenter of ``row`` one double-click interval from now,
+        cancellable by a following double-click. Only used for plain mouse
+        clicks when auto-centering is enabled."""
+        from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QApplication
+        existing = getattr(self, '_pending_center_timer', None)
+        if existing is not None:
+            try:
+                existing.stop()
+            except Exception:
+                pass
+        # Mark the in-flight activation as a click so the immediate centers in
+        # _on_cell_selected_minimal / _full are skipped for it.
+        self._click_activation = True
+        self._click_center_cancelled = False
+        timer = QTimer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda r=row: self._fire_click_center(r))
+        timer.start(QApplication.doubleClickInterval())
+        self._pending_center_timer = timer
+
+    def _fire_click_center(self, row: int):
+        """Timer callback: the double-click interval elapsed without a cancel.
+
+        We do NOT center directly here. On a tall segment, on_cell_selected can
+        block the event loop for ~1s doing termbase highlighting; when it
+        unblocks, this overdue timer can fire *before* a double-click that is
+        still queued in the OS input queue — so centering here would scroll the
+        grid out from under the second click (issue #240). Instead we re-post
+        the actual centering through a zero-timer, which Qt runs only after all
+        pending window-system (input) events. That lets the queued double-click
+        reach _cancel_pending_click_center first and abort us."""
+        from PyQt6.QtCore import QTimer
+        self._pending_center_timer = None
+        QTimer.singleShot(0, lambda r=row: self._apply_click_center(r))
+
+    def _click_center_would_help(self, row: int) -> bool:
+        """Whether recentering a *clicked* row is worth doing (issue #240).
+
+        Skip only when the row is taller than the viewport — scrollTo can't
+        meaningfully center something bigger than the screen (it just bounces).
+        Otherwise center it, Trados-style, even if it's currently fully visible.
+
+        (Earlier we also skipped already-visible rows to dodge a mid-double-click
+        scroll; that's no longer needed — the double-click cancels the pending
+        center, and the real jitter culprit, the focus-border reflow, is fixed.)"""
+        try:
+            return self.table.rowHeight(row) < self.table.viewport().height()
+        except Exception:
+            return True
+
+    def _apply_click_center(self, row: int):
+        """Zero-timer tail of the single-click recenter: runs after any queued
+        double-click has had its chance to cancel us."""
+        self._click_activation = False
+        if getattr(self, '_click_center_cancelled', False):
+            self._click_center_cancelled = False
+            return
+        try:
+            if (self.table.currentRow() == row
+                    and getattr(self, 'auto_center_active_segment', False)
+                    and not getattr(self, 'filtering_active', False)
+                    and self._click_center_would_help(row)):
+                self._center_row_in_viewport(row)
+        except Exception:
+            pass
+
+    def _cancel_pending_click_center(self):
+        """Cancel a pending click-triggered recenter (called by double-click
+        handlers and by keyboard navigation). Also sets a flag so a recenter
+        that has already been re-posted via the zero-timer aborts too."""
+        timer = getattr(self, '_pending_center_timer', None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        self._pending_center_timer = None
+        self._click_activation = False
+        self._click_center_cancelled = True
+
     def _on_cell_selected_minimal(self, current_row, previous_row):
         """Minimal UI update for fast arrow key navigation - just highlight and scroll"""
         try:
@@ -48015,8 +48244,13 @@ class SupervertalerQt(QMainWindow):
                     current_id_item.setBackground(QColor("#FFA500"))
                     current_id_item.setForeground(QColor("white"))
                 
-                # Auto-center if enabled
-                if getattr(self, 'auto_center_active_segment', False) and not getattr(self, 'filtering_active', False):
+                # Auto-center if enabled. Skip the *immediate* center when the
+                # activation came from a mouse click (issue #240) — a click
+                # schedules a deferred, double-click-cancellable recenter
+                # instead (see _schedule_click_center).
+                if (getattr(self, 'auto_center_active_segment', False)
+                        and not getattr(self, 'filtering_active', False)
+                        and not getattr(self, '_click_activation', False)):
                     self._center_row_in_viewport(current_row)
         except Exception as e:
             if self.debug_mode_enabled:
@@ -48179,12 +48413,14 @@ class SupervertalerQt(QMainWindow):
                     current_id_item.setBackground(QColor("#FFA500"))
                     current_id_item.setForeground(QColor("white"))
                 
-                if getattr(self, 'auto_center_active_segment', False) and not getattr(self, 'filtering_active', False):
+                if (getattr(self, 'auto_center_active_segment', False)
+                        and not getattr(self, 'filtering_active', False)
+                        and not getattr(self, '_click_activation', False)):
                     self._center_row_in_viewport(current_row)
-            
+
             if not self.current_project or current_row < 0:
                 return
-            
+
             if current_row < len(self.current_project.segments):
                 # CRITICAL: Get segment by ID from the grid, not by row index!
                 # The row index might not match the segment's position in the list

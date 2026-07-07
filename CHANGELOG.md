@@ -2,7 +2,17 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.334 (July 6, 2026)
+**Current Version:** v1.10.335 (July 7, 2026)
+
+
+## v1.10.335 – July 7, 2026
+
+### Fixed (Editor: double-click selecting the wrong word / grid jumping)
+
+- **Double-clicking a word in a non-active segment now selects that word, with no grid jump — even on very long segments.** Two separate causes were fixed:
+  - **Focus-border reflow (the main culprit on long segments).** Grid cells drew their active-cell outline with `border: none` when unfocused and a `2px` border when focused. Because a border eats into the content area, focusing a cell shrank its text width by ~4px, which re-wrapped long paragraphs and made the text "scoot" vertically by a line or more — so the second click of a double-click landed on a different word. The outline is now always the same thickness (transparent when unfocused, coloured when focused), so focusing a cell no longer changes its layout at all. This is invisible but makes the text sit perfectly still when you click into a segment.
+  - **Centering between the two clicks.** With **Keep active segment centered** on, clicking a cell recentered the grid inside the first press, scrolling the text out from under the second click. Centering is now deferred by the double-click interval and cancelled by a double-click, so double-clicking never moves the grid; a plain single click still recenters the segment (Trados-style), except when it is taller than the viewport (where centering just bounces). Word selection also now uses the character offset captured at press time, so it stays correct regardless of any later scroll or reflow.
+- Applies to both source and target cells. Keyboard navigation, modifier-clicks, and the case where centering is turned off are unaffected. (#240)
 
 
 ## v1.10.334 – July 6, 2026
