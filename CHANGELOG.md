@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.335 (July 7, 2026)
+**Current Version:** v1.10.336 (July 7, 2026)
+
+
+## v1.10.336 – July 7, 2026
+
+### Added (Editor: triple-click to select a whole segment)
+
+- **Triple-clicking a segment now selects its entire text.** Following the standard text-editor convention – single click positions the cursor, double click selects a word, triple click selects the whole paragraph – a third quick click in a source or target cell now selects the complete segment, so you can retype to replace it or copy it in one gesture. Suggested by @danielhug-cc in #240.
 
 
 ## v1.10.335 – July 7, 2026

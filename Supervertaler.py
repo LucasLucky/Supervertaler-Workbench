@@ -3029,6 +3029,33 @@ def select_word_under_cursor(widget, event, doc_pos=None) -> bool:
     return True
 
 
+def select_whole_segment(widget) -> bool:
+    """Select the entire text of a grid cell – the triple-click gesture, which
+    (like triple-clicking a paragraph in a text editor) grabs the whole segment
+    in one go for replacing or copying. Returns False on an empty cell so the
+    caller can fall through to the default handler. (#240 follow-up.)"""
+    from PyQt6.QtGui import QTextCursor
+    if not widget.toPlainText():
+        return False
+    cursor = widget.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    widget.setTextCursor(cursor)
+    return True
+
+
+def is_triple_click(widget, event) -> bool:
+    """True when ``event`` is the third click of a triple-click: a left press
+    that arrives within the double-click interval of this widget's last
+    double-click (whose timestamp is stashed in ``_last_dblclick_ts``)."""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        last = getattr(widget, '_last_dblclick_ts', 0)
+        return (event.button() == Qt.MouseButton.LeftButton and bool(last)
+                and (event.timestamp() - last) <= QApplication.doubleClickInterval())
+    except Exception:
+        return False
+
+
 class ReadOnlyGridTextEditor(QTextEdit):
     """Read-only QTextEdit for source cells - allows easy text selection"""
     
@@ -3918,6 +3945,9 @@ class ReadOnlyGridTextEditor(QTextEdit):
         main_window = self._get_main_window()
         if main_window is not None and hasattr(main_window, '_cancel_pending_click_center'):
             main_window._cancel_pending_click_center()
+        # Remember when this double-click happened so a quick third press is
+        # recognised as a triple-click (whole-segment select) in mousePressEvent.
+        self._last_dblclick_ts = event.timestamp()
         # Cursor position: prefer the offset captured at press time (immune to
         # any reflow/scroll the first click triggered — issue #240).
         _pdp = getattr(self, '_press_doc_pos', None)
@@ -3977,7 +4007,14 @@ class ReadOnlyGridTextEditor(QTextEdit):
             self._press_doc_pos = self.cursorForPosition(event.pos()).position()
         except Exception:
             self._press_doc_pos = None
+        # Triple-click selects the whole segment (finalised in mouseReleaseEvent,
+        # so Qt's own release doesn't collapse the selection).
+        _triple = is_triple_click(self, event)
         super().mousePressEvent(event)
+        if _triple:
+            self._last_dblclick_ts = 0  # consume so a 4th press doesn't re-trigger
+            self._triple_pending = True
+            return
 
         # Use stored table reference and row number
         if self.table_ref and self.row >= 0:
@@ -4018,6 +4055,13 @@ class ReadOnlyGridTextEditor(QTextEdit):
         partial words at the START and END of your selection will be expanded.
         """
         super().mouseReleaseEvent(event)
+
+        # Triple-click: apply the whole-segment selection now, after Qt's own
+        # release handling, so it isn't collapsed. Skip the smart-word expansion.
+        if getattr(self, '_triple_pending', False):
+            self._triple_pending = False
+            select_whole_segment(self)
+            return
 
         # Check if smart selection is enabled
         main_window = self._get_main_window()
@@ -5005,6 +5049,9 @@ class EditableGridTextEditor(QTextEdit):
         main_window = self._get_main_window()
         if main_window is not None and hasattr(main_window, '_cancel_pending_click_center'):
             main_window._cancel_pending_click_center()
+        # Remember when this double-click happened so a quick third press is
+        # recognised as a triple-click (whole-segment select) in mousePressEvent.
+        self._last_dblclick_ts = event.timestamp()
         # Use the offset captured at press time (immune to any reflow/scroll
         # the first click triggered) so we select the word actually clicked.
         if select_word_under_cursor(self, event, getattr(self, '_press_doc_pos', None)):
@@ -5579,7 +5626,15 @@ class EditableGridTextEditor(QTextEdit):
             self._press_doc_pos = self.cursorForPosition(event.pos()).position()
         except Exception:
             self._press_doc_pos = None
+        # Triple-click selects the whole segment (like selecting a paragraph).
+        # We finalise the selection in mouseReleaseEvent — doing it here would be
+        # undone when Qt's own release collapses the (zero-length) drag.
+        _triple = is_triple_click(self, event)
         super().mousePressEvent(event)
+        if _triple:
+            self._last_dblclick_ts = 0  # consume so a 4th press doesn't re-trigger
+            self._triple_pending = True
+            return
         # Auto-select the row when clicking in the target cell
         if self.table and self.row >= 0:
             # Check for Shift or Ctrl modifier - let Qt handle native multi-selection
@@ -5619,6 +5674,13 @@ class EditableGridTextEditor(QTextEdit):
         partial words at the START and END of your selection will be expanded.
         """
         super().mouseReleaseEvent(event)
+
+        # Triple-click: apply the whole-segment selection now, after Qt's own
+        # release handling, so it isn't collapsed. Skip the smart-word expansion.
+        if getattr(self, '_triple_pending', False):
+            self._triple_pending = False
+            select_whole_segment(self)
+            return
 
         # Check if smart selection is enabled
         main_window = self._get_main_window()
