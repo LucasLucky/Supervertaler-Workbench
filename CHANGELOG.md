@@ -2,7 +2,14 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.336 (July 7, 2026)
+**Current Version:** v1.10.337 (July 8, 2026)
+
+
+## v1.10.337 – July 8, 2026
+
+### Fixed (AI translation: spurious trailing line breaks in every segment)
+
+- **AI-translated segments no longer pick up spurious trailing line breaks.** When the model formatted its numbered batch response with a blank line between entries (common, for readability), the response parser treated each blank line as a continuation of the preceding translation and appended it – leaving a trailing newline (shown as ↵) on almost every target segment (599 of 639 on one real document, some with two). On export those became extra empty lines in the delivered file. The parser now strips trailing newline(s) from each parsed translation while preserving genuine internal line breaks (and any meaningful trailing space on the content line). Fixed in both the editor's batch-translate path and the headless `batch_offload` path. Note: segments translated before this fix keep their trailing breaks in the saved project; re-translating a segment clears them.
 
 
 ## v1.10.336 – July 7, 2026

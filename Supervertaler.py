@@ -8173,7 +8173,16 @@ class PreTranslationWorker(QThread):
                     elif current_id is not None:
                         # Continuation line for a multi-line translation
                         translation_map[current_id] += '\n' + line
-                
+
+                # Drop spurious trailing newlines: models often separate the
+                # numbered entries with a blank line, which the continuation
+                # branch above appends to the preceding translation as a
+                # trailing '\n' (shown as ↵ on nearly every segment). Strip
+                # trailing newline(s) while keeping genuine internal line breaks
+                # and any meaningful trailing space on the content line.
+                for _sid in translation_map:
+                    translation_map[_sid] = re.sub(r'\n\s*$', '', translation_map[_sid])
+
                 # Extract translations in order
                 for row_index, seg in batch_segments:
                     translation = translation_map.get(seg.id, None)

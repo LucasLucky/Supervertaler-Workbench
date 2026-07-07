@@ -126,6 +126,10 @@ def parse_batch_response(result, batch):
             out[current_id] = m.group(2)
         elif current_id is not None:
             out[current_id] += "\n" + line
+    # Blank separator lines between numbered entries get appended as trailing
+    # newlines above; strip them (keep genuine internal line breaks).
+    for _id in out:
+        out[_id] = re.sub(r'\n\s*$', '', out[_id])
     return out
 
 
