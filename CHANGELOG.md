@@ -2,7 +2,18 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.337 (July 8, 2026)
+**Current Version:** v1.10.338 (July 8, 2026)
+
+
+## v1.10.338 – July 8, 2026
+
+### Fixed (AI translation: failures now say why)
+
+- **Batch AI translation now surfaces the real reason a translation failed instead of a silent "No translation".** When a provider rejected the request – e.g. an OpenAI **403 "project does not have access to model gpt-5.5"**, an unavailable model id, invalid parameters, or a network error – the batch worker caught the exception, printed it to a console the packaged app doesn't have, and reported every segment as "No translation" with no clue why. The error is now re-raised and shown in the progress console (`✗ BATCH ERROR: …`) and written to the log (`❌ Batch translation failed: …`). Note: a model showing "0 translated / all failed" with an access error means your provider account doesn't have access to that model – request access or pick a different one.
+
+### Changed (internal cleanup)
+
+- **Removed ~790 lines of dead code** – the old blocking batch-translation implementation that sat unreachable after an early `return` (superseded by `PreTranslationWorker`). This also removes a stale, unused copy of the numbered-response parser that shared the trailing-newline bug fixed in v1.10.337.
 
 
 ## v1.10.337 – July 8, 2026
