@@ -2,7 +2,30 @@
 
 All notable changes to Supervertaler Workbench are documented in this file.
 
-**Current Version:** v1.10.338 (July 8, 2026)
+**Current Version:** v1.10.339 (July 12, 2026)
+
+
+## v1.10.339 – July 12, 2026
+
+### Fixed (Clipboard manager: pastes reliably into far more applications)
+
+- **Clipboard clips and snippets/conversions now paste reliably into many more apps.** The paste-back step sends a synthetic Ctrl+V; several things made it miss:
+  - **Held modifiers weren't released.** When you summoned the Clipboard manager with the Ctrl+Alt+C hotkey and those keys were still physically down, the paste arrived as Ctrl+Alt+V (or Ctrl+Shift+V) and the target ignored it. The paste now releases Ctrl/Alt/Shift/Win first. This was the main culprit behind the original "won't paste into lots of programs" reports.
+  - **Send mode.** Reverted an interim `SendMode "Event"` change back to `SendMode "Input"` (AHK's most broadly-compatible backend) after it regressed pasting into Chrome / Gmail. Terminals, which ignore Ctrl+V entirely, are handled by the new typing fallback below rather than by send mode.
+- **New typing fallback for apps that don't accept Ctrl+V.** Right-click a text clip → **⌨ Paste by typing**, or set a persisted **Paste method** (Auto / Always Ctrl+V / Always type) from the same menu. In **Auto** (the default), detected console/terminal windows (cmd, PowerShell, Windows Terminal, ConEmu, Git Bash/mintty, PuTTY) are typed into instead of receiving a Ctrl+V that would do nothing.
+- **Clear reason when Windows blocks a paste into an elevated app.** If a target window runs at a higher privilege level (e.g. an app started with "Run as administrator") while Workbench is not, Windows' UIPI silently drops the paste – there is no software workaround. Workbench now detects this and logs / shows a clear message telling you to run Workbench as administrator to paste into that app, instead of failing invisibly.
+
+### Fixed (Clipboard shortcut no longer resets to default on restart)
+
+- **Rebinding the "Open Clipboard manager" hotkey to Ctrl+Shift+C now sticks.** A one-time default-value migration (old default Ctrl+Shift+C → new default Ctrl+Alt+C) was running on *every* launch and couldn't tell a legacy user from someone who had just deliberately chosen Ctrl+Shift+C – so it deleted that choice on the next restart. The migration is now gated behind a persisted marker so it fires at most once; Ctrl+Shift+C (or any binding) is freely selectable again.
+
+### Fixed (Global hotkeys: spurious "claimed by another app" warning at launch)
+
+- **The startup log no longer shows a misleading `⚠ Failed to register … (claimed by another app)` warning.** Workbench builds a hidden SuperLookup instance to own the global hotkeys, and a second visible-tab instance was re-attempting the same registration and colliding with the first – i.e. Workbench flagging itself. Only the primary instance registers now; the visible-tab and detached-window instances no longer re-register, so a real hotkey conflict won't be buried under a false alarm.
+
+### Changed (QuickTrans: softer colours)
+
+- **The QuickTrans popup has a light-blue backdrop instead of the flat grey.** The window and container use a soft blue with a matching border and a white, clearly-outlined source box; the numbered result cards stay white so they stand out, and the selected card keeps its blue highlight.
 
 
 ## v1.10.338 – July 8, 2026

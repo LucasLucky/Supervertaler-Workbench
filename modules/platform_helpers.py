@@ -326,6 +326,186 @@ def activate_foreground_window(handle):
 
 
 # ---------------------------------------------------------------------------
+# Window-class inspection (Windows) – used to pick a paste strategy
+# ---------------------------------------------------------------------------
+#
+# Console / terminal emulators typically do NOT paste on Ctrl+V (they use
+# Ctrl+Shift+V, right-click, or Enter). The clipboard manager's "Auto"
+# paste mode consults ``is_terminal_like_window`` and types the text out
+# character-by-character for these targets instead of firing a Ctrl+V that
+# would silently do nothing.
+_TERMINAL_WINDOW_CLASSES = (
+    'consolewindowclass',             # conhost: cmd.exe, powershell.exe
+    'cascadia_hosting_window_class',  # Windows Terminal
+    'virtualconsoleclass',            # ConEmu / Cmder
+    'mintty',                         # Git Bash, Cygwin, MSYS2
+    'putty',                          # PuTTY / KiTTY
+)
+
+
+def get_window_class(handle) -> str:
+    """Return the Win32 window-class name for *handle* (an HWND).
+
+    Empty string on non-Windows, on failure, or for a ``None`` handle.
+    """
+    if not IS_WINDOWS or handle is None:
+        return ''
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(256)
+        ctypes.windll.user32.GetClassNameW(handle, buf, 256)
+        return buf.value or ''
+    except Exception:
+        return ''
+
+
+def is_terminal_like_window(handle) -> bool:
+    """True if *handle* is a console/terminal-style window that usually
+    ignores a plain Ctrl+V paste.
+
+    Windows-only; returns False on other platforms (where the clipboard
+    manager's paste-back handle is a window title, not an HWND) and for
+    any window whose class we don't recognise. A caller that has
+    explicitly chosen "always type" still gets typing regardless.
+    """
+    cls = get_window_class(handle).lower()
+    if not cls:
+        return False
+    return any(term in cls for term in _TERMINAL_WINDOW_CLASSES)
+
+
+# ---------------------------------------------------------------------------
+# Windows integrity levels (UIPI) – can we inject input into this window?
+# ---------------------------------------------------------------------------
+#
+# Windows' User Interface Privilege Isolation blocks a process from sending
+# synthetic input (SendInput / typed keystrokes, incl. Ctrl+C / Ctrl+V) to a
+# window whose process runs at a HIGHER integrity level. So a non-elevated
+# Workbench cannot paste into an app started with "Run as administrator"
+# (e.g. Trados Studio 2026 under its admin-activation workaround) – the OS
+# silently drops the keystroke, and there is NO software workaround: only
+# running Workbench elevated too fixes it. The clipboard manager uses
+# ``paste_target_needs_elevation`` to detect this and surface a clear reason
+# instead of failing invisibly.
+#
+# Integrity RIDs: 0x1000 low, 0x2000 medium (normal user app),
+# 0x3000 high (elevated / admin), 0x4000 system.
+
+def get_process_integrity_level(pid) -> Optional[int]:
+    """Return the Windows integrity-level RID for process *pid*
+    (e.g. 0x2000 medium, 0x3000 high/elevated), or None if it can't be
+    determined. Windows-only."""
+    if not IS_WINDOWS or not pid:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        TOKEN_QUERY = 0x0008
+        TokenIntegrityLevel = 25
+
+        kernel32 = ctypes.windll.kernel32
+        advapi32 = ctypes.windll.advapi32
+
+        # Pin arg/return types – on 64-bit Python, unpinned HANDLE/pointer
+        # values are truncated to 32-bit ints, which corrupts the handles
+        # and the SID pointers below.
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        advapi32.OpenProcessToken.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+        advapi32.GetTokenInformation.argtypes = [
+            wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+            wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+        advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(ctypes.c_ubyte)
+        advapi32.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
+        advapi32.GetSidSubAuthority.restype = ctypes.POINTER(wintypes.DWORD)
+        advapi32.GetSidSubAuthority.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+
+        h_proc = kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not h_proc:
+            return None
+        try:
+            h_token = wintypes.HANDLE()
+            if not advapi32.OpenProcessToken(
+                    h_proc, TOKEN_QUERY, ctypes.byref(h_token)):
+                return None
+            try:
+                size = wintypes.DWORD(0)
+                # First call sizes the buffer (returns FALSE / insufficient buffer).
+                advapi32.GetTokenInformation(
+                    h_token, TokenIntegrityLevel, None, 0, ctypes.byref(size))
+                if not size.value:
+                    return None
+                buf = ctypes.create_string_buffer(size.value)
+                if not advapi32.GetTokenInformation(
+                        h_token, TokenIntegrityLevel, buf, size, ctypes.byref(size)):
+                    return None
+                # buf holds TOKEN_MANDATORY_LABEL { SID_AND_ATTRIBUTES Label };
+                # its first pointer-sized field is the PSID.
+                sid = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+                if not sid:
+                    return None
+                count = advapi32.GetSidSubAuthorityCount(sid)[0]
+                rid = advapi32.GetSidSubAuthority(sid, count - 1)[0]
+                return int(rid)
+            finally:
+                kernel32.CloseHandle(h_token)
+        finally:
+            kernel32.CloseHandle(h_proc)
+    except Exception:
+        return None
+
+
+def get_window_integrity_level(handle) -> Optional[int]:
+    """Integrity-level RID of the process owning window *handle* (HWND),
+    or None. Windows-only."""
+    if not IS_WINDOWS or not handle:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        pid = wintypes.DWORD()
+        ctypes.windll.user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
+        if not pid.value:
+            return None
+        return get_process_integrity_level(pid.value)
+    except Exception:
+        return None
+
+
+def get_current_process_integrity_level() -> Optional[int]:
+    """Integrity-level RID of the current (Workbench) process, or None."""
+    if not IS_WINDOWS:
+        return None
+    return get_process_integrity_level(os.getpid())
+
+
+def paste_target_needs_elevation(handle) -> bool:
+    """True if window *handle* belongs to a HIGHER-integrity process than
+    ours, so UIPI will silently block synthetic input (Ctrl+V or typed
+    text) to it unless Workbench is also elevated.
+
+    Windows-only. Returns False on any failure or ambiguity so a paste is
+    never suppressed on a false positive – this is a diagnostic hint, not
+    a gate.
+    """
+    if not IS_WINDOWS or not handle:
+        return False
+    try:
+        ours = get_current_process_integrity_level()
+        theirs = get_window_integrity_level(handle)
+        if ours is None or theirs is None:
+            return False
+        return theirs > ours
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Cross-platform Global Hotkey Manager
 # ---------------------------------------------------------------------------
 #
@@ -1080,28 +1260,66 @@ class CrossPlatformKeySender:
         except Exception as e:
             print(f"[CrossPlatformKeySender] PowerShell SendKeys failed: {e}")
 
-    def send_paste(self):
+    def send_paste(self) -> bool:
         """Send Ctrl+V (or Cmd+V on macOS) to paste.
 
         Uses the same platform-native approach as ``send_copy()``:
         - Windows: AHK subprocess (or PowerShell fallback)
         - macOS: osascript (AppleScript via System Events)
         - Linux: pynput Controller
+
+        Returns True if a backend was invoked without raising. A True
+        result does NOT guarantee the target app accepted the paste –
+        synthetic Ctrl+V is fire-and-forget – it only means the
+        keystroke was dispatched. Callers that need reliability in apps
+        which don't bind Ctrl+V (terminals, some Java/Electron apps)
+        should prefer ``type_text`` for those targets.
         """
         if IS_WINDOWS:
-            self._send_paste_win32()
+            return self._send_paste_win32()
         elif IS_MACOS:
-            self._send_paste_macos()
+            return self._send_paste_macos()
         elif self._controller:
             Key = self._Key
-            with self._controller.pressed(Key.ctrl):
-                self._controller.tap('v')
+            try:
+                with self._controller.pressed(Key.ctrl):
+                    self._controller.tap('v')
+                return True
+            except Exception as e:
+                print(f"[CrossPlatformKeySender] linux paste failed: {e}")
+                return False
+        return False
 
-    def _send_paste_win32(self):
+    def _send_paste_win32(self) -> bool:
         """Send Ctrl+V on Windows via AHK or PowerShell.
 
-        Uses the same temp-file approach as ``_send_copy_via_ahk`` because
-        AHK does not reliably accept scripts via stdin.
+        Hardened for cross-app reliability:
+
+          * **Physically-held modifiers are released first.** A paste
+            triggered while the Ctrl+Alt+C hotkey is still down would
+            otherwise arrive as Ctrl+Alt+V (or Ctrl+Shift+V, …) and be
+            ignored by the target. ``{Ctrl up}{Alt up}{Shift up}{LWin
+            up}{RWin up}`` clears them; releasing an already-up key is a
+            harmless no-op. This is the change that actually fixed the
+            original "won't paste" reports – stray modifiers, not send
+            mode, were the culprit.
+          * **Explicit ``SendMode "Input"``.** SendInput is AHK's most
+            broadly-compatible backend and is what Chromium/Chrome,
+            Electron, and ordinary Win32 apps expect. An earlier attempt
+            used ``SendMode "Event"`` to help RDP/VM sessions, but Event
+            mode regressed paste into Chrome (Gmail compose), so we send
+            via Input. Terminals – which ignore Ctrl+V regardless of
+            send mode – are handled separately by the clipboard
+            manager's typing fallback, not here.
+          * **The v2 script carries the ``#Requires`` header** the
+            keystroke path already uses, so a mis-detected launcher
+            (e.g. a bare ``AutoHotkey.exe`` dispatcher) can't silently
+            feed v1 comma-syntax to a v2 interpreter and no-op.
+
+        Uses the same temp-file approach as ``_send_copy_via_ahk``
+        because AHK does not reliably accept scripts via stdin.
+
+        Returns True if a backend was invoked without raising.
         """
         ahk = self._find_ahk()
         if ahk:
@@ -1109,14 +1327,24 @@ class CrossPlatformKeySender:
                 import tempfile
                 is_v2 = 'v2' in ahk.lower()
                 if is_v2:
-                    script = 'Send "^v"\nSleep 100'
+                    script = (
+                        '#Requires AutoHotkey v2.0\n'
+                        'SendMode "Input"\n'
+                        'Send "{Ctrl up}{Alt up}{Shift up}{LWin up}{RWin up}"\n'
+                        'Send "^v"\n'
+                        'ExitApp\n'
+                    )
                 else:
-                    script = 'Send, ^v\nSleep, 100'
+                    script = (
+                        'SendMode Input\n'
+                        'Send, {Ctrl up}{Alt up}{Shift up}{LWin up}{RWin up}\n'
+                        'Send, ^v\n'
+                    )
 
                 with tempfile.NamedTemporaryFile(
                     mode='w', suffix='.ahk', delete=False, encoding='utf-8'
                 ) as f:
-                    f.write(script + '\n')
+                    f.write(script)
                     tmp_path = f.name
 
                 subprocess.run(
@@ -1129,7 +1357,7 @@ class CrossPlatformKeySender:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-                return
+                return True
             except Exception as e:
                 print(f"[CrossPlatformKeySender] AHK paste failed: {e}")
 
@@ -1144,11 +1372,13 @@ class CrossPlatformKeySender:
                 timeout=5,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
+            return True
         except Exception as e:
             print(f"[CrossPlatformKeySender] PowerShell paste failed: {e}")
+            return False
 
     @staticmethod
-    def _send_paste_macos():
+    def _send_paste_macos() -> bool:
         """Send Cmd+V via osascript (macOS)."""
         try:
             subprocess.run(
@@ -1157,8 +1387,10 @@ class CrossPlatformKeySender:
                  'using command down'],
                 capture_output=True, timeout=5,
             )
+            return True
         except Exception as e:
             print(f"[CrossPlatformKeySender] macOS paste failed: {e}")
+            return False
 
     def send_keystroke(self, keystroke: str):
         """Send a compound keystroke like ``'ctrl+s'``, ``'ctrl+shift+l'``,

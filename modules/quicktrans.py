@@ -619,17 +619,24 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
             saved_y = settings.value("y", 0, type=int)
             self.move(saved_x, saved_y)
 
+        # Soft light-blue backdrop for the dialog itself, so the 8px frame
+        # around the rounded container reads as one calm panel instead of
+        # the drab default grey. Scoped to the class name so it styles only
+        # this window, never its children (which keep their own styles).
+        self.setStyleSheet("MTQuickPopup { background-color: #DCEAF8; }")
+
         # Main layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(0)
 
-        # Container with styling
+        # Container with styling. Light-blue fill (matching the dialog) with
+        # a soft blue border; the white result cards inside pop against it.
         container = QFrame()
         container.setStyleSheet("""
             QFrame {
-                background-color: white;
-                border: 1px solid #e0e0e0;
+                background-color: #DCEAF8;
+                border: 1px solid #B9D4F0;
                 border-radius: 4px;
             }
         """)
@@ -707,8 +714,8 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         source_frame = QFrame()
         source_frame.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border: 1px solid #e0e0e0;
+                background-color: white;
+                border: 1px solid #B9D4F0;
                 border-radius: 4px;
             }
         """)
@@ -748,7 +755,7 @@ class MTQuickPopup(QuickTransProviderMixin, QDialog):
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("background-color: #e0e0e0;")
+        sep.setStyleSheet("background-color: #B9D4F0;")
         sep.setFixedHeight(1)
         container_layout.addWidget(sep)
 

@@ -14855,11 +14855,11 @@ class SupervertalerQt(QMainWindow):
         Heavy: SuperlookupTab.__init__ brings up TM / termbase / MT and
         web-resource state. Deferring until first activation keeps cold
         start fast. The hotkey-side-effect SuperLookup instance from
-        _setup_superlookup_hotkeys handled the Ctrl+Alt+L registration
-        at launch time; this is a separate instance that powers the
-        visible top tab. (RegisterHotKey calls from the second instance
-        fail silently because the first one owns the registrations –
-        expected and harmless.)
+        _setup_superlookup_hotkeys already owns the global hotkeys; this
+        separate instance powers the visible top tab and passes
+        register_hotkeys=False so it does NOT re-attempt registration
+        (which used to fail with a misleading "claimed by another app"
+        warning against our own owner instance).
         """
         if self._superlookup_top_widget is not None:
             return
@@ -14867,6 +14867,7 @@ class SupervertalerQt(QMainWindow):
             widget = SuperlookupTab(
                 self,
                 user_data_path=getattr(self, 'user_data_path', None),
+                register_hotkeys=False,
             )
             self._superlookup_top_widget = widget
             placeholder = self.main_tabs.widget(self.superlookup_tab_index)
@@ -15022,8 +15023,15 @@ class SupervertalerQt(QMainWindow):
             layout.addLayout(header_layout)
             
             # Create new Superlookup instance for detached window
-            # Or move the existing one - better to create new to avoid widget parenting issues
-            detached_lookup = SuperlookupTab(self.lookup_detached_window, user_data_path=self.user_data_path)
+            # Or move the existing one - better to create new to avoid widget parenting issues.
+            # register_hotkeys=False: the hidden owner instance (self.lookup_tab)
+            # already holds the global hotkeys; a detached instance re-registering
+            # would just collide with it and log a spurious warning.
+            detached_lookup = SuperlookupTab(
+                self.lookup_detached_window,
+                user_data_path=self.user_data_path,
+                register_hotkeys=False,
+            )
             
             # Explicitly copy theme_manager reference
             detached_lookup.theme_manager = self.theme_manager
@@ -66043,10 +66051,17 @@ class SuperlookupTab(QWidget):
     Works anywhere on your computer: in CAT tools, browsers, Word, any text box
     """
     
-    def __init__(self, parent=None, user_data_path=None):
+    def __init__(self, parent=None, user_data_path=None, register_hotkeys=True):
         super().__init__(parent)
         self.main_window = parent  # Store reference to main window for database access
         self.user_data_path = user_data_path  # Store user data path for web cache
+        # Only the primary hidden instance (built by _setup_superlookup_hotkeys)
+        # owns the OS-level global hotkeys. The visible top-tab instance and any
+        # detached-window instance pass register_hotkeys=False so they don't
+        # re-attempt a registration the owner already holds — that collision
+        # used to log a misleading "⚠ Failed to register … (claimed by another
+        # app)" warning on every launch (issue seen in v1.10.338 logs).
+        self._register_hotkeys = register_hotkeys
         # The `is_sidekick` flag was removed in v1.10.10 along with the
         # Sidekick window itself. It used to gate mounting of the
         # QuickTrans settings widget as a sub-sub-tab inside Sidekick's
@@ -66108,9 +66123,10 @@ class SuperlookupTab(QWidget):
         
         # UI setup
         self.init_ui()
-        
-        # Register global hotkey
-        self.register_global_hotkey()
+
+        # Register global hotkey (primary instance only — see __init__ docstring)
+        if self._register_hotkeys:
+            self.register_global_hotkey()
     
     def keyPressEvent(self, event):
         """Handle key presses - Escape returns to Grid"""

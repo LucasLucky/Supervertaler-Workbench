@@ -84,6 +84,15 @@ class ClipboardManagerWidget(QWidget):
         self._suppress_next        = False   # True while we set the clipboard ourselves
         self._db_loaded            = False
         self._last_image_hash      = None    # for dedup of identical re-copies
+        # Text of the clip currently being pasted back, kept so the
+        # paste-back step can *type* it (AHK SendText) into targets that
+        # ignore a synthetic Ctrl+V. None while an image clip is in
+        # flight (images can only be delivered via Ctrl+V).
+        self._pending_paste_text   = None
+        # One-shot override set by the "Paste by typing" context-menu
+        # action: forces the typing path for the very next paste-back
+        # regardless of the persisted paste-method setting.
+        self._force_typing_once    = False
         # Source-window handle captured when the user arrived via a
         # global hotkey (Ctrl+Alt+C). Snippet / conversion activations
         # use this to paste-and-return: clipboard set → Workbench
@@ -776,17 +785,56 @@ class ClipboardManagerWidget(QWidget):
         item = list_widget.itemAt(pos)
         menu = QMenu(self)
         act_delete = None
+        act_type = None
         if item is not None:
             act_delete = menu.addAction("🗑 Delete")
+            # Per-item one-off: force the typing path for this paste,
+            # handy when a specific target ignores Ctrl+V and the global
+            # method is left on Ctrl+V / Auto. Text clips only.
+            if item.data(_ROLE_KIND) == 'text':
+                act_type = menu.addAction("⌨ Paste by typing")
             menu.addSeparator()
         act_clear = menu.addAction("Clear all")
+
+        # Persisted global paste-method chooser.
+        menu.addSeparator()
+        method_menu = menu.addMenu("Paste method")
+        current_method = self._resolve_paste_method()
+        method_actions = {}
+        for key, label in (
+            ('auto',   "Auto – type into terminals, else Ctrl+V"),
+            ('ctrl_v', "Always Ctrl+V"),
+            ('type',   "Always type the text"),
+        ):
+            a = method_menu.addAction(label)
+            a.setCheckable(True)
+            a.setChecked(current_method == key)
+            method_actions[a] = key
+
         action = menu.exec(list_widget.viewport().mapToGlobal(pos))
         if action is None:
             return
         if action == act_delete and item is not None:
             self._delete_item(item, list_widget)
+        elif action == act_type and item is not None:
+            self._paste_item_by_typing(item)
         elif action == act_clear:
             self._clear_all()
+        elif action in method_actions:
+            self._set_paste_method(method_actions[action])
+
+    def _paste_item_by_typing(self, item: QListWidgetItem):
+        """Paste a text clip by typing it out, regardless of the global
+        paste-method setting. Mirrors the normal activation path but
+        arms the one-shot ``_force_typing_once`` override first."""
+        if item.data(_ROLE_KIND) != 'text':
+            return
+        text = item.data(_ROLE_TEXT)
+        if not text:
+            return
+        self._mark_pasted(item)
+        self._force_typing_once = True
+        self._paste_to_source(text)
 
     def _delete_item(self, item: QListWidgetItem, list_widget: QListWidget):
         """Remove a single clip from the list and from the database."""
@@ -1193,6 +1241,7 @@ class ClipboardManagerWidget(QWidget):
         """
         if text is None:
             return
+        self._pending_paste_text = text
         self._suppress_next = True
         QApplication.clipboard().setText(text)
         self._activate_source_then_paste()
@@ -1214,6 +1263,10 @@ class ClipboardManagerWidget(QWidget):
         """
         if pixmap is None or pixmap.isNull():
             return
+        # Images can only be delivered via Ctrl+V – there's no "type an
+        # image" path – so clear any pending text so _dispatch_paste
+        # doesn't try to type.
+        self._pending_paste_text = None
         self._suppress_next = True
         QApplication.clipboard().setPixmap(pixmap)
         self._activate_source_then_paste()
@@ -1259,6 +1312,11 @@ class ClipboardManagerWidget(QWidget):
         window didn't bite. Workbench is a regular top-level so we
         have to be explicit.
         """
+        # Consume the one-shot "type this paste" override now, before any
+        # early return, so it can't leak into a later paste-back.
+        force_typing_once = self._force_typing_once
+        self._force_typing_once = False
+
         source = self._source_window
         if source is None:
             # v1.10.201: in-Workbench return path. When Ctrl+Alt+C was
@@ -1416,15 +1474,135 @@ class ClipboardManagerWidget(QWidget):
 
         def _do_paste():
             try:
-                CrossPlatformKeySender().send_paste()
+                self._dispatch_paste(source, force_typing_once)
             except Exception as e:
                 print(f"[ClipboardManagerWidget] Paste error: {e}")
 
         # 150ms gives the OS plenty of time to settle the foreground
         # switch (especially on first activation after Workbench
         # launch, where window-manager bookkeeping is slower than on
-        # subsequent activations) before the synthetic Ctrl+V fires.
+        # subsequent activations) before the paste fires.
         QTimer.singleShot(150, _do_paste)
+
+    # ------------------------------------------------------------------
+    # Paste delivery strategy
+    # ------------------------------------------------------------------
+
+    _PASTE_METHODS = ('auto', 'ctrl_v', 'type')
+
+    def _resolve_paste_method(self) -> str:
+        """Return the persisted paste method for the paste-back step.
+
+        One of:
+          * ``'auto'``   – Ctrl+V everywhere, except type the text out
+                           for detected console/terminal windows (which
+                           ignore Ctrl+V). This is the default.
+          * ``'ctrl_v'`` – always send a synthetic Ctrl+V.
+          * ``'type'``   – always type the text character-by-character
+                           (AHK SendText), for text clips.
+
+        Stored in the app's unified settings under the ``features``
+        section as ``clipboard_paste_method``. Falls back to ``'auto'``
+        if the setting is missing or the host doesn't expose the
+        settings accessors.
+        """
+        try:
+            loader = getattr(self._parent_app, '_load_settings_section', None)
+            if loader:
+                val = (loader('features') or {}).get('clipboard_paste_method')
+                if val in self._PASTE_METHODS:
+                    return val
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] paste-method read failed: {e}")
+        return 'auto'
+
+    def _set_paste_method(self, method: str):
+        """Persist the paste method to the app's unified settings."""
+        if method not in self._PASTE_METHODS:
+            return
+        try:
+            loader = getattr(self._parent_app, '_load_settings_section', None)
+            saver = getattr(self._parent_app, '_save_settings_section', None)
+            if loader and saver:
+                feats = loader('features') or {}
+                feats['clipboard_paste_method'] = method
+                saver('features', feats)
+        except Exception as e:
+            print(f"[ClipboardManagerWidget] paste-method save failed: {e}")
+
+    def _dispatch_paste(self, source_hwnd, force_typing_once: bool = False):
+        """Deliver the pending clip to the now-foreground source window.
+
+        Chooses between a synthetic Ctrl+V and typing the text out,
+        based on the resolved paste method (and the one-shot
+        ``force_typing_once`` override from the "Paste by typing"
+        context-menu action). Typing only applies to text clips – image
+        clips always go via Ctrl+V because there's no "type an image"
+        path. Falls back to Ctrl+V if the typing backend reports it
+        couldn't run.
+        """
+        from modules.platform_helpers import (
+            CrossPlatformKeySender, is_terminal_like_window,
+            paste_target_needs_elevation,
+        )
+        sender = CrossPlatformKeySender()
+        text = self._pending_paste_text
+
+        # UIPI guard (Windows): if the target window runs at a higher
+        # integrity level than Workbench (e.g. an app started with "Run
+        # as administrator" while Workbench is not), Windows silently
+        # drops BOTH synthetic Ctrl+V and typed keystrokes. Nothing we
+        # can do in software fixes that – only running Workbench elevated
+        # does – so surface a clear reason instead of a silent no-op. We
+        # still attempt the paste afterwards in case the detection is a
+        # false positive.
+        if paste_target_needs_elevation(source_hwnd):
+            self._warn_paste_blocked_by_elevation()
+
+        use_typing = False
+        if text is not None:  # typing is a text-only capability
+            method = self._resolve_paste_method()
+            if force_typing_once or method == 'type':
+                use_typing = True
+            elif method == 'auto':
+                use_typing = is_terminal_like_window(source_hwnd)
+
+        if use_typing:
+            try:
+                if sender.type_text(text):
+                    return
+            except Exception as e:
+                print(f"[ClipboardManagerWidget] type_text failed, "
+                      f"falling back to Ctrl+V: {e}")
+        sender.send_paste()
+
+    def _warn_paste_blocked_by_elevation(self):
+        """Tell the user why a paste into an elevated window will fail.
+
+        Routed to the app log and status bar (both main-thread safe here,
+        since _dispatch_paste runs from a QTimer on the GUI thread) so the
+        UIPI block isn't an invisible no-op. Best-effort – any missing
+        host hook is ignored."""
+        msg = ("⚠ Clipboard paste may be blocked: the target window is running "
+               "at a higher privilege level (e.g. an app started with 'Run as "
+               "administrator') while Workbench is not. Windows blocks pasting "
+               "into it. Run Supervertaler Workbench as administrator to paste "
+               "into elevated apps.")
+        print(f"[ClipboardManagerWidget] {msg}")
+        app = self._parent_app
+        try:
+            if hasattr(app, 'log'):
+                app.log(msg)
+        except Exception:
+            pass
+        try:
+            sb = getattr(app, 'status_bar', None)
+            if sb is not None:
+                sb.showMessage(
+                    "⚠ Paste blocked – run Workbench as administrator to paste "
+                    "into elevated apps", 6000)
+        except Exception:
+            pass
 
     def _transform_clipboard(self, fn):
         """Read clipboard text, apply ``fn``, paste back to source.

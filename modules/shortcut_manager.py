@@ -667,6 +667,10 @@ class ShortcutManager:
         self.settings_file = settings_file or Path("user_data/workbench/settings/shortcuts.json")
         self.custom_shortcuts = {}
         self.disabled_shortcuts = set()  # Set of disabled shortcut IDs
+        # One-time default-value migrations already applied on this
+        # install. Persisted so they fire at most once and never wipe a
+        # user's deliberate re-selection of an old default value.
+        self.applied_migrations = set()
         self.load_shortcuts()
     
     def load_shortcuts(self):
@@ -681,6 +685,8 @@ class ShortcutManager:
                             # New format: {"shortcuts": {...}, "disabled": [...]}
                             self.custom_shortcuts = data.get("shortcuts", {})
                             self.disabled_shortcuts = set(data.get("disabled", []))
+                            self.applied_migrations = set(
+                                data.get("applied_migrations", []))
                         else:
                             # Old format: just the shortcuts dict
                             self.custom_shortcuts = data
@@ -801,10 +807,21 @@ class ShortcutManager:
         # → Ctrl+Alt+C. The old default fired unreliably on Windows
         # (Ctrl+Shift+C is widely claimed by browsers / DevTools and
         # other apps), so users who were on the previous default are
-        # bumped to Ctrl+Alt+C; explicit overrides are preserved.
-        sk_clip = self.custom_shortcuts.get('sidekick_open_clipboard')
-        if sk_clip and sk_clip.lower() == 'ctrl+shift+c':
-            del self.custom_shortcuts['sidekick_open_clipboard']
+        # bumped to Ctrl+Alt+C.
+        #
+        # This is a ONE-TIME migration and must be gated: it can't tell a
+        # legacy user still on the old default from one who has just
+        # *deliberately* re-selected Ctrl+Shift+C. Running it on every
+        # load wiped that deliberate choice on the next restart (the
+        # binding silently snapped back to Ctrl+Alt+C). Gate it behind a
+        # persisted marker so it fires at most once per install; after
+        # that Ctrl+Shift+C is a freely selectable binding again.
+        _CLIP_MIGRATION = 'clipboard_default_ctrlaltc_v1'
+        if _CLIP_MIGRATION not in self.applied_migrations:
+            sk_clip = self.custom_shortcuts.get('sidekick_open_clipboard')
+            if sk_clip and sk_clip.lower() == 'ctrl+shift+c':
+                del self.custom_shortcuts['sidekick_open_clipboard']
+            self.applied_migrations.add(_CLIP_MIGRATION)
             self.save_shortcuts()
 
     def save_shortcuts(self):
@@ -814,7 +831,8 @@ class ShortcutManager:
             # Save in new format that includes both shortcuts and disabled list
             save_data = {
                 "shortcuts": self.custom_shortcuts,
-                "disabled": list(self.disabled_shortcuts)
+                "disabled": list(self.disabled_shortcuts),
+                "applied_migrations": list(self.applied_migrations),
             }
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(save_data, f, indent=2)
